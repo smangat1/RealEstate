@@ -721,6 +721,89 @@ html[data-theme="light"] .mac-sidebar {
   gap: 18px;
 }
 
+.waitlist-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 10, 14, 0.56);
+  backdrop-filter: blur(24px) saturate(160%);
+  animation: overlay-fade-in 220ms ease;
+}
+
+.waitlist-success-card {
+  width: min(520px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 30px 28px 28px;
+  text-align: center;
+  border-radius: 32px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 92%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    color-mix(in srgb, var(--panel-2) 88%, transparent);
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  animation: waitlist-success-pop 340ms cubic-bezier(0.2, 0.82, 0.2, 1);
+}
+
+.waitlist-success-card h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.waitlist-success-card p {
+  margin: 0;
+  max-width: 34ch;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 1.02rem;
+}
+
+.waitlist-success-card .account-primary-button {
+  min-width: 220px;
+}
+
+.waitlist-success-check {
+  width: 120px;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.3), transparent 56%),
+    linear-gradient(180deg, color-mix(in srgb, var(--success) 82%, white 18%), color-mix(in srgb, var(--success) 92%, #0f3428 8%));
+  box-shadow:
+    0 22px 46px color-mix(in srgb, var(--success) 28%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transform-origin: center;
+}
+
+.waitlist-success-check svg {
+  width: 68px;
+  height: 68px;
+}
+
+.waitlist-success-check circle {
+  fill: transparent;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 2;
+}
+
+.waitlist-success-check path {
+  fill: none;
+  stroke: white;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .account-message {
   padding: 14px 16px;
   border-radius: 18px;
@@ -736,6 +819,30 @@ html[data-theme="light"] .mac-sidebar {
 .account-message-notice {
   background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
   color: var(--text);
+}
+
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes waitlist-success-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .field-stack {

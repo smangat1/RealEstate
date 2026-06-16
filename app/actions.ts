@@ -407,5 +407,8 @@ export async function submitWaitlistAction(formData: FormData) {
     source,
   });
 
-  redirectWithMessage("/", "notice", "You’re on the waitlist. We’ll reach out when the next Homeboard beta round opens.");
+  const search = new URLSearchParams();
+  search.set("success", "waitlist_joined");
+  search.set("notice", "You’re on the waitlist. We’ll reach out when the next Homeboard beta round opens.");
+  redirect(`/?${search.toString()}`);
 }

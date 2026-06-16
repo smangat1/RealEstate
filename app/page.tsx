@@ -5,6 +5,7 @@ import { getCurrentAppUser } from "@/lib/auth";
 import { isAppEnabled } from "@/lib/app-mode";
 import { getRecentBoardsForUser } from "@/lib/board-data";
 import { HomeExperience } from "@/components/home-experience";
+import { WaitlistSuccessOverlay } from "@/components/waitlist-success-overlay";
 
 export default async function HomePage({
   searchParams,
@@ -19,10 +20,17 @@ export default async function HomePage({
     const next = typeof params.next === "string" ? params.next : "/";
     const error = typeof params.error === "string" ? params.error : null;
     const notice = typeof params.notice === "string" ? params.notice : null;
+    const success = typeof params.success === "string" ? params.success : null;
     const isPublicMode = !appEnabled;
+    const shouldShowWaitlistSuccess = success === "waitlist_joined";
+    const inlineNotice = shouldShowWaitlistSuccess ? null : notice;
 
     return (
       <main className="account-shell">
+        <WaitlistSuccessOverlay
+          open={shouldShowWaitlistSuccess}
+          message={notice || "You’re on the waitlist. We’ll reach out when the next Homeboard beta round opens."}
+        />
         <section className="account-card mac-window-card">
           <div className={`account-layout ${isPublicMode ? "public-launch-layout" : ""}`}>
             <div className="account-intro">
@@ -64,7 +72,7 @@ export default async function HomePage({
               ) : null}
 
               {error ? <div className="account-message account-message-error">{error}</div> : null}
-              {notice ? <div className="account-message account-message-notice">{notice}</div> : null}
+              {inlineNotice ? <div className="account-message account-message-notice">{inlineNotice}</div> : null}
 
               <div className="account-feature-list">
                 <div className="account-feature">
