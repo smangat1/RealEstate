@@ -1,0 +1,41 @@
+{
+  "name": "realestate",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:seed": "tsx scripts/generate-dummy-data.ts --scale demo --reset",
+    "db:seed:large": "tsx scripts/generate-dummy-data.ts --scale large --reset",
+    "db:seed:huge": "tsx scripts/generate-dummy-data.ts --scale huge --reset"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.108.2",
+    "better-sqlite3": "^12.10.0",
+    "dotenv": "^17.4.2",
+    "next": "^16.2.9",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.9.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.9",
+    "prisma": "^6.16.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

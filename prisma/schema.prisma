@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SearchIntent {
+  rent
+  buy
+}
+
+enum PropertyType {
+  apartment
+  house
+  condo
+  room
+  unknown
+}
+
+enum ListingSource {
+  manual
+  pasted_link
+  pasted_text
+  api
+}
+
+enum ListingStatus {
+  active
+  unknown
+  removed
+  rented
+  saved_only
+}
+
+enum BoardListingStatus {
+  new
+  interested
+  maybe
+  rejected
+  toured
+  applied
+}
+
+enum ChatRole {
+  user
+  assistant
+  system
+}
+
+enum PriceHistorySource {
+  manual
+  user_update
+  api
+}
+
+enum RoommatePriority {
+  low
+  medium
+  high
+}
+
+enum ListingVote {
+  love
+  like
+  maybe
+  pass
+  veto
+}
+
+enum BoardMemberRole {
+  owner
+  member
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  revoked
+}
+
+model User {
+  id               String            @id @default(cuid())
+  authUserId       String?           @unique
+  email            String?           @unique
+  displayName      String
+  workAddress      String?
+  secondaryWorkAddress String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  searchBoards     SearchBoard[]
+  roommateProfiles RoommateProfile[]
+  memberships      BoardMember[]
+  invitationsSent  BoardInvitation[] @relation("InvitationsSent")
+}
+
+model SearchBoard {
+  id            String         @id @default(cuid())
+  userId        String
+  title         String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchProfile SearchProfile?
+  roommates     RoommateProfile[]
+  boardListings BoardListing[]
+  chatMessages  ChatMessage[]
+  boardEvents   BoardEvent[]
+  members       BoardMember[]
+  invitations   BoardInvitation[]
+
+  @@index([userId])
+}
+
+model BoardMember {
+  id        String          @id @default(cuid())
+  boardId    String
+  userId     String
+  role       BoardMemberRole @default(member)
+  createdAt  DateTime        @default(now())
+  joinedAt   DateTime        @default(now())
+  board      SearchBoard     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([userId, createdAt])
+}
+
+model BoardInvitation {
+  id               String           @id @default(cuid())
+  boardId          String
+  invitedByUserId  String
+  email            String
+  token            String           @unique
+  status           InvitationStatus @default(pending)
+  createdAt        DateTime         @default(now())
+  acceptedAt       DateTime?
+  board            SearchBoard      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  invitedByUser    User             @relation("InvitationsSent", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, status, createdAt])
+  @@index([email, status])
+}
+
+model SearchProfile {
+  id                String       @id @default(cuid())
+  boardId           String       @unique
+  intent            SearchIntent?
+  propertyType      PropertyType?
+  locations         String?
+  budgetMin         Int?
+  budgetMax         Int?
+  bedroomsPreferred Int?
+  bedroomsFlexible  String?
+  moveInTimeframe   String?
+  mustHaves         String?
+  niceToHaves       String?
+  dealbreakers      String?
+  priorities        String?
+  petsRequired      Boolean?
+  parkingRequired   Boolean?
+  laundryRequired   Boolean?
+  commuteTarget     String?
+  notes             String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  board             SearchBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+}
+
+model Listing {
+  id            String         @id @default(cuid())
+  source        ListingSource
+  sourceName    String?
+  sourceUrl     String?
+  externalId    String?
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+  neighborhood  String?
+  price         Int?
+  bedrooms      Float?
+  bathrooms     Float?
+  squareFeet    Int?
+  availableDate DateTime?
+  propertyType  PropertyType?
+  amenities     String?
+  fees          String?
+  description   String?
+  images        String?
+  status        ListingStatus   @default(active)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  boardListings BoardListing[]
+  priceHistory  PriceHistory[]
+
+  @@index([source])
+  @@index([city, neighborhood])
+  @@index([price])
+}
+
+model BoardListing {
+  id                 String             @id @default(cuid())
+  boardId            String
+  listingId          String
+  userStatus         BoardListingStatus @default(new)
+  userNotes          String?
+  aiSummary          String?
+  aiTradeoffAnalysis String?
+  aiRedFlags         String?
+  questionsToAsk     String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  board              SearchBoard        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  listing            Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  votes              BoardListingVote[]
+  comments           BoardListingComment[]
+
+  @@unique([boardId, listingId])
+  @@index([boardId, userStatus])
+  @@index([listingId])
+}
+
+model PriceHistory {
+  id         String             @id @default(cuid())
+  listingId  String
+  price      Int
+  observedAt DateTime
+  source     PriceHistorySource
+  listing    Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, observedAt])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  boardId   String
+  role      ChatRole
+  authorUserId String?
+  authorName String?
+  content   String
+  createdAt DateTime    @default(now())
+  board     SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, createdAt])
+}
+
+model RoommateProfile {
+  id                     String                 @id @default(cuid())
+  boardId                String
+  linkedUserId           String?
+  name                   String
+  roleLabel              String
+  budgetMax              Int?
+  commuteDestination     String?
+  commutePriority        RoommatePriority
+  neighborhoodPriority   RoommatePriority
+  spacePriority          RoommatePriority
+  privacyPriority        RoommatePriority
+  preferredNeighborhoods String?
+  mustHaves              String?
+  dealbreakers           String?
+  notes                  String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  board                  SearchBoard            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  linkedUser             User?                  @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
+  listingVotes           BoardListingVote[]
+  listingComments        BoardListingComment[]
+
+  @@index([boardId, createdAt])
+  @@index([linkedUserId])
+}
+
+model BoardListingVote {
+  id             String         @id @default(cuid())
+  boardListingId String
+  roommateId     String
+  vote           ListingVote
+  note           String?
+  createdAt      DateTime       @default(now())
+  boardListing   BoardListing   @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
+  roommate       RoommateProfile @relation(fields: [roommateId], references: [id], onDelete: Cascade)
+
+  @@unique([boardListingId, roommateId])
+  @@index([boardListingId, createdAt])
+}
+
+model BoardListingComment {
+  id             String         @id @default(cuid())
+  boardListingId String
+  roommateId     String
+  content        String
+  createdAt      DateTime       @default(now())
+  boardListing   BoardListing   @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
+  roommate       RoommateProfile @relation(fields: [roommateId], references: [id], onDelete: Cascade)
+
+  @@index([boardListingId, createdAt])
+}
+
+model BoardEvent {
+  id        String      @id @default(cuid())
+  boardId   String
+  actorType String
+  actorName String
+  eventType String
+  content   String
+  createdAt DateTime    @default(now())
+  board     SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, createdAt])
+}
