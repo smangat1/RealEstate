@@ -64,6 +64,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+html {
+  font-size: 13px;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -561,7 +565,7 @@ html[data-theme="light"] .mac-sidebar {
 
 .account-card,
 .settings-page-card {
-  width: min(960px, 100%);
+  width: min(1080px, 100%);
   display: grid;
   gap: 24px;
   padding: 18px 18px 28px;
@@ -597,11 +601,53 @@ html[data-theme="light"] .mac-sidebar {
   gap: 16px;
 }
 
+.account-form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.account-form-grid > *,
+.account-toggle-grid > *,
+.account-panel-stack > *,
+.field-stack {
+  min-width: 0;
+}
+
+.account-form-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-toggle-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.waitlist-primary-panel .account-toggle-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.waitlist-primary-panel .account-toggle-grid > :last-child {
+  grid-column: 1 / -1;
+}
+
+.onboarding-intro {
+  padding-right: 0;
+}
+
+.onboarding-panel {
+  max-width: 100%;
+}
+
 .account-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
   gap: 24px;
   align-items: start;
+}
+
+.public-launch-layout {
+  grid-template-columns: minmax(0, 1.14fr) minmax(380px, 0.86fr);
 }
 
 .single-panel-layout {
@@ -617,6 +663,11 @@ html[data-theme="light"] .mac-sidebar {
 .account-panel-stack {
   display: grid;
   gap: 16px;
+}
+
+.account-launch-stats {
+  display: grid;
+  gap: 12px;
 }
 
 .account-panel,
@@ -666,6 +717,10 @@ html[data-theme="light"] .mac-sidebar {
   letter-spacing: -0.02em;
 }
 
+.waitlist-primary-panel {
+  gap: 18px;
+}
+
 .account-message {
   padding: 14px 16px;
   border-radius: 18px;
@@ -688,6 +743,17 @@ html[data-theme="light"] .mac-sidebar {
   gap: 8px;
 }
 
+.field-stack input,
+.field-stack textarea,
+.field-stack select {
+  width: 100%;
+  min-width: 0;
+}
+
+.field-stack span {
+  line-height: 1.3;
+}
+
 .account-primary-button {
   border: none;
   border-radius: 16px;
@@ -704,6 +770,25 @@ html[data-theme="light"] .mac-sidebar {
 
 .account-primary-button:hover {
   transform: translateY(-1px);
+}
+
+.account-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.account-secondary-copy {
+  color: var(--muted);
+}
+
+.register-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .existing-users,
@@ -808,6 +893,38 @@ html[data-theme="light"] .mac-sidebar {
   width: min(980px, 100%);
   display: grid;
   gap: 24px;
+}
+
+.onboarding-home-stage {
+  padding-bottom: 24px;
+}
+
+.onboarding-status-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.onboarding-status-card,
+.onboarding-review-block {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-2) 84%, transparent);
+  border-radius: 20px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.onboarding-status-card span,
+.onboarding-review-block span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.onboarding-status-card strong,
+.onboarding-review-block strong {
+  font-size: 1rem;
+  line-height: 1.4;
 }
 
 .home-badge,
@@ -931,11 +1048,49 @@ html[data-theme="light"] .mac-sidebar {
   border-radius: 32px;
 }
 
+.onboarding-chat-stage {
+  min-height: 64vh;
+}
+
 .chat-thread-modern {
   display: grid;
   gap: 20px;
   padding: 28px;
   overflow: auto;
+}
+
+.home-profile-review-card {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.onboarding-progress-bar {
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--panel-3) 88%, transparent);
+  border: 1px solid var(--line);
+}
+
+.onboarding-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+.onboarding-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.onboarding-action-stack {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .modern-message {
@@ -950,19 +1105,24 @@ html[data-theme="light"] .mac-sidebar {
 
 .modern-message.user .message-body {
   max-width: min(720px, 82%);
-  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
-  color: white;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 84%, white 16%),
+    color-mix(in srgb, var(--accent-strong) 92%, #0a1630 8%)
+  );
+  color: rgba(255, 255, 255, 0.98);
   border-radius: 28px 28px 12px 28px;
   box-shadow: 0 18px 34px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 html[data-theme="light"] .modern-message.user .message-body {
-  color: white;
+  color: rgba(255, 255, 255, 0.98);
 }
 
 .modern-message.user .message-role {
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.88);
   line-height: 1;
+  font-weight: 700;
 }
 
 .modern-message.user .message-body p {
@@ -972,9 +1132,16 @@ html[data-theme="light"] .modern-message.user .message-body {
 .modern-message.assistant .message-body,
 .modern-message.system .message-body {
   max-width: min(760px, 90%);
-  background: transparent;
-  border-radius: 0;
-  padding-top: 2px;
+  background: color-mix(in srgb, var(--panel-3) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 100%, transparent);
+  border-radius: 24px;
+  padding-top: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="light"] .modern-message.assistant .message-body,
+html[data-theme="light"] .modern-message.system .message-body {
+  background: color-mix(in srgb, white 88%, var(--panel-2) 12%);
 }
 
 .avatar {
@@ -1004,6 +1171,7 @@ html[data-theme="light"] .modern-message.user .message-body {
   font-size: 0.76rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 600;
 }
 
 .chat-input-shell {
@@ -1722,8 +1890,19 @@ html[data-theme="light"] .modern-message.user .message-body {
   }
 
   .account-layout,
+  .public-launch-layout,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-form-grid-2,
+  .account-toggle-grid,
+  .waitlist-primary-panel .account-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .waitlist-primary-panel .account-toggle-grid > :last-child {
+    grid-column: auto;
   }
 
   .chat-thread-modern {

@@ -1,18 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
-  addListingCommentAction,
-  addListingAction,
-  createBoardInvitationAction,
   deleteBoardAction,
   saveSuggestedListingAction,
-  saveListingVoteAction,
   sendChatAction,
-  updateListingStatusAction,
 } from "@/app/actions";
 import type {
   AuthUserRecord,
@@ -71,10 +66,8 @@ function formatCommuteSnippet(commute: BoardPageData["boardListingCommutesByBoar
   }`;
 }
 
-function priorityWeight(level: "low" | "medium" | "high") {
-  if (level === "high") return 3;
-  if (level === "medium") return 2;
-  return 1;
+function priorityWeight(priorities: string[], label: string) {
+  return priorities.includes(label) ? 3 : 2;
 }
 
 function compareListingScore(
@@ -86,22 +79,22 @@ function compareListingScore(
   const listing = item.listing;
 
   if (listing.price !== null) {
-    score += (listing.price <= 2500 ? 3 : listing.price <= 4000 ? 2 : 1) * priorityWeight(priorities.price);
+    score += (listing.price <= 2500 ? 3 : listing.price <= 4000 ? 2 : 1) * priorityWeight(priorities, "price");
   }
 
   if (listing.squareFeet !== null) {
-    score += (listing.squareFeet >= 850 ? 3 : listing.squareFeet >= 650 ? 2 : 1) * priorityWeight(priorities.space);
+    score += (listing.squareFeet >= 850 ? 3 : listing.squareFeet >= 650 ? 2 : 1) * priorityWeight(priorities, "space");
   } else if (listing.bedrooms !== null) {
-    score += listing.bedrooms * priorityWeight(priorities.space);
+    score += listing.bedrooms * priorityWeight(priorities, "space");
   }
 
   if (listing.amenities.length > 0) {
-    score += Math.min(3, listing.amenities.length) * priorityWeight(priorities.amenities);
+    score += Math.min(3, listing.amenities.length) * priorityWeight(priorities, "amenities");
   }
 
   if (commute?.bestDurationMinutes !== null && commute?.bestDurationMinutes !== undefined) {
     const commuteBand = commute.bestDurationMinutes <= 25 ? 3 : commute.bestDurationMinutes <= 40 ? 2 : 1;
-    score += commuteBand * priorityWeight(priorities.commute);
+    score += commuteBand * priorityWeight(priorities, "commute");
   }
 
   if (item.userStatus === "interested") score += 4;
@@ -174,8 +167,7 @@ function buildCompareSummary(selectedListings: BoardListingRecord[], data: Board
     summaryParts.push(`${compareLocationLabel(risky)} is the riskiest option in this set. ${riskReason}`);
   }
 
-  const topPriority = Object.entries(data.profile.priorities)
-    .sort((left, right) => priorityWeight(right[1]) - priorityWeight(left[1]))[0]?.[0];
+  const topPriority = data.profile.priorities[0];
 
   if (topPriority) {
     summaryParts.push(
@@ -206,6 +198,7 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
   const [sortMode, setSortMode] = useState<(typeof SORT_OPTIONS)[number]>("updated");
   const [selectedListingIds, setSelectedListingIds] = useState<string[]>([]);
   const [focusedListingId, setFocusedListingId] = useState<string | null>(null);
+  const chatThreadRef = useRef<HTMLDivElement | null>(null);
   const readyForDeck = data.missingFields.length === 0;
   const shortlistItems = useMemo(() => {
     const filtered = data.boardListings
@@ -302,6 +295,11 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
       document.body.style.touchAction = previousTouchAction;
     };
   }, [isDeckOpen]);
+
+  useEffect(() => {
+    if (!chatThreadRef.current) return;
+    chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
+  }, [data.messages]);
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -441,36 +439,8 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
       </aside>
 
       <section className="board-stage">
-        <header className="stage-header">
-          <div>
-            <div className="home-badge">Shared board</div>
-            <h1>
-              {isDemoMode
-                ? "Use the chat to set the brief, then use the match deck and shortlist to make the call."
-                : "Use the shared chat to shape the group limits, then use the board to make the tradeoffs visible."}
-            </h1>
-          </div>
-          <div className="stage-actions">
-            <button type="button" className="secondary-button" onClick={() => setIsDeckOpen(true)} disabled={deckListings.length === 0}>
-              Browse {deckListings.length} matches
-            </button>
-            <details className="overflow-menu stage-overflow-menu">
-              <summary className="overflow-trigger" aria-label="More board actions">
-                ...
-              </summary>
-              <div className="overflow-panel">
-                <form action={deleteBoardAction}>
-                  <input type="hidden" name="boardId" value={data.board.id} />
-                  <input type="hidden" name="redirectTo" value="/" />
-                  <button type="submit" className="sidebar-delete-button">Delete chat</button>
-                </form>
-              </div>
-            </details>
-          </div>
-        </header>
-
         <div className="chat-stage">
-          <div className="chat-thread-modern">
+          <div className="chat-thread-modern" ref={chatThreadRef}>
             {data.messages.map((message) => (
               <article key={message.id} className={`modern-message ${message.role}`}>
                 {message.role === "assistant" ? <div className="avatar">A</div> : null}
@@ -488,14 +458,16 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
               onChange={(event) => setChatInput(event.target.value)}
               onKeyDown={handleChatKeyDown}
               rows={4}
-              placeholder="Try: 3000 max, only Jersey City now, 2 bed, August, laundry has to be in building, and show me some listings."
+              placeholder="Tell Homeboard about your move, budget, commute, group, neighborhoods, or ask to browse matches."
             />
             <div className="chat-input-footer">
               <div className="chat-hints">
-                {data.missingFields.length > 0
-                  ? data.missingFields.map((field) => <span key={field}>Still need: {field}</span>)
-                  : <span>Core search profile is filled.</span>}
-                <span>Try: show me 5 · give me more · show me 20 more</span>
+                <span>
+                  {data.missingFields.length > 0
+                    ? `Profile ${data.completion.percentComplete}% complete · still collecting: ${data.missingFields.join(", ")}`
+                    : "Onboarding looks complete. You can keep refining the brief here or confirm it in settings."}
+                </span>
+                <span>Manual edits live in settings.</span>
                 <span>Enter sends · Shift+Enter newline · Ctrl/Cmd+Space sends</span>
               </div>
               <button type="button" onClick={submitChat} disabled={isPending}>
@@ -506,542 +478,21 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
             {readyForDeck ? (
               <div className="chat-ready-card">
                 <div>
-                  <strong>Your search is filled in enough to browse real matches.</strong>
-                  <p>Keep changing fields in chat if you want, or open the deck and start swiping through the dummy inventory.</p>
+                  <strong>Your profile is structured enough to browse matches.</strong>
+                  <p>Keep onboarding in chat, or open the listing deck when you want to see options against the current profile.</p>
                 </div>
-                <button type="button" className="primary-sidebar-button" onClick={() => setIsDeckOpen(true)}>
-                  {data.currentBrowseRequest ? `Open ${data.currentBrowseRequest.count}-match batch` : "Open match deck"}
-                </button>
+                <div className="stage-actions">
+                  <Link href={`/settings?boardId=${data.board.id}`} className="secondary-button">
+                    Open settings
+                  </Link>
+                  <button type="button" className="primary-sidebar-button" onClick={() => setIsDeckOpen(true)}>
+                    {data.currentBrowseRequest ? `Open ${data.currentBrowseRequest.count}-match batch` : "Open match deck"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
         </div>
-
-        <section className="bottom-rail">
-          {isDemoMode ? (
-            <div className="rail-card rail-card-wide">
-              <div className="rail-card-header">
-                <h2>Saved shortlist</h2>
-                <span>{shortlistCountLabel}</span>
-              </div>
-              <div className="compare-banner">
-                <div>
-                  <strong>Keep the demo focused on contenders.</strong>
-                  <p>Use the deck to save options, then trim and compare them here without the extra dashboard clutter.</p>
-                </div>
-                <div className="compare-banner-actions">
-                  <span>{selectedListings.length} selected</span>
-                  <button type="button" className="secondary-button" onClick={() => setSelectedListingIds([])} disabled={selectedListings.length === 0}>
-                    Clear
-                  </button>
-                </div>
-              </div>
-              <div className="board-tool-controls demo-shortlist-controls">
-                <label className="field-stack compact-field">
-                  <span>Status</span>
-                  <select value={shortlistStatusFilter} onChange={(event) => setShortlistStatusFilter(event.target.value as (typeof SHORTLIST_STATUS_OPTIONS)[number])}>
-                    {SHORTLIST_STATUS_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-stack compact-field">
-                  <span>Vote</span>
-                  <select value={voteFilter} onChange={(event) => setVoteFilter(event.target.value as "all" | (typeof VOTE_ORDER)[number])}>
-                    <option value="all">all</option>
-                    {VOTE_ORDER.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-stack compact-field">
-                  <span>Sort</span>
-                  <select value={sortMode} onChange={(event) => setSortMode(event.target.value as (typeof SORT_OPTIONS)[number])}>
-                    <option value="updated">recently updated</option>
-                    <option value="price-asc">price low to high</option>
-                    <option value="price-desc">price high to low</option>
-                    <option value="bedrooms-desc">most bedrooms</option>
-                  </select>
-                </label>
-              </div>
-              {compareSummary ? (
-                <div className="compare-summary-card">
-                  <div className="compare-summary-pills">
-                    {compareSummary.practical ? <span className="saved-pill">strongest practical option: {compareLocationLabel(compareSummary.practical)}</span> : null}
-                    {compareSummary.lifestyle ? <span className="saved-pill">best lifestyle option: {compareLocationLabel(compareSummary.lifestyle)}</span> : null}
-                    {compareSummary.commuteWinner ? <span className="saved-pill">best commute option: {compareLocationLabel(compareSummary.commuteWinner)}</span> : null}
-                    {compareSummary.risky ? <span className="saved-pill">riskiest option: {compareLocationLabel(compareSummary.risky)}</span> : null}
-                  </div>
-                  <p>{compareSummary.narrative}</p>
-                </div>
-              ) : null}
-              <div className="shortlist-grid">
-                {shortlistItems.length === 0 ? (
-                  <article className="shortlist-card shortlist-empty">
-                    <strong>No active shortlist yet</strong>
-                    <p>Save a few listings from the deck and they will show up here. Rejected ones stay off the shortlist.</p>
-                  </article>
-                ) : null}
-
-                {shortlistItems.slice(0, 12).map((item) => (
-                  <article key={item.id} className="shortlist-card">
-                    <div>
-                      <strong>{[item.listing.neighborhood, item.listing.city].filter(Boolean).join(", ") || "Untitled listing"}</strong>
-                      <p>
-                        {item.listing.price ? `$${item.listing.price.toLocaleString()}` : "Price unknown"}
-                        {item.listing.bedrooms !== null ? ` · ${item.listing.bedrooms} bed` : ""}
-                      </p>
-                    </div>
-                    <div className="shortlist-actions-row">
-                      <label className="select-for-compare">
-                        <input
-                          type="checkbox"
-                          checked={selectedListingIds.includes(item.id)}
-                          onChange={() => toggleListingSelection(item.id)}
-                        />
-                        <span>compare</span>
-                      </label>
-                      <button type="button" className="ghost-button" onClick={() => setFocusedListingId(item.id)}>
-                        View details
-                      </button>
-                    </div>
-                    <form
-                      action={async (formData) => {
-                        startTransition(async () => {
-                          await updateListingStatusAction(formData);
-                          router.refresh();
-                        });
-                      }}
-                      className="shortlist-status-form"
-                    >
-                      <input type="hidden" name="boardId" value={data.board.id} />
-                      <input type="hidden" name="boardListingId" value={item.id} />
-                      <select name="status" defaultValue={item.userStatus}>
-                        <option value="new">new</option>
-                        <option value="interested">interested</option>
-                        <option value="maybe">maybe</option>
-                        <option value="rejected">rejected</option>
-                        <option value="toured">toured</option>
-                        <option value="applied">applied</option>
-                      </select>
-                      <button type="submit">Save</button>
-                    </form>
-                  </article>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-          <div className="rail-card">
-            <div className="rail-card-header">
-              <h2>Board tools</h2>
-              <span>{shortlistCountLabel}</span>
-            </div>
-            <div className="board-tools-grid">
-              <div className="board-tool-block">
-                <strong>Shortlist controls</strong>
-                <div className="board-tool-controls">
-                  <label className="field-stack compact-field">
-                    <span>Status</span>
-                    <select value={shortlistStatusFilter} onChange={(event) => setShortlistStatusFilter(event.target.value as (typeof SHORTLIST_STATUS_OPTIONS)[number])}>
-                      {SHORTLIST_STATUS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field-stack compact-field">
-                    <span>Vote</span>
-                    <select value={voteFilter} onChange={(event) => setVoteFilter(event.target.value as "all" | (typeof VOTE_ORDER)[number])}>
-                      <option value="all">all</option>
-                      {VOTE_ORDER.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field-stack compact-field">
-                    <span>Sort</span>
-                    <select value={sortMode} onChange={(event) => setSortMode(event.target.value as (typeof SORT_OPTIONS)[number])}>
-                      <option value="updated">recently updated</option>
-                      <option value="price-asc">price low to high</option>
-                      <option value="price-desc">price high to low</option>
-                      <option value="bedrooms-desc">most bedrooms</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-
-              <div className="board-tool-block">
-                <strong>Add a listing</strong>
-                <p className="mini-meta">Use the board directly when you already have a link, pasted text, or a manual comp to compare.</p>
-                <div className="listing-method-tabs">
-                  <button type="button" className={listingMethod === "pasted_link" ? "active" : ""} onClick={() => setListingMethod("pasted_link")}>
-                    Link
-                  </button>
-                  <button type="button" className={listingMethod === "pasted_text" ? "active" : ""} onClick={() => setListingMethod("pasted_text")}>
-                    Pasted text
-                  </button>
-                  <button type="button" className={listingMethod === "manual" ? "active" : ""} onClick={() => setListingMethod("manual")}>
-                    Manual
-                  </button>
-                </div>
-                <form
-                  action={async (formData) => {
-                    startTransition(async () => {
-                      await addListingAction(formData);
-                      router.refresh();
-                    });
-                  }}
-                  className="listing-intake-form"
-                >
-                  <input type="hidden" name="boardId" value={data.board.id} />
-                  <input type="hidden" name="method" value={listingMethod} />
-
-                  {listingMethod === "pasted_link" ? (
-                    <>
-                      <input name="sourceUrl" placeholder="Paste a listing URL to keep it on the board" />
-                      <textarea name="description" rows={3} placeholder="Optional context, like why this one caught your eye." />
-                    </>
-                  ) : null}
-
-                  {listingMethod === "pasted_text" ? (
-                    <textarea
-                      name="pastedText"
-                      rows={6}
-                      placeholder="Paste the listing description here. The board will pull out whatever details it can."
-                    />
-                  ) : null}
-
-                  {listingMethod === "manual" ? (
-                    <div className="listing-intake-manual-grid">
-                      <input name="address" placeholder="Address" />
-                      <input name="city" placeholder="City" />
-                      <input name="neighborhood" placeholder="Neighborhood" />
-                      <input name="price" placeholder="Price" inputMode="numeric" />
-                      <input name="bedrooms" placeholder="Bedrooms" inputMode="decimal" />
-                      <input name="bathrooms" placeholder="Bathrooms" inputMode="decimal" />
-                      <input name="squareFeet" placeholder="Square feet" inputMode="numeric" />
-                      <textarea name="description" rows={4} placeholder="Anything useful the group should know about this listing." />
-                    </div>
-                  ) : null}
-
-                  <button type="submit" className="roommate-add-button" disabled={isPending}>
-                    {isPending ? "Saving..." : "Add listing to board"}
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-
-          <div className="rail-card">
-            <div className="rail-card-header">
-              <h2>Group read</h2>
-              <span>{data.members.length} members</span>
-            </div>
-            <p>{data.groupSynthesis.summary}</p>
-            <div className="synthesis-grid">
-              <div className="synthesis-chip">
-                <span>Shared cap</span>
-                <strong>{data.groupSynthesis.groupBudgetMax ? `$${data.groupSynthesis.groupBudgetMax.toLocaleString()}` : "Still loose"}</strong>
-              </div>
-              <div className="synthesis-chip">
-                <span>Compromise areas</span>
-                <strong>{data.groupSynthesis.compromiseAreas.join(", ") || "Still emerging"}</strong>
-              </div>
-              <div className="synthesis-chip">
-                <span>Top priorities</span>
-                <strong>{data.groupSynthesis.topSharedPriorities.join(", ") || "Need more signal"}</strong>
-              </div>
-            </div>
-            {data.groupSynthesis.tensionFlags.length > 0 ? (
-              <div className="tension-list">
-                {data.groupSynthesis.tensionFlags.map((flag) => (
-                  <span key={flag}>{flag}</span>
-                ))}
-              </div>
-            ) : null}
-            <p>{data.comparison}</p>
-          </div>
-
-          <div className="rail-card">
-            <div className="rail-card-header">
-              <h2>Roommates</h2>
-              <span>Shared board</span>
-            </div>
-            <div className="roommate-grid">
-              <div className="roommate-list">
-                {data.members.length === 0 ? (
-                  <article className="shortlist-card shortlist-empty">
-                    <strong>No collaborators on this board yet</strong>
-                    <p>Invite people into the board and their real accounts will start showing up in the shared chat.</p>
-                  </article>
-                ) : null}
-
-                {data.members.map((member) => {
-                  const roommate = data.roommates.find((entry) => entry.linkedUserId === member.userId) ?? null;
-
-                  return (
-                    <article key={member.id} className="roommate-summary-card">
-                      <div className="roommate-summary-head">
-                        <strong>{member.user.displayName}</strong>
-                        <span>{member.role === "owner" ? "board owner" : "member"}</span>
-                      </div>
-                      <div className="roommate-summary-meta">
-                        <span>{roommate?.budgetMax ? `Budget $${roommate.budgetMax.toLocaleString()}` : "Budget still open"}</span>
-                        <span>{member.user.workAddress ? member.user.workAddress : "No commute anchor yet"}</span>
-                      </div>
-                    </article>
-                  );
-                })}
-
-                {data.invitations.map((invite) => (
-                  <article key={invite.id} className="roommate-summary-card invite-summary-card">
-                    <div className="roommate-summary-head">
-                      <strong>{invite.email}</strong>
-                      <span>pending invite</span>
-                    </div>
-                    <div className="roommate-summary-meta">
-                      <span>Share this link with them</span>
-                      <a href={`/invite/${invite.token}`}>/invite/{invite.token}</a>
-                    </div>
-                  </article>
-                ))}
-              </div>
-
-              <article className="shortlist-card roommate-card roommate-add-card">
-                <div className="roommate-add-head">
-                  <strong>Invite collaborator</strong>
-                  <p>Invite by email. Once they sign in, they can join the exact board instead of pretending to be a local profile.</p>
-                </div>
-                <form
-                  action={async (formData) => {
-                    startTransition(async () => {
-                      await createBoardInvitationAction(formData);
-                      router.refresh();
-                    });
-                  }}
-                  className="roommate-form"
-                >
-                  <input type="hidden" name="boardId" value={data.board.id} />
-                  <input name="email" type="email" placeholder="roommate@email.com" />
-                  <button type="submit" className="roommate-add-button">Create invite link</button>
-                </form>
-              </article>
-            </div>
-          </div>
-
-          <div className="rail-card rail-card-wide">
-            <div className="rail-card-header">
-              <h2>Saved shortlist</h2>
-              <span>{shortlistCountLabel}</span>
-            </div>
-            <div className="compare-banner">
-              <div>
-                <strong>Compare up to 3 listings</strong>
-                <p>Select contenders from the shortlist, then use the compare workspace below to pressure-test them side by side.</p>
-              </div>
-              <div className="compare-banner-actions">
-                <span>{selectedListings.length} selected</span>
-                <button type="button" className="secondary-button" onClick={() => setSelectedListingIds([])} disabled={selectedListings.length === 0}>
-                  Clear
-                </button>
-              </div>
-            </div>
-            <div className="shortlist-grid">
-              {shortlistItems.length === 0 ? (
-                <article className="shortlist-card shortlist-empty">
-                  <strong>No active shortlist yet</strong>
-                  <p>Liked and maybe listings stay here. Rejected ones are kept off this shortlist, and the filters above can narrow the board further.</p>
-                </article>
-              ) : null}
-
-              {shortlistItems.slice(0, 8).map((item) => (
-                <article key={item.id} className="shortlist-card">
-                  <div>
-                    <strong>{[item.listing.neighborhood, item.listing.city].filter(Boolean).join(", ") || "Untitled listing"}</strong>
-                    <p>
-                      {item.listing.price ? `$${item.listing.price.toLocaleString()}` : "Price unknown"}
-                      {item.listing.bedrooms !== null ? ` · ${item.listing.bedrooms} bed` : ""}
-                    </p>
-                  </div>
-                  <div className="shortlist-actions-row">
-                    <label className="select-for-compare">
-                      <input
-                        type="checkbox"
-                        checked={selectedListingIds.includes(item.id)}
-                        onChange={() => toggleListingSelection(item.id)}
-                      />
-                      <span>compare</span>
-                    </label>
-                    <button type="button" className="ghost-button" onClick={() => setFocusedListingId(item.id)}>
-                      View details
-                    </button>
-                  </div>
-                  <form
-                    action={async (formData) => {
-                      startTransition(async () => {
-                        await updateListingStatusAction(formData);
-                        router.refresh();
-                      });
-                    }}
-                    className="shortlist-status-form"
-                  >
-                    <input type="hidden" name="boardId" value={data.board.id} />
-                    <input type="hidden" name="boardListingId" value={item.id} />
-                    <select name="status" defaultValue={item.userStatus}>
-                      <option value="new">new</option>
-                      <option value="interested">interested</option>
-                      <option value="maybe">maybe</option>
-                      <option value="rejected">rejected</option>
-                      <option value="toured">toured</option>
-                      <option value="applied">applied</option>
-                    </select>
-                    <button type="submit">Save</button>
-                  </form>
-                  <VoteSummary votes={data.listingVotesByBoardListingId[item.id] ?? []} />
-                  <form
-                    action={async (formData) => {
-                      startTransition(async () => {
-                        await saveListingVoteAction(formData);
-                        router.refresh();
-                      });
-                    }}
-                    className="vote-form"
-                  >
-                    <input type="hidden" name="boardId" value={data.board.id} />
-                    <input type="hidden" name="boardListingId" value={item.id} />
-                    <select name="roommateId" defaultValue={currentRoommateId} disabled={!currentRoommateId}>
-                      {data.roommates.map((roommate) => (
-                        <option key={roommate.id} value={roommate.id}>
-                          {roommate.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select name="vote" defaultValue="maybe">
-                      <option value="love">love</option>
-                      <option value="like">like</option>
-                      <option value="maybe">maybe</option>
-                      <option value="pass">pass</option>
-                      <option value="veto">veto</option>
-                    </select>
-                    <button type="submit" disabled={!currentRoommateId}>Save vote</button>
-                  </form>
-                  <CommentFeed comments={data.listingCommentsByBoardListingId[item.id] ?? []} />
-                  <form
-                    action={async (formData) => {
-                      startTransition(async () => {
-                        await addListingCommentAction(formData);
-                        router.refresh();
-                      });
-                    }}
-                    className="comment-form"
-                  >
-                    <input type="hidden" name="boardId" value={data.board.id} />
-                    <input type="hidden" name="boardListingId" value={item.id} />
-                    <select name="roommateId" defaultValue={currentRoommateId} disabled={!currentRoommateId}>
-                      {data.roommates.map((roommate) => (
-                        <option key={roommate.id} value={roommate.id}>
-                          {roommate.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input name="content" placeholder="Leave a group note on this listing" />
-                    <button type="submit" disabled={!currentRoommateId}>Comment</button>
-                  </form>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="rail-card rail-card-wide">
-            <div className="rail-card-header">
-              <h2>Compare workspace</h2>
-              <span>{selectedListings.length > 0 ? `${selectedListings.length} selected` : "Select listings to compare"}</span>
-            </div>
-            {selectedListings.length === 0 ? (
-              <article className="shortlist-card shortlist-empty">
-                <strong>No listings selected yet</strong>
-                <p>Use the compare toggle on shortlist cards to line up contenders. This is where the group can pressure-test price, commute, space, and unknowns.</p>
-              </article>
-            ) : (
-              <>
-                {compareSummary ? (
-                  <div className="compare-summary-card">
-                    <div className="compare-summary-pills">
-                      {compareSummary.practical ? <span className="saved-pill">strongest practical option: {compareLocationLabel(compareSummary.practical)}</span> : null}
-                      {compareSummary.lifestyle ? <span className="saved-pill">best lifestyle option: {compareLocationLabel(compareSummary.lifestyle)}</span> : null}
-                      {compareSummary.commuteWinner ? <span className="saved-pill">best commute option: {compareLocationLabel(compareSummary.commuteWinner)}</span> : null}
-                      {compareSummary.risky ? <span className="saved-pill">riskiest option: {compareLocationLabel(compareSummary.risky)}</span> : null}
-                    </div>
-                    <p>{compareSummary.narrative}</p>
-                  </div>
-                ) : null}
-
-                <div className="compare-grid">
-                  {selectedListings.map((item) => (
-                    <article key={item.id} className="compare-card">
-                      <div className="compare-card-head">
-                        <strong>{compareLocationLabel(item)}</strong>
-                        <span>{item.userStatus}</span>
-                      </div>
-                      <div className="compare-stat-list">
-                        <span>Price: {item.listing.price ? `$${item.listing.price.toLocaleString()}` : "unknown"}</span>
-                        <span>Bedrooms: {item.listing.bedrooms !== null ? item.listing.bedrooms : "unknown"}</span>
-                        <span>Bathrooms: {item.listing.bathrooms !== null ? item.listing.bathrooms : "unknown"}</span>
-                        <span>Space: {item.listing.squareFeet !== null ? `${item.listing.squareFeet} sq ft` : "unknown"}</span>
-                        <span>Commute: {formatCommuteSnippet(data.boardListingCommutesByBoardListingId[item.id])}</span>
-                      </div>
-                      <p>{item.aiTradeoffAnalysis ?? item.aiSummary ?? "No analysis saved yet."}</p>
-                      {item.aiRedFlags.length > 0 ? (
-                        <div className="detail-chip-wrap">
-                          {item.aiRedFlags.map((flag) => (
-                            <span key={flag} className="saved-pill">{flag}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                      <VoteSummary votes={data.listingVotesByBoardListingId[item.id] ?? []} />
-                      <CommentFeed comments={data.listingCommentsByBoardListingId[item.id] ?? []} />
-                    </article>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="rail-card rail-card-wide">
-            <div className="rail-card-header">
-              <h2>Shared activity</h2>
-              <span>{data.activity.length} recent events</span>
-            </div>
-            <div className="activity-feed">
-              {data.activity.length === 0 ? (
-                <article className="activity-item">
-                  <strong>No board activity yet</strong>
-                  <p>As people chat, save listings, react, and comment, the shared trail will show up here.</p>
-                </article>
-              ) : null}
-
-              {data.activity.map((event) => (
-                <article key={event.id} className="activity-item">
-                  <div className="roommate-summary-head">
-                    <strong>{event.actorName}</strong>
-                    <span>{formatTimestamp(event.createdAt)}</span>
-                  </div>
-                  <p>{event.content}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-            </>
-          )}
-        </section>
       </section>
 
       {isDeckOpen ? (

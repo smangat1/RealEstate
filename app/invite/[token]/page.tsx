@@ -3,11 +3,15 @@ import { redirect } from "next/navigation";
 
 import { acceptBoardInvitationAction } from "@/app/actions";
 import { getCurrentAppUser } from "@/lib/auth";
-import { getInvitationByToken } from "@/lib/board-data";
+import { isAppEnabled } from "@/lib/app-mode";
+import { getInvitationByCode } from "@/lib/board-data";
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
-  const inviteData = await getInvitationByToken(token);
+  const { token: inviteCode } = await params;
+  if (!isAppEnabled()) {
+    redirect("/?notice=Board%20invites%20are%20currently%20gated%20outside%20dev%20mode.");
+  }
+  const inviteData = await getInvitationByCode(inviteCode);
 
   if (!inviteData) {
     return (
@@ -28,7 +32,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
   const currentUser = await getCurrentAppUser();
   if (!currentUser) {
-    redirect(`/?next=${encodeURIComponent(`/invite/${token}`)}&notice=${encodeURIComponent("Sign in to accept this board invite.")}`);
+    redirect(`/?next=${encodeURIComponent(`/invite/${inviteCode}`)}&notice=${encodeURIComponent("Sign in to accept this board invite.")}`);
   }
 
   const emailMatches = currentUser.email.toLowerCase() === inviteData.invitation.email.toLowerCase();
@@ -63,7 +67,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
             {emailMatches ? (
               <form action={acceptBoardInvitationAction}>
-                <input type="hidden" name="token" value={token} />
+                <input type="hidden" name="inviteCode" value={inviteCode} />
                 <button type="submit" className="account-primary-button">Accept invite</button>
               </form>
             ) : (

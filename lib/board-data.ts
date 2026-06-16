@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import type {
   BoardActivityRecord,
@@ -27,17 +27,21 @@ import { getDemoComparisonCopy, getDemoScenarioListingIds, isDemoModeEnabled, ru
 import {
   applyMessageToProfile,
   createBlankProfile,
+  finalizeProfileState,
   generateAssistantReply,
   generateComparison,
   generateListingAnalysis,
+  encodeNotesPayload,
   getConversationHint,
   getMissingFields,
+  getProfileCompletion,
   mapProfileRow,
   parseListingBrowseRequest,
 } from "@/lib/rental-logic";
 import { estimateCommutes } from "@/lib/commute-service";
 import { getNeighborhoodSignal } from "@/lib/neighborhood-signals";
 import { prisma } from "@/lib/prisma";
+import { trackEvent } from "@/lib/analytics";
 import { buildStarterListings } from "@/lib/starter-listings";
 import { getDemoPropertyById, getDemoPropertiesForScenario } from "@/lib/demo-properties";
 import { matchDemoScenarioForProfile } from "@/lib/demo-scenarios";
@@ -72,6 +76,10 @@ function toIso(value: Date | string) {
 
 function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function createInviteCode() {
+  return randomBytes(5).toString("hex").toUpperCase();
 }
 
 function starterSeedToListingRecord(seed: ReturnType<typeof buildStarterListings>[number], index: number): ListingRecord {
@@ -130,12 +138,16 @@ function levelWeight(level: "low" | "medium" | "high") {
   return 1;
 }
 
+function profilePriorityWeight(profile: SearchProfileData, label: string) {
+  return profile.priorities.includes(label) ? 3 : 2;
+}
+
 function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData): GroupSynthesis {
   const budgets = roommates.map((roommate) => roommate.budgetMax).filter((value): value is number => value !== null);
-  const groupBudgetMax = budgets.length > 0 ? Math.min(...budgets) : profile.budgetMax;
+  const groupBudgetMax = budgets.length > 0 ? Math.min(...budgets) : (profile.budgetMax ?? null);
   const commuteDestinations = unique(roommates.map((roommate) => roommate.commuteDestination ?? ""));
   const preferredNeighborhoods = unique([
-    ...profile.locations,
+    ...profile.neighborhoods,
     ...roommates.flatMap((roommate) => roommate.preferredNeighborhoods),
   ]);
   const mustHaves = unique([
@@ -148,19 +160,17 @@ function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData)
   ]);
 
   const priorityTallies = [
-    { label: "price", score: levelWeight(profile.priorities.price) },
-    { label: "space", score: levelWeight(profile.priorities.space) },
+    { label: "price", score: profilePriorityWeight(profile, "price") },
+    { label: "space", score: profilePriorityWeight(profile, "space") },
     {
       label: "commute",
-      score: levelWeight(profile.priorities.commute) + roommates.reduce((sum, roommate) => sum + levelWeight(roommate.commutePriority), 0),
+      score: profilePriorityWeight(profile, "commute") + roommates.reduce((sum, roommate) => sum + levelWeight(roommate.commutePriority), 0),
     },
     {
       label: "neighborhood",
-      score:
-        levelWeight(profile.priorities.neighborhood) +
-        roommates.reduce((sum, roommate) => sum + levelWeight(roommate.neighborhoodPriority), 0),
+      score: profilePriorityWeight(profile, "neighborhood") + roommates.reduce((sum, roommate) => sum + levelWeight(roommate.neighborhoodPriority), 0),
     },
-    { label: "amenities", score: levelWeight(profile.priorities.amenities) },
+    { label: "amenities", score: profilePriorityWeight(profile, "amenities") },
     { label: "privacy", score: roommates.reduce((sum, roommate) => sum + levelWeight(roommate.privacyPriority), 0) },
   ]
     .sort((left, right) => right.score - left.score)
@@ -287,20 +297,22 @@ function mapInvitationRow(row: {
   boardId: string;
   invitedByUserId: string;
   email: string;
-  token: string;
+  inviteCode: string;
   status: string;
   createdAt: Date;
   acceptedAt: Date | null;
+  expiresAt: Date | null;
 }): BoardInvitationRecord {
   return {
     id: row.id,
     boardId: row.boardId,
     invitedByUserId: row.invitedByUserId,
     email: row.email,
-    token: row.token,
+    inviteCode: row.inviteCode,
     status: row.status as BoardInvitationRecord["status"],
     createdAt: row.createdAt.toISOString(),
     acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString() : null,
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
   };
 }
 
@@ -453,17 +465,111 @@ export async function updateUserProfile(userId: string, input: { displayName: st
   });
 }
 
+export async function updateBoardProfileForUser(
+  boardId: string,
+  userId: string,
+  input: {
+    name?: string;
+    city?: string;
+    moveInDate?: string;
+    budgetMin?: number | null;
+    budgetMax?: number | null;
+    stretchBudget?: number | null;
+    groupSize?: number | null;
+    hasRoommates?: boolean | null;
+    commuteTarget?: string;
+    maxCommuteMinutes?: number | null;
+    neighborhoods?: string[];
+    mustHaves?: string[];
+    niceToHaves?: string[];
+    dealbreakers?: string[];
+    priorities?: string[];
+    pets?: boolean | null;
+    parking?: boolean | null;
+    rentalReadiness?: SearchProfileData["rentalReadiness"];
+  },
+) {
+  const board = await ensureBoard(boardId, userId);
+  if (!board) {
+    throw new Error("Board not found.");
+  }
+
+  const data = await getBoardPageData(boardId, userId);
+  if (!data) {
+    throw new Error("Profile not found.");
+  }
+
+  const nextProfile = finalizeProfileState({
+    ...data.profile,
+    name: input.name?.trim() || data.profile.name,
+    city: input.city?.trim() || undefined,
+    locations: input.city?.trim() ? [input.city.trim()] : data.profile.locations,
+    moveInDate: input.moveInDate?.trim() || undefined,
+    moveInTimeframe: input.moveInDate?.trim() || null,
+    budgetMin: input.budgetMin ?? undefined,
+    budgetMax: input.budgetMax ?? undefined,
+    stretchBudget: input.stretchBudget ?? undefined,
+    groupSize: input.groupSize ?? undefined,
+    hasRoommates: input.hasRoommates ?? undefined,
+    commuteTarget: input.commuteTarget?.trim() || undefined,
+    maxCommuteMinutes: input.maxCommuteMinutes ?? undefined,
+    neighborhoods: input.neighborhoods ?? [],
+    mustHaves: input.mustHaves ?? [],
+    niceToHaves: input.niceToHaves ?? [],
+    dealbreakers: input.dealbreakers ?? [],
+    priorities: input.priorities ?? [],
+    pets: input.pets ?? undefined,
+    parking: input.parking ?? undefined,
+    petsRequired: input.pets ?? null,
+    parkingRequired: input.parking ?? null,
+    rentalReadiness: input.rentalReadiness ?? data.profile.rentalReadiness,
+  });
+
+  await updateProfile(nextProfile);
+  await touchBoard(boardId);
+}
+
+export async function confirmBoardProfileForUser(boardId: string, userId: string) {
+  const board = await ensureBoard(boardId, userId);
+  if (!board) {
+    throw new Error("Board not found.");
+  }
+
+  const data = await getBoardPageData(boardId, userId);
+  if (!data) {
+    throw new Error("Profile not found.");
+  }
+
+  const nextProfile = finalizeProfileState(data.profile, "confirmed");
+  await updateProfile(nextProfile);
+  await touchBoard(boardId);
+  await trackEvent("profile_completed", {
+    boardId,
+    userId,
+    completionStatus: nextProfile.completionStatus,
+  });
+}
+
 export async function getRecentBoardsForUser(userId: string, limit = 8): Promise<SearchBoardSummary[]> {
   return (
     await prisma.searchBoard.findMany({
       where: { members: { some: { userId } } },
       orderBy: { updatedAt: "desc" },
       take: limit,
+      include: { searchProfile: true },
     })
   ).map((board) => ({
     id: board.id,
     userId: board.userId,
     title: board.title,
+    name: board.title,
+    city: board.searchProfile ? mapProfileRow({
+      ...board.searchProfile,
+      id: board.searchProfile.id,
+      boardId: board.searchProfile.boardId,
+      createdAt: board.searchProfile.createdAt.toISOString(),
+      updatedAt: board.searchProfile.updatedAt.toISOString(),
+    }).city : undefined,
     createdAt: board.createdAt.toISOString(),
     updatedAt: board.updatedAt.toISOString(),
   }));
@@ -516,9 +622,9 @@ function scoreListing(
 ) {
   let score = 0;
 
-  if (profile.locations.length === 0) score += 10;
+  if (profile.locations.length === 0 && profile.city === undefined) score += 10;
   else if (
-    profile.locations.some((location) =>
+    [...profile.locations, ...(profile.city ? [profile.city] : [])].some((location) =>
       [listing.city, listing.neighborhood].filter(Boolean).some((part) => part?.toLowerCase() === location.toLowerCase()),
     )
   ) {
@@ -527,13 +633,13 @@ function scoreListing(
     score -= 12;
   }
 
-  if (profile.budgetMax !== null && listing.price !== null) {
+  if (profile.budgetMax != null && listing.price !== null) {
     if (listing.price <= profile.budgetMax) score += 35;
     else if (listing.price <= profile.budgetMax + 300) score += 12;
     else score -= 20;
   }
 
-  if (profile.bedroomsPreferred !== null && listing.bedrooms !== null) {
+  if (profile.bedroomsPreferred != null && listing.bedrooms !== null) {
     if (listing.bedrooms === profile.bedroomsPreferred) score += 20;
     else if (Math.abs(listing.bedrooms - profile.bedroomsPreferred) <= 1) score += 8;
     else score -= 10;
@@ -548,7 +654,7 @@ function scoreListing(
   if (listing.status === "saved_only") score -= 6;
 
   if (commute && commute.bestDurationMinutes !== null) {
-    const commuteWeight = profile.priorities.commute === "high" ? 1 : profile.priorities.commute === "medium" ? 0.65 : 0.35;
+    const commuteWeight = profile.priorities.includes("commute") ? 1 : 0.55;
     if (commute.bestDurationMinutes <= 20) score += Math.round(18 * commuteWeight);
     else if (commute.bestDurationMinutes <= 35) score += Math.round(12 * commuteWeight);
     else if (commute.bestDurationMinutes <= 50) score += Math.round(6 * commuteWeight);
@@ -572,12 +678,10 @@ function describeListingFit(
     summary: string;
   } | null,
 ) {
-  const withinBudget = profile.budgetMax !== null && listing.price !== null ? listing.price <= profile.budgetMax : null;
+  const withinBudget = profile.budgetMax != null && listing.price !== null ? listing.price <= profile.budgetMax : null;
   const locationLabel = [listing.neighborhood, listing.city].filter(Boolean).join(", ") || "this area";
   const priceLabel = listing.price ? `$${listing.price.toLocaleString()}` : "price still unclear";
-  const priorities = Object.entries(profile.priorities)
-    .filter(([, level]) => level === "high")
-    .map(([key]) => key);
+  const priorities = profile.priorities;
   const commuteLine =
     commute && commute.bestDurationMinutes !== null
       ? ` The strongest commute read is about ${commute.bestDurationMinutes} min${commute.bestOriginLabel ? ` to ${commute.bestOriginLabel}` : ""}.`
@@ -1056,6 +1160,7 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
   );
   const browseRequests = getBrowseRequests(messages);
   const currentBrowseRequest = browseRequests.at(-1) ?? null;
+  const groupSynthesis = summarizeGroup(roommates, profile);
 
   return {
     isDemoMode: demoMode,
@@ -1063,6 +1168,12 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
       id: board.id,
       userId: board.userId,
       title: board.title,
+      name: board.title,
+      city: profile.city,
+      createdByProfileId: profile.id,
+      members,
+      listings: boardListings.map((entry) => entry.listing),
+      groupProfile: groupSynthesis,
       createdAt: board.createdAt.toISOString(),
       updatedAt: board.updatedAt.toISOString(),
     },
@@ -1070,7 +1181,7 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
     roommates,
     members,
     invitations,
-    groupSynthesis: summarizeGroup(roommates, profile),
+    groupSynthesis,
     activity,
     messages,
     boardListings,
@@ -1082,13 +1193,21 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
     currentBrowseRequest,
     comparison: demoMode ? getDemoComparisonCopy(profile) ?? generateComparison(profile, boardListings) : generateComparison(profile, boardListings),
     missingFields: getMissingFields(profile),
+    completion: getProfileCompletion(profile),
   };
 }
 
-export async function createBoardAndReturnId(input: { title?: string; userId: string; authorName: string }) {
+export async function createBoardAndReturnId(input: {
+  title?: string;
+  userId: string;
+  authorName: string;
+  profileSeed?: Partial<SearchProfileData>;
+  initialAssistantMessage?: string;
+}) {
   await ensureStarterCatalog();
   const title = input.title?.trim() || "New rental search";
   const blankProfile = createBlankProfile("temp");
+  const seededProfile = finalizeProfileState({ ...blankProfile, ...(input.profileSeed ?? {}) });
 
   const board = await prisma.searchBoard.create({
     data: {
@@ -1096,30 +1215,30 @@ export async function createBoardAndReturnId(input: { title?: string; userId: st
       title,
       searchProfile: {
         create: {
-          intent: blankProfile.intent,
-          propertyType: blankProfile.propertyType,
-          locations: json(blankProfile.locations),
-          budgetMin: blankProfile.budgetMin,
-          budgetMax: blankProfile.budgetMax,
-          bedroomsPreferred: blankProfile.bedroomsPreferred,
-          bedroomsFlexible: json(blankProfile.bedroomsFlexible),
-          moveInTimeframe: blankProfile.moveInTimeframe,
-          mustHaves: json(blankProfile.mustHaves),
-          niceToHaves: json(blankProfile.niceToHaves),
-          dealbreakers: json(blankProfile.dealbreakers),
-          priorities: json(blankProfile.priorities),
-          petsRequired: blankProfile.petsRequired,
-          parkingRequired: blankProfile.parkingRequired,
-          laundryRequired: blankProfile.laundryRequired,
-          commuteTarget: blankProfile.commuteTarget,
-          notes: blankProfile.notes,
+          intent: seededProfile.intent,
+          propertyType: seededProfile.propertyType,
+          locations: json(seededProfile.locations),
+          budgetMin: seededProfile.budgetMin,
+          budgetMax: seededProfile.budgetMax,
+          bedroomsPreferred: seededProfile.bedroomsPreferred,
+          bedroomsFlexible: json(seededProfile.bedroomsFlexible),
+          moveInTimeframe: seededProfile.moveInTimeframe,
+          mustHaves: json(seededProfile.mustHaves),
+          niceToHaves: json(seededProfile.niceToHaves),
+          dealbreakers: json(seededProfile.dealbreakers),
+          priorities: json(seededProfile.priorities),
+          petsRequired: seededProfile.petsRequired,
+          parkingRequired: seededProfile.parkingRequired,
+          laundryRequired: seededProfile.laundryRequired,
+          commuteTarget: seededProfile.commuteTarget,
+          notes: encodeNotesPayload(seededProfile),
         },
       },
       chatMessages: {
         create: {
           role: "assistant",
           authorName: "Advisor",
-          content: "Tell me what kind of rental you want, and I’ll build the search profile while we talk.",
+          content: input.initialAssistantMessage ?? "Tell me what kind of rental you want, and I’ll build the search profile while we talk.",
         },
       },
       boardEvents: {
@@ -1156,6 +1275,12 @@ export async function createBoardAndReturnId(input: { title?: string; userId: st
     },
   });
 
+  await trackEvent("board_created", {
+    boardId: board.id,
+    userId: input.userId,
+    title: board.title,
+  });
+
   return board.id;
 }
 
@@ -1189,7 +1314,7 @@ async function updateProfile(nextProfile: SearchProfileData) {
       parkingRequired: nextProfile.parkingRequired,
       laundryRequired: nextProfile.laundryRequired,
       commuteTarget: nextProfile.commuteTarget,
-      notes: nextProfile.notes,
+      notes: encodeNotesPayload(nextProfile),
     },
   });
 }
@@ -1197,6 +1322,7 @@ async function updateProfile(nextProfile: SearchProfileData) {
 export async function sendChat(boardId: string, content: string, author: { userId: string; authorName: string }) {
   const boardData = await getBoardPageData(boardId, author.userId);
   if (!boardData) return;
+  const previousStatus = boardData.profile.completionStatus;
 
   await prisma.chatMessage.create({
     data: {
@@ -1224,7 +1350,7 @@ export async function sendChat(boardId: string, content: string, author: { userI
       messages: boardData.messages,
       listingsCount: boardData.boardListings.filter((item) => item.userStatus !== "rejected").length,
     });
-    nextProfile = demoTurn.nextProfile;
+    nextProfile = finalizeProfileState(demoTurn.nextProfile);
     assistant = demoTurn.reply;
   } else {
     const ruleProfile = applyMessageToProfile(boardData.profile, content, conversationHint);
@@ -1239,6 +1365,7 @@ export async function sendChat(boardId: string, content: string, author: { userI
       aiExtraction?.updates && Object.keys(aiExtraction.updates).length > 0
         ? mergeProfileUpdates(ruleProfile, aiExtraction.updates)
         : ruleProfile;
+    nextProfile = finalizeProfileState(nextProfile);
 
     const suggestedCount = (
       await getSuggestedListings(
@@ -1271,6 +1398,13 @@ export async function sendChat(boardId: string, content: string, author: { userI
   }
 
   await updateProfile(nextProfile);
+  if (previousStatus !== "complete" && nextProfile.completionStatus === "complete") {
+    await trackEvent("profile_completed", {
+      boardId,
+      userId: author.userId,
+      completionStatus: nextProfile.completionStatus,
+    });
+  }
 
   await prisma.chatMessage.create({
     data: {
@@ -1458,7 +1592,8 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
       boardId,
       invitedByUserId,
       email: normalizedEmail,
-      token: randomUUID(),
+      inviteCode: createInviteCode(),
+      expiresAt: null,
     },
   });
 
@@ -1467,9 +1602,9 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
   return mapInvitationRow(invitation);
 }
 
-export async function getInvitationByToken(token: string) {
+export async function getInvitationByCode(inviteCode: string) {
   const invitation = await prisma.boardInvitation.findUnique({
-    where: { token },
+    where: { inviteCode },
     include: {
       board: true,
       invitedByUser: true,
@@ -1491,10 +1626,13 @@ export async function getInvitationByToken(token: string) {
   };
 }
 
-export async function acceptBoardInvitation(token: string, userId: string) {
-  const invitation = await prisma.boardInvitation.findUnique({ where: { token } });
+export async function acceptBoardInvitation(inviteCode: string, userId: string) {
+  const invitation = await prisma.boardInvitation.findUnique({ where: { inviteCode } });
   if (!invitation || invitation.status !== "pending") {
     throw new Error("This invite is no longer available.");
+  }
+  if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) {
+    throw new Error("This invite has expired.");
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });

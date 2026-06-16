@@ -1,5 +1,8 @@
-import { createBoardAction, deleteBoardAction, signInAction, signUpAction } from "@/app/actions";
+import Link from "next/link";
+
+import { signInAction, submitWaitlistAction } from "@/app/actions";
 import { getCurrentAppUser } from "@/lib/auth";
+import { isAppEnabled } from "@/lib/app-mode";
 import { getRecentBoardsForUser } from "@/lib/board-data";
 import { HomeExperience } from "@/components/home-experience";
 
@@ -8,91 +11,210 @@ export default async function HomePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const appEnabled = isAppEnabled();
   const currentUser = await getCurrentAppUser();
 
-  if (!currentUser) {
+  if (!appEnabled || !currentUser) {
     const params = await searchParams;
     const next = typeof params.next === "string" ? params.next : "/";
     const error = typeof params.error === "string" ? params.error : null;
     const notice = typeof params.notice === "string" ? params.notice : null;
+    const isPublicMode = !appEnabled;
 
     return (
       <main className="account-shell">
         <section className="account-card mac-window-card">
-          <div className="account-layout">
+          <div className={`account-layout ${isPublicMode ? "public-launch-layout" : ""}`}>
             <div className="account-intro">
-              <div className="home-badge">Shared rental board</div>
-              <h1>Sign in to Homeboard, then start or join a shared rental board.</h1>
+              <div className="home-badge">
+                {appEnabled ? "Shared rental board" : "Homeboard waitlist"}
+              </div>
+              <h1>
+                {appEnabled
+                  ? "Sign in to Homeboard, then start or join a shared rental board."
+                  : "Plan the search together before the lease chaos starts."}
+              </h1>
               <p>
-                Homeboard is a shared rental decision platform for roommates and co-searchers who want one place to define
-                constraints, compare listings, balance tradeoffs, and make a smarter call together.
+                {appEnabled
+                  ? "Homeboard is a shared rental decision platform for roommates and co-searchers who want one place to define constraints, compare listings, balance tradeoffs, and make a smarter call together."
+                  : "Homeboard is being built as the shared workspace for apartment hunts: one place for roommates to align on budget, neighborhoods, commute reality, must-haves, dealbreakers, and the listings worth fighting for."}
               </p>
+
+              {isPublicMode ? (
+                <div className="account-launch-stats">
+                  <div className="account-feature">
+                    <strong>Shared search profile</strong>
+                    <span>
+                      Every board starts with onboarding that turns messy group preferences into one structured profile the whole group can edit.
+                    </span>
+                  </div>
+                  <div className="account-feature">
+                    <strong>Commute-aware matching</strong>
+                    <span>
+                      Listings are meant to be weighed against real commute anchors, neighborhood tradeoffs, and group priorities instead of a fake universal score.
+                    </span>
+                  </div>
+                  <div className="account-feature">
+                    <strong>One board for the whole group</strong>
+                    <span>
+                      Roommates share the same conversation, shortlist, notes, comparisons, and decisions so nobody loses the thread in screenshots and scattered texts.
+                    </span>
+                  </div>
+                </div>
+              ) : null}
 
               {error ? <div className="account-message account-message-error">{error}</div> : null}
               {notice ? <div className="account-message account-message-notice">{notice}</div> : null}
 
               <div className="account-feature-list">
                 <div className="account-feature">
-                  <strong>Shared search strategy</strong>
-                  <span>The chat helps your group set budget, location, move-in timing, priorities, and dealbreakers without forcing everyone through one giant form.</span>
+                  <strong>{isPublicMode ? "What the product does" : "Chat-led onboarding"}</strong>
+                  <span>
+                    {isPublicMode
+                      ? "Homeboard is meant to help groups define constraints quickly, surface the right listings, and keep the decision process collaborative from first message to signed lease."
+                      : "The board chat collects move timing, budget, commute, neighborhoods, must-haves, and dealbreakers while building a structured profile behind the scenes."}
+                  </span>
                 </div>
                 <div className="account-feature">
-                  <strong>Collaborative decision board</strong>
-                  <span>Listings, notes, reactions, shortlist decisions, and group tradeoffs live in one shared board so everyone can see the same picture.</span>
+                  <strong>{isPublicMode ? "Why join early" : "Collaborative decision board"}</strong>
+                  <span>
+                    {isPublicMode
+                      ? "The waitlist is for renters, roommate groups, and recent grads who want early access once shared boards, live invites, and commute-aware comparisons are ready for broader rollout."
+                      : "Listings, notes, reactions, shortlist decisions, and group tradeoffs live in one shared board so everyone can see the same picture."}
+                  </span>
                 </div>
                 <div className="account-feature">
-                  <strong>Commute and neighborhood intelligence</strong>
-                  <span>Homeboard is being built to weigh commute practicality, neighborhood character, lifestyle fit, and budget pressure together instead of pretending one listing score tells the whole story.</span>
+                  <strong>{isPublicMode ? "Current access model" : "Commute and neighborhood intelligence"}</strong>
+                  <span>
+                    {isPublicMode
+                      ? "Right now the full product stays gated unless you are running in dev mode. Public visitors can join the waitlist and register so account identity is ready when access opens."
+                      : "Homeboard is being built to weigh commute practicality, neighborhood character, lifestyle fit, and budget pressure together instead of pretending one listing score tells the whole story."}
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="account-panel-stack">
-              <section className="account-panel">
+              <section className={`account-panel ${isPublicMode ? "waitlist-primary-panel" : ""}`}>
                 <div className="panel-heading">
-                  <strong>Sign in</strong>
-                  <span>Use the account that should speak inside shared boards.</span>
+                  <strong>Join the waitlist</strong>
+                  <span>
+                    {appEnabled
+                      ? "For people who want updates before they are ready to sign in."
+                      : "Tell us where you are searching and what is frustrating your group right now."}
+                  </span>
                 </div>
-                <form action={signInAction} className="account-form">
-                  <input type="hidden" name="next" value={next} />
+                <form action={submitWaitlistAction} className="account-form">
+                  <input type="hidden" name="source" value="landing-page" />
+                  <label className="field-stack">
+                    <span>Name</span>
+                    <input name="name" placeholder="Ava Chen" autoComplete="name" />
+                  </label>
                   <label className="field-stack">
                     <span>Email</span>
-                    <input name="email" type="email" placeholder="ava@homeboard.app" autoComplete="email" />
+                    <input name="email" type="email" placeholder="ava@school.edu" autoComplete="email" />
                   </label>
+                  <div className="account-form-grid account-form-grid-2">
+                    <label className="field-stack">
+                      <span>City</span>
+                      <input name="city" placeholder="New York City" />
+                    </label>
+                    <label className="field-stack">
+                      <span>Move-in timeline</span>
+                      <input name="moveInTimeline" placeholder="August" />
+                    </label>
+                  </div>
+                  <div className="account-form-grid account-form-grid-2">
+                    <label className="field-stack">
+                      <span>Group size</span>
+                      <input name="groupSize" placeholder="3" inputMode="numeric" />
+                    </label>
+                    <label className="field-stack">
+                      <span>Would you invite roommates?</span>
+                      <select name="willingToInviteRoommates" defaultValue="">
+                        <option value="">Unknown</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </label>
+                  </div>
                   <label className="field-stack">
-                    <span>Password</span>
-                    <input name="password" type="password" placeholder="Your password" autoComplete="current-password" />
+                    <span>Biggest frustration</span>
+                    <textarea name="biggestFrustration" rows={3} placeholder="What breaks down when your group searches together right now?" />
                   </label>
-                  <button type="submit" className="account-primary-button">Sign in</button>
+                  <div className="account-toggle-grid">
+                    <label className="field-stack">
+                      <span>Searching with roommates</span>
+                      <select name="hasRoommates" defaultValue="">
+                        <option value="">Unknown</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </label>
+                    <label className="field-stack">
+                      <span>Actively searching</span>
+                      <select name="activelySearching" defaultValue="">
+                        <option value="">Unknown</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </label>
+                    <label className="field-stack">
+                      <span>Open to beta testing</span>
+                      <select name="willingToBetaTest" defaultValue="">
+                        <option value="">Unknown</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </label>
+                  </div>
+                  <button type="submit" className="account-primary-button">
+                    Join waitlist
+                  </button>
                 </form>
               </section>
 
               <section className="account-panel">
                 <div className="panel-heading">
-                  <strong>Create account</strong>
-                  <span>Set up the identity your roommates will recognize.</span>
+                  <strong>Create your account first</strong>
+                  <span>
+                    {appEnabled
+                      ? "Real account creation lives on its own page. Search preferences come later in the board chat."
+                      : "Register now so your identity is ready when the private alpha opens wider."}
+                  </span>
                 </div>
-                <form action={signUpAction} className="account-form">
-                  <input type="hidden" name="next" value={next} />
-                  <label className="field-stack">
-                    <span>Name</span>
-                    <input name="displayName" placeholder="Ava Chen" autoComplete="name" />
-                  </label>
-                  <label className="field-stack">
-                    <span>Email</span>
-                    <input name="email" type="email" placeholder="ava@homeboard.app" autoComplete="email" />
-                  </label>
-                  <label className="field-stack">
-                    <span>Password</span>
-                    <input name="password" type="password" placeholder="At least 6 characters" autoComplete="new-password" />
-                  </label>
-                  <label className="field-stack">
-                    <span>Work address</span>
-                    <input name="workAddress" placeholder="Optional commute anchor" autoComplete="street-address" />
-                  </label>
-                  <button type="submit" className="account-primary-button">Create account</button>
-                </form>
+                <div className="account-form">
+                  <p className="account-secondary-copy">
+                    {appEnabled
+                      ? "Keep auth clean here, then let onboarding happen where it belongs: inside the shared chat after you enter the product."
+                      : "Right now the live app stays closed outside dev mode, so this page focuses on lead capture and account readiness instead of entering the board product immediately."}
+                  </p>
+                  <Link href={`/register?next=${encodeURIComponent(next)}`} className="account-primary-button account-link-button">
+                    Go to registration
+                  </Link>
+                </div>
               </section>
+
+              {appEnabled ? (
+                <section className="account-panel">
+                  <div className="panel-heading">
+                    <strong>Sign in</strong>
+                    <span>Use the account that should speak inside shared boards.</span>
+                  </div>
+                  <form action={signInAction} className="account-form">
+                    <input type="hidden" name="next" value={next} />
+                    <label className="field-stack">
+                      <span>Email</span>
+                      <input name="email" type="email" placeholder="ava@homeboard.app" autoComplete="email" />
+                    </label>
+                    <label className="field-stack">
+                      <span>Password</span>
+                      <input name="password" type="password" placeholder="Your password" autoComplete="current-password" />
+                    </label>
+                    <button type="submit" className="account-primary-button">Sign in</button>
+                  </form>
+                </section>
+              ) : null}
             </div>
           </div>
         </section>
@@ -105,8 +227,6 @@ export default async function HomePage({
       currentUser={currentUser}
       recentBoards={await getRecentBoardsForUser(currentUser.id)}
       isDemoEnabled={process.env.DEMO_MODE?.trim().toLowerCase() === "true"}
-      createBoardAction={createBoardAction}
-      deleteBoardAction={deleteBoardAction}
     />
   );
 }

@@ -14,10 +14,11 @@ type DemoReplyInput = {
 type DemoProfilePatch = Partial<SearchProfileData>;
 
 const DEMO_QUESTIONS = {
-  location: "What area should I center the board on first?",
-  budget: "What monthly ceiling should I stay under?",
-  bedrooms: "What bedroom setup should I target?",
-  moveIn: "When are you trying to move?",
+  location: "What city or neighborhood should I anchor the board on first?",
+  budget: "What monthly budget range feels real, and what is the stretch number if the right place shows up?",
+  bedrooms: "What bedroom setup should I target for the group?",
+  moveIn: "When is the group trying to move?",
+  priorities: "What matters most for this group once listings start competing: commute, neighborhood, price, space, or amenities?",
 };
 
 function parseAmount(raw: string) {
@@ -59,18 +60,38 @@ function extractDemoUpdates(previousProfile: SearchProfileData, message: string)
 
   if (/\bnew york city area\b|\bnyc area\b/.test(lower)) {
     updates.locations = ["New York"];
+    updates.city = "New York";
   } else if (/\bnew york city\b|\bnyc\b|\bnew york\b/.test(lower)) {
     updates.locations = ["New York"];
+    updates.city = "New York";
   } else if (/\bbrooklyn\b/.test(lower)) {
     updates.locations = ["Brooklyn"];
+    updates.city = "New York";
   } else if (/\bqueens\b/.test(lower)) {
     updates.locations = ["Queens"];
+    updates.city = "New York";
   } else if (/\bjersey city\b/.test(lower)) {
     updates.locations = ["Jersey City"];
+    updates.city = "Jersey City";
   } else if (/\bhoboken\b/.test(lower)) {
     updates.locations = ["Hoboken"];
+    updates.city = "Hoboken";
   } else if (/\blos angeles\b/.test(lower)) {
     updates.locations = ["Los Angeles"];
+    updates.city = "Los Angeles";
+  }
+
+  if (/\bwith two roommates\b/.test(lower)) {
+    updates.groupSize = 3;
+    updates.hasRoommates = true;
+  }
+
+  if (/\bthree recent grads\b|\bthree grads\b|\b3 recent grads\b|\b3 grads\b/.test(lower)) {
+    updates.groupSize = 3;
+    updates.hasRoommates = true;
+    if (updates.bedroomsPreferred === undefined && previousProfile.bedroomsPreferred == null) {
+      updates.bedroomsPreferred = 3;
+    }
   }
 
   const bedMatch =
@@ -94,11 +115,27 @@ function extractDemoUpdates(previousProfile: SearchProfileData, message: string)
     const value = parseAmount(budgetMatch[1]);
     if (value !== null) updates.budgetMax = value;
   } else if (
-    previousProfile.budgetMax === null &&
+    previousProfile.budgetMax == null &&
     /^\s*\$?\d[\d,]*(?:\.\d+)?k?\s*$/.test(message.trim())
   ) {
     const value = parseAmount(message.trim());
     if (value !== null) updates.budgetMax = value;
+  }
+
+  const budgetRangeMatch = lower.match(/\$?(\d+(?:\.\d+)?k?)\s*(?:-|to)\s*\$?(\d+(?:\.\d+)?k?)/);
+  if (budgetRangeMatch) {
+    const min = parseAmount(budgetRangeMatch[1]);
+    const max = parseAmount(budgetRangeMatch[2]);
+    if (min !== null && max !== null) {
+      updates.budgetMin = Math.min(min, max);
+      updates.budgetMax = Math.max(min, max);
+    }
+  }
+
+  const stretchMatch = lower.match(/(?:stretch|maybe|max|maxing out|up to)\s+\$?(\d+(?:\.\d+)?k?)/);
+  if (stretchMatch) {
+    const stretch = parseAmount(stretchMatch[1]);
+    if (stretch !== null) updates.stretchBudget = stretch;
   }
 
   const months = [
@@ -118,10 +155,13 @@ function extractDemoUpdates(previousProfile: SearchProfileData, message: string)
   const month = months.find((entry) => new RegExp(`\\b${entry}\\b`, "i").test(lower));
   if (month) {
     updates.moveInTimeframe = titleCase(month);
+    updates.moveInDate = titleCase(month);
   } else if (/\basap\b/.test(lower)) {
     updates.moveInTimeframe = "ASAP";
+    updates.moveInDate = "ASAP";
   } else if (/\bnext month\b/.test(lower)) {
     updates.moveInTimeframe = "Next month";
+    updates.moveInDate = "Next month";
   }
 
   if (/\blaundry\b/.test(lower)) {
@@ -138,31 +178,59 @@ function extractDemoUpdates(previousProfile: SearchProfileData, message: string)
   }
 
   if (/\bcommute\b/.test(lower)) {
-    updates.priorities = {
-      ...previousProfile.priorities,
-      commute: "high",
-    };
+    updates.priorities = Array.from(new Set([...(previousProfile.priorities ?? []), "commute"]));
+  }
+
+  if (/\bmidtown\b/.test(lower)) {
+    updates.commuteTarget = "Midtown";
+  }
+
+  const maxCommuteMatch = lower.match(/(\d{1,3})\s*(?:min|mins|minute|minutes)\b/);
+  if (maxCommuteMatch && /\bcommute\b/.test(lower)) {
+    const parsed = Number(maxCommuteMatch[1]);
+    if (Number.isFinite(parsed)) updates.maxCommuteMinutes = parsed;
+  }
+
+  const neighborhoods: string[] = [];
+  if (/\bbrooklyn\b/.test(lower)) neighborhoods.push("Brooklyn");
+  if (/\bastoria\b/.test(lower)) neighborhoods.push("Astoria");
+  if (/\bbed[- ]stuy\b|\bbedstuy\b/.test(lower)) neighborhoods.push("Bed-Stuy");
+  if (/\bsunnyside\b/.test(lower)) neighborhoods.push("Sunnyside");
+  if (neighborhoods.length > 0) {
+    updates.neighborhoods = Array.from(new Set([...(previousProfile.neighborhoods ?? []), ...neighborhoods]));
   }
 
   if (/\bneighborhood\b|\bcool area\b|\bcool neighborhood\b|\bgood neighborhood\b/.test(lower)) {
-    updates.priorities = {
-      ...(updates.priorities ?? previousProfile.priorities),
-      neighborhood: "high",
-    };
+    updates.priorities = Array.from(new Set([...(updates.priorities ?? previousProfile.priorities ?? []), "neighborhood"]));
+  }
+
+  if (/\bnightlife\b|\bsocial\b/.test(lower)) {
+    updates.priorities = Array.from(new Set([...(updates.priorities ?? previousProfile.priorities ?? []), "neighborhood"]));
+    updates.niceToHaves = Array.from(new Set([...(previousProfile.niceToHaves ?? []), "nightlife", "social neighborhood"]));
+  }
+
+  if (/\bnatural light\b|\bsunlight\b/.test(lower)) {
+    updates.mustHaves = Array.from(new Set([...(updates.mustHaves ?? previousProfile.mustHaves ?? []), "natural light"]));
+  }
+
+  if (/\btrain access\b|\bnear train\b|\bsubway access\b/.test(lower)) {
+    updates.mustHaves = Array.from(new Set([...(updates.mustHaves ?? previousProfile.mustHaves ?? []), "train access"]));
+  }
+
+  if (/\bover\s+\$?1600\b/.test(lower)) {
+    updates.dealbreakers = Array.from(new Set([...(previousProfile.dealbreakers ?? []), "over $1,600"]));
   }
 
   if (/\bprice\b|\bbudget\b/.test(lower) && /\bimportant\b|\bmatters\b|\bpriority\b/.test(lower)) {
-    updates.priorities = {
-      ...(updates.priorities ?? previousProfile.priorities),
-      price: "high",
-    };
+    updates.priorities = Array.from(new Set([...(updates.priorities ?? previousProfile.priorities ?? []), "price"]));
   }
 
   if (/\bspace\b/.test(lower) && /\bimportant\b|\bmatters\b|\bpriority\b/.test(lower)) {
-    updates.priorities = {
-      ...(updates.priorities ?? previousProfile.priorities),
-      space: "high",
-    };
+    updates.priorities = Array.from(new Set([...(updates.priorities ?? previousProfile.priorities ?? []), "space"]));
+  }
+
+  if (/\brecent grad\b|\brecent grads\b/.test(lower)) {
+    updates.name = previousProfile.name === "Unknown" ? "Recent grad group" : previousProfile.name;
   }
 
   return updates;
@@ -173,8 +241,10 @@ function mergeDemoProfile(previousProfile: SearchProfileData, patch: DemoProfile
     ...previousProfile,
     ...patch,
     locations: patch.locations ?? previousProfile.locations,
+    city: patch.city ?? previousProfile.city,
     mustHaves: patch.mustHaves ?? previousProfile.mustHaves,
     niceToHaves: patch.niceToHaves ?? previousProfile.niceToHaves,
+    dealbreakers: patch.dealbreakers ?? previousProfile.dealbreakers,
     priorities: patch.priorities ?? previousProfile.priorities,
     updatedAt: new Date().toISOString(),
   };
@@ -182,9 +252,10 @@ function mergeDemoProfile(previousProfile: SearchProfileData, patch: DemoProfile
 
 function getNextQuestion(profile: SearchProfileData) {
   if (profile.locations.length === 0) return DEMO_QUESTIONS.location;
-  if (profile.budgetMax === null && profile.budgetMin === null) return DEMO_QUESTIONS.budget;
-  if (profile.bedroomsPreferred === null && profile.bedroomsFlexible.length === 0) return DEMO_QUESTIONS.bedrooms;
+  if (profile.budgetMax == null && profile.budgetMin == null) return DEMO_QUESTIONS.budget;
+  if (profile.bedroomsPreferred == null && profile.bedroomsFlexible.length === 0) return DEMO_QUESTIONS.bedrooms;
   if (!profile.moveInTimeframe) return DEMO_QUESTIONS.moveIn;
+  if (profile.priorities.length === 0) return DEMO_QUESTIONS.priorities;
   return null;
 }
 
@@ -192,9 +263,10 @@ function isCoreProfileReady(profile: SearchProfileData) {
   return Boolean(
     profile.intent &&
       profile.locations.length > 0 &&
-      (profile.budgetMax !== null || profile.budgetMin !== null) &&
-      (profile.bedroomsPreferred !== null || profile.bedroomsFlexible.length > 0) &&
-      profile.moveInTimeframe,
+      (profile.budgetMax != null || profile.budgetMin != null) &&
+      (profile.bedroomsPreferred != null || profile.bedroomsFlexible.length > 0) &&
+      profile.moveInTimeframe &&
+      (profile.commuteTarget || profile.neighborhoods.length > 0),
   );
 }
 
@@ -205,11 +277,11 @@ function buildAcknowledgement(previousProfile: SearchProfileData, nextProfile: S
     fragments.push(`I’m centering this around ${nextProfile.locations.join(" / ")}`);
   }
 
-  if (previousProfile.budgetMax !== nextProfile.budgetMax && nextProfile.budgetMax !== null) {
+  if (previousProfile.budgetMax !== nextProfile.budgetMax && nextProfile.budgetMax != null) {
     fragments.push(`I’m treating the cap as $${nextProfile.budgetMax.toLocaleString()}`);
   }
 
-  if (previousProfile.bedroomsPreferred !== nextProfile.bedroomsPreferred && nextProfile.bedroomsPreferred !== null) {
+  if (previousProfile.bedroomsPreferred !== nextProfile.bedroomsPreferred && nextProfile.bedroomsPreferred != null) {
     fragments.push(nextProfile.bedroomsPreferred === 0 ? "I’m aiming at studios" : `I’m aiming at ${nextProfile.bedroomsPreferred} bedroom options`);
   }
 
@@ -227,11 +299,14 @@ export function isDemoModeEnabled() {
 export function matchesDirectDemoLaunchMessage(message: string) {
   const lower = message.toLowerCase();
   return (
-    /new york|nyc|new york city/.test(lower) &&
-    /\b(house|home)\b/.test(lower) &&
-    (/2 bedroom|2 bed|two bedroom|two bed/.test(lower)) &&
-    (/<\s*\$?\s*5000|less than\s*\$?\s*5000|under\s*\$?\s*5000|max\s*\$?\s*5000|5000 max/.test(lower)) &&
-    /\bjuly\b/.test(lower)
+    (/recent grad|recent grads/.test(lower) &&
+      /new york|nyc|new york city/.test(lower) &&
+      (/august/.test(lower) || /midtown/.test(lower))) ||
+    (/new york|nyc|new york city/.test(lower) &&
+      /\b(house|home)\b/.test(lower) &&
+      (/2 bedroom|2 bed|two bedroom|two bed/.test(lower)) &&
+      (/<\s*\$?\s*5000|less than\s*\$?\s*5000|under\s*\$?\s*5000|max\s*\$?\s*5000|5000 max/.test(lower)) &&
+      /\bjuly\b/.test(lower))
   );
 }
 

@@ -133,10 +133,11 @@ model BoardInvitation {
   boardId          String
   invitedByUserId  String
   email            String
-  token            String           @unique
+  inviteCode       String           @unique
   status           InvitationStatus @default(pending)
   createdAt        DateTime         @default(now())
   acceptedAt       DateTime?
+  expiresAt        DateTime?
   board            SearchBoard      @relation(fields: [boardId], references: [id], onDelete: Cascade)
   invitedByUser    User             @relation("InvitationsSent", fields: [invitedByUserId], references: [id], onDelete: Cascade)
 
@@ -311,4 +312,33 @@ model BoardEvent {
   board     SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
   @@index([boardId, createdAt])
+}
+
+model WaitlistSubmission {
+  id                     String   @id @default(cuid())
+  name                   String
+  email                  String   @unique
+  city                   String?
+  moveInTimeline         String?
+  groupSize              Int?
+  hasRoommates           Boolean?
+  activelySearching      Boolean?
+  willingToBetaTest      Boolean?
+  willingToInviteRoommates Boolean?
+  biggestFrustration     String?
+  source                 String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([city, createdAt])
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  eventName  String
+  payload    Json
+  occurredAt DateTime @default(now())
+
+  @@index([eventName, occurredAt])
+  @@index([occurredAt])
 }

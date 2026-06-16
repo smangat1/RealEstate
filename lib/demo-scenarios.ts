@@ -1,26 +1,45 @@
 import "server-only";
 
-import type { SearchProfileData } from "@/lib/types";
-
-export type DemoScenario = {
-  id: string;
-  name: string;
-  trigger: {
-    locations: string[];
-    locationAliases?: string[];
-    propertyType?: SearchProfileData["propertyType"];
-    bedroomsPreferred?: number;
-    budgetMaxAtMost?: number;
-    moveInContains?: string;
-  };
-  stagedReply: string;
-  listingsReply: string;
-  moreReply: string;
-  comparisonReply: string;
-  listingIds: string[];
-};
+import type { DemoScenario, SearchProfileData } from "@/lib/types";
 
 export const demoScenarios: DemoScenario[] = [
+  {
+    id: "recent-grad-nyc-share",
+    name: "Recent Grad NYC Share",
+    trigger: {
+      locations: ["New York", "Brooklyn", "Queens"],
+      locationAliases: ["nyc", "new york city", "brooklyn", "queens", "midtown"],
+      bedroomsPreferred: 3,
+      budgetMaxAtMost: 1800,
+      moveInContains: "August",
+    },
+    stagedReply:
+      "Perfect. I’ve staged the recent-grad NYC board around three roommates moving in August, with Midtown commute pressure, Brooklyn neighborhood energy, and a strict budget guardrail all represented in one brief. Open the match deck and it should feel like a polished roommate-search demo instead of a generic chatbot.",
+    listingsReply:
+      "I’ve staged the recent-grad NYC batch now. The deck should read like a real group-search flow: commute-aware for Sam, neighborhood-aware for Maya, and budget-defensive for Jordan.",
+    moreReply:
+      "I’ve queued another polished pass through the recent-grad NYC batch, so asking for more should still feel intentional instead of random.",
+    comparisonReply:
+      "This board now reads like a real recent-grad search: one option is the commute-safe compromise, one is the lifestyle-forward Brooklyn pick, and one is the strict-budget fallback that keeps everyone honest.",
+    listingIds: ["astoria-three-bed", "bed-stuy-sunlight-share", "sunnyside-budget-anchor"],
+    scriptedProfiles: [
+      {
+        name: "Sam",
+        role: "Midtown analyst",
+        highlights: ["commute-focused", "budget $1,400-$1,700", "max commute 40 min"],
+      },
+      {
+        name: "Maya",
+        role: "social Brooklyn optimist",
+        highlights: ["budget $1,500-$1,800", "cares about nightlife", "cares about natural light"],
+      },
+      {
+        name: "Jordan",
+        role: "strict budget guardrail",
+        highlights: ["budget $1,250-$1,550", "needs train access", "dealbreaker over $1,600"],
+      },
+    ],
+  },
   {
     id: "nyc-group-houses",
     name: "NYC Group Houses",
@@ -66,7 +85,7 @@ export function matchDemoScenarioForProfile(profile: SearchProfileData) {
       const bedroomMatch =
         scenario.trigger.bedroomsPreferred !== undefined ? profile.bedroomsPreferred === scenario.trigger.bedroomsPreferred : true;
       const budgetMatch =
-        scenario.trigger.budgetMaxAtMost !== undefined && profile.budgetMax !== null
+        scenario.trigger.budgetMaxAtMost !== undefined && profile.budgetMax != null
           ? profile.budgetMax <= scenario.trigger.budgetMaxAtMost
           : scenario.trigger.budgetMaxAtMost === undefined;
       const moveInMatch = scenario.trigger.moveInContains

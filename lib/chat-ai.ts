@@ -6,31 +6,40 @@ import { generateWithOllama } from "@/lib/ollama";
 import type { ConversationHint } from "@/lib/rental-logic";
 import type { SearchProfileData } from "@/lib/types";
 
-const prioritySchema = z.object({
-  price: z.enum(["low", "medium", "high"]).optional(),
-  space: z.enum(["low", "medium", "high"]).optional(),
-  commute: z.enum(["low", "medium", "high"]).optional(),
-  neighborhood: z.enum(["low", "medium", "high"]).optional(),
-  amenities: z.enum(["low", "medium", "high"]).optional(),
-});
-
 const updatesSchema = z.object({
+  name: z.string().optional(),
+  city: z.string().nullable().optional(),
+  moveInDate: z.string().nullable().optional(),
   intent: z.enum(["rent", "buy"]).nullable().optional(),
   propertyType: z.enum(["apartment", "house", "condo", "room", "unknown"]).nullable().optional(),
   locations: z.array(z.string()).optional(),
   budgetMin: z.number().int().nullable().optional(),
   budgetMax: z.number().int().nullable().optional(),
+  stretchBudget: z.number().int().nullable().optional(),
+  groupSize: z.number().int().nullable().optional(),
+  hasRoommates: z.boolean().nullable().optional(),
   bedroomsPreferred: z.number().nullable().optional(),
   bedroomsFlexible: z.array(z.string()).optional(),
   moveInTimeframe: z.string().nullable().optional(),
+  neighborhoods: z.array(z.string()).optional(),
   mustHaves: z.array(z.string()).optional(),
   niceToHaves: z.array(z.string()).optional(),
   dealbreakers: z.array(z.string()).optional(),
-  priorities: prioritySchema.optional(),
+  priorities: z.array(z.string()).optional(),
+  pets: z.boolean().nullable().optional(),
+  parking: z.boolean().nullable().optional(),
   petsRequired: z.boolean().nullable().optional(),
   parkingRequired: z.boolean().nullable().optional(),
   laundryRequired: z.boolean().nullable().optional(),
   commuteTarget: z.string().nullable().optional(),
+  maxCommuteMinutes: z.number().int().nullable().optional(),
+  rentalReadiness: z
+    .object({
+      hasOfferLetter: z.boolean().optional(),
+      needsGuarantor: z.boolean().optional(),
+      hasProofOfIncome: z.boolean().optional(),
+    })
+    .optional(),
   notes: z.string().nullable().optional(),
 });
 
@@ -50,29 +59,38 @@ const extractionJsonSchema = {
         intent: { type: ["string", "null"], enum: ["rent", "buy", null] },
         propertyType: { type: ["string", "null"], enum: ["apartment", "house", "condo", "room", "unknown", null] },
         locations: { type: "array", items: { type: "string" } },
+        city: { type: ["string", "null"] },
+        moveInDate: { type: ["string", "null"] },
+        name: { type: "string" },
         budgetMin: { type: ["integer", "null"] },
         budgetMax: { type: ["integer", "null"] },
+        stretchBudget: { type: ["integer", "null"] },
+        groupSize: { type: ["integer", "null"] },
+        hasRoommates: { type: ["boolean", "null"] },
         bedroomsPreferred: { type: ["number", "null"] },
         bedroomsFlexible: { type: "array", items: { type: "string" } },
         moveInTimeframe: { type: ["string", "null"] },
+        neighborhoods: { type: "array", items: { type: "string" } },
         mustHaves: { type: "array", items: { type: "string" } },
         niceToHaves: { type: "array", items: { type: "string" } },
         dealbreakers: { type: "array", items: { type: "string" } },
-        priorities: {
-          type: "object",
-          properties: {
-            price: { type: "string", enum: ["low", "medium", "high"] },
-            space: { type: "string", enum: ["low", "medium", "high"] },
-            commute: { type: "string", enum: ["low", "medium", "high"] },
-            neighborhood: { type: "string", enum: ["low", "medium", "high"] },
-            amenities: { type: "string", enum: ["low", "medium", "high"] },
-          },
-          additionalProperties: false,
-        },
+        priorities: { type: "array", items: { type: "string" } },
+        pets: { type: ["boolean", "null"] },
+        parking: { type: ["boolean", "null"] },
         petsRequired: { type: ["boolean", "null"] },
         parkingRequired: { type: ["boolean", "null"] },
         laundryRequired: { type: ["boolean", "null"] },
         commuteTarget: { type: ["string", "null"] },
+        maxCommuteMinutes: { type: ["integer", "null"] },
+        rentalReadiness: {
+          type: "object",
+          properties: {
+            hasOfferLetter: { type: "boolean" },
+            needsGuarantor: { type: "boolean" },
+            hasProofOfIncome: { type: "boolean" },
+          },
+          additionalProperties: false,
+        },
         notes: { type: ["string", "null"] },
       },
       additionalProperties: false,
@@ -86,21 +104,32 @@ const extractionJsonSchema = {
 function profileSnapshot(profile: SearchProfileData) {
   return {
     intent: profile.intent,
+    name: profile.name,
+    city: profile.city,
+    moveInDate: profile.moveInDate,
     propertyType: profile.propertyType,
     locations: profile.locations,
     budgetMin: profile.budgetMin,
     budgetMax: profile.budgetMax,
+    stretchBudget: profile.stretchBudget,
+    groupSize: profile.groupSize,
+    hasRoommates: profile.hasRoommates,
     bedroomsPreferred: profile.bedroomsPreferred,
     bedroomsFlexible: profile.bedroomsFlexible,
     moveInTimeframe: profile.moveInTimeframe,
+    neighborhoods: profile.neighborhoods,
     mustHaves: profile.mustHaves,
     niceToHaves: profile.niceToHaves,
     dealbreakers: profile.dealbreakers,
     priorities: profile.priorities,
+    pets: profile.pets,
+    parking: profile.parking,
     petsRequired: profile.petsRequired,
     parkingRequired: profile.parkingRequired,
     laundryRequired: profile.laundryRequired,
     commuteTarget: profile.commuteTarget,
+    maxCommuteMinutes: profile.maxCommuteMinutes,
+    rentalReadiness: profile.rentalReadiness,
     notes: profile.notes,
   };
 }
@@ -141,8 +170,11 @@ ${JSON.stringify(input.message)}
 
 Rules:
 - Understand casual speech and indirect answers.
+- This is onboarding, not open-ended apartment advice.
 - If the user is answering the assistant's question, interpret the answer in that context.
 - "probably 4500" or "around 4500" should usually map to budgetMax 4500.
+- If the user gives a comfort budget and a stretch budget, keep both.
+- "with two roommates" means groupSize 3 and hasRoommates true.
 - If they mention multiple priorities like "commute and price", both can be high.
 - If they narrow geography like "only Jersey City, not Hoboken", reflect that directly.
 - Only include fields that should change.
@@ -174,12 +206,13 @@ export function mergeProfileUpdates(profile: SearchProfileData, updates: Extract
   return {
     ...profile,
     ...Object.fromEntries(Object.entries(updates).filter(([, value]) => value !== undefined)),
+    neighborhoods: updates.neighborhoods ? dedupe(updates.neighborhoods) : profile.neighborhoods,
     locations: updates.locations ? dedupe(updates.locations) : profile.locations,
     bedroomsFlexible: updates.bedroomsFlexible ? dedupe(updates.bedroomsFlexible) : profile.bedroomsFlexible,
     mustHaves: updates.mustHaves ? dedupe(updates.mustHaves) : profile.mustHaves,
     niceToHaves: updates.niceToHaves ? dedupe(updates.niceToHaves) : profile.niceToHaves,
     dealbreakers: updates.dealbreakers ? dedupe(updates.dealbreakers) : profile.dealbreakers,
-    priorities: updates.priorities ? { ...profile.priorities, ...updates.priorities } : profile.priorities,
+    priorities: updates.priorities ? dedupe(updates.priorities) : profile.priorities,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -194,7 +227,7 @@ export async function generateConversationalReplyWithAI(input: {
   fallbackReply: string;
 }) {
   const prompt = `
-You are Homeboard's rental search assistant.
+You are Homeboard's onboarding assistant.
 Write one natural reply to the user.
 
 Latest user message:
@@ -217,6 +250,7 @@ ${input.listingsCount}
 
 Rules:
 - Sound warm, natural, and conversational.
+- Frame the conversation as onboarding and setup for the shared rental board.
 - Do not sound templated or robotic.
 - Accept indirect answers naturally.
 - Mention what you understood when helpful.

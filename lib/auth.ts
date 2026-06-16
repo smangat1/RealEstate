@@ -45,6 +45,22 @@ function deriveSecondaryWorkAddress(authUser: SupabaseAuthUser) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function metadataStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function metadataBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function metadataNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function metadataString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 export async function syncAuthUserToProfile(authUser: SupabaseAuthUser) {
   if (!authUser.email) return null;
 
@@ -75,6 +91,42 @@ export async function getCurrentAuthUser() {
   } = await supabase.auth.getUser();
 
   return user;
+}
+
+export function getOnboardingSeedFromAuthUser(authUser: SupabaseAuthUser) {
+  return {
+    name: deriveDisplayName(authUser),
+    email: authUser.email ?? undefined,
+    city: metadataString(authUser.user_metadata?.city),
+    moveInDate: metadataString(authUser.user_metadata?.moveInDate),
+    moveInTimeframe: metadataString(authUser.user_metadata?.moveInDate) ?? null,
+    budgetMin: metadataNumber(authUser.user_metadata?.budgetMin),
+    budgetMax: metadataNumber(authUser.user_metadata?.budgetMax),
+    stretchBudget: metadataNumber(authUser.user_metadata?.stretchBudget),
+    neighborhoods: metadataStringArray(authUser.user_metadata?.neighborhoods),
+    locations: metadataString(authUser.user_metadata?.city) ? [String(authUser.user_metadata?.city).trim()] : [],
+    commuteTarget: metadataString(authUser.user_metadata?.commuteTarget),
+    maxCommuteMinutes: metadataNumber(authUser.user_metadata?.maxCommuteMinutes),
+    mustHaves: metadataStringArray(authUser.user_metadata?.mustHaves),
+    dealbreakers: metadataStringArray(authUser.user_metadata?.dealbreakers),
+    niceToHaves: metadataStringArray(authUser.user_metadata?.niceToHaves),
+    priorities: metadataStringArray(authUser.user_metadata?.priorities),
+    pets: metadataBoolean(authUser.user_metadata?.pets),
+    parking: metadataBoolean(authUser.user_metadata?.parking),
+    petsRequired: metadataBoolean(authUser.user_metadata?.pets),
+    parkingRequired: metadataBoolean(authUser.user_metadata?.parking),
+    groupSize: metadataNumber(authUser.user_metadata?.groupSize),
+    hasRoommates: metadataBoolean(authUser.user_metadata?.hasRoommates),
+    rentalReadiness:
+      typeof authUser.user_metadata?.rentalReadiness === "object" && authUser.user_metadata?.rentalReadiness
+        ? {
+            hasOfferLetter: metadataBoolean((authUser.user_metadata.rentalReadiness as Record<string, unknown>).hasOfferLetter),
+            needsGuarantor: metadataBoolean((authUser.user_metadata.rentalReadiness as Record<string, unknown>).needsGuarantor),
+            hasProofOfIncome: metadataBoolean((authUser.user_metadata.rentalReadiness as Record<string, unknown>).hasProofOfIncome),
+          }
+        : {},
+    completionStatus: "incomplete" as const,
+  };
 }
 
 export async function getCurrentAppUser() {

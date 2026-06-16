@@ -1,5 +1,17 @@
 export type PriorityLevel = "low" | "medium" | "high";
 
+export type RentalReadiness = {
+  hasOfferLetter?: boolean;
+  needsGuarantor?: boolean;
+  hasProofOfIncome?: boolean;
+};
+
+export type ProfileCompletion = {
+  completedFields: string[];
+  missingFields: string[];
+  percentComplete: number;
+};
+
 export type AuthUserRecord = {
   id: string;
   authUserId: string;
@@ -11,35 +23,45 @@ export type AuthUserRecord = {
   updatedAt: string;
 };
 
-export type SearchProfileData = {
+export type RentalProfile = {
   id: string;
   boardId: string;
-  intent: "rent" | "buy" | null;
-  propertyType: "apartment" | "house" | "condo" | "room" | "unknown" | null;
-  locations: string[];
-  budgetMin: number | null;
-  budgetMax: number | null;
-  bedroomsPreferred: number | null;
-  bedroomsFlexible: string[];
-  moveInTimeframe: string | null;
+  name: string;
+  email?: string;
+  city?: string;
+  moveInDate?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  stretchBudget?: number;
+  neighborhoods: string[];
+  commuteTarget?: string;
+  maxCommuteMinutes?: number;
   mustHaves: string[];
-  niceToHaves: string[];
   dealbreakers: string[];
-  priorities: {
-    price: PriorityLevel;
-    space: PriorityLevel;
-    commute: PriorityLevel;
-    neighborhood: PriorityLevel;
-    amenities: PriorityLevel;
-  };
-  petsRequired: boolean | null;
-  parkingRequired: boolean | null;
-  laundryRequired: boolean | null;
-  commuteTarget: string | null;
-  notes: string | null;
+  niceToHaves: string[];
+  priorities: string[];
+  pets?: boolean;
+  parking?: boolean;
+  groupSize?: number;
+  hasRoommates?: boolean;
+  rentalReadiness?: RentalReadiness;
+  completionStatus: "incomplete" | "complete" | "confirmed";
+  notes?: string | null;
   createdAt: string;
   updatedAt: string;
+
+  intent?: "rent" | "buy" | null;
+  propertyType?: "apartment" | "house" | "condo" | "room" | "unknown" | null;
+  locations: string[];
+  bedroomsPreferred?: number | null;
+  bedroomsFlexible: string[];
+  moveInTimeframe?: string | null;
+  petsRequired?: boolean | null;
+  parkingRequired?: boolean | null;
+  laundryRequired?: boolean | null;
 };
+
+export type SearchProfileData = RentalProfile;
 
 export type ChatMessage = {
   id: string;
@@ -50,6 +72,62 @@ export type ChatMessage = {
   content: string;
   createdAt: string;
 };
+
+export type BoardMember = {
+  id: string;
+  boardId: string;
+  userId: string;
+  role: "owner" | "member";
+  joinedAt: string;
+  createdAt: string;
+  user: Pick<AuthUserRecord, "id" | "email" | "displayName" | "workAddress" | "secondaryWorkAddress">;
+};
+
+export type BoardMemberRecord = BoardMember;
+
+export type GroupProfile = {
+  groupBudgetMax: number | null;
+  commuteDestinations: string[];
+  preferredNeighborhoods: string[];
+  mustHaves: string[];
+  dealbreakers: string[];
+  topSharedPriorities: string[];
+  compromiseAreas: string[];
+  tensionFlags: string[];
+  summary: string;
+};
+
+export type GroupSynthesis = GroupProfile;
+
+export type BoardInvite = {
+  id: string;
+  boardId: string;
+  invitedByUserId: string;
+  email: string;
+  inviteCode: string;
+  status: "pending" | "accepted" | "revoked";
+  createdAt: string;
+  acceptedAt: string | null;
+  expiresAt: string | null;
+};
+
+export type BoardInvitationRecord = BoardInvite;
+
+export type RentalBoard = {
+  id: string;
+  userId: string;
+  title: string;
+  name: string;
+  city?: string;
+  createdByProfileId: string;
+  members: BoardMember[];
+  listings: Listing[];
+  groupProfile?: GroupProfile;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SearchBoardSummary = Pick<RentalBoard, "id" | "userId" | "title" | "name" | "city" | "createdAt" | "updatedAt">;
 
 export type RoommateRecord = {
   id: string;
@@ -71,7 +149,7 @@ export type RoommateRecord = {
   updatedAt: string;
 };
 
-export type ListingRecord = {
+export type Listing = {
   id: string;
   source: "manual" | "pasted_link" | "pasted_text" | "api";
   sourceName: string | null;
@@ -96,6 +174,8 @@ export type ListingRecord = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ListingRecord = Listing;
 
 export type BoardListingRecord = {
   id: string;
@@ -176,55 +256,53 @@ export type BoardActivityRecord = {
   createdAt: string;
 };
 
-export type GroupSynthesis = {
-  groupBudgetMax: number | null;
-  commuteDestinations: string[];
-  preferredNeighborhoods: string[];
-  mustHaves: string[];
-  dealbreakers: string[];
-  topSharedPriorities: string[];
-  compromiseAreas: string[];
-  tensionFlags: string[];
-  summary: string;
-};
-
-export type SearchBoardSummary = {
+export type WaitlistSubmission = {
   id: string;
-  userId: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type BoardMemberRecord = {
-  id: string;
-  boardId: string;
-  userId: string;
-  role: "owner" | "member";
-  joinedAt: string;
-  createdAt: string;
-  user: Pick<AuthUserRecord, "id" | "email" | "displayName" | "workAddress" | "secondaryWorkAddress">;
-};
-
-export type BoardInvitationRecord = {
-  id: string;
-  boardId: string;
-  invitedByUserId: string;
+  name: string;
   email: string;
-  token: string;
-  status: "pending" | "accepted" | "revoked";
+  city?: string;
+  moveInTimeline?: string;
+  groupSize?: number;
+  hasRoommates?: boolean;
+  activelySearching?: boolean;
+  willingToBetaTest?: boolean;
+  willingToInviteRoommates?: boolean;
+  biggestFrustration?: string;
+  source?: string;
   createdAt: string;
-  acceptedAt: string | null;
+};
+
+export type DemoScenario = {
+  id: string;
+  name: string;
+  trigger: {
+    locations: string[];
+    locationAliases?: string[];
+    propertyType?: SearchProfileData["propertyType"];
+    bedroomsPreferred?: number;
+    budgetMaxAtMost?: number;
+    moveInContains?: string;
+  };
+  stagedReply: string;
+  listingsReply: string;
+  moreReply: string;
+  comparisonReply: string;
+  listingIds: string[];
+  scriptedProfiles?: Array<{
+    name: string;
+    role: string;
+    highlights: string[];
+  }>;
 };
 
 export type BoardPageData = {
   isDemoMode: boolean;
-  board: SearchBoardSummary;
-  profile: SearchProfileData;
+  board: RentalBoard;
+  profile: RentalProfile;
   roommates: RoommateRecord[];
-  members: BoardMemberRecord[];
+  members: BoardMember[];
   invitations: BoardInvitationRecord[];
-  groupSynthesis: GroupSynthesis;
+  groupSynthesis: GroupProfile;
   activity: BoardActivityRecord[];
   messages: ChatMessage[];
   boardListings: BoardListingRecord[];
@@ -236,4 +314,5 @@ export type BoardPageData = {
   currentBrowseRequest: ListingBrowseRequest | null;
   comparison: string;
   missingFields: string[];
+  completion: ProfileCompletion;
 };
