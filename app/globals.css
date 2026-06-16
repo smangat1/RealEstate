@@ -1127,6 +1127,7 @@ html[data-theme="light"] .modern-message.user .message-body {
 
 .modern-message.user .message-body p {
   margin-top: 4px;
+  color: rgba(255, 255, 255, 0.98);
 }
 
 .modern-message.assistant .message-body,
@@ -1164,6 +1165,8 @@ html[data-theme="light"] .modern-message.system .message-body {
   margin: 6px 0 0;
   line-height: 1.65;
   font-size: 1.03rem;
+  color: var(--text);
+  max-width: none;
 }
 
 .message-role {
