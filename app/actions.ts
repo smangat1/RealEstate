@@ -240,10 +240,21 @@ export async function createBoardInvitationAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
   const boardId = String(formData.get("boardId") || "");
   const email = String(formData.get("email") || "");
-  if (!currentUser || !boardId || !email.trim()) return;
+  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
+  if (!currentUser || !boardId || !email.trim()) {
+    redirectWithMessage(redirectTo, "error", "Invite email is required.");
+  }
 
-  await createBoardInvitation(boardId, currentUser.id, email);
+  try {
+    await createBoardInvitation(boardId, currentUser.id, email);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to create that invite.";
+    redirectWithMessage(redirectTo, "error", message);
+  }
+
+  revalidatePath(`/settings?boardId=${boardId}`);
   revalidatePath(`/boards/${boardId}`);
+  redirectWithMessage(redirectTo, "notice", `Invite created for ${email.trim().toLowerCase()}.`);
 }
 
 export async function acceptBoardInvitationAction(formData: FormData) {
@@ -253,8 +264,15 @@ export async function acceptBoardInvitationAction(formData: FormData) {
     redirect("/");
   }
 
-  const boardId = await acceptBoardInvitation(inviteCode, currentUser.id);
-  redirect(`/boards/${boardId}`);
+  try {
+    const boardId = await acceptBoardInvitation(inviteCode, currentUser.id);
+    revalidatePath(`/boards/${boardId}`);
+    revalidatePath(`/settings?boardId=${boardId}`);
+    redirect(`/settings?boardId=${boardId}&notice=${encodeURIComponent("You joined the board. Finish your profile so the group can use your commute and preference data.")}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to accept this invite.";
+    redirect(`/?error=${encodeURIComponent(message)}`);
+  }
 }
 
 export async function updateSettingsAction(formData: FormData) {

@@ -30,6 +30,26 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     );
   }
 
+  if (inviteData.invitation.status !== "pending") {
+    return (
+      <main className="account-shell">
+        <section className="account-card mac-window-card">
+          <div className="account-layout single-panel-layout">
+            <div className="account-intro">
+              <div className="home-badge">Invite</div>
+              <h1>This invite has already been used.</h1>
+              <p>
+                The link for {inviteData.invitation.email} is no longer pending. If someone still needs access, the board owner can
+                generate a fresh invite.
+              </p>
+              <Link href="/" className="secondary-button">Back home</Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   const currentUser = await getCurrentAppUser();
   if (!currentUser) {
     redirect(`/?next=${encodeURIComponent(`/invite/${inviteCode}`)}&notice=${encodeURIComponent("Sign in to accept this board invite.")}`);

@@ -66,6 +66,138 @@ function formatCommuteSnippet(commute: BoardPageData["boardListingCommutesByBoar
   }`;
 }
 
+function formatBudgetRange(profile: BoardPageData["profile"]) {
+  const parts: string[] = [];
+  if (profile.budgetMin !== undefined && profile.budgetMax !== undefined) {
+    parts.push(`$${profile.budgetMin.toLocaleString()}–$${profile.budgetMax.toLocaleString()}`);
+  } else if (profile.budgetMax !== undefined) {
+    parts.push(`Up to $${profile.budgetMax.toLocaleString()}`);
+  } else if (profile.budgetMin !== undefined) {
+    parts.push(`From $${profile.budgetMin.toLocaleString()}`);
+  }
+
+  if (profile.stretchBudget !== undefined) {
+    parts.push(`stretch $${profile.stretchBudget.toLocaleString()}`);
+  }
+
+  return parts.join(" · ") || "Budget still open";
+}
+
+function formatBedroomPreference(profile: BoardPageData["profile"]) {
+  if (profile.bedroomsPreferred !== null && profile.bedroomsPreferred !== undefined) {
+    const flexible = profile.bedroomsFlexible.length > 0 ? `, flexible on ${profile.bedroomsFlexible.join(", ")}` : "";
+    return `${profile.bedroomsPreferred} bed${flexible}`;
+  }
+  if (profile.bedroomsFlexible.length > 0) {
+    return profile.bedroomsFlexible.join(", ");
+  }
+  return "Bedroom count still open";
+}
+
+function formatBoardReadiness(data: BoardPageData) {
+  if (data.profile.completionStatus === "confirmed") return "Ready to search as a group";
+  if (data.completion.percentComplete >= 80) return "Almost ready";
+  if (data.completion.percentComplete >= 50) return "Still shaping the brief";
+  return "Early setup";
+}
+
+function buildOpenDecisions(data: BoardPageData, shortlistCount: number) {
+  const items: string[] = [];
+
+  for (const field of data.missingFields.slice(0, 4)) {
+    items.push(`Lock down ${field} so the board can stop guessing.`);
+  }
+
+  for (const flag of data.groupSynthesis.tensionFlags.slice(0, 3)) {
+    items.push(flag);
+  }
+
+  if (shortlistCount === 0) {
+    items.push("No contenders are saved yet, so the group does not have anything concrete to react to.");
+  }
+
+  if (data.members.length <= 1 && data.invitations.length === 0) {
+    items.push("Only one person is active on the board so far, so shared tradeoffs are still mostly hypothetical.");
+  }
+
+  return items.slice(0, 5);
+}
+
+function buildOpenQuestions(data: BoardPageData, shortlistItems: BoardListingRecord[]) {
+  const questions = shortlistItems.flatMap((item) => item.questionsToAsk).filter(Boolean);
+  const uniqueQuestions = Array.from(new Set(questions));
+  const output = uniqueQuestions.slice(0, 4);
+
+  if (output.length === 0 && data.missingFields.length > 0) {
+    return data.missingFields.slice(0, 4).map((field) => `Who is going to settle ${field}?`);
+  }
+
+  return output;
+}
+
+function buildNextAction(data: BoardPageData, shortlistCount: number) {
+  if (data.missingFields.length > 0) {
+    return {
+      title: "Finish the search brief",
+      detail: `The board is still missing ${data.missingFields.slice(0, 2).join(" and ")}. Clean that up before asking everyone to judge listings.`,
+      action: "chat" as const,
+      label: "Answer in board chat",
+    };
+  }
+
+  if (shortlistCount === 0) {
+    return {
+      title: "Save the first contenders",
+      detail: "Open the match deck and save a few options so the group can start reacting to something real instead of hypotheticals.",
+      action: "deck" as const,
+      label: data.currentBrowseRequest ? `Review ${data.currentBrowseRequest.count} matches` : "Open match deck",
+    };
+  }
+
+  if (data.members.length <= 1 && data.invitations.length === 0) {
+    return {
+      title: "Bring in collaborators",
+      detail: "The board is ready for more people. Add roommates or invite them so preferences and reactions come from the actual group.",
+      action: "settings" as const,
+      label: "Open settings",
+    };
+  }
+
+  return {
+    title: "Pressure-test the shortlist",
+    detail: "Ask the group to react to the saved listings, then compare the strongest practical option against the lifestyle-forward one.",
+    action: "chat" as const,
+    label: "Continue in chat",
+  };
+}
+
+function formatRoommateBudget(roommate: BoardPageData["roommates"][number]) {
+  if (roommate.budgetMax !== null) {
+    const floor = Math.max(0, roommate.budgetMax - 300);
+    return `$${floor.toLocaleString()}–$${roommate.budgetMax.toLocaleString()}`;
+  }
+  return "Budget still open";
+}
+
+function formatRoommateCommute(roommate: BoardPageData["roommates"][number]) {
+  if (!roommate.commuteDestination) return "No commute target yet";
+  return roommate.commuteDestination;
+}
+
+function formatRoommateStatus(roommate: BoardPageData["roommates"][number]) {
+  const signals = [
+    roommate.budgetMax !== null,
+    Boolean(roommate.commuteDestination),
+    roommate.preferredNeighborhoods.length > 0,
+    roommate.mustHaves.length > 0,
+    roommate.dealbreakers.length > 0,
+  ].filter(Boolean).length;
+
+  if (signals >= 4) return "profile complete";
+  if (signals >= 2) return "in progress";
+  return "just started";
+}
+
 function priorityWeight(priorities: string[], label: string) {
   return priorities.includes(label) ? 3 : 2;
 }
@@ -196,9 +328,9 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
   const [shortlistStatusFilter, setShortlistStatusFilter] = useState<(typeof SHORTLIST_STATUS_OPTIONS)[number]>("all");
   const [voteFilter, setVoteFilter] = useState<"all" | (typeof VOTE_ORDER)[number]>("all");
   const [sortMode, setSortMode] = useState<(typeof SORT_OPTIONS)[number]>("updated");
-  const [selectedListingIds, setSelectedListingIds] = useState<string[]>([]);
   const [focusedListingId, setFocusedListingId] = useState<string | null>(null);
   const chatThreadRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const readyForDeck = data.missingFields.length === 0;
   const shortlistItems = useMemo(() => {
     const filtered = data.boardListings
@@ -222,9 +354,18 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
   const isDemoMode = data.isDemoMode;
   const currentRoommateId = data.roommates.find((roommate) => roommate.linkedUserId === currentUser?.id)?.id ?? data.roommates[0]?.id ?? "";
   const shortlistCountLabel = shortlistItems.length === 1 ? "1 active listing" : `${shortlistItems.length} active listings`;
-  const selectedListings = shortlistItems.filter((item) => selectedListingIds.includes(item.id)).slice(0, 3);
   const focusedListing = shortlistItems.find((item) => item.id === focusedListingId) ?? null;
-  const compareSummary = useMemo(() => buildCompareSummary(selectedListings, data), [selectedListings, data]);
+  const compareSummary = useMemo(() => buildCompareSummary(shortlistItems.slice(0, 3), data), [shortlistItems, data]);
+  const cityLabel = data.profile.city || data.profile.locations[0] || data.board.city || "City still open";
+  const moveInLabel = data.profile.moveInDate || data.profile.moveInTimeframe || "Move-in still open";
+  const groupSizeLabel = data.profile.groupSize ?? data.members.length ?? data.roommates.length;
+  const commuteTargets = Array.from(
+    new Set([data.profile.commuteTarget, ...data.groupSynthesis.commuteDestinations].filter(Boolean)),
+  ) as string[];
+  const openDecisions = useMemo(() => buildOpenDecisions(data, shortlistItems.length), [data, shortlistItems.length]);
+  const openQuestions = useMemo(() => buildOpenQuestions(data, shortlistItems), [data, shortlistItems]);
+  const nextAction = useMemo(() => buildNextAction(data, shortlistItems.length), [data, shortlistItems.length]);
+  const recentMessages = data.messages.slice(-4);
 
   const shouldOpenDeckFromConversation = useMemo(() => {
     const latestUser = [...data.messages].reverse().find((message) => message.role === "user");
@@ -362,10 +503,16 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
     });
   }
 
-  function toggleListingSelection(boardListingId: string) {
-    setSelectedListingIds((current) =>
-      current.includes(boardListingId) ? current.filter((id) => id !== boardListingId) : [...current, boardListingId].slice(-3),
-    );
+  function handleNextAction() {
+    if (nextAction.action === "deck") {
+      setIsDeckOpen(true);
+      return;
+    }
+    if (nextAction.action === "settings") {
+      router.push(`/settings?boardId=${data.board.id}`);
+      return;
+    }
+    chatInputRef.current?.focus();
   }
 
   return (
@@ -439,60 +586,297 @@ export function BoardExperience({ currentUser, data, recentBoards }: BoardExperi
       </aside>
 
       <section className="board-stage">
-        <div className="chat-stage">
-          <div className="chat-thread-modern" ref={chatThreadRef}>
-            {data.messages.map((message) => (
-              <article key={message.id} className={`modern-message ${message.role}`}>
-                {message.role === "assistant" ? <div className="avatar">A</div> : null}
-                <div className="message-body">
-                  <span className="message-role">{message.role === "assistant" ? "Advisor" : message.authorName ?? "Board member"}</span>
-                  <p>{message.content}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="chat-input-shell">
-            <textarea
-              value={chatInput}
-              onChange={(event) => setChatInput(event.target.value)}
-              onKeyDown={handleChatKeyDown}
-              rows={4}
-              placeholder="Tell Homeboard about your move, budget, commute, group, neighborhoods, or ask to browse matches."
-            />
-            <div className="chat-input-footer">
-              <div className="chat-hints">
-                <span>
-                  {data.missingFields.length > 0
-                    ? `Profile ${data.completion.percentComplete}% complete · still collecting: ${data.missingFields.join(", ")}`
-                    : "Onboarding looks complete. You can keep refining the brief here or confirm it in settings."}
-                </span>
-                <span>Manual edits live in settings.</span>
-                <span>Enter sends · Shift+Enter newline · Ctrl/Cmd+Space sends</span>
-              </div>
-              <button type="button" onClick={submitChat} disabled={isPending}>
-                {isPending ? "Updating..." : "Send"}
+        <section className="board-home-shell">
+          <header className="board-home-header rail-card">
+            <div className="board-home-header-copy">
+              <div className="home-badge">Shared board</div>
+              <h1>{data.board.title}</h1>
+              <p>{data.groupSynthesis.summary}</p>
+            </div>
+            <div className="board-home-actions">
+              <Link href={`/settings?boardId=${data.board.id}`} className="secondary-button">
+                Invite people
+              </Link>
+              <Link href={`/settings?boardId=${data.board.id}`} className="secondary-button">
+                Board settings
+              </Link>
+              <button type="button" className="primary-sidebar-button" onClick={() => setIsDeckOpen(true)}>
+                {data.currentBrowseRequest ? `Review ${data.currentBrowseRequest.count} matches` : "Open match deck"}
               </button>
             </div>
+          </header>
 
-            {readyForDeck ? (
-              <div className="chat-ready-card">
-                <div>
-                  <strong>Your profile is structured enough to browse matches.</strong>
-                  <p>Keep onboarding in chat, or open the listing deck when you want to see options against the current profile.</p>
+          <section className="board-home-summary-grid">
+            <article className="board-overview-card">
+              <span>City</span>
+              <strong>{cityLabel}</strong>
+            </article>
+            <article className="board-overview-card">
+              <span>Move-in</span>
+              <strong>{moveInLabel}</strong>
+            </article>
+            <article className="board-overview-card">
+              <span>Group size</span>
+              <strong>{groupSizeLabel || "Still open"}</strong>
+            </article>
+            <article className="board-overview-card">
+              <span>Budget</span>
+              <strong>{formatBudgetRange(data.profile)}</strong>
+            </article>
+            <article className="board-overview-card">
+              <span>Commute</span>
+              <strong>{commuteTargets.length > 0 ? commuteTargets.join(", ") : "No target yet"}</strong>
+            </article>
+            <article className="board-overview-card">
+              <span>Readiness</span>
+              <strong>{formatBoardReadiness(data)}</strong>
+            </article>
+          </section>
+
+          <div className="board-home-layout">
+            <div className="board-home-main">
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Group Brief</h2>
+                  <span>{data.profile.completionStatus}</span>
                 </div>
-                <div className="stage-actions">
-                  <Link href={`/settings?boardId=${data.board.id}`} className="secondary-button">
-                    Open settings
-                  </Link>
-                  <button type="button" className="primary-sidebar-button" onClick={() => setIsDeckOpen(true)}>
-                    {data.currentBrowseRequest ? `Open ${data.currentBrowseRequest.count}-match batch` : "Open match deck"}
-                  </button>
+                <p>
+                  The board is currently centered on {cityLabel}, moving {moveInLabel.toLowerCase()}, with a target range of{" "}
+                  {formatBudgetRange(data.profile).toLowerCase()}. Bedroom preference is {formatBedroomPreference(data.profile).toLowerCase()}.
+                </p>
+                <div className="detail-chip-wrap">
+                  {data.profile.priorities.length > 0 ? data.profile.priorities.map((priority) => (
+                    <span key={priority} className="saved-pill">{priority}</span>
+                  )) : <span className="saved-pill">priorities still open</span>}
+                  {data.profile.mustHaves.slice(0, 4).map((item) => (
+                    <span key={item} className="saved-pill">{item}</span>
+                  ))}
+                  {data.profile.neighborhoods.slice(0, 4).map((item) => (
+                    <span key={item} className="saved-pill">{item}</span>
+                  ))}
                 </div>
-              </div>
-            ) : null}
+              </section>
+
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Open Decisions</h2>
+                  <span>{openDecisions.length} active</span>
+                </div>
+                {openDecisions.length > 0 ? (
+                  <div className="board-home-list">
+                    {openDecisions.map((decision) => (
+                      <article key={decision} className="board-home-list-item">
+                        <strong>Needs a call</strong>
+                        <p>{decision}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No major blockers are visible right now. The group brief is coherent enough to keep moving.</p>
+                )}
+              </section>
+
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Shortlist</h2>
+                  <span>{shortlistCountLabel}</span>
+                </div>
+                {shortlistItems.length > 0 ? (
+                  <>
+                    <div className="board-home-shortlist">
+                      {shortlistItems.slice(0, 3).map((item) => (
+                        <article key={item.id} className="board-home-shortlist-card">
+                          <div className="compare-card-head">
+                            <strong>{compareLocationLabel(item)}</strong>
+                            <span>{item.userStatus}</span>
+                          </div>
+                          <div className="compare-stat-list">
+                            <span>Price: {item.listing.price ? `$${item.listing.price.toLocaleString()}` : "unknown"}</span>
+                            <span>Commute: {formatCommuteSnippet(data.boardListingCommutesByBoardListingId[item.id])}</span>
+                            <span>Votes: {(data.listingVotesByBoardListingId[item.id] ?? []).length}</span>
+                          </div>
+                          <p>{item.aiSummary ?? item.aiTradeoffAnalysis ?? "No summary saved yet."}</p>
+                          <div className="stage-actions">
+                            <button type="button" className="secondary-button" onClick={() => setFocusedListingId(item.id)}>
+                              View details
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                    {compareSummary ? (
+                      <div className="compare-summary-card">
+                        <strong>Board read</strong>
+                        <p>{compareSummary.narrative}</p>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>No listings are being discussed yet. Open the match deck or add a listing so the group can react to real options.</p>
+                )}
+              </section>
+
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Board Chat</h2>
+                  <span>{recentMessages.length} latest messages</span>
+                </div>
+                <div className="board-home-chat-preview" ref={chatThreadRef}>
+                  {recentMessages.map((message) => (
+                    <article key={message.id} className={`modern-message ${message.role}`}>
+                      {message.role === "assistant" ? <div className="avatar">A</div> : null}
+                      <div className="message-body">
+                        <span className="message-role">{message.role === "assistant" ? "Advisor" : message.authorName ?? "Board member"}</span>
+                        <p>{message.content}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className="chat-input-shell board-home-chat-shell">
+                  <textarea
+                    ref={chatInputRef}
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={handleChatKeyDown}
+                    rows={3}
+                    placeholder="Update the brief, add a concern, ask for more listings, or tell the group what changed."
+                  />
+                  <div className="chat-input-footer">
+                    <div className="chat-hints">
+                      <span>
+                        {data.missingFields.length > 0
+                          ? `Profile ${data.completion.percentComplete}% complete · still collecting: ${data.missingFields.join(", ")}`
+                          : "Onboarding looks complete. You can keep refining the brief here or confirm it in settings."}
+                      </span>
+                    </div>
+                    <button type="button" onClick={submitChat} disabled={isPending}>
+                      {isPending ? "Updating..." : "Send"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <aside className="board-home-side">
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Next Best Action</h2>
+                  <span>Recommended</span>
+                </div>
+                <p>{nextAction.detail}</p>
+                <button type="button" className="primary-sidebar-button" onClick={handleNextAction}>
+                  {nextAction.label}
+                </button>
+              </section>
+
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Member Preferences</h2>
+                  <span>
+                    {data.members.length} active
+                    {data.invitations.length > 0 ? ` · ${data.invitations.length} invited` : ""}
+                  </span>
+                </div>
+                {data.roommates.length > 0 ? (
+                  <div className="member-preference-grid">
+                    {data.roommates.map((roommate) => (
+                      <article key={roommate.id} className="member-preference-card">
+                        <div className="member-preference-head">
+                          <div>
+                            <strong>{roommate.name}</strong>
+                            <span>{roommate.roleLabel}</span>
+                          </div>
+                          <span className="saved-pill">{formatRoommateStatus(roommate)}</span>
+                        </div>
+
+                        <div className="member-preference-list">
+                          <div>
+                            <span>Budget</span>
+                            <strong>{formatRoommateBudget(roommate)}</strong>
+                          </div>
+                          <div>
+                            <span>Commute</span>
+                            <strong>{formatRoommateCommute(roommate)}</strong>
+                          </div>
+                          <div>
+                            <span>Neighborhoods</span>
+                            <strong>
+                              {roommate.preferredNeighborhoods.length > 0
+                                ? roommate.preferredNeighborhoods.join(", ")
+                                : "No area lock yet"}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Must-haves</span>
+                            <strong>
+                              {roommate.mustHaves.length > 0 ? roommate.mustHaves.join(", ") : "Still open"}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Dealbreakers</span>
+                            <strong>
+                              {roommate.dealbreakers.length > 0 ? roommate.dealbreakers.join(", ") : "None saved yet"}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Priorities</span>
+                            <strong>
+                              {[
+                                roommate.commutePriority === "high" ? "short commute" : null,
+                                roommate.neighborhoodPriority === "high" ? "neighborhood" : null,
+                                roommate.spacePriority === "high" ? "space" : null,
+                                roommate.privacyPriority === "high" ? "privacy" : null,
+                              ]
+                                .filter(Boolean)
+                                .join(", ") || "No sharp priority yet"}
+                            </strong>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No roommate preference cards yet. Add roommates so the board starts showing real tradeoffs between people.</p>
+                )}
+              </section>
+
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Open Questions</h2>
+                  <span>{openQuestions.length}</span>
+                </div>
+                {openQuestions.length > 0 ? (
+                  <div className="board-home-list">
+                    {openQuestions.map((question) => (
+                      <article key={question} className="board-home-list-item">
+                        <strong>Question</strong>
+                        <p>{question}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p>The board has no unresolved listing questions saved yet.</p>
+                )}
+              </section>
+
+              <section className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Recent Activity</h2>
+                  <span>{data.activity.length} events</span>
+                </div>
+                <div className="activity-feed board-home-activity">
+                  {data.activity.slice(0, 6).map((entry) => (
+                    <article key={entry.id} className="activity-item">
+                      <strong>{entry.actorName}</strong>
+                      <p>{entry.content}</p>
+                      <span className="mini-meta">{formatTimestamp(entry.createdAt)}</span>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </aside>
           </div>
-        </div>
+        </section>
       </section>
 
       {isDeckOpen ? (

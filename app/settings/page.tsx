@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { confirmBoardProfileAction, signOutAction, updateBoardProfileSettingsAction, updateSettingsAction } from "@/app/actions";
+import {
+  confirmBoardProfileAction,
+  createBoardInvitationAction,
+  signOutAction,
+  updateBoardProfileSettingsAction,
+  updateSettingsAction,
+} from "@/app/actions";
+import { BoardInvitePanel } from "@/components/board-invite-panel";
 import { getCurrentAppUser } from "@/lib/auth";
 import { isAppEnabled } from "@/lib/app-mode";
 import { getBoardPageData, getRecentBoardsForUser } from "@/lib/board-data";
@@ -24,6 +31,8 @@ export default async function SettingsPage({
   }
 
   const params = await searchParams;
+  const notice = typeof params.notice === "string" ? params.notice : "";
+  const error = typeof params.error === "string" ? params.error : "";
   const recentBoards = await getRecentBoardsForUser(currentUser.id, 12);
   const selectedBoardId =
     typeof params.boardId === "string" && recentBoards.some((board) => board.id === params.boardId)
@@ -56,6 +65,8 @@ export default async function SettingsPage({
         <div className="settings-grid">
           <section className="settings-section">
             <h2>Your account</h2>
+            {error ? <div className="account-message account-message-error">{error}</div> : null}
+            {notice ? <div className="account-message account-message-notice">{notice}</div> : null}
             <form action={updateSettingsAction} className="account-form">
               <label className="field-stack">
                 <span>Name</span>
@@ -253,6 +264,27 @@ export default async function SettingsPage({
                   <input type="hidden" name="boardId" value={boardData.board.id} />
                   <button type="submit" className="secondary-button">Confirm this profile</button>
                 </form>
+
+                <div className="settings-divider" />
+
+                <div className="settings-subsection">
+                  <h3>Board invites</h3>
+                  <p className="settings-help-copy">
+                    Invite collaborators by email, then send them the generated join link. Once they accept, they become a real
+                    board member and can finish their own profile.
+                  </p>
+                  <form action={createBoardInvitationAction} className="account-form">
+                    <input type="hidden" name="boardId" value={boardData.board.id} />
+                    <input type="hidden" name="redirectTo" value={`/settings?boardId=${boardData.board.id}`} />
+                    <label className="field-stack">
+                      <span>Invite by email</span>
+                      <input name="email" type="email" placeholder="roommate@example.com" />
+                    </label>
+                    <button type="submit" className="account-primary-button">Generate invite link</button>
+                  </form>
+
+                  <BoardInvitePanel invitations={boardData.invitations} />
+                </div>
               </>
             ) : null}
           </section>
