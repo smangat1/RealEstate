@@ -3,7 +3,7 @@
   --font-body: "Inter";
   --font-display: "Cormorant Garamond";
   --bg: #16161b;
-  --bg-soft: #162834;
+  --bg-soft: #232527;
   --panel: rgba(20, 24, 31, 0.78);
   --panel-2: rgba(31, 36, 46, 0.88);
   --panel-3: rgba(14, 18, 24, 0.92);
@@ -16,8 +16,8 @@
   --accent-soft: rgba(122, 212, 255, 0.14);
   --success: #76e3bb;
   --danger: #ff9a96;
-  --shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
-  --shadow-soft: 0 12px 36px rgba(0, 0, 0, 0.16);
+  --shadow: 0 5px 80px rgba(26, 25, 25, 0);
+  --shadow-soft: 0 12px 36px rgba(22, 21, 21, 0);
 }
 
 html[data-theme="light"] {
