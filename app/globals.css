@@ -553,25 +553,40 @@ html[data-theme="light"] .mac-sidebar {
   min-width: 0;
 }
 
+.board-section-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+
+.board-section-nav .saved-pill {
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.board-section-nav .saved-pill:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--accent-soft) 78%, transparent);
+}
+
 .account-shell,
 .settings-shell {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 32px;
-  background:
-    radial-gradient(circle at 12% 16%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 24%),
-    radial-gradient(circle at 88% 82%, color-mix(in srgb, var(--success) 16%, transparent), transparent 20%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-soft) 92%, white 8%), var(--bg));
-}
-
-.waitlist-shell {
   position: relative;
   isolation: isolate;
   overflow: hidden;
 }
 
-.waitlist-shell::before {
+.account-shell::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -583,7 +598,7 @@ html[data-theme="light"] .mac-sidebar {
   opacity: 1;
 }
 
-.waitlist-shell::after {
+.account-shell::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -614,14 +629,14 @@ html[data-theme="light"] .mac-sidebar {
   backdrop-filter: blur(28px) saturate(180%);
 }
 
-.waitlist-card::before {
+.account-card::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -2;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--panel) 20%, transparent) 0%, color-mix(in srgb, var(--panel) 32%, transparent) 26%, color-mix(in srgb, var(--panel) 44%, transparent) 48%, color-mix(in srgb, var(--panel) 56%, transparent) 66%, color-mix(in srgb, var(--panel) 68%, transparent) 100%),
-    url("/images/homeboard-waitlist-bg.jpg");
+    url("/images/homeboard-auth-bg.jpg");
   background-size: auto, 600px auto;
   background-position: center, top left;
   background-repeat: no-repeat, repeat;
@@ -630,7 +645,7 @@ html[data-theme="light"] .mac-sidebar {
   transform: none;
 }
 
-.waitlist-card::after {
+.account-card::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -641,29 +656,29 @@ html[data-theme="light"] .mac-sidebar {
   pointer-events: none;
 }
 
-.waitlist-card {
+.account-card {
   border-color: transparent;
   box-shadow: 0 20px 44px rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
 
-.waitlist-card .account-layout {
+.account-card .account-layout {
   position: relative;
   z-index: 1;
   align-items: start;
 }
 
-.waitlist-card .account-intro {
+.account-card .account-intro {
   align-content: start;
   min-height: 700px;
   padding: 18px 16px 18px 10px;
 }
 
-.waitlist-card .home-badge {
+.account-card .home-badge {
   letter-spacing: 0.12em;
 }
 
-.waitlist-card h1 {
+.account-card h1 {
   max-width: 16ch;
   font-family:
     var(--font-display),
@@ -676,20 +691,20 @@ html[data-theme="light"] .mac-sidebar {
   text-wrap: balance;
 }
 
-.waitlist-card > .account-layout > .account-intro > p {
+.account-card > .account-layout > .account-intro > p {
   max-width: 60ch;
   color: color-mix(in srgb, var(--text) 80%, var(--muted) 20%);
   font-size: 1.18rem;
   line-height: 1.62;
 }
 
-.waitlist-card .account-launch-stats,
-.waitlist-card .account-feature-list {
+.account-card .account-launch-stats,
+.account-card .account-feature-list {
   gap: 20px;
 }
 
-.waitlist-card .account-intro .account-feature,
-.waitlist-card .account-intro .account-message {
+.account-card .account-intro .account-feature,
+.account-card .account-intro .account-message {
   padding: 0;
   border: none;
   border-radius: 0;
@@ -697,20 +712,20 @@ html[data-theme="light"] .mac-sidebar {
   box-shadow: none;
 }
 
-.waitlist-card .account-intro .account-feature strong {
+.account-card .account-intro .account-feature strong {
   font-size: 1.02rem;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
-.waitlist-card .account-intro .account-feature span {
+.account-card .account-intro .account-feature span {
   max-width: 68ch;
   color: color-mix(in srgb, var(--text) 82%, var(--muted) 18%);
   font-size: 1.02rem;
   line-height: 1.5;
 }
 
-.waitlist-card .account-panel-stack {
+.account-card .account-panel-stack {
   padding: 4px 0;
 }
 
@@ -755,14 +770,6 @@ html[data-theme="light"] .mac-sidebar {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.waitlist-primary-panel .account-toggle-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.waitlist-primary-panel .account-toggle-grid > :last-child {
-  grid-column: 1 / -1;
 }
 
 .onboarding-intro {
@@ -815,11 +822,11 @@ html[data-theme="light"] .mac-sidebar {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.waitlist-card .account-panel {
+.account-card .account-panel {
   border-radius: 28px;
 }
 
-.waitlist-card .account-panel-stack > .account-panel:first-child {
+.account-card .account-panel-stack > .account-panel:first-child {
   background:
     linear-gradient(180deg, rgba(9, 12, 18, 0.5), rgba(11, 14, 20, 0.84));
   border-color: rgba(255, 255, 255, 0.06);
@@ -839,7 +846,7 @@ html[data-theme="light"] .mac-sidebar {
   letter-spacing: -0.02em;
 }
 
-.waitlist-card .panel-heading strong {
+.account-card .panel-heading strong {
   font-size: 1.28rem;
   font-weight: 700;
 }
@@ -850,7 +857,7 @@ html[data-theme="light"] .mac-sidebar {
   color: var(--muted);
 }
 
-.waitlist-card .panel-heading span {
+.account-card .panel-heading span {
   color: color-mix(in srgb, var(--text) 72%, var(--muted) 28%);
   font-size: 1.02rem;
   line-height: 1.35;
@@ -875,93 +882,6 @@ html[data-theme="light"] .mac-sidebar {
   letter-spacing: -0.02em;
 }
 
-.waitlist-primary-panel {
-  gap: 18px;
-}
-
-.waitlist-success-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(7, 10, 14, 0.56);
-  backdrop-filter: blur(24px) saturate(160%);
-  animation: overlay-fade-in 220ms ease;
-}
-
-.waitlist-success-card {
-  width: min(520px, 100%);
-  display: grid;
-  justify-items: center;
-  gap: 16px;
-  padding: 30px 28px 28px;
-  text-align: center;
-  border-radius: 32px;
-  border: 1px solid color-mix(in srgb, var(--line-strong) 92%, transparent);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    color-mix(in srgb, var(--panel-2) 88%, transparent);
-  box-shadow:
-    0 32px 80px rgba(0, 0, 0, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  animation: waitlist-success-pop 340ms cubic-bezier(0.2, 0.82, 0.2, 1);
-}
-
-.waitlist-success-card h2 {
-  margin: 0;
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  line-height: 0.95;
-  letter-spacing: -0.05em;
-}
-
-.waitlist-success-card p {
-  margin: 0;
-  max-width: 34ch;
-  color: var(--muted);
-  line-height: 1.6;
-  font-size: 1.02rem;
-}
-
-.waitlist-success-card .account-primary-button {
-  min-width: 220px;
-}
-
-.waitlist-success-check {
-  width: 120px;
-  height: 120px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.3), transparent 56%),
-    linear-gradient(180deg, color-mix(in srgb, var(--success) 82%, white 18%), color-mix(in srgb, var(--success) 92%, #0f3428 8%));
-  box-shadow:
-    0 22px 46px color-mix(in srgb, var(--success) 28%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
-  transform-origin: center;
-}
-
-.waitlist-success-check svg {
-  width: 68px;
-  height: 68px;
-}
-
-.waitlist-success-check circle {
-  fill: transparent;
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 2;
-}
-
-.waitlist-success-check path {
-  fill: none;
-  stroke: white;
-  stroke-width: 5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .account-message {
   padding: 14px 16px;
   border-radius: 18px;
@@ -977,30 +897,6 @@ html[data-theme="light"] .mac-sidebar {
 .account-message-notice {
   background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
   color: var(--text);
-}
-
-@keyframes overlay-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes waitlist-success-pop {
-  0% {
-    opacity: 0;
-    transform: translateY(14px) scale(0.92);
-  }
-  65% {
-    opacity: 1;
-    transform: translateY(-2px) scale(1.02);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 .field-stack {
@@ -1019,7 +915,7 @@ html[data-theme="light"] .mac-sidebar {
   line-height: 1.3;
 }
 
-.waitlist-card .field-stack span {
+.account-card .field-stack span {
   font-size: 0.95rem;
   color: color-mix(in srgb, var(--text) 76%, var(--muted) 24%);
 }
@@ -1042,7 +938,7 @@ html[data-theme="light"] .mac-sidebar {
   transform: translateY(-1px);
 }
 
-.waitlist-card .account-primary-button {
+.account-card .account-primary-button {
   background:
     linear-gradient(180deg, color-mix(in srgb, white 14%, var(--accent)) 0%, color-mix(in srgb, var(--accent-strong) 92%, #1e5ec5 8%) 100%);
   box-shadow:
@@ -1050,7 +946,7 @@ html[data-theme="light"] .mac-sidebar {
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
-.waitlist-card .account-primary-button:hover {
+.account-card .account-primary-button:hover {
   transform: translateY(-1px);
   box-shadow:
     0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent),
@@ -1347,16 +1243,50 @@ html[data-theme="light"] .mac-sidebar {
   max-width: 72ch;
 }
 
+.board-readiness-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.board-readiness-block {
+  display: grid;
+  gap: 4px;
+  min-width: 124px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-3) 88%, transparent);
+}
+
+.board-readiness-block span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.board-readiness-block strong {
+  font-size: 0.98rem;
+}
+
+.board-readiness-copy {
+  color: var(--muted);
+  max-width: 72ch;
+}
+
 .board-home-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: flex-start;
 }
 
 .board-home-summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1396,6 +1326,15 @@ html[data-theme="light"] .mac-sidebar {
 
 .board-home-section {
   gap: 14px;
+}
+
+.board-home-section .rail-card-header h2 {
+  letter-spacing: -0.02em;
+}
+
+.board-home-section .rail-card-header span {
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .board-home-list,
@@ -1486,6 +1425,8 @@ html[data-theme="light"] .mac-sidebar {
 
 .board-home-activity {
   max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .tool-strip {
@@ -1848,10 +1789,15 @@ html[data-theme="light"] .modern-message.system .message-body {
   border-radius: 20px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel-3) 96%, transparent);
+  align-content: start;
 }
 
 .compare-summary-card p {
   margin: 0;
+}
+
+.compare-summary-card > strong {
+  letter-spacing: -0.01em;
 }
 
 .compare-summary-pills {
@@ -2345,7 +2291,7 @@ html[data-theme="light"] .modern-message.system .message-body {
     gap: 14px;
   }
 
-  .waitlist-card h1 {
+  .account-card h1 {
     max-width: 15ch;
   }
 }
@@ -2423,13 +2369,8 @@ html[data-theme="light"] .modern-message.system .message-body {
   }
 
   .account-form-grid-2,
-  .account-toggle-grid,
-  .waitlist-primary-panel .account-toggle-grid {
+  .account-toggle-grid {
     grid-template-columns: 1fr;
-  }
-
-  .waitlist-primary-panel .account-toggle-grid > :last-child {
-    grid-column: auto;
   }
 
   .chat-thread-modern {

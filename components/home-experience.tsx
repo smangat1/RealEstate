@@ -70,7 +70,7 @@ function createInitialDraft(currentUser: AuthUserRecord): DraftState {
         authorUserId: null,
         authorName: "Advisor",
         content:
-          "Tell me about your move and I’ll build the rental profile before we create the board. Start with whatever comes naturally: city, roommates, budget, move-in timing, commute, or neighborhoods.",
+          "Tell me about your move and I’ll build the rental profile before we open the shared workspace. Start with whatever comes naturally: city, roommates, budget, move-in timing, commute, or neighborhoods.",
         createdAt: now,
       },
     ],
@@ -136,10 +136,10 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
   const profileSummary = useMemo(() => {
     const profile = draft.profile;
     return [
-      profile.city || profile.locations[0] || "No city yet",
-      profile.moveInDate || profile.moveInTimeframe || "No move-in date yet",
-      profile.budgetMax ? `Up to $${profile.budgetMax.toLocaleString()}` : "No budget yet",
-      profile.commuteTarget || profile.neighborhoods[0] || "No commute or neighborhood anchor yet",
+      profile.city || profile.locations[0] || "City not set",
+      profile.moveInDate || profile.moveInTimeframe || "Move-in timing not set",
+      profile.budgetMax ? `Up to $${profile.budgetMax.toLocaleString()}` : "Budget not set",
+      profile.commuteTarget || profile.neighborhoods[0] || "Commute or neighborhood anchor not set",
     ];
   }, [draft.profile]);
 
@@ -307,7 +307,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
           {!isSidebarCollapsed ? (
             <div>
               <strong>{currentUser.displayName}</strong>
-              <p>{currentUser.workAddress ? currentUser.workAddress : "No commute anchor yet"}</p>
+              <p>{currentUser.workAddress ? currentUser.workAddress : "Commute anchor not set"}</p>
             </div>
           ) : null}
         </div>
@@ -331,7 +331,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
                         <input type="hidden" name="boardId" value={board.id} />
                         <input type="hidden" name="redirectTo" value="/" />
                         <button type="submit" className="sidebar-delete-button" aria-label={`Delete ${board.title}`}>
-                          Delete chat
+                          Delete workspace
                         </button>
                       </form>
                     </div>
@@ -346,10 +346,9 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
       <section className="home-stage">
         <div className="home-stage-inner onboarding-home-stage">
           <div className="home-badge">Onboarding</div>
-          <h1>Build the profile first. Confirm it. Then create the shared board.</h1>
+          <h1>Shape the search brief first. Then open the shared workspace.</h1>
           <p>
-            This is the pre-board onboarding chat. Once the rental profile feels right, Homeboard will turn it into the actual
-            shared board your group uses.
+            This is the pre-workspace onboarding flow. Once the rental profile feels right, Homeboard turns it into the shared workspace your group actually uses together.
           </p>
 
           <div className="onboarding-status-row">
@@ -372,7 +371,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
           {showDemoStarter ? (
             <div className="home-starter-row">
               <button type="button" className="secondary-button" onClick={useDemoStarter}>
-                Use recent-grad demo
+                Load recent-grad example
               </button>
             </div>
           ) : null}
@@ -411,7 +410,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
                     Profile {draft.completion.percentComplete}% complete
                     {draft.completion.missingFields.length > 0 ? ` · still need ${draft.completion.missingFields.join(", ")}` : ""}
                   </span>
-                  <span>Enter sends · Shift+Enter newline · Ctrl/Cmd+Space sends</span>
+                  <span>Enter sends · Shift+Enter newline · Ctrl/Cmd+Space also sends</span>
                 </div>
                 <button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Updating..." : "Send"}
@@ -422,7 +421,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
 
           <section className="home-profile-review-card mac-window-card">
             <div className="rail-card-header">
-              <h2>Structured profile</h2>
+              <h2>Search brief</h2>
               <span>{draft.profile.completionStatus}</span>
             </div>
             <div className="onboarding-progress-bar" aria-hidden="true">
@@ -438,28 +437,28 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
             <div className="onboarding-review-grid">
               <div className="onboarding-review-block">
                 <span>Must-haves</span>
-                <strong>{draft.profile.mustHaves.length > 0 ? draft.profile.mustHaves.join(", ") : "Still open"}</strong>
+                <strong>{draft.profile.mustHaves.length > 0 ? draft.profile.mustHaves.join(", ") : "Not set yet"}</strong>
               </div>
               <div className="onboarding-review-block">
                 <span>Dealbreakers</span>
-                <strong>{draft.profile.dealbreakers.length > 0 ? draft.profile.dealbreakers.join(", ") : "Still open"}</strong>
+                <strong>{draft.profile.dealbreakers.length > 0 ? draft.profile.dealbreakers.join(", ") : "Not set yet"}</strong>
               </div>
               <div className="onboarding-review-block">
                 <span>Priorities</span>
-                <strong>{draft.profile.priorities.length > 0 ? draft.profile.priorities.join(", ") : "Still open"}</strong>
+                <strong>{draft.profile.priorities.length > 0 ? draft.profile.priorities.join(", ") : "Not set yet"}</strong>
               </div>
               <div className="onboarding-review-block">
                 <span>Neighborhoods</span>
-                <strong>{draft.profile.neighborhoods.length > 0 ? draft.profile.neighborhoods.join(", ") : "Still open"}</strong>
+                <strong>{draft.profile.neighborhoods.length > 0 ? draft.profile.neighborhoods.join(", ") : "Not set yet"}</strong>
               </div>
             </div>
             <p className="settings-help-copy">
-              Completed: {draft.completion.completedFields.length > 0 ? draft.completion.completedFields.join(", ") : "nothing substantial yet"}
+              Already covered: {draft.completion.completedFields.length > 0 ? draft.completion.completedFields.join(", ") : "nothing substantial yet"}
             </p>
             {draft.completion.missingFields.length > 0 ? (
-              <p className="settings-help-copy">Missing: {draft.completion.missingFields.join(", ")}</p>
+              <p className="settings-help-copy">Still open: {draft.completion.missingFields.join(", ")}</p>
             ) : (
-              <p className="settings-help-copy">The profile is ready. Confirm it to create the real board and bring your group into it.</p>
+              <p className="settings-help-copy">The brief is ready. Confirm it to open the live workspace and bring your group into it.</p>
             )}
             <div className="register-actions">
               <button
@@ -467,11 +466,11 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
                 className="secondary-button"
                 onClick={resetDraft}
               >
-                Reset draft
+                Start over
               </button>
               <div className="onboarding-action-stack">
                 <Link href="/settings" className="secondary-button">
-                  Account settings
+                  Settings
                 </Link>
                 <button
                   type="button"
@@ -479,7 +478,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
                   disabled={draft.profile.completionStatus !== "complete" || isConfirming}
                   onClick={() => void confirmAndCreateBoard()}
                 >
-                  {isConfirming ? "Creating board..." : "Confirm profile and create board"}
+                  {isConfirming ? "Creating workspace..." : "Confirm brief and create workspace"}
                 </button>
               </div>
             </div>

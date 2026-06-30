@@ -1,13 +1,13 @@
-# Shared Rental Board MVP
+# Homeboard MVP
 
-This pass focuses on the shared-board version of the product: roommates define group limits in chat, keep individual preference cards on the board, react to listings together, and pressure-test compromise options before any real backend or external data integration lands.
+Homeboard is a shared rental workspace for roommate groups and co-searchers. The product is built around one living search brief, one shared shortlist, and one place to compare commute, budget, neighborhood, and lifestyle tradeoffs before a lease decision gets made.
 
 ## What is here
 
 - `app/`
   Next.js app router UI for:
-  - chat-first board creation
-  - shared board view with roommate cards
+  - chat-first workspace creation
+  - shared workspace view with roommate cards
   - conversational group preference flow
   - full-screen match deck with batch requests
   - listing add flows
@@ -18,14 +18,14 @@ This pass focuses on the shared-board version of the product: roommates define g
 - `scripts/generate-dummy-data.ts`
   Creates a normalized SQLite database with:
   - users
-  - search boards
+  - search workspaces
   - search profiles
   - roommate profiles
   - listings
-  - board-to-listing joins
+  - workspace-to-listing joins
   - listing votes
   - listing comments
-  - board events
+  - workspace events
   - price history
   - chat messages
 - `prisma/schema.prisma`
@@ -69,7 +69,7 @@ http://localhost:3000
 
 ## What to try
 
-- Start from the home screen and type a group request instead of filling a rigid form.
+- Start from the home screen and describe the group search instead of filling a rigid form.
 - Send messages like:
   - `we want a cool neighborhood but commute still matters`
   - `three roommates and 2800 each max`
@@ -77,14 +77,14 @@ http://localhost:3000
   - `show me 5 listings`
   - `give me more`
 - Open the full-screen match deck and move through listings in fresh batches instead of one static pile.
-- Update roommate cards directly on the board.
+- Update roommate cards directly in the workspace.
 - Add votes and comments to listings so the shortlist reflects group opinion.
 - Add a listing by:
   - pasting a link
   - pasting listing text
   - manual entry can be added next if needed
 - Change listing statuses between `new`, `interested`, `maybe`, `rejected`, `toured`, and `applied`.
-- Read the group summary and activity feed to see how the compromise is shifting.
+- Read the group summary and activity feed to see how the compromise is shifting over time.
 
 ## Database output
 
@@ -148,7 +148,7 @@ The verified `huge` preset currently generates:
 - 450 search boards
 - 450 search profiles
 - 12,000 listings
-- 16,456 board listings
+- 16,456 workspace listing saves
 - 53,715 price history rows
 - 8,100 chat messages
 

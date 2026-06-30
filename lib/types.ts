@@ -48,7 +48,7 @@ export type RentalProfile = {
   completionStatus: "incomplete" | "complete" | "confirmed";
   notes?: string | null;
   createdAt: string;
-  updatedAt: string;
+  updatedAt: string
 
   intent?: "rent" | "buy" | null;
   propertyType?: "apartment" | "house" | "condo" | "room" | "unknown" | null;
@@ -87,13 +87,19 @@ export type BoardMemberRecord = BoardMember;
 
 export type GroupProfile = {
   groupBudgetMax: number | null;
+  budgetRangeText?: string;
+  budgetOverlapStatus?: "strong" | "mixed" | "weak";
   commuteDestinations: string[];
+  commuteAlignment?: "aligned" | "mixed" | "split";
   preferredNeighborhoods: string[];
+  neighborhoodAlignment?: "aligned" | "mixed" | "split";
   mustHaves: string[];
   dealbreakers: string[];
   topSharedPriorities: string[];
   compromiseAreas: string[];
   tensionFlags: string[];
+  confidenceLabel?: "high" | "medium" | "low";
+  confidenceReason?: string;
   summary: string;
 };
 
@@ -253,22 +259,6 @@ export type BoardActivityRecord = {
   actorName: string;
   eventType: string;
   content: string;
-  createdAt: string;
-};
-
-export type WaitlistSubmission = {
-  id: string;
-  name: string;
-  email: string;
-  city?: string;
-  moveInTimeline?: string;
-  groupSize?: number;
-  hasRoommates?: boolean;
-  activelySearching?: boolean;
-  willingToBetaTest?: boolean;
-  willingToInviteRoommates?: boolean;
-  biggestFrustration?: string;
-  source?: string;
   createdAt: string;
 };
 

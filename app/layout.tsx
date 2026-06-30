@@ -16,8 +16,8 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "Rental Search Advisor MVP",
-  description: "Chat-first rental search board powered by dummy local data.",
+  title: "Homeboard",
+  description: "A shared rental workspace for groups comparing listings, constraints, commute reality, and tradeoffs together.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

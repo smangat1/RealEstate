@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     authorName: currentUser.displayName,
     profileSeed: nextProfile,
     initialAssistantMessage:
-      "Your confirmed rental profile is loaded into this board now. Ask for matches, refine a tradeoff, or start comparing listings whenever you’re ready.",
+      "Your confirmed rental profile is loaded into the workspace now. Ask for matches, refine a tradeoff, or start comparing listings whenever you’re ready.",
   });
 
   return NextResponse.json({ boardId });

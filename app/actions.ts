@@ -9,20 +9,25 @@ import {
   acceptBoardInvitation,
   addBoardListingComment,
   addListingToBoard,
+  completeJoinedMemberSetup,
   confirmBoardProfileForUser,
   createBoardAndReturnId,
   createBoardInvitation,
   deleteBoardForUser,
+  leaveBoard,
   getUserById,
+  revokeBoardInvitation,
+  removeBoardMember,
   saveBoardListingVote,
   saveSuggestedListingToBoard,
   sendChat,
   updateBoardProfileForUser,
   updateBoardListingStatus,
+  updateBoardMetadataForUser,
+  updateLinkedMemberProfile,
   updateUserProfile,
 } from "@/lib/board-data";
 import { trackEvent } from "@/lib/analytics";
-import { prisma } from "@/lib/prisma";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function redirectWithMessage(path: string, key: "error" | "notice", message: string): never {
@@ -65,9 +70,10 @@ export async function signUpAction(formData: FormData) {
   const password = String(formData.get("password") || "").trim();
   const displayName = String(formData.get("displayName") || "").trim();
   const next = getSafeNextPath(String(formData.get("next") || "/"));
+  const registerPath = `/register?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email)}` : ""}`;
 
   if (!email || !password || !displayName) {
-    redirectWithMessage("/register", "error", "Name, email, and password are required.");
+    redirectWithMessage(registerPath, "error", "Name, email, and password are required.");
   }
 
   const supabase = await createSupabaseServerClient();
@@ -83,16 +89,16 @@ export async function signUpAction(formData: FormData) {
   });
 
   if (error) {
-    redirectWithMessage("/register", "error", error.message);
+    redirectWithMessage(registerPath, "error", error.message);
   }
 
   await supabase.auth.signOut();
-  redirectWithMessage("/", "notice", `Account created for ${displayName}. Verify your email if required, then sign in to continue to ${next}.`);
+  redirectWithMessage(`/?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`, "notice", `Account created for ${displayName}. Verify your email if required, then sign in to continue.`);
 }
 
 export async function signInAction(formData: FormData) {
   if (!isAppEnabled()) {
-    redirectWithMessage("/", "notice", "The live Homeboard app is currently gated. You can still join the waitlist and create an account.");
+    redirectWithMessage("/", "notice", "Homeboard is currently disabled.");
   }
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "").trim();
@@ -126,7 +132,7 @@ export async function signOutAction() {
 
 export async function createBoardAction(formData: FormData) {
   if (!isAppEnabled()) {
-    redirectWithMessage("/", "notice", "Board creation is currently gated outside dev mode.");
+    redirectWithMessage("/", "notice", "Board creation is currently disabled.");
   }
   const currentUser = await getCurrentAppUser();
   if (!currentUser) {
@@ -268,11 +274,103 @@ export async function acceptBoardInvitationAction(formData: FormData) {
     const boardId = await acceptBoardInvitation(inviteCode, currentUser.id);
     revalidatePath(`/boards/${boardId}`);
     revalidatePath(`/settings?boardId=${boardId}`);
-    redirect(`/settings?boardId=${boardId}&notice=${encodeURIComponent("You joined the board. Finish your profile so the group can use your commute and preference data.")}`);
+    redirect(`/boards/${boardId}?memberSetup=1&notice=${encodeURIComponent("You joined the workspace. Add your commute and preference details so the group can use your data right away.")}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to accept this invite.";
     redirect(`/?error=${encodeURIComponent(message)}`);
   }
+}
+
+export async function completeJoinedMemberSetupAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = String(formData.get("boardId") || "");
+  if (!currentUser || !boardId) {
+    redirect("/");
+  }
+
+  try {
+    await completeJoinedMemberSetup(boardId, currentUser.id, {
+      workAddress: String(formData.get("workAddress") || ""),
+      budgetMax: String(formData.get("budgetMax") || ""),
+      commuteDestination: String(formData.get("commuteDestination") || ""),
+      preferredNeighborhoods: String(formData.get("preferredNeighborhoods") || ""),
+      mustHaves: String(formData.get("mustHaves") || ""),
+      dealbreakers: String(formData.get("dealbreakers") || ""),
+      notes: String(formData.get("notes") || ""),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to save your member setup.";
+    redirect(`/boards/${boardId}?memberSetup=1&error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath(`/boards/${boardId}`);
+  revalidatePath(`/settings?boardId=${boardId}`);
+  redirect(`/boards/${boardId}?notice=${encodeURIComponent("Your member setup is saved. The workspace can now use your commute and preference data.")}`);
+}
+
+export async function revokeBoardInvitationAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const invitationId = String(formData.get("invitationId") || "");
+  const boardId = String(formData.get("boardId") || "");
+  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
+
+  if (!currentUser || !invitationId || !boardId) {
+    redirectWithMessage(redirectTo, "error", "Unable to revoke that invite.");
+  }
+
+  try {
+    await revokeBoardInvitation(invitationId, currentUser.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to revoke that invite.";
+    redirectWithMessage(redirectTo, "error", message);
+  }
+
+  revalidatePath(`/settings?boardId=${boardId}`);
+  revalidatePath(`/boards/${boardId}`);
+  redirectWithMessage(redirectTo, "notice", "Invite revoked.");
+}
+
+export async function removeBoardMemberAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = String(formData.get("boardId") || "");
+  const memberUserId = String(formData.get("memberUserId") || "");
+  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
+
+  if (!currentUser || !boardId || !memberUserId) {
+    redirectWithMessage(redirectTo, "error", "Missing collaborator details.");
+  }
+
+  try {
+    await removeBoardMember(boardId, currentUser.id, memberUserId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to remove that collaborator.";
+    redirectWithMessage(redirectTo, "error", message);
+  }
+
+  revalidatePath(`/settings?boardId=${boardId}`);
+  revalidatePath(`/boards/${boardId}`);
+  redirectWithMessage(redirectTo, "notice", "Collaborator removed from the workspace.");
+}
+
+export async function leaveBoardAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = String(formData.get("boardId") || "");
+  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || "/"));
+
+  if (!currentUser || !boardId) {
+    redirectWithMessage(redirectTo, "error", "Missing workspace details.");
+  }
+
+  try {
+    await leaveBoard(boardId, currentUser.id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to leave this workspace.";
+    redirectWithMessage(redirectTo, "error", message);
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/settings?boardId=${boardId}`);
+  redirectWithMessage(redirectTo, "notice", "You left the workspace.");
 }
 
 export async function updateSettingsAction(formData: FormData) {
@@ -301,6 +399,27 @@ export async function updateSettingsAction(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/");
+}
+
+export async function updateBoardMetadataAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = String(formData.get("boardId") || "");
+  if (!currentUser || !boardId) {
+    redirect("/");
+  }
+
+  try {
+    await updateBoardMetadataForUser(boardId, currentUser.id, {
+      title: String(formData.get("title") || ""),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update workspace details.";
+    redirect(`/settings?boardId=${boardId}&error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath(`/settings?boardId=${boardId}`);
+  revalidatePath(`/boards/${boardId}`);
+  redirect(`/settings?boardId=${boardId}&notice=${encodeURIComponent("Board details updated.")}`);
 }
 
 export async function updateBoardProfileSettingsAction(formData: FormData) {
@@ -339,6 +458,37 @@ export async function updateBoardProfileSettingsAction(formData: FormData) {
   revalidatePath(`/boards/${boardId}`);
 }
 
+export async function updateLinkedMemberProfileAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = String(formData.get("boardId") || "");
+  if (!currentUser || !boardId) {
+    redirect("/");
+  }
+
+  try {
+    await updateLinkedMemberProfile(boardId, currentUser.id, {
+      workAddress: String(formData.get("workAddress") || ""),
+      budgetMax: String(formData.get("budgetMax") || ""),
+      commuteDestination: String(formData.get("commuteDestination") || ""),
+      preferredNeighborhoods: String(formData.get("preferredNeighborhoods") || ""),
+      mustHaves: String(formData.get("mustHaves") || ""),
+      dealbreakers: String(formData.get("dealbreakers") || ""),
+      notes: String(formData.get("notes") || ""),
+      commutePriority: String(formData.get("commutePriority") || ""),
+      neighborhoodPriority: String(formData.get("neighborhoodPriority") || ""),
+      spacePriority: String(formData.get("spacePriority") || ""),
+      privacyPriority: String(formData.get("privacyPriority") || ""),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to save your collaborator preferences.";
+    redirect(`/settings?boardId=${boardId}&error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath(`/settings?boardId=${boardId}`);
+  revalidatePath(`/boards/${boardId}`);
+  redirect(`/settings?boardId=${boardId}&notice=${encodeURIComponent("Your collaborator profile is updated.")}`);
+}
+
 export async function confirmBoardProfileAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
   const boardId = String(formData.get("boardId") || "");
@@ -371,62 +521,4 @@ export async function addListingCommentAction(formData: FormData) {
 
   await addBoardListingComment(boardListingId, roommateId, content);
   revalidatePath(`/boards/${boardId}`);
-}
-
-export async function submitWaitlistAction(formData: FormData) {
-  const name = String(formData.get("name") || "").trim();
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const city = String(formData.get("city") || "").trim();
-  const moveInTimeline = String(formData.get("moveInTimeline") || "").trim();
-  const groupSize = parseOptionalNumber(formData.get("groupSize"));
-  const hasRoommates = parseOptionalBoolean(formData.get("hasRoommates"));
-  const activelySearching = parseOptionalBoolean(formData.get("activelySearching"));
-  const willingToBetaTest = parseOptionalBoolean(formData.get("willingToBetaTest"));
-  const willingToInviteRoommates = parseOptionalBoolean(formData.get("willingToInviteRoommates"));
-  const biggestFrustration = String(formData.get("biggestFrustration") || "").trim();
-  const source = String(formData.get("source") || "landing-page").trim();
-
-  if (!name || !email || !city) {
-    redirectWithMessage("/", "error", "Waitlist needs your name, email, and city.");
-  }
-
-  await prisma.waitlistSubmission.upsert({
-    where: { email },
-    update: {
-      name,
-      city,
-      moveInTimeline: moveInTimeline || null,
-      groupSize: groupSize ?? null,
-      hasRoommates: hasRoommates ?? null,
-      activelySearching: activelySearching ?? null,
-      willingToBetaTest: willingToBetaTest ?? null,
-      willingToInviteRoommates: willingToInviteRoommates ?? null,
-      biggestFrustration: biggestFrustration || null,
-      source: source || null,
-    },
-    create: {
-      name,
-      email,
-      city,
-      moveInTimeline: moveInTimeline || null,
-      groupSize: groupSize ?? null,
-      hasRoommates: hasRoommates ?? null,
-      activelySearching: activelySearching ?? null,
-      willingToBetaTest: willingToBetaTest ?? null,
-      willingToInviteRoommates: willingToInviteRoommates ?? null,
-      biggestFrustration: biggestFrustration || null,
-      source: source || null,
-    },
-  });
-
-  await trackEvent("waitlist_submitted", {
-    email,
-    city,
-    source,
-  });
-
-  const search = new URLSearchParams();
-  search.set("success", "waitlist_joined");
-  search.set("notice", "You’re on the waitlist. We’ll reach out when the next Homeboard beta round opens.");
-  redirect(`/?${search.toString()}`);
 }

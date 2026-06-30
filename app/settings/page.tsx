@@ -4,8 +4,12 @@ import { redirect } from "next/navigation";
 import {
   confirmBoardProfileAction,
   createBoardInvitationAction,
+  leaveBoardAction,
+  removeBoardMemberAction,
   signOutAction,
+  updateBoardMetadataAction,
   updateBoardProfileSettingsAction,
+  updateLinkedMemberProfileAction,
   updateSettingsAction,
 } from "@/app/actions";
 import { BoardInvitePanel } from "@/components/board-invite-panel";
@@ -45,11 +49,11 @@ export default async function SettingsPage({
       <section className="settings-page-card mac-window-card">
         <div className="settings-header">
           <div>
-            <div className="home-badge">Settings</div>
-            <h1>Manage your account identity and manually tune the rental profile outside the chat.</h1>
+            <div className="home-badge">Workspace settings</div>
+            <h1>Manage your identity, shared workspace details, and collaborator preferences.</h1>
             <p>
-              The board chat stays focused on onboarding conversation. This page is where you step in directly to tweak stored
-              preferences, commute anchors, and confirmation state.
+              Homeboard keeps the shared chat focused on the search itself. This page is where you step in when you want to
+              edit account details, tighten the brief, or manage who is part of the workspace.
             </p>
           </div>
           <div className="settings-header-actions">
@@ -64,7 +68,7 @@ export default async function SettingsPage({
 
         <div className="settings-grid">
           <section className="settings-section">
-            <h2>Your account</h2>
+            <h2>Your identity</h2>
             {error ? <div className="account-message account-message-error">{error}</div> : null}
             {notice ? <div className="account-message account-message-notice">{notice}</div> : null}
             <form action={updateSettingsAction} className="account-form">
@@ -97,7 +101,7 @@ export default async function SettingsPage({
           </section>
 
           <section className="settings-section">
-            <h2>Board profile</h2>
+            <h2>Shared brief</h2>
             {recentBoards.length > 0 ? (
               <div className="account-form">
                 <div className="field-stack">
@@ -116,19 +120,135 @@ export default async function SettingsPage({
                 </div>
               </div>
             ) : (
-              <p className="settings-help-copy">Create a board first so chat can start building a profile you can refine here.</p>
+              <p className="settings-help-copy">Create a workspace first so the shared brief has somewhere real to live and evolve.</p>
             )}
 
             {boardData ? (
               <>
+                {currentUser.id === boardData.board.userId ? (
+                  <>
+                    <div className="settings-subsection">
+                      <h3>Board details</h3>
+                      <p className="settings-help-copy">
+                        Rename the workspace if the original onboarding title was too rough or no longer reflects what the group is actually searching for.
+                      </p>
+                      <form action={updateBoardMetadataAction} className="account-form">
+                        <input type="hidden" name="boardId" value={boardData.board.id} />
+                        <label className="field-stack">
+                          <span>Board title</span>
+                          <input name="title" defaultValue={boardData.board.title} placeholder="NYC grad roommate search" />
+                        </label>
+                        <button type="submit" className="account-primary-button">Save workspace details</button>
+                      </form>
+                    </div>
+
+                    <div className="settings-divider" />
+                  </>
+                ) : null}
+
+                {boardData.roommates.find((roommate) => roommate.linkedUserId === currentUser.id) ? (
+                  <>
+                    {(() => {
+                      const currentRoommate = boardData.roommates.find((roommate) => roommate.linkedUserId === currentUser.id)!;
+                      return (
+                        <>
+                          <div className="settings-subsection">
+                            <h3>Your collaborator profile</h3>
+                            <p className="settings-help-copy">
+                              This is your personal point of view inside the shared search. Update it when your budget, commute tolerance, or neighborhood lean changes so the group read stays honest.
+                            </p>
+                            <form action={updateLinkedMemberProfileAction} className="account-form">
+                              <input type="hidden" name="boardId" value={boardData.board.id} />
+                              <div className="account-form-grid account-form-grid-2">
+                                <label className="field-stack">
+                                  <span>Work or commute address</span>
+                                  <input name="workAddress" defaultValue={currentUser.workAddress ?? ""} placeholder="350 5th Ave, New York, NY" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Monthly budget ceiling</span>
+                                  <input name="budgetMax" defaultValue={currentRoommate.budgetMax ?? ""} inputMode="numeric" placeholder="1700" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Commute target</span>
+                                  <input name="commuteDestination" defaultValue={currentRoommate.commuteDestination ?? ""} placeholder="Midtown" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Preferred neighborhoods</span>
+                                  <input name="preferredNeighborhoods" defaultValue={csv(currentRoommate.preferredNeighborhoods)} placeholder="Astoria, Williamsburg" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Must-haves</span>
+                                  <input name="mustHaves" defaultValue={csv(currentRoommate.mustHaves)} placeholder="laundry, train access" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Dealbreakers</span>
+                                  <input name="dealbreakers" defaultValue={csv(currentRoommate.dealbreakers)} placeholder="over 1800, poor train access" />
+                                </label>
+                              </div>
+
+                              <div className="account-toggle-grid">
+                                <label className="field-stack">
+                                  <span>Commute priority</span>
+                                  <select name="commutePriority" defaultValue={currentRoommate.commutePriority}>
+                                    <option value="low">Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                  </select>
+                                </label>
+                                <label className="field-stack">
+                                  <span>Neighborhood priority</span>
+                                  <select name="neighborhoodPriority" defaultValue={currentRoommate.neighborhoodPriority}>
+                                    <option value="low">Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                  </select>
+                                </label>
+                                <label className="field-stack">
+                                  <span>Space priority</span>
+                                  <select name="spacePriority" defaultValue={currentRoommate.spacePriority}>
+                                    <option value="low">Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                  </select>
+                                </label>
+                                <label className="field-stack">
+                                  <span>Privacy priority</span>
+                                  <select name="privacyPriority" defaultValue={currentRoommate.privacyPriority}>
+                                    <option value="low">Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                  </select>
+                                </label>
+                              </div>
+
+                              <label className="field-stack">
+                                <span>Notes</span>
+                                <textarea
+                                  name="notes"
+                                  rows={3}
+                                  defaultValue={currentRoommate.notes ?? ""}
+                                  placeholder="Example: I can give on neighborhood if the commute stays clean."
+                                />
+                              </label>
+                              <button type="submit" className="account-primary-button">Save your collaborator profile</button>
+                            </form>
+                          </div>
+
+                          <div className="settings-divider" />
+                        </>
+                      );
+                    })()}
+                  </>
+                ) : null}
+
                 <div className="settings-help-copy">
-                  Status: <strong>{boardData.profile.completionStatus}</strong>
+                  Shared brief status: <strong>{boardData.profile.completionStatus}</strong>
                   {` · ${boardData.completion.percentComplete}% complete · `}
-                  {boardData.missingFields.length > 0 ? `Missing: ${boardData.missingFields.join(", ")}` : "Core onboarding fields are covered."}
+                  {boardData.missingFields.length > 0 ? `Still open: ${boardData.missingFields.join(", ")}` : "The core search inputs are in place."}
                 </div>
                 {boardData.completion.completedFields.length > 0 ? (
                   <div className="settings-help-copy">
-                    Completed: {boardData.completion.completedFields.join(", ")}
+                    Already covered: {boardData.completion.completedFields.join(", ")}
                   </div>
                 ) : null}
 
@@ -198,7 +318,7 @@ export default async function SettingsPage({
                     <label className="field-stack">
                       <span>Roommate status</span>
                       <select name="hasRoommates" defaultValue={boardData.profile.hasRoommates === undefined ? "" : String(boardData.profile.hasRoommates)}>
-                        <option value="">Unknown</option>
+                        <option value="">Not set yet</option>
                         <option value="true">Searching with roommates</option>
                         <option value="false">Searching solo</option>
                       </select>
@@ -206,7 +326,7 @@ export default async function SettingsPage({
                     <label className="field-stack">
                       <span>Pets</span>
                       <select name="pets" defaultValue={boardData.profile.pets === undefined ? "" : String(boardData.profile.pets)}>
-                        <option value="">Unknown</option>
+                        <option value="">Not set yet</option>
                         <option value="true">Need pet-friendly</option>
                         <option value="false">No pets in the picture</option>
                       </select>
@@ -214,7 +334,7 @@ export default async function SettingsPage({
                     <label className="field-stack">
                       <span>Parking</span>
                       <select name="parking" defaultValue={boardData.profile.parking === undefined ? "" : String(boardData.profile.parking)}>
-                        <option value="">Unknown</option>
+                        <option value="">Not set yet</option>
                         <option value="true">Need parking</option>
                         <option value="false">Do not need parking</option>
                       </select>
@@ -228,7 +348,7 @@ export default async function SettingsPage({
                         name="hasOfferLetter"
                         defaultValue={boardData.profile.rentalReadiness?.hasOfferLetter === undefined ? "" : String(boardData.profile.rentalReadiness?.hasOfferLetter)}
                       >
-                        <option value="">Unknown</option>
+                        <option value="">Not set yet</option>
                         <option value="true">Ready</option>
                         <option value="false">Not ready</option>
                       </select>
@@ -239,7 +359,7 @@ export default async function SettingsPage({
                         name="hasProofOfIncome"
                         defaultValue={boardData.profile.rentalReadiness?.hasProofOfIncome === undefined ? "" : String(boardData.profile.rentalReadiness?.hasProofOfIncome)}
                       >
-                        <option value="">Unknown</option>
+                        <option value="">Not set yet</option>
                         <option value="true">Ready</option>
                         <option value="false">Not ready</option>
                       </select>
@@ -250,28 +370,82 @@ export default async function SettingsPage({
                         name="needsGuarantor"
                         defaultValue={boardData.profile.rentalReadiness?.needsGuarantor === undefined ? "" : String(boardData.profile.rentalReadiness?.needsGuarantor)}
                       >
-                        <option value="">Unknown</option>
+                        <option value="">Not set yet</option>
                         <option value="true">May need one</option>
                         <option value="false">Do not expect to need one</option>
                       </select>
                     </label>
                   </div>
 
-                  <button type="submit" className="account-primary-button">Save board profile</button>
+                  <button type="submit" className="account-primary-button">Save shared brief</button>
                 </form>
 
                 <form action={confirmBoardProfileAction} className="account-form">
                   <input type="hidden" name="boardId" value={boardData.board.id} />
-                  <button type="submit" className="secondary-button">Confirm this profile</button>
+                  <button type="submit" className="secondary-button">Confirm shared brief</button>
                 </form>
 
                 <div className="settings-divider" />
 
                 <div className="settings-subsection">
-                  <h3>Board invites</h3>
+                  <h3>Collaborators</h3>
+                  <p className="settings-help-copy">
+                    These are the real people currently attached to the workspace. Remove someone here if the workspace was shared with the wrong person or the group changes.
+                  </p>
+                  <div className="invite-panel-list">
+                    {boardData.members.map((member) => {
+                      const isOwner = member.userId === boardData.board.userId;
+                      return (
+                        <article key={member.id} className="invite-summary-card">
+                          <div className="invite-summary-head">
+                            <div>
+                              <strong>{member.user.displayName}</strong>
+                              <span>{isOwner ? "Owner" : "Member"}</span>
+                            </div>
+                            {!isOwner ? (
+                              <form action={removeBoardMemberAction}>
+                                <input type="hidden" name="boardId" value={boardData.board.id} />
+                                <input type="hidden" name="memberUserId" value={member.userId} />
+                                <input type="hidden" name="redirectTo" value={`/settings?boardId=${boardData.board.id}`} />
+                                <button type="submit" className="secondary-button">Remove</button>
+                              </form>
+                            ) : null}
+                          </div>
+                          <p className="settings-help-copy">{member.user.email}</p>
+                          <p className="settings-help-copy">
+                            Joined {new Date(member.joinedAt).toLocaleDateString()}
+                            {member.user.workAddress ? ` · commute anchor: ${member.user.workAddress}` : ""}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {currentUser.id !== boardData.board.userId ? (
+                  <>
+                    <div className="settings-divider" />
+                    <div className="settings-subsection">
+                      <h3>Leave this workspace</h3>
+                      <p className="settings-help-copy">
+                        If this is no longer your search group, you can leave the workspace here. Your collaborator profile, votes, and comments in this workspace will be removed.
+                      </p>
+                      <form action={leaveBoardAction} className="account-form">
+                        <input type="hidden" name="boardId" value={boardData.board.id} />
+                        <input type="hidden" name="redirectTo" value="/" />
+                        <button type="submit" className="secondary-button">Leave board</button>
+                      </form>
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="settings-divider" />
+
+                <div className="settings-subsection">
+                  <h3>Workspace invites</h3>
                   <p className="settings-help-copy">
                     Invite collaborators by email, then send them the generated join link. Once they accept, they become a real
-                    board member and can finish their own profile.
+                    workspace member and can add their own commute and preference layer.
                   </p>
                   <form action={createBoardInvitationAction} className="account-form">
                     <input type="hidden" name="boardId" value={boardData.board.id} />
@@ -283,7 +457,7 @@ export default async function SettingsPage({
                     <button type="submit" className="account-primary-button">Generate invite link</button>
                   </form>
 
-                  <BoardInvitePanel invitations={boardData.invitations} />
+                  <BoardInvitePanel boardId={boardData.board.id} invitations={boardData.invitations} />
                 </div>
               </>
             ) : null}

@@ -314,25 +314,6 @@ model BoardEvent {
   @@index([boardId, createdAt])
 }
 
-model WaitlistSubmission {
-  id                     String   @id @default(cuid())
-  name                   String
-  email                  String   @unique
-  city                   String?
-  moveInTimeline         String?
-  groupSize              Int?
-  hasRoommates           Boolean?
-  activelySearching      Boolean?
-  willingToBetaTest      Boolean?
-  willingToInviteRoommates Boolean?
-  biggestFrustration     String?
-  source                 String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-
-  @@index([city, createdAt])
-}
-
 model AnalyticsEvent {
   id         String   @id @default(cuid())
   eventName  String

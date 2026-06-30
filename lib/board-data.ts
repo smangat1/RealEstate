@@ -78,6 +78,30 @@ function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function sameStringArray(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function summarizeProfileChanges(previous: SearchProfileData, next: SearchProfileData) {
+  const changed: string[] = [];
+
+  if (previous.city !== next.city || previous.locations.join("|") !== next.locations.join("|")) changed.push("city");
+  if (previous.moveInDate !== next.moveInDate || previous.moveInTimeframe !== next.moveInTimeframe) changed.push("move-in timing");
+  if (previous.budgetMin !== next.budgetMin || previous.budgetMax !== next.budgetMax || previous.stretchBudget !== next.stretchBudget) changed.push("budget");
+  if (previous.groupSize !== next.groupSize || previous.hasRoommates !== next.hasRoommates) changed.push("group setup");
+  if (previous.commuteTarget !== next.commuteTarget || previous.maxCommuteMinutes !== next.maxCommuteMinutes) changed.push("commute");
+  if (!sameStringArray(previous.neighborhoods, next.neighborhoods)) changed.push("neighborhoods");
+  if (!sameStringArray(previous.mustHaves, next.mustHaves)) changed.push("must-haves");
+  if (!sameStringArray(previous.niceToHaves, next.niceToHaves)) changed.push("nice-to-haves");
+  if (!sameStringArray(previous.dealbreakers, next.dealbreakers)) changed.push("dealbreakers");
+  if (!sameStringArray(previous.priorities, next.priorities)) changed.push("priorities");
+  if (previous.pets !== next.pets) changed.push("pets");
+  if (previous.parking !== next.parking) changed.push("parking");
+
+  return changed;
+}
+
 function createInviteCode() {
   return randomBytes(5).toString("hex").toUpperCase();
 }
@@ -206,22 +230,60 @@ function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData)
       ? `The current center of gravity is around ${compromiseAreas.join(", ")}.`
       : "The group has not settled on obvious compromise neighborhoods yet.";
 
+  const budgetFloor =
+    budgets.length > 0
+      ? Math.max(0, Math.min(...budgets) - 300)
+      : profile.budgetMin ?? profile.budgetMax ?? null;
+  const budgetCeiling = budgets.length > 0 ? Math.max(...budgets) : profile.budgetMax ?? null;
+  const budgetSpread = budgets.length >= 2 ? Math.max(...budgets) - Math.min(...budgets) : 0;
+  const budgetOverlapStatus: GroupSynthesis["budgetOverlapStatus"] =
+    budgets.length <= 1 ? "strong" : budgetSpread <= 300 ? "strong" : budgetSpread <= 800 ? "mixed" : "weak";
+  const commuteAlignment: GroupSynthesis["commuteAlignment"] =
+    commuteDestinations.length <= 1 ? "aligned" : commuteDestinations.length === 2 ? "mixed" : "split";
+  const neighborhoodAlignment: GroupSynthesis["neighborhoodAlignment"] =
+    compromiseAreas.length >= 2 ? "aligned" : preferredNeighborhoods.length <= 1 ? "aligned" : compromiseAreas.length === 1 ? "mixed" : "split";
+  const budgetRangeText =
+    budgetFloor !== null && budgetCeiling !== null
+      ? `$${budgetFloor.toLocaleString()} to $${budgetCeiling.toLocaleString()}`
+      : groupBudgetMax !== null
+        ? `up to $${groupBudgetMax.toLocaleString()}`
+        : "still loose";
+  const confidencePenalty =
+    (budgetOverlapStatus === "weak" ? 2 : budgetOverlapStatus === "mixed" ? 1 : 0) +
+    (commuteAlignment === "split" ? 2 : commuteAlignment === "mixed" ? 1 : 0) +
+    (neighborhoodAlignment === "split" ? 1 : 0) +
+    (roommates.length === 0 ? 2 : 0);
+  const confidenceLabel: GroupSynthesis["confidenceLabel"] =
+    confidencePenalty <= 1 ? "high" : confidencePenalty <= 3 ? "medium" : "low";
+  const confidenceReason =
+    confidenceLabel === "high"
+      ? "The board has enough aligned member signal that comparisons should be pretty trustworthy."
+      : confidenceLabel === "medium"
+        ? "The board has usable group signal, but a few tradeoffs could still swing the shortlist."
+        : "The board is still provisional because budget, commute, or neighborhood preferences are not aligned enough yet.";
+
   const summary =
     roommates.length === 0
       ? "This board is still basically single-player right now. Add roommates so the group tradeoff view starts becoming real."
       : `This board is balancing ${priorityTallies.join(", ")} across ${roommates.length} roommates. ${compromiseLine} ${
-          tensionFlags[0] ?? "Right now the group constraints are aligned enough to keep browsing without too much friction."
+          tensionFlags[0] ?? confidenceReason
         }`;
 
   return {
     groupBudgetMax,
+    budgetRangeText,
+    budgetOverlapStatus,
     commuteDestinations,
+    commuteAlignment,
     preferredNeighborhoods,
+    neighborhoodAlignment,
     mustHaves,
     dealbreakers,
     topSharedPriorities: priorityTallies,
     compromiseAreas,
     tensionFlags,
+    confidenceLabel,
+    confidenceReason,
     summary,
   };
 }
@@ -465,6 +527,43 @@ export async function updateUserProfile(userId: string, input: { displayName: st
   });
 }
 
+export async function updateBoardMetadataForUser(
+  boardId: string,
+  userId: string,
+  input: {
+    title?: string;
+  },
+) {
+  const board = await prisma.searchBoard.findFirst({
+    where: {
+      id: boardId,
+      userId,
+    },
+  });
+
+  if (!board) {
+    throw new Error("Only the workspace owner can update workspace details.");
+  }
+
+  const nextTitle = input.title?.trim() || board.title;
+  if (nextTitle !== board.title) {
+    await prisma.searchBoard.update({
+      where: { id: boardId },
+      data: { title: nextTitle },
+    });
+
+    await addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "board_renamed",
+      `The workspace was renamed from "${board.title}" to "${nextTitle}".`,
+    );
+  }
+
+  await touchBoard(boardId);
+}
+
 export async function updateBoardProfileForUser(
   boardId: string,
   userId: string,
@@ -491,13 +590,14 @@ export async function updateBoardProfileForUser(
 ) {
   const board = await ensureBoard(boardId, userId);
   if (!board) {
-    throw new Error("Board not found.");
+    throw new Error("Workspace not found.");
   }
 
   const data = await getBoardPageData(boardId, userId);
   if (!data) {
-    throw new Error("Profile not found.");
+    throw new Error("Shared brief not found.");
   }
+  const previousProfile = data.profile;
 
   const nextProfile = finalizeProfileState({
     ...data.profile,
@@ -526,22 +626,165 @@ export async function updateBoardProfileForUser(
   });
 
   await updateProfile(nextProfile);
+  const changedFields = summarizeProfileChanges(previousProfile, nextProfile);
+  if (changedFields.length > 0) {
+    await addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "profile_updated",
+      `The shared brief was updated manually${changedFields.length > 0 ? ` across ${changedFields.slice(0, 4).join(", ")}` : ""}.`,
+    );
+  }
+  await touchBoard(boardId);
+}
+
+export async function completeJoinedMemberSetup(
+  boardId: string,
+  userId: string,
+  input: {
+    workAddress?: string;
+    budgetMax?: string;
+    commuteDestination?: string;
+    preferredNeighborhoods?: string;
+    mustHaves?: string;
+    dealbreakers?: string;
+    notes?: string;
+  },
+) {
+  const board = await ensureBoard(boardId, userId);
+  if (!board) {
+    throw new Error("Workspace not found.");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new Error("Account not found.");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      workAddress: input.workAddress?.trim() || null,
+    },
+  });
+
+  const roommate = await prisma.roommateProfile.findFirst({
+    where: { boardId, linkedUserId: userId },
+  });
+
+  if (!roommate) {
+    throw new Error("Member profile not found.");
+  }
+
+  await updateRoommateProfile(roommate.id, {
+    budgetMax: input.budgetMax,
+    commuteDestination: input.commuteDestination || input.workAddress,
+    preferredNeighborhoods: input.preferredNeighborhoods,
+    mustHaves: input.mustHaves,
+    dealbreakers: input.dealbreakers,
+    notes: input.notes,
+    commutePriority: roommate.commutePriority,
+    neighborhoodPriority: roommate.neighborhoodPriority,
+    spacePriority: roommate.spacePriority,
+    privacyPriority: roommate.privacyPriority,
+  });
+
+  await addBoardEvent(
+    boardId,
+    "system",
+    "System",
+    "member_setup_completed",
+    `${user.displayName} added their member setup details.`,
+  );
+  await touchBoard(boardId);
+}
+
+export async function updateLinkedMemberProfile(
+  boardId: string,
+  userId: string,
+  input: {
+    workAddress?: string;
+    budgetMax?: string;
+    commuteDestination?: string;
+    preferredNeighborhoods?: string;
+    mustHaves?: string;
+    dealbreakers?: string;
+    notes?: string;
+    commutePriority?: string;
+    neighborhoodPriority?: string;
+    spacePriority?: string;
+    privacyPriority?: string;
+  },
+) {
+  const board = await ensureBoard(boardId, userId);
+  if (!board) {
+    throw new Error("Workspace not found.");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new Error("Account not found.");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      workAddress: input.workAddress?.trim() || null,
+    },
+  });
+
+  const roommate = await prisma.roommateProfile.findFirst({
+    where: { boardId, linkedUserId: userId },
+  });
+
+  if (!roommate) {
+    throw new Error("Member profile not found.");
+  }
+
+  await updateRoommateProfile(roommate.id, {
+    budgetMax: input.budgetMax,
+    commuteDestination: input.commuteDestination || input.workAddress,
+    preferredNeighborhoods: input.preferredNeighborhoods,
+    mustHaves: input.mustHaves,
+    dealbreakers: input.dealbreakers,
+    notes: input.notes,
+    commutePriority: input.commutePriority || roommate.commutePriority,
+    neighborhoodPriority: input.neighborhoodPriority || roommate.neighborhoodPriority,
+    spacePriority: input.spacePriority || roommate.spacePriority,
+    privacyPriority: input.privacyPriority || roommate.privacyPriority,
+  });
+
+  await addBoardEvent(
+    boardId,
+    "roommate",
+    user.displayName,
+    "member_preferences_updated",
+    `${user.displayName} updated their collaborator preferences and commute tradeoffs.`,
+  );
   await touchBoard(boardId);
 }
 
 export async function confirmBoardProfileForUser(boardId: string, userId: string) {
   const board = await ensureBoard(boardId, userId);
   if (!board) {
-    throw new Error("Board not found.");
+    throw new Error("Workspace not found.");
   }
 
   const data = await getBoardPageData(boardId, userId);
   if (!data) {
-    throw new Error("Profile not found.");
+    throw new Error("Shared brief not found.");
   }
 
   const nextProfile = finalizeProfileState(data.profile, "confirmed");
   await updateProfile(nextProfile);
+  await addBoardEvent(
+    boardId,
+    "system",
+    "System",
+    "profile_confirmed",
+    "The shared brief was confirmed and is ready to drive shared matching.",
+  );
   await touchBoard(boardId);
   await trackEvent("profile_completed", {
     boardId,
@@ -584,7 +827,7 @@ export async function deleteBoardForUser(boardId: string, userId: string) {
   });
 
   if (!board) {
-    throw new Error("Only the board owner can delete this chat.");
+    throw new Error("Only the workspace owner can delete this workspace.");
   }
 
   await prisma.searchBoard.delete({
@@ -812,7 +1055,7 @@ async function getSuggestedListings(
               `${listing.neighborhood}, ${listing.city} is one of the curated demo options for this exact search.`,
             tradeoffSummary:
               property?.demoTradeoffSummary ??
-              "This is a demo-mode listing, so the board is presenting a staged recommendation instead of a live match.",
+              "This is a demo-mode listing, so the workspace is presenting a staged recommendation instead of a live match.",
             commute: {
               listingId: listing.id,
               bestDurationMinutes: property?.demoCommuteMinutes ?? null,
@@ -971,7 +1214,7 @@ async function ensureOwnerMembership(boardId: string, ownerUserId: string) {
         boardId,
         linkedUserId: ownerUserId,
         name: owner.displayName,
-        roleLabel: "board owner",
+        roleLabel: "workspace owner",
         budgetMax: null,
         commuteDestination: owner.workAddress,
         commutePriority: "medium",
@@ -1246,7 +1489,7 @@ export async function createBoardAndReturnId(input: {
           actorType: "system",
           actorName: "System",
           eventType: "board_created",
-          content: `${input.authorName} created this shared board.`,
+          content: `${input.authorName} created this shared workspace.`,
         },
       },
       members: {
@@ -1257,9 +1500,9 @@ export async function createBoardAndReturnId(input: {
       },
       roommates: {
         create: {
-          linkedUserId: input.userId,
-          name: input.authorName,
-          roleLabel: "board owner",
+        linkedUserId: input.userId,
+        name: input.authorName,
+        roleLabel: "workspace owner",
           budgetMax: null,
           commuteDestination: null,
           commutePriority: "medium",
@@ -1404,6 +1647,13 @@ export async function sendChat(boardId: string, content: string, author: { userI
       userId: author.userId,
       completionStatus: nextProfile.completionStatus,
     });
+    await addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "profile_completed",
+      "The onboarding brief now covers the core fields well enough to create a reliable shared search profile.",
+    );
   }
 
   await prisma.chatMessage.create({
@@ -1503,7 +1753,7 @@ export async function addListingToBoard(
       "system",
       "System",
       "listing_deduped",
-      `A duplicate listing was folded back into the board instead of creating a second copy: ${formatListingLabel(duplicateBoardListing.listing)}.`,
+      `A duplicate listing was folded back into the workspace instead of creating a second copy: ${formatListingLabel(duplicateBoardListing.listing)}.`,
     );
     await touchBoard(boardId);
     return;
@@ -1533,7 +1783,7 @@ export async function addListingToBoard(
   });
 
   const analysis = {
-    aiSummary: listing.description ? "Listing added to the board for review." : "Listing saved with partial details.",
+    aiSummary: listing.description ? "Listing added to the workspace for review." : "Listing saved with partial details.",
     aiTradeoffAnalysis: "This was added manually, so the key thing is to confirm the missing details before anyone overcommits to it.",
     aiRedFlags: json(["Source details may still be incomplete"]),
     questionsToAsk: json(["Can you confirm the current availability and full monthly cost?"]),
@@ -1569,7 +1819,7 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
   if (!normalizedEmail) throw new Error("Invite email is required.");
 
   const board = await ensureBoard(boardId, invitedByUserId);
-  if (!board) throw new Error("Board not found.");
+  if (!board) throw new Error("Workspace not found.");
 
   const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (existingUser) {
@@ -1577,7 +1827,7 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
       where: { boardId_userId: { boardId, userId: existingUser.id } },
     });
     if (existingMember) {
-      throw new Error("That person is already on this board.");
+      throw new Error("That person is already in this workspace.");
     }
   }
 
@@ -1600,6 +1850,136 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
   await addBoardEvent(boardId, "system", "System", "invitation_created", `Invitation created for ${normalizedEmail}.`);
   await touchBoard(boardId);
   return mapInvitationRow(invitation);
+}
+
+export async function revokeBoardInvitation(invitationId: string, actingUserId: string) {
+  const invitation = await prisma.boardInvitation.findUnique({
+    where: { id: invitationId },
+    include: { board: true },
+  });
+
+  if (!invitation) {
+    throw new Error("Invite not found or no longer available.");
+  }
+
+  if (invitation.board.userId !== actingUserId) {
+    throw new Error("Only the workspace owner can revoke invites.");
+  }
+
+  if (invitation.status !== "pending") {
+    throw new Error("Only pending invites can be canceled.");
+  }
+
+  await prisma.boardInvitation.update({
+    where: { id: invitationId },
+    data: { status: "revoked" },
+  });
+
+  await addBoardEvent(
+    invitation.boardId,
+    "system",
+    "System",
+    "invitation_revoked",
+    `Invitation revoked for ${invitation.email}.`,
+  );
+  await touchBoard(invitation.boardId);
+  return invitation.boardId;
+}
+
+export async function removeBoardMember(boardId: string, actingUserId: string, memberUserId: string) {
+  const board = await prisma.searchBoard.findUnique({
+    where: { id: boardId },
+    include: {
+      members: {
+        include: {
+          user: true,
+        },
+      },
+    },
+  });
+
+  if (!board) {
+    throw new Error("Workspace not found.");
+  }
+
+  if (board.userId !== actingUserId) {
+    throw new Error("Only the workspace owner can remove members.");
+  }
+
+  if (memberUserId === board.userId) {
+    throw new Error("The workspace owner cannot be removed.");
+  }
+
+  const member = board.members.find((entry) => entry.userId === memberUserId);
+  if (!member) {
+    throw new Error("Collaborator not found.");
+  }
+
+  await prisma.boardMember.delete({
+    where: { boardId_userId: { boardId, userId: memberUserId } },
+  });
+
+  await prisma.roommateProfile.deleteMany({
+    where: {
+      boardId,
+      linkedUserId: memberUserId,
+    },
+  });
+
+  await addBoardEvent(
+    boardId,
+    "system",
+    "System",
+    "member_removed",
+    `${member.user.displayName} was removed from the workspace.`,
+  );
+  await touchBoard(boardId);
+}
+
+export async function leaveBoard(boardId: string, userId: string) {
+  const board = await prisma.searchBoard.findUnique({
+    where: { id: boardId },
+    include: {
+      members: {
+        include: {
+          user: true,
+        },
+      },
+    },
+  });
+
+  if (!board) {
+    throw new Error("Workspace not found.");
+  }
+
+  if (board.userId === userId) {
+    throw new Error("The workspace owner cannot leave their own workspace.");
+  }
+
+  const member = board.members.find((entry) => entry.userId === userId);
+  if (!member) {
+    throw new Error("You are not a member of this workspace.");
+  }
+
+  await prisma.boardMember.delete({
+    where: { boardId_userId: { boardId, userId } },
+  });
+
+  await prisma.roommateProfile.deleteMany({
+    where: {
+      boardId,
+      linkedUserId: userId,
+    },
+  });
+
+  await addBoardEvent(
+    boardId,
+    "system",
+    "System",
+    "member_left",
+    `${member.user.displayName} left the workspace.`,
+  );
+  await touchBoard(boardId);
 }
 
 export async function getInvitationByCode(inviteCode: string) {
@@ -1636,7 +2016,7 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error("User not found.");
+  if (!user) throw new Error("Account not found.");
   if (!user.email) throw new Error("Your account is missing an email address.");
 
   if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
@@ -1683,7 +2063,7 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
     data: { status: "accepted", acceptedAt: new Date() },
   });
 
-  await addBoardEvent(invitation.boardId, "system", "System", "invitation_accepted", `${user.displayName} joined the board.`);
+  await addBoardEvent(invitation.boardId, "system", "System", "invitation_accepted", `${user.displayName} joined the workspace.`);
   await touchBoard(invitation.boardId);
 
   return invitation.boardId;

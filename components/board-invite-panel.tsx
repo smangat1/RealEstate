@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { revokeBoardInvitationAction } from "@/app/actions";
 
 import type { BoardInvitationRecord } from "@/lib/types";
 
 type BoardInvitePanelProps = {
+  boardId: string;
   invitations: BoardInvitationRecord[];
+  redirectTo?: string;
+  emptyMessage?: string;
 };
 
 function buildInviteUrl(inviteCode: string) {
@@ -22,7 +26,12 @@ function formatCreatedAt(value: string) {
   });
 }
 
-export function BoardInvitePanel({ invitations }: BoardInvitePanelProps) {
+export function BoardInvitePanel({
+  boardId,
+  invitations,
+  redirectTo = `/settings?boardId=${boardId}`,
+  emptyMessage = "No pending invites yet. Create one below and send it to the exact email address that should join the workspace.",
+}: BoardInvitePanelProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   async function copyInvite(inviteCode: string) {
@@ -48,7 +57,7 @@ export function BoardInvitePanel({ invitations }: BoardInvitePanelProps) {
                 <div className="invite-summary-head">
                   <div>
                     <strong>{invitation.email}</strong>
-                    <span>Pending invite</span>
+                    <span>Awaiting response</span>
                   </div>
                   <button
                     type="button"
@@ -59,13 +68,21 @@ export function BoardInvitePanel({ invitations }: BoardInvitePanelProps) {
                   </button>
                 </div>
                 <a href={inviteUrl}>{inviteUrl}</a>
-                <p>Created {formatCreatedAt(invitation.createdAt)}</p>
+                <div className="invite-summary-actions">
+                  <p>Created {formatCreatedAt(invitation.createdAt)}</p>
+                  <form action={revokeBoardInvitationAction}>
+                    <input type="hidden" name="invitationId" value={invitation.id} />
+                    <input type="hidden" name="boardId" value={boardId} />
+                    <input type="hidden" name="redirectTo" value={redirectTo} />
+                    <button type="submit" className="secondary-button">Revoke</button>
+                  </form>
+                </div>
               </article>
             );
           })
         ) : (
           <p className="settings-help-copy">
-            No pending invites yet. Create one below and send the link to the exact email address that should join the board.
+            {emptyMessage}
           </p>
         )}
       </div>

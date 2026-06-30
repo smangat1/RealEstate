@@ -20,13 +20,19 @@ export function generateGroupProfile(profiles: RentalProfile[]): GroupProfile {
   if (profiles.length === 0) {
     return {
       groupBudgetMax: null,
+      budgetRangeText: "No budget signal yet",
+      budgetOverlapStatus: "weak",
       commuteDestinations: [],
+      commuteAlignment: "split",
       preferredNeighborhoods: [],
+      neighborhoodAlignment: "split",
       mustHaves: [],
       dealbreakers: [],
       topSharedPriorities: [],
       compromiseAreas: [],
       tensionFlags: [],
+      confidenceLabel: "low",
+      confidenceReason: "No profiles have been collected yet.",
       summary: "No profiles have been collected yet, so there is no real group brief to summarize.",
     };
   }
@@ -68,22 +74,52 @@ export function generateGroupProfile(profiles: RentalProfile[]): GroupProfile {
 
   const sharedCity = cities.length === 1 ? cities[0] : undefined;
   const sharedMoveDate = moveDates.length === 1 ? moveDates[0] : undefined;
+  const budgetFloor = budgetMins.length > 0 ? Math.min(...budgetMins) : budgetMaxes.length > 0 ? Math.min(...budgetMaxes) : null;
+  const budgetCeiling = budgetMaxes.length > 0 ? Math.max(...budgetMaxes) : budgetFloor;
+  const budgetSpread =
+    budgetMaxes.length > 1 ? Math.max(...budgetMaxes) - Math.min(...budgetMaxes) : 0;
+  const budgetOverlapStatus: GroupProfile["budgetOverlapStatus"] =
+    budgetMaxes.length <= 1 ? "strong" : budgetSpread <= 250 ? "strong" : budgetSpread <= 600 ? "mixed" : "weak";
+  const commuteAlignment: GroupProfile["commuteAlignment"] =
+    commuteDestinations.length <= 1 ? "aligned" : commuteDestinations.length === 2 ? "mixed" : "split";
+  const neighborhoodAlignment: GroupProfile["neighborhoodAlignment"] =
+    compromiseAreas.length >= 2 ? "aligned" : neighborhoods.length <= 1 ? "aligned" : compromiseAreas.length === 1 ? "mixed" : "split";
   const budgetLine =
-    budgetMins.length > 0 || budgetMaxes.length > 0
-      ? `roughly $${Math.min(...(budgetMins.length > 0 ? budgetMins : budgetMaxes)).toLocaleString()} to $${Math.max(...budgetMaxes).toLocaleString()}`
+    budgetFloor !== null && budgetCeiling !== null
+      ? `roughly $${budgetFloor.toLocaleString()} to $${budgetCeiling.toLocaleString()}`
       : "still loose";
+  const confidencePenalty =
+    (cities.length > 1 ? 1 : 0) +
+    (moveDates.length > 1 ? 1 : 0) +
+    (budgetOverlapStatus === "weak" ? 2 : budgetOverlapStatus === "mixed" ? 1 : 0) +
+    (commuteAlignment === "split" ? 2 : commuteAlignment === "mixed" ? 1 : 0) +
+    (neighborhoodAlignment === "split" ? 1 : 0);
+  const confidenceLabel: GroupProfile["confidenceLabel"] =
+    confidencePenalty <= 1 ? "high" : confidencePenalty <= 3 ? "medium" : "low";
+  const confidenceReason =
+    confidenceLabel === "high"
+      ? "The group is aligned enough that shared matching should be reasonably trustworthy."
+      : confidenceLabel === "medium"
+        ? "The group brief is usable, but there are still tradeoffs that could change which listings feel best."
+        : "The group brief is still provisional because the members are pulling in noticeably different directions.";
 
   return {
     groupBudgetMax: budgetMaxes.length > 0 ? Math.min(...budgetMaxes) : null,
+    budgetRangeText: budgetLine,
+    budgetOverlapStatus,
     commuteDestinations,
+    commuteAlignment,
     preferredNeighborhoods: neighborhoods,
+    neighborhoodAlignment,
     mustHaves,
     dealbreakers,
     topSharedPriorities: priorities.slice(0, 5),
     compromiseAreas,
     tensionFlags,
+    confidenceLabel,
+    confidenceReason,
     summary: `This group is ${sharedCity ? `centered on ${sharedCity}` : "still settling on a city"}, ${
       sharedMoveDate ? `moving around ${sharedMoveDate}` : "still aligning on move timing"
-    }, and currently budgeting ${budgetLine}.`,
+    }, and currently budgeting ${budgetLine}. ${confidenceReason}`,
   };
 }
