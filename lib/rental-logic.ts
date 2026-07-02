@@ -1299,7 +1299,7 @@ export function createBlankProfile(boardId: string): SearchProfileData {
   };
 }
 
-export function createBoard(title = "New rental search"): SearchBoardSummary {
+export function createBoard(title = "New workspace"): SearchBoardSummary {
   const now = new Date().toISOString();
   return { id: randomUUID(), userId: randomUUID(), title, name: title, city: undefined, createdAt: now, updatedAt: now };
 }

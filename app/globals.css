@@ -1964,6 +1964,14 @@ html[data-theme="light"] .modern-message.system .message-body {
   font-size: 0.92rem;
 }
 
+.invite-summary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .invite-summary-head {
   display: flex;
   justify-content: space-between;

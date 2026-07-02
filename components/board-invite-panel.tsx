@@ -26,6 +26,21 @@ function formatCreatedAt(value: string) {
   });
 }
 
+function formatExpiry(value: string | null) {
+  if (!value) return "No expiration";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No expiration";
+
+  const hoursRemaining = Math.round((date.getTime() - Date.now()) / (1000 * 60 * 60));
+  if (hoursRemaining <= 0) return "Expired";
+  if (hoursRemaining < 24) return `Expires in ${hoursRemaining}h`;
+
+  return `Expires ${date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  })}`;
+}
+
 export function BoardInvitePanel({
   boardId,
   invitations,
@@ -57,7 +72,7 @@ export function BoardInvitePanel({
                 <div className="invite-summary-head">
                   <div>
                     <strong>{invitation.email}</strong>
-                    <span>Awaiting response</span>
+                    <span>{formatExpiry(invitation.expiresAt)}</span>
                   </div>
                   <button
                     type="button"

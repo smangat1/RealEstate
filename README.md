@@ -1,126 +1,133 @@
-# Homeboard MVP
+# Homeboard
 
-Homeboard is a shared rental workspace for roommate groups and co-searchers. The product is built around one living search brief, one shared shortlist, and one place to compare commute, budget, neighborhood, and lifestyle tradeoffs before a lease decision gets made.
+Homeboard is a shared rental workspace for roommate groups and co-searchers. The product is designed to replace scattered texts, screenshots, and loose apartment links with one structured search brief, one shared shortlist, one inviteable workspace, and one place to weigh commute, neighborhood, budget, and lifestyle tradeoffs together.
 
-## What is here
+## Current product shape
 
-- `app/`
-  Next.js app router UI for:
-  - chat-first workspace creation
-  - shared workspace view with roommate cards
-  - conversational group preference flow
-  - full-screen match deck with batch requests
-  - listing add flows
-  - saved shortlist with votes and comments
-  - activity history and compromise summary
-- `lib/`
-  Local SQLite data access and mock advisor logic
-- `scripts/generate-dummy-data.ts`
-  Creates a normalized SQLite database with:
-  - users
-  - search workspaces
-  - search profiles
-  - roommate profiles
-  - listings
-  - workspace-to-listing joins
-  - listing votes
-  - listing comments
-  - workspace events
-  - price history
-  - chat messages
-- `prisma/schema.prisma`
-  Keeps the intended application data model visible for the later ORM-backed app layer.
+Homeboard currently includes:
 
-## Run the app locally
+- Supabase-backed auth with real accounts, email-bound invites, and shared workspace membership
+- Chat-led onboarding that builds a structured rental profile instead of forcing one big form upfront
+- Shared workspace surfaces for:
+  - group brief and readiness
+  - member preference cards
+  - shortlist, comments, and votes
+  - activity history
+  - invite management
+- Listing flows for:
+  - pasted links
+  - pasted text
+  - manual/demo-backed inventory
+- Commute-aware matching architecture with live OpenRouteService support when configured
+- Local Ollama support for onboarding and reasoning when local AI is enabled
+- Operator-only runtime diagnostics and analytics export for beta operations
 
-1. Install dependencies:
+## Stack
+
+- Next.js App Router
+- TypeScript
+- Prisma
+- Supabase Auth + Postgres
+- Ollama for local AI
+- OpenRouteService for commute timing
+
+## Local setup
+
+1. Install dependencies.
 
 ```bash
 npm install
 ```
 
-2. Generate data:
+2. Create your local env file.
 
 ```bash
-npm run db:seed:large
+cp .env.example .env.local
 ```
 
-3. Start the app:
+3. Fill in `.env.local`.
+
+Required for the real beta-style app:
+
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY`
+- `DATABASE_URL`
+
+Recommended depending on what you want active:
+
+- `OLLAMA_URL` if your local Ollama host is not the default
+- `OLLAMA_MODEL`
+- `OLLAMA_EXTRACT_MODEL`
+- `OLLAMA_REPLY_MODEL`
+- `OPENROUTESERVICE_API_KEY` for live commute timing
+- `HOMEBOARD_OPERATOR_EMAILS` as a comma-separated allowlist for operator-only controls
+- `HOMEBOARD_NOINDEX=false` only when you are ready for the site to be crawlable
+
+Optional runtime flags:
+
+- `DEMO_MODE=true` to use deterministic scripted onboarding and staged listings
+- `ENABLE_APP=false` to disable the live product surface entirely
+
+4. If you want local AI, make sure Ollama is running and the models you reference are available.
+
+5. Start the app.
 
 ```bash
 npm run dev
 ```
 
-If you want the scripted, no-AI demo flow, keep `DEMO_MODE="true"` in `.env.local`. In that mode the chat uses a deterministic product script from `lib/demo-chat.ts` instead of calling Ollama.
-
-If you want to curate your own fake inventory with custom photos, edit:
-
-`lib/demo-properties.ts`
-
-If you want local images for those demo properties, place them in:
-
-`public/demo-properties/`
-
-4. Open:
+6. Open the app.
 
 ```text
 http://localhost:3000
 ```
 
-## What to try
+## What to test
 
-- Start from the home screen and describe the group search instead of filling a rigid form.
-- Send messages like:
-  - `we want a cool neighborhood but commute still matters`
-  - `three roommates and 2800 each max`
-  - `actually one of us needs Midtown twice a week`
-  - `show me 5 listings`
-  - `give me more`
-- Open the full-screen match deck and move through listings in fresh batches instead of one static pile.
-- Update roommate cards directly in the workspace.
-- Add votes and comments to listings so the shortlist reflects group opinion.
-- Add a listing by:
-  - pasting a link
-  - pasting listing text
-  - manual entry can be added next if needed
-- Change listing statuses between `new`, `interested`, `maybe`, `rejected`, `toured`, and `applied`.
-- Read the group summary and activity feed to see how the compromise is shifting over time.
+- Create a real account and sign in
+- Start onboarding from the signed-in home surface
+- Build a brief conversationally with city, roommates, budget, move-in timing, commute, priorities, and dealbreakers
+- Confirm the brief and create a workspace
+- Invite another person by email
+- Open the invite route as the invited identity and accept the invite
+- Update member preferences and commute anchors
+- Add listings, vote, comment, and compare tradeoffs
+- Export analytics as an operator account from settings
+- Open the operator runtime JSON endpoint to verify env and service state without relying on the UI alone
 
-## Database output
+## Demo and staged inventory
 
-By default the script writes to:
+If you want the scripted, no-AI flow, enable:
 
-`data/rental-advisor.db`
-
-## Seed commands
-
-Install dependencies:
-
-```bash
-npm install
+```text
+DEMO_MODE=true
 ```
 
-Generate a small demo dataset:
+In demo mode:
+
+- onboarding uses deterministic scripted logic
+- listings can come from the staged demo catalog
+- commute can fall back to demo values
+
+If you want to curate staged listings and photos:
+
+- edit `lib/demo-properties.ts`
+- place local images in `public/demo-properties/`
+
+## Legacy dummy-data tooling
+
+The repository still includes large dummy-data generation scripts from the earlier prototype phase. They are useful for stress-testing UI density and seeded scenarios, but they are no longer the primary way this app is expected to run for external beta.
+
+Available commands:
 
 ```bash
 npm run db:seed
-```
-
-Generate a larger working dataset:
-
-```bash
 npm run db:seed:large
-```
-
-Generate a stress-test dataset:
-
-```bash
 npm run db:seed:huge
 ```
 
-## Custom generation
-
-You can override the preset counts:
+You can also customize generation directly:
 
 ```bash
 npx tsx scripts/generate-dummy-data.ts \
@@ -134,26 +141,9 @@ npx tsx scripts/generate-dummy-data.ts \
   --maxPriceHistoryEntries 10
 ```
 
-You can also choose a custom output path:
-
-```bash
-npx tsx scripts/generate-dummy-data.ts --scale huge --reset --dbPath ./data/dev-ui-pass.db
-```
-
-## Current default large dataset shape
-
-The verified `huge` preset currently generates:
-
-- 80 users
-- 450 search boards
-- 450 search profiles
-- 12,000 listings
-- 16,456 workspace listing saves
-- 53,715 price history rows
-- 8,100 chat messages
-
 ## Notes
 
-- The generator does not browse the web or scrape anything.
-- Listings include mixed sources like `manual`, `pasted_link`, `pasted_text`, and placeholder `api`.
-- JSON-like fields are stored as JSON strings in SQLite for this first pass so the UI can exercise realistic shapes immediately.
+- Homeboard does not browse the web or scrape listing sites.
+- Mixed listing sources are supported structurally, including `manual`, `pasted_link`, `pasted_text`, and future API-fed listings.
+- Live commute timing only turns on when `OPENROUTESERVICE_API_KEY` is configured.
+- Operator-only controls like runtime diagnostics and analytics export are gated by `HOMEBOARD_OPERATOR_EMAILS`.

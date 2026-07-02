@@ -15,6 +15,10 @@ function mapUser(row: {
   secondaryWorkAddress: string | null;
   createdAt: Date;
   updatedAt: Date;
+}, authState?: {
+  emailConfirmedAt?: string | null;
+  lastSignInAt?: string | null;
+  authProviders?: string[];
 }): AuthUserRecord {
   return {
     id: row.id,
@@ -23,6 +27,9 @@ function mapUser(row: {
     displayName: row.displayName,
     workAddress: row.workAddress,
     secondaryWorkAddress: row.secondaryWorkAddress,
+    emailConfirmedAt: authState?.emailConfirmedAt ?? null,
+    lastSignInAt: authState?.lastSignInAt ?? null,
+    authProviders: authState?.authProviders ?? [],
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -81,7 +88,20 @@ export async function syncAuthUserToProfile(authUser: SupabaseAuthUser) {
     },
   });
 
-  return mapUser(row);
+  const identities = Array.isArray(authUser.identities) ? authUser.identities : [];
+  const authProviders = Array.from(
+    new Set(
+      identities
+        .map((identity) => identity.provider)
+        .filter((provider): provider is string => typeof provider === "string" && provider.trim().length > 0),
+    ),
+  );
+
+  return mapUser(row, {
+    emailConfirmedAt: authUser.email_confirmed_at ?? null,
+    lastSignInAt: authUser.last_sign_in_at ?? null,
+    authProviders,
+  });
 }
 
 export async function getCurrentAuthUser() {

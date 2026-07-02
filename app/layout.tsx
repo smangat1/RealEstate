@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 
+import { shouldNoIndexSite } from "@/lib/site-visibility";
 import "./globals.css";
 
 const inter = Inter({
@@ -18,6 +19,17 @@ const cormorant = Cormorant_Garamond({
 export const metadata: Metadata = {
   title: "Homeboard",
   description: "A shared rental workspace for groups comparing listings, constraints, commute reality, and tradeoffs together.",
+  robots: shouldNoIndexSite()
+    ? {
+        index: false,
+        follow: false,
+        googleBot: {
+          index: false,
+          follow: false,
+          noimageindex: true,
+        },
+      }
+    : undefined,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

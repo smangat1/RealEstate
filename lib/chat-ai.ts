@@ -250,7 +250,7 @@ ${input.listingsCount}
 
 Rules:
 - Sound warm, natural, and conversational.
-- Frame the conversation as onboarding and setup for the shared rental board.
+- Frame the conversation as onboarding and setup for the shared workspace.
 - Do not sound templated or robotic.
 - Accept indirect answers naturally.
 - Mention what you understood when helpful.

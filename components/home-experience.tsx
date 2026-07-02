@@ -145,6 +145,11 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
 
   const completedCount = draft.completion.completedFields.length;
   const missingCount = draft.completion.missingFields.length;
+  const accountReadiness = currentUser.emailConfirmedAt
+    ? currentUser.workAddress
+      ? "Account verified and commute-ready"
+      : "Account verified, but commute anchors are still missing"
+    : "Signed in, but email verification status is still unclear";
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -346,6 +351,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
       <section className="home-stage">
         <div className="home-stage-inner onboarding-home-stage">
           <div className="home-badge">Onboarding</div>
+          <p className="settings-help-copy">{accountReadiness}</p>
           <h1>Shape the search brief first. Then open the shared workspace.</h1>
           <p>
             This is the pre-workspace onboarding flow. Once the rental profile feels right, Homeboard turns it into the shared workspace your group actually uses together.

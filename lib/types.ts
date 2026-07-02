@@ -19,6 +19,9 @@ export type AuthUserRecord = {
   displayName: string;
   workAddress: string | null;
   secondaryWorkAddress: string | null;
+  emailConfirmedAt: string | null;
+  lastSignInAt: string | null;
+  authProviders: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -287,6 +290,7 @@ export type DemoScenario = {
 
 export type BoardPageData = {
   isDemoMode: boolean;
+  commuteMode: "demo" | "live" | "disabled";
   board: RentalBoard;
   profile: RentalProfile;
   roommates: RoommateRecord[];

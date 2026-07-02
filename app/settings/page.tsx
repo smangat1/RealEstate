@@ -16,9 +16,25 @@ import { BoardInvitePanel } from "@/components/board-invite-panel";
 import { getCurrentAppUser } from "@/lib/auth";
 import { isAppEnabled } from "@/lib/app-mode";
 import { getBoardPageData, getRecentBoardsForUser } from "@/lib/board-data";
+import { isOperatorUser } from "@/lib/operator-access";
+import { getRuntimeStatus } from "@/lib/runtime-status";
 
 function csv(values: string[]) {
   return values.join(", ");
+}
+
+function runtimeLabel(value: boolean) {
+  return value ? "Ready" : "Needs setup";
+}
+
+function formatStatusTimestamp(value: string | null) {
+  if (!value) return "Not available";
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default async function SettingsPage({
@@ -38,6 +54,8 @@ export default async function SettingsPage({
   const notice = typeof params.notice === "string" ? params.notice : "";
   const error = typeof params.error === "string" ? params.error : "";
   const recentBoards = await getRecentBoardsForUser(currentUser.id, 12);
+  const isOperator = isOperatorUser(currentUser);
+  const runtime = getRuntimeStatus();
   const selectedBoardId =
     typeof params.boardId === "string" && recentBoards.some((board) => board.id === params.boardId)
       ? params.boardId
@@ -68,9 +86,108 @@ export default async function SettingsPage({
 
         <div className="settings-grid">
           <section className="settings-section">
+            {isOperator ? (
+              <>
+                <h2>Runtime status</h2>
+                <p className="settings-help-copy">
+                  This is the external beta operator view. It shows which systems are truly wired, which ones are still using
+                  local fallbacks, and what would block a live tester from getting the full experience.
+                </p>
+                <div className="account-form-grid account-form-grid-2">
+                  <article className="invite-summary-card">
+                    <div className="invite-summary-head">
+                      <div>
+                        <strong>App gate</strong>
+                        <span>{runtime.appEnabled ? "Public app surface is enabled" : "App is currently disabled"}</span>
+                      </div>
+                      <span>{runtime.appEnabled ? "Live" : "Off"}</span>
+                    </div>
+                    <p>Demo mode: {runtime.demoMode ? "On" : "Off"}</p>
+                  </article>
+                  <article className="invite-summary-card">
+                    <div className="invite-summary-head">
+                      <div>
+                        <strong>Auth + data</strong>
+                        <span>Supabase, admin access, and database wiring</span>
+                      </div>
+                      <span>{runtimeLabel(runtime.supabaseConfigured && runtime.supabaseAdminConfigured && runtime.databaseConfigured)}</span>
+                    </div>
+                    <p>Supabase client: {runtimeLabel(runtime.supabaseConfigured)}</p>
+                    <p>Supabase admin: {runtimeLabel(runtime.supabaseAdminConfigured)}</p>
+                    <p>Database URL: {runtimeLabel(runtime.databaseConfigured)}</p>
+                  </article>
+                  <article className="invite-summary-card">
+                    <div className="invite-summary-head">
+                      <div>
+                        <strong>AI assistant</strong>
+                        <span>Local Ollama stack currently backing onboarding and reasoning</span>
+                      </div>
+                      <span>{runtime.ollamaConfigured ? "Configured" : "Fallback defaults"}</span>
+                    </div>
+                    <p>Host: {runtime.ollamaUrl}</p>
+                    <p>Base model: {runtime.ollamaModel}</p>
+                    <p>Extract model: {runtime.ollamaExtractModel}</p>
+                    <p>Reply model: {runtime.ollamaReplyModel}</p>
+                  </article>
+                  <article className="invite-summary-card">
+                    <div className="invite-summary-head">
+                      <div>
+                        <strong>Commute engine</strong>
+                        <span>Route timing for group commute tradeoff analysis</span>
+                      </div>
+                      <span>{runtime.commuteMode}</span>
+                    </div>
+                    <p>
+                      {runtime.commuteMode === "live"
+                        ? "OpenRouteService is configured, so live commute timing can run."
+                        : runtime.commuteMode === "demo"
+                          ? "Commute output is coming from deterministic demo logic right now."
+                          : "Add OPENROUTESERVICE_API_KEY to unlock live commute timing."}
+                    </p>
+                  </article>
+                </div>
+                <div className="detail-chip-wrap">
+                  <a href="/api/runtime-status" className="secondary-button" target="_blank" rel="noreferrer">
+                    Open runtime JSON
+                  </a>
+                  <a href="/api/analytics/export" className="secondary-button">
+                    Export analytics CSV
+                  </a>
+                </div>
+
+                <div className="settings-divider" />
+              </>
+            ) : null}
+
             <h2>Your identity</h2>
             {error ? <div className="account-message account-message-error">{error}</div> : null}
             {notice ? <div className="account-message account-message-notice">{notice}</div> : null}
+            <div className="account-form-grid account-form-grid-2">
+              <article className="invite-summary-card">
+                <div className="invite-summary-head">
+                  <div>
+                    <strong>Account trust</strong>
+                    <span>{currentUser.emailConfirmedAt ? "Email-confirmed identity" : "Email confirmation still unclear"}</span>
+                  </div>
+                  <span>{currentUser.emailConfirmedAt ? "Confirmed" : "Check auth"}</span>
+                </div>
+                <p>Email: {currentUser.email}</p>
+                <p>Confirmed: {formatStatusTimestamp(currentUser.emailConfirmedAt)}</p>
+                <p>Last sign-in: {formatStatusTimestamp(currentUser.lastSignInAt)}</p>
+              </article>
+              <article className="invite-summary-card">
+                <div className="invite-summary-head">
+                  <div>
+                    <strong>Account readiness</strong>
+                    <span>What this identity can already contribute to the workspace</span>
+                  </div>
+                  <span>{currentUser.workAddress ? "Commute-ready" : "Needs anchor"}</span>
+                </div>
+                <p>Primary commute anchor: {currentUser.workAddress ?? "Not set yet"}</p>
+                <p>Secondary commute anchor: {currentUser.secondaryWorkAddress ?? "Not set yet"}</p>
+                <p>Auth provider{currentUser.authProviders.length === 1 ? "" : "s"}: {currentUser.authProviders.join(", ") || "email"}</p>
+              </article>
+            </div>
             <form action={updateSettingsAction} className="account-form">
               <label className="field-stack">
                 <span>Name</span>
@@ -105,7 +222,7 @@ export default async function SettingsPage({
             {recentBoards.length > 0 ? (
               <div className="account-form">
                 <div className="field-stack">
-                  <span>Board</span>
+                  <span>Workspace</span>
                   <div className="detail-chip-wrap">
                     {recentBoards.map((board) => (
                       <Link
@@ -128,14 +245,14 @@ export default async function SettingsPage({
                 {currentUser.id === boardData.board.userId ? (
                   <>
                     <div className="settings-subsection">
-                      <h3>Board details</h3>
+                      <h3>Workspace details</h3>
                       <p className="settings-help-copy">
                         Rename the workspace if the original onboarding title was too rough or no longer reflects what the group is actually searching for.
                       </p>
                       <form action={updateBoardMetadataAction} className="account-form">
                         <input type="hidden" name="boardId" value={boardData.board.id} />
                         <label className="field-stack">
-                          <span>Board title</span>
+                          <span>Workspace title</span>
                           <input name="title" defaultValue={boardData.board.title} placeholder="NYC grad roommate search" />
                         </label>
                         <button type="submit" className="account-primary-button">Save workspace details</button>
@@ -433,7 +550,7 @@ export default async function SettingsPage({
                       <form action={leaveBoardAction} className="account-form">
                         <input type="hidden" name="boardId" value={boardData.board.id} />
                         <input type="hidden" name="redirectTo" value="/" />
-                        <button type="submit" className="secondary-button">Leave board</button>
+                        <button type="submit" className="secondary-button">Leave workspace</button>
                       </form>
                     </div>
                   </>

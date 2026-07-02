@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { exportAnalyticsEventsAsCsv, trackEvent } from "@/lib/analytics";
+import { trackEvent } from "@/lib/analytics";
 import { getCurrentAppUser } from "@/lib/auth";
 import { isAppEnabled } from "@/lib/app-mode";
 import { isOperatorUser } from "@/lib/operator-access";
+import { getRuntimeStatus } from "@/lib/runtime-status";
 
 export async function GET() {
   if (!isAppEnabled()) {
@@ -18,19 +19,15 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const csv = await exportAnalyticsEventsAsCsv();
-  const timestamp = new Date().toISOString().slice(0, 10);
+  const runtime = getRuntimeStatus();
 
-  await trackEvent("analytics_exported", {
+  await trackEvent("runtime_status_viewed", {
     userId: currentUser.id,
     email: currentUser.email,
   });
 
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="homeboard-analytics-${timestamp}.csv"`,
-      "Cache-Control": "no-store",
-    },
+  return NextResponse.json({
+    checkedAt: new Date().toISOString(),
+    runtime,
   });
 }

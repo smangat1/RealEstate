@@ -29,6 +29,15 @@ function getModelOverride(task?: "extract" | "reply") {
   return getOllamaModel();
 }
 
+export function getOllamaRuntimeConfig() {
+  return {
+    url: getOllamaUrl(),
+    model: getOllamaModel(),
+    extractModel: getModelOverride("extract"),
+    replyModel: getModelOverride("reply"),
+  };
+}
+
 export async function generateWithOllama(
   prompt: string,
   options?: {

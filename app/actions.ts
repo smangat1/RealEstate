@@ -28,6 +28,7 @@ import {
   updateUserProfile,
 } from "@/lib/board-data";
 import { trackEvent } from "@/lib/analytics";
+import { assertThrottle } from "@/lib/action-throttle";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function redirectWithMessage(path: string, key: "error" | "notice", message: string): never {
@@ -76,6 +77,18 @@ export async function signUpAction(formData: FormData) {
     redirectWithMessage(registerPath, "error", "Name, email, and password are required.");
   }
 
+  try {
+    assertThrottle({
+      scope: "sign-up",
+      key: email,
+      limit: 4,
+      windowMs: 1000 * 60 * 10,
+      message: "Too many sign-up attempts for this email. Please wait a few minutes and try again.",
+    });
+  } catch (error) {
+    redirectWithMessage(registerPath, "error", error instanceof Error ? error.message : "Too many sign-up attempts.");
+  }
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signUp({
     email,
@@ -91,6 +104,11 @@ export async function signUpAction(formData: FormData) {
   if (error) {
     redirectWithMessage(registerPath, "error", error.message);
   }
+
+  await trackEvent("sign_up_completed", {
+    email,
+    hasInviteContext: next.startsWith("/invite/"),
+  });
 
   await supabase.auth.signOut();
   redirectWithMessage(`/?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`, "notice", `Account created for ${displayName}. Verify your email if required, then sign in to continue.`);
@@ -108,6 +126,18 @@ export async function signInAction(formData: FormData) {
     redirectWithMessage("/", "error", "Email and password are required.");
   }
 
+  try {
+    assertThrottle({
+      scope: "sign-in",
+      key: email,
+      limit: 8,
+      windowMs: 1000 * 60 * 10,
+      message: "Too many sign-in attempts for this email. Please wait a few minutes and try again.",
+    });
+  } catch (error) {
+    redirectWithMessage("/", "error", error instanceof Error ? error.message : "Too many sign-in attempts.");
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -121,6 +151,11 @@ export async function signInAction(formData: FormData) {
   }
 
   await syncAuthUserToProfile(authUser);
+  await trackEvent("sign_in_completed", {
+    userId: authUser.id,
+    email,
+    hasInviteContext: next.startsWith("/invite/"),
+  });
   redirect(next);
 }
 
@@ -143,7 +178,7 @@ export async function createBoardAction(formData: FormData) {
   const initialPrompt = String(formData.get("initialPrompt") || "").trim();
   const titleInput = String(formData.get("title") || "").trim();
   const title =
-    titleInput || (initialPrompt ? `${initialPrompt.slice(0, 42)}${initialPrompt.length > 42 ? "..." : ""}` : "New rental search");
+    titleInput || (initialPrompt ? `${initialPrompt.slice(0, 42)}${initialPrompt.length > 42 ? "..." : ""}` : "New workspace");
   await trackEvent("onboarding_started", {
     userId: currentUser.id,
     initialPrompt,
@@ -170,6 +205,10 @@ export async function deleteBoardAction(formData: FormData) {
   }
 
   await deleteBoardForUser(boardId, currentUser.id);
+  await trackEvent("workspace_deleted", {
+    boardId,
+    userId: currentUser.id,
+  });
   revalidatePath("/");
   redirect(redirectTo);
 }
@@ -180,6 +219,19 @@ export async function sendChatAction(formData: FormData) {
   const boardId = String(formData.get("boardId") || "");
   const content = String(formData.get("content") || "").trim();
   if (!currentUser || !boardId || !content) return;
+
+  try {
+    assertThrottle({
+      scope: "workspace-chat",
+      key: `${currentUser.id}:${boardId}`,
+      limit: 12,
+      windowMs: 1000 * 60,
+      message: "You are sending messages too quickly. Give the workspace a moment and try again.",
+    });
+  } catch {
+    revalidatePath(`/boards/${boardId}`);
+    redirect(`/boards/${boardId}?error=${encodeURIComponent("You are sending messages too quickly. Give the workspace a moment and try again.")}`);
+  }
 
   await sendChat(boardId, content, { userId: currentUser.id, authorName: currentUser.displayName });
   revalidatePath(`/boards/${boardId}`);
@@ -249,6 +301,18 @@ export async function createBoardInvitationAction(formData: FormData) {
   const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
   if (!currentUser || !boardId || !email.trim()) {
     redirectWithMessage(redirectTo, "error", "Invite email is required.");
+  }
+
+  try {
+    assertThrottle({
+      scope: "workspace-invite",
+      key: `${currentUser.id}:${boardId}`,
+      limit: 10,
+      windowMs: 1000 * 60 * 10,
+      message: "Too many invite attempts in a short window. Please wait a few minutes and try again.",
+    });
+  } catch (error) {
+    redirectWithMessage(redirectTo, "error", error instanceof Error ? error.message : "Too many invite attempts.");
   }
 
   try {
@@ -419,7 +483,7 @@ export async function updateBoardMetadataAction(formData: FormData) {
 
   revalidatePath(`/settings?boardId=${boardId}`);
   revalidatePath(`/boards/${boardId}`);
-  redirect(`/settings?boardId=${boardId}&notice=${encodeURIComponent("Board details updated.")}`);
+  redirect(`/settings?boardId=${boardId}&notice=${encodeURIComponent("Workspace details updated.")}`);
 }
 
 export async function updateBoardProfileSettingsAction(formData: FormData) {

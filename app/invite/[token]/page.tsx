@@ -1,10 +1,23 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { acceptBoardInvitationAction } from "@/app/actions";
+import { acceptBoardInvitationAction, signOutAction } from "@/app/actions";
 import { getCurrentAppUser } from "@/lib/auth";
 import { isAppEnabled } from "@/lib/app-mode";
 import { getInvitationByCode } from "@/lib/board-data";
+
+function formatInviteExpiry(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token: inviteCode } = await params;
@@ -23,6 +36,39 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               <h1>This invite is gone.</h1>
               <p>It may have expired, already been used, or never existed in the first place.</p>
               <Link href="/" className="secondary-button">Back to Homeboard</Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const isExpired = inviteData.wasExpired;
+
+  if (isExpired) {
+    return (
+      <main className="account-shell">
+        <section className="account-card mac-window-card">
+          <div className="account-layout single-panel-layout">
+            <div className="account-intro">
+              <div className="home-badge">Workspace invite</div>
+              <h1>This invite expired.</h1>
+              <p>
+                The link for <strong>{inviteData.invitation.email}</strong> is no longer active. Ask the workspace owner to refresh the invite and send you a new link.
+              </p>
+              <div className="account-feature-list">
+                <div className="account-feature">
+                  <strong>Workspace</strong>
+                  <span>{inviteData.board.title}</span>
+                </div>
+                <div className="account-feature">
+                  <strong>Invited by</strong>
+                  <span>{inviteData.invitedBy.displayName}</span>
+                </div>
+              </div>
+              <div className="register-actions">
+                <Link href="/" className="secondary-button">Back to Homeboard</Link>
+              </div>
             </div>
           </div>
         </section>
@@ -65,6 +111,11 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               <p>
                 {inviteData.invitedBy.displayName} invited <strong>{inviteData.invitation.email}</strong> into this shared Homeboard workspace.
               </p>
+              {inviteData.invitation.expiresAt ? (
+                <div className="account-message account-message-notice">
+                  This invite stays active until {formatInviteExpiry(inviteData.invitation.expiresAt)}.
+                </div>
+              ) : null}
 
               <div className="account-feature-list">
                 <div className="account-feature">
@@ -110,11 +161,21 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
             <p>
               {inviteData.invitedBy.displayName} invited <strong>{inviteData.invitation.email}</strong> into this shared Homeboard workspace.
             </p>
+            {inviteData.invitation.expiresAt ? (
+              <div className="account-message account-message-notice">
+                This invite stays active until {formatInviteExpiry(inviteData.invitation.expiresAt)}.
+              </div>
+            ) : null}
 
             {!emailMatches ? (
-              <div className="account-message account-message-error">
-                You are signed in as {currentUser.email}, but this invite belongs to {inviteData.invitation.email}.
-              </div>
+              <>
+                <div className="account-message account-message-error">
+                  You are signed in as {currentUser.email}, but this invite belongs to {inviteData.invitation.email}.
+                </div>
+                <form action={signOutAction}>
+                  <button type="submit" className="secondary-button">Sign out and switch accounts</button>
+                </form>
+              </>
             ) : null}
 
             <div className="account-feature-list">

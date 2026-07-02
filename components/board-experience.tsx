@@ -73,6 +73,22 @@ function formatCommuteSnippet(commute: BoardPageData["boardListingCommutesByBoar
   }`;
 }
 
+function formatCommuteModeLabel(mode: BoardPageData["commuteMode"]) {
+  if (mode === "live") return "Live commute";
+  if (mode === "demo") return "Demo commute";
+  return "Commute API off";
+}
+
+function formatCommuteModeHelp(mode: BoardPageData["commuteMode"]) {
+  if (mode === "live") {
+    return "Route times are being estimated from your saved commute anchors.";
+  }
+  if (mode === "demo") {
+    return "Demo mode is using staged commute values instead of live routing calls.";
+  }
+  return "Add OPENROUTESERVICE_API_KEY to turn live commute timing on for this workspace.";
+}
+
 function formatBudgetRange(profile: BoardPageData["profile"]) {
   const parts: string[] = [];
   if (profile.budgetMin !== undefined && profile.budgetMax !== undefined) {
@@ -792,8 +808,13 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                   <span>Pending invites</span>
                   <strong>{data.invitations.length}</strong>
                 </div>
+                <div className="board-readiness-block">
+                  <span>Commute status</span>
+                  <strong>{formatCommuteModeLabel(data.commuteMode)}</strong>
+                </div>
               </div>
               <p className="board-readiness-copy">{readinessDetail}</p>
+              <p className="settings-help-copy">{formatCommuteModeHelp(data.commuteMode)}</p>
               <p className="settings-help-copy">
                   {isRefreshingBoard ? "Refreshing workspace activity..." : "The workspace refreshes quietly while collaborators are active so everyone stays close to the same state."}
                 </p>

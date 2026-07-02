@@ -7,7 +7,16 @@ import { prisma } from "@/lib/prisma";
 export type AnalyticsEventName =
   | "onboarding_started"
   | "profile_completed"
-  | "board_created";
+  | "board_created"
+  | "sign_up_completed"
+  | "sign_in_completed"
+  | "workspace_deleted"
+  | "invite_created"
+  | "invite_refreshed"
+  | "invite_revoked"
+  | "invite_accepted"
+  | "analytics_exported"
+  | "runtime_status_viewed";
 
 type AnalyticsPayload = Record<string, unknown>;
 

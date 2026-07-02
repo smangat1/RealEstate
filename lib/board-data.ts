@@ -38,7 +38,7 @@ import {
   mapProfileRow,
   parseListingBrowseRequest,
 } from "@/lib/rental-logic";
-import { estimateCommutes } from "@/lib/commute-service";
+import { estimateCommutes, getCommuteServiceMode } from "@/lib/commute-service";
 import { getNeighborhoodSignal } from "@/lib/neighborhood-signals";
 import { prisma } from "@/lib/prisma";
 import { trackEvent } from "@/lib/analytics";
@@ -314,6 +314,9 @@ function mapUserRow(row: {
     displayName: row.displayName,
     workAddress: row.workAddress,
     secondaryWorkAddress: row.secondaryWorkAddress,
+    emailConfirmedAt: null,
+    lastSignInAt: null,
+    authProviders: [],
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -376,6 +379,23 @@ function mapInvitationRow(row: {
     acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString() : null,
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
   };
+}
+
+function invitationIsExpired(row: { status: string; expiresAt: Date | null }) {
+  return row.status === "pending" && Boolean(row.expiresAt && row.expiresAt.getTime() < Date.now());
+}
+
+async function expireStaleBoardInvitations(boardId: string) {
+  await prisma.boardInvitation.updateMany({
+    where: {
+      boardId,
+      status: "pending",
+      expiresAt: { lt: new Date() },
+    },
+    data: {
+      status: "revoked",
+    },
+  });
 }
 
 function mapListingRow(row: {
@@ -1237,6 +1257,7 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
   const boardAccess = await ensureBoard(boardId, viewerUserId);
   if (!boardAccess) return null;
   await ensureOwnerMembership(boardId, boardAccess.userId);
+  await expireStaleBoardInvitations(boardId);
 
   const board = await prisma.searchBoard.findUnique({
     where: { id: boardId },
@@ -1404,9 +1425,11 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
   const browseRequests = getBrowseRequests(messages);
   const currentBrowseRequest = browseRequests.at(-1) ?? null;
   const groupSynthesis = summarizeGroup(roommates, profile);
+  const commuteMode = getCommuteServiceMode(demoMode);
 
   return {
     isDemoMode: demoMode,
+    commuteMode,
     board: {
       id: board.id,
       userId: board.userId,
@@ -1448,7 +1471,7 @@ export async function createBoardAndReturnId(input: {
   initialAssistantMessage?: string;
 }) {
   await ensureStarterCatalog();
-  const title = input.title?.trim() || "New rental search";
+  const title = input.title?.trim() || "New workspace";
   const blankProfile = createBlankProfile("temp");
   const seededProfile = finalizeProfileState({ ...blankProfile, ...(input.profileSeed ?? {}) });
 
@@ -1815,6 +1838,7 @@ export async function addListingToBoard(
 }
 
 export async function createBoardInvitation(boardId: string, invitedByUserId: string, email: string) {
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) throw new Error("Invite email is required.");
 
@@ -1835,7 +1859,30 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
     where: { boardId, email: normalizedEmail, status: "pending" },
   });
 
-  if (existingInvite) return mapInvitationRow(existingInvite);
+  if (existingInvite) {
+    const refreshedInvite = await prisma.boardInvitation.update({
+      where: { id: existingInvite.id },
+      data: {
+        expiresAt,
+      },
+    });
+
+    await addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "invitation_refreshed",
+      `Invitation refreshed for ${normalizedEmail}.`,
+    );
+    await trackEvent("invite_refreshed", {
+      boardId,
+      invitedByUserId,
+      email: normalizedEmail,
+      invitationId: existingInvite.id,
+    });
+    await touchBoard(boardId);
+    return mapInvitationRow(refreshedInvite);
+  }
 
   const invitation = await prisma.boardInvitation.create({
     data: {
@@ -1843,11 +1890,17 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
       invitedByUserId,
       email: normalizedEmail,
       inviteCode: createInviteCode(),
-      expiresAt: null,
+      expiresAt,
     },
   });
 
   await addBoardEvent(boardId, "system", "System", "invitation_created", `Invitation created for ${normalizedEmail}.`);
+  await trackEvent("invite_created", {
+    boardId,
+    invitedByUserId,
+    email: normalizedEmail,
+    invitationId: invitation.id,
+  });
   await touchBoard(boardId);
   return mapInvitationRow(invitation);
 }
@@ -1882,6 +1935,12 @@ export async function revokeBoardInvitation(invitationId: string, actingUserId: 
     "invitation_revoked",
     `Invitation revoked for ${invitation.email}.`,
   );
+  await trackEvent("invite_revoked", {
+    boardId: invitation.boardId,
+    invitationId: invitation.id,
+    email: invitation.email,
+    actingUserId,
+  });
   await touchBoard(invitation.boardId);
   return invitation.boardId;
 }
@@ -1992,6 +2051,15 @@ export async function getInvitationByCode(inviteCode: string) {
   });
 
   if (!invitation) return null;
+  const wasExpired = invitationIsExpired(invitation);
+
+  if (wasExpired) {
+    await prisma.boardInvitation.update({
+      where: { id: invitation.id },
+      data: { status: "revoked" },
+    });
+    invitation.status = "revoked";
+  }
 
   return {
     invitation: mapInvitationRow(invitation),
@@ -2003,6 +2071,7 @@ export async function getInvitationByCode(inviteCode: string) {
       updatedAt: invitation.board.updatedAt.toISOString(),
     },
     invitedBy: mapUserRow(invitation.invitedByUser),
+    wasExpired,
   };
 }
 
@@ -2011,7 +2080,11 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
   if (!invitation || invitation.status !== "pending") {
     throw new Error("This invite is no longer available.");
   }
-  if (invitation.expiresAt && invitation.expiresAt.getTime() < Date.now()) {
+  if (invitationIsExpired(invitation)) {
+    await prisma.boardInvitation.update({
+      where: { id: invitation.id },
+      data: { status: "revoked" },
+    });
     throw new Error("This invite has expired.");
   }
 
@@ -2064,6 +2137,12 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
   });
 
   await addBoardEvent(invitation.boardId, "system", "System", "invitation_accepted", `${user.displayName} joined the workspace.`);
+  await trackEvent("invite_accepted", {
+    boardId: invitation.boardId,
+    invitationId: invitation.id,
+    email: invitation.email,
+    userId,
+  });
   await touchBoard(invitation.boardId);
 
   return invitation.boardId;

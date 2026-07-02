@@ -2,6 +2,8 @@ import "server-only";
 
 type Coordinates = [number, number];
 
+export type CommuteServiceMode = "demo" | "live" | "disabled";
+
 export type CommuteEstimate = {
   listingId: string;
   bestDurationMinutes: number | null;
@@ -19,6 +21,11 @@ const geocodeCache = new Map<string, Coordinates | null>();
 
 function getOpenRouteServiceApiKey() {
   return process.env.OPENROUTESERVICE_API_KEY?.trim() || null;
+}
+
+export function getCommuteServiceMode(isDemoMode: boolean): CommuteServiceMode {
+  if (isDemoMode) return "demo";
+  return getOpenRouteServiceApiKey() ? "live" : "disabled";
 }
 
 async function geocode(query: string): Promise<Coordinates | null> {
