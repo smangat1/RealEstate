@@ -43,8 +43,8 @@ targets:
         INFOPLIST_FILE: HomeboardNative/Info.plist
         CURRENT_PROJECT_VERSION: 13
         MARKETING_VERSION: 0.0.12
-        HOMEBOARD_API_BASE_URL: "http://Samyans-Laptop.local:3000"
-        HOMEBOARD_PUBLIC_WEB_URL: ""
+        HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
@@ -78,7 +78,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: HomeboardShareExtension/HomeboardShareExtension.entitlements
         CURRENT_PROJECT_VERSION: 13
         MARKETING_VERSION: 0.0.12
-        HOMEBOARD_API_BASE_URL: "http://Samyans-Laptop.local:3000"
+        HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         TARGETED_DEVICE_FAMILY: "1"
@@ -103,7 +103,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: HomeboardSafariExtension/HomeboardSafariExtension.entitlements
         CURRENT_PROJECT_VERSION: 13
         MARKETING_VERSION: 0.0.12
-        HOMEBOARD_API_BASE_URL: "http://Samyans-Laptop.local:3000"
+        HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         TARGETED_DEVICE_FAMILY: "1"
@@ -126,7 +126,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: HomeboardMac/HomeboardMac.entitlements
         CURRENT_PROJECT_VERSION: 13
         MARKETING_VERSION: 0.0.12
-        HOMEBOARD_API_BASE_URL: "http://127.0.0.1:3000"
+        HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
       configs:
@@ -155,7 +155,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements
         CURRENT_PROJECT_VERSION: 13
         MARKETING_VERSION: 0.0.12
-        HOMEBOARD_API_BASE_URL: "http://127.0.0.1:3000"
+        HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         OTHER_LDFLAGS: "-framework SafariServices"
