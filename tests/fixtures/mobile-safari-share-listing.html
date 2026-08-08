@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>219 Kent Avenue, Brooklyn, NY 11249 | Mobile Share Test</title>
+  <meta property="og:title" content="219 Kent Avenue, Brooklyn, NY 11249">
+  <meta property="og:description" content="A bright three-bedroom rental near the waterfront.">
+  <style>
+    body {
+      margin: 0;
+      background: #f7f3ed;
+      color: #17202b;
+      font: 17px/1.58 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 14px 20px;
+      border-bottom: 1px solid #ddd6cc;
+      background: rgba(255, 255, 255, 0.95);
+      font-weight: 750;
+    }
+    main {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 38px 20px 160px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 38px;
+      line-height: 1.08;
+    }
+    .facts {
+      color: #24608e;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    section {
+      margin-top: 42px;
+      padding-top: 24px;
+      border-top: 1px solid #ddd6cc;
+    }
+    .property-card {
+      padding: 16px;
+      border-radius: 14px;
+      background: white;
+    }
+  </style>
+  <script type="application/ld+json">
+    {
+      "@type": "Apartment",
+      "name": "219 Kent Avenue, Unit 3B",
+      "address": {
+        "streetAddress": "219 Kent Avenue",
+        "addressLocality": "Brooklyn",
+        "addressRegion": "NY",
+        "postalCode": "11249"
+      },
+      "apartmentSuite": "3B",
+      "offers": { "price": 4800 },
+      "numberOfBedrooms": 3
+    }
+  </script>
+</head>
+<body>
+  <nav>Test Rentals</nav>
+  <main>
+    <article>
+      <h1>219 Kent Avenue, Brooklyn, NY 11249</h1>
+      <p class="facts">$4,800 per month · 3 bd · Unit 3B</p>
+      <p>The living room faces west and receives warm afternoon light. Large windows run across the front wall.</p>
+      <p>The renovated kitchen includes a dishwasher and generous counter space. A dining table fits beside the island.</p>
+      <p>All three bedrooms have closets. The primary bedroom has space for a queen bed and a desk.</p>
+      <p>The building has an elevator and a shared roof deck. Laundry is available on every floor.</p>
+      <p>The L train is a short walk away. The waterfront and grocery stores are nearby.</p>
+    </article>
+
+    <section aria-label="Similar listings">
+      <h2>Similar listings nearby</h2>
+      <div class="property-card">
+        Another apartment is $4,600 per month. It has 2 bd and 2 ba.
+      </div>
+    </section>
+  </main>
+  <script src="/ios/HomeboardNative/HomeboardShareExtension/SharePreprocessor.js"></script>
+  <script>
+    window.setTimeout(() => {
+      ExtensionPreprocessingJS.run({
+        completionFunction(capture) {
+          window.__homeboardTestCapture = capture;
+          ExtensionPreprocessingJS.finalize({
+            startPageScan: true,
+            rescanPerformed: true,
+            initialMissingFields: ["bathrooms"],
+            missingFields: ["bathrooms"],
+            summary: "219 Kent Avenue, Brooklyn, NY 11249 · $4,800 · 3 bd",
+            reviewURL: "homeboard://import"
+          });
+        }
+      });
+    }, 180);
+  </script>
+</body>
+</html>

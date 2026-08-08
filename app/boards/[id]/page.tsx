@@ -22,7 +22,7 @@ export default async function BoardPage({
     redirect(`/?next=${encodeURIComponent(`/boards/${id}`)}`);
   }
 
-  const data = await getBoardPageData(id, currentUser.id);
+  const data = await getBoardPageData(id, currentUser.id, { includeSuggestedListings: false });
 
   if (!data) {
     notFound();

@@ -146,6 +146,8 @@ export function encodeNotesPayload(profile: SearchProfileData) {
       moveInDate: profile.moveInDate ?? null,
       stretchBudget: profile.stretchBudget ?? null,
       neighborhoods: profile.neighborhoods,
+      commuteAccess: profile.commuteAccess ?? null,
+      minCommuteMinutes: profile.minCommuteMinutes ?? null,
       maxCommuteMinutes: profile.maxCommuteMinutes ?? null,
       priorities: profile.priorities,
       pets: profile.pets ?? null,
@@ -763,6 +765,15 @@ export function mapProfileRow(row: Record<string, unknown>): SearchProfileData {
     stretchBudget: typeof onboarding.stretchBudget === "number" ? onboarding.stretchBudget : undefined,
     neighborhoods: Array.isArray(onboarding.neighborhoods) ? onboarding.neighborhoods.map(String) : [],
     commuteTarget: (row.commuteTarget as string | null) ?? undefined,
+    commuteAccess:
+      onboarding.commuteAccess === "car"
+      || onboarding.commuteAccess === "transit"
+      || onboarding.commuteAccess === "flexible"
+      || onboarding.commuteAccess === "remote"
+      || onboarding.commuteAccess === "skip"
+        ? onboarding.commuteAccess
+        : undefined,
+    minCommuteMinutes: typeof onboarding.minCommuteMinutes === "number" ? onboarding.minCommuteMinutes : undefined,
     maxCommuteMinutes: typeof onboarding.maxCommuteMinutes === "number" ? onboarding.maxCommuteMinutes : undefined,
     mustHaves: parseJsonArray((row.mustHaves as string | null) ?? null),
     dealbreakers: parseJsonArray((row.dealbreakers as string | null) ?? null),
@@ -900,7 +911,14 @@ export function getMissingFields(profile: SearchProfileData) {
   if (!profile.city && profile.locations.length === 0) missing.push(labels.city);
   if (!profile.moveInDate && !profile.moveInTimeframe) missing.push(labels.moveInDate);
   if (!profile.budgetMax && !profile.budgetMin) missing.push(labels.budget);
-  if (!profile.commuteTarget && profile.neighborhoods.length === 0) missing.push(labels.commuteOrNeighborhood);
+  const commuteBandIsValid =
+    profile.minCommuteMinutes !== undefined
+    && profile.maxCommuteMinutes !== undefined
+    && profile.minCommuteMinutes < profile.maxCommuteMinutes;
+  if (
+    (!profile.commuteTarget && profile.neighborhoods.length === 0)
+    || (Boolean(profile.commuteTarget) && !commuteBandIsValid)
+  ) missing.push(labels.commuteOrNeighborhood);
   if (profile.mustHaves.length === 0) missing.push(labels.mustHaves);
   if (profile.dealbreakers.length === 0) missing.push(labels.dealbreakers);
   if (profile.priorities.length === 0) missing.push(labels.priorities);
@@ -914,7 +932,15 @@ export function getProfileCompletion(profile: SearchProfileData): ProfileComplet
   if (profile.city || profile.locations.length > 0) completedFields.push("city");
   if (profile.moveInDate || profile.moveInTimeframe) completedFields.push("move-in timing");
   if (profile.budgetMin || profile.budgetMax) completedFields.push("budget");
-  if (profile.commuteTarget || profile.neighborhoods.length > 0) completedFields.push("commute or neighborhood");
+  if (
+    profile.neighborhoods.length > 0
+    || (
+      profile.commuteTarget
+      && profile.minCommuteMinutes !== undefined
+      && profile.maxCommuteMinutes !== undefined
+      && profile.minCommuteMinutes < profile.maxCommuteMinutes
+    )
+  ) completedFields.push("commute or neighborhood");
   if (profile.mustHaves.length > 0) completedFields.push("must-haves");
   if (profile.dealbreakers.length > 0) completedFields.push("dealbreakers");
   if (profile.priorities.length > 0) completedFields.push("priorities");
@@ -1272,6 +1298,8 @@ export function createBlankProfile(boardId: string): SearchProfileData {
     moveInDate: undefined,
     stretchBudget: undefined,
     neighborhoods: [],
+    commuteAccess: undefined,
+    minCommuteMinutes: undefined,
     maxCommuteMinutes: undefined,
     groupSize: undefined,
     hasRoommates: undefined,
@@ -1288,7 +1316,7 @@ export function createBlankProfile(boardId: string): SearchProfileData {
     mustHaves: [],
     niceToHaves: [],
     dealbreakers: [],
-    priorities: [...DEFAULT_PRIORITIES],
+    priorities: [],
     petsRequired: null,
     parkingRequired: null,
     laundryRequired: null,

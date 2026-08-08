@@ -1,4 +1,5 @@
 import type { GroupProfile, RentalProfile } from "@/lib/types";
+import { summarizeMemberAffordability } from "@/lib/group-affordability";
 
 function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
@@ -39,8 +40,16 @@ export function generateGroupProfile(profiles: RentalProfile[]): GroupProfile {
 
   const cities = unique(profiles.map((profile) => profile.city ?? profile.locations[0] ?? ""));
   const moveDates = unique(profiles.map((profile) => profile.moveInDate ?? profile.moveInTimeframe ?? ""));
-  const budgetMins = numeric(profiles.map((profile) => profile.budgetMin));
   const budgetMaxes = numeric(profiles.map((profile) => profile.budgetMax));
+  const affordability = summarizeMemberAffordability(
+    profiles.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      budgetMin: profile.budgetMin ?? null,
+      budgetMax: profile.budgetMax ?? null,
+      stretchBudget: profile.stretchBudget ?? null,
+    })),
+  );
   const neighborhoods = unique(profiles.flatMap((profile) => profile.neighborhoods));
   const mustHaves = unique(profiles.flatMap((profile) => profile.mustHaves));
   const dealbreakers = unique(profiles.flatMap((profile) => profile.dealbreakers));
@@ -74,8 +83,8 @@ export function generateGroupProfile(profiles: RentalProfile[]): GroupProfile {
 
   const sharedCity = cities.length === 1 ? cities[0] : undefined;
   const sharedMoveDate = moveDates.length === 1 ? moveDates[0] : undefined;
-  const budgetFloor = budgetMins.length > 0 ? Math.min(...budgetMins) : budgetMaxes.length > 0 ? Math.min(...budgetMaxes) : null;
-  const budgetCeiling = budgetMaxes.length > 0 ? Math.max(...budgetMaxes) : budgetFloor;
+  const budgetFloor = affordability.groupBudgetMin;
+  const budgetCeiling = affordability.groupBudgetMax;
   const budgetSpread =
     budgetMaxes.length > 1 ? Math.max(...budgetMaxes) - Math.min(...budgetMaxes) : 0;
   const budgetOverlapStatus: GroupProfile["budgetOverlapStatus"] =
@@ -87,7 +96,9 @@ export function generateGroupProfile(profiles: RentalProfile[]): GroupProfile {
   const budgetLine =
     budgetFloor !== null && budgetCeiling !== null
       ? `roughly $${budgetFloor.toLocaleString()} to $${budgetCeiling.toLocaleString()}`
-      : "still loose";
+      : budgetCeiling !== null
+        ? `up to $${budgetCeiling.toLocaleString()} combined`
+        : "still loose";
   const confidencePenalty =
     (cities.length > 1 ? 1 : 0) +
     (moveDates.length > 1 ? 1 : 0) +
@@ -104,7 +115,11 @@ export function generateGroupProfile(profiles: RentalProfile[]): GroupProfile {
         : "The group brief is still provisional because the members are pulling in noticeably different directions.";
 
   return {
-    groupBudgetMax: budgetMaxes.length > 0 ? Math.min(...budgetMaxes) : null,
+    groupBudgetMin: affordability.groupBudgetMin,
+    groupBudgetMax: affordability.groupBudgetMax,
+    groupStretchBudget: affordability.groupStretchBudget,
+    budgetMemberCount: affordability.budgetMemberCount,
+    missingBudgetMemberNames: affordability.missingBudgetMemberNames,
     budgetRangeText: budgetLine,
     budgetOverlapStatus,
     commuteDestinations,

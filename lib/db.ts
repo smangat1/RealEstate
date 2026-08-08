@@ -133,8 +133,11 @@ function ensureBaseSchema(db: Database.Database) {
       linkedUserId TEXT,
       name TEXT NOT NULL,
       roleLabel TEXT NOT NULL,
+      budgetMin INTEGER,
       budgetMax INTEGER,
+      stretchBudget INTEGER,
       commuteDestination TEXT,
+      maxCommuteMinutes INTEGER,
       commutePriority TEXT NOT NULL,
       neighborhoodPriority TEXT NOT NULL,
       spacePriority TEXT NOT NULL,
@@ -203,6 +206,9 @@ function ensureCompatibleColumns(db: Database.Database) {
   ensureColumn(db, "chatMessages", "authorUserId", "TEXT");
   ensureColumn(db, "chatMessages", "authorName", "TEXT");
   ensureColumn(db, "roommateProfiles", "linkedUserId", "TEXT");
+  ensureColumn(db, "roommateProfiles", "budgetMin", "INTEGER");
+  ensureColumn(db, "roommateProfiles", "stretchBudget", "INTEGER");
+  ensureColumn(db, "roommateProfiles", "maxCommuteMinutes", "INTEGER");
 
   db.exec(`
     UPDATE users

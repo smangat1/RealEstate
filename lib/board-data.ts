@@ -4,13 +4,19 @@ import type {
   BoardActivityRecord,
   BoardListingCommuteRecord,
   BoardListingCommentRecord,
+  BoardListingDecisionRecord,
+  BoardListingRatingRecord,
   BoardListingRecord,
+  BoardListingReviewRecord,
+  BoardListingSourceRecord,
+  BoardListingVerificationRecord,
   BoardInvitationRecord,
   BoardMemberRecord,
   BoardListingVoteRecord,
   BoardPageData,
   GroupSynthesis,
   ListingBrowseRequest,
+  ListingModelInsight,
   ListingRecord,
   AuthUserRecord,
   RoommateRecord,
@@ -21,7 +27,7 @@ import type {
 import {
   extractSearchProfileUpdatesWithAI,
   generateConversationalReplyWithAI,
-  mergeProfileUpdates,
+  mergeProfileUpdatesWithGuards,
 } from "@/lib/chat-ai";
 import { getDemoComparisonCopy, getDemoScenarioListingIds, isDemoModeEnabled, runDemoChatTurn } from "@/lib/demo-chat";
 import {
@@ -45,6 +51,14 @@ import { trackEvent } from "@/lib/analytics";
 import { buildStarterListings } from "@/lib/starter-listings";
 import { getDemoPropertyById, getDemoPropertiesForScenario } from "@/lib/demo-properties";
 import { matchDemoScenarioForProfile } from "@/lib/demo-scenarios";
+import { summarizeMemberAffordability } from "@/lib/group-affordability";
+import { analyzeListingForGroup } from "@/lib/listing-analysis";
+import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
+import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
+import {
+  listingSourceTrustWarning,
+  sourceIsGloballyDiscoverable,
+} from "@/lib/listing-source-policy";
 
 function parseJsonArray(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -90,7 +104,12 @@ function summarizeProfileChanges(previous: SearchProfileData, next: SearchProfil
   if (previous.moveInDate !== next.moveInDate || previous.moveInTimeframe !== next.moveInTimeframe) changed.push("move-in timing");
   if (previous.budgetMin !== next.budgetMin || previous.budgetMax !== next.budgetMax || previous.stretchBudget !== next.stretchBudget) changed.push("budget");
   if (previous.groupSize !== next.groupSize || previous.hasRoommates !== next.hasRoommates) changed.push("group setup");
-  if (previous.commuteTarget !== next.commuteTarget || previous.maxCommuteMinutes !== next.maxCommuteMinutes) changed.push("commute");
+  if (
+    previous.commuteTarget !== next.commuteTarget
+    || previous.commuteAccess !== next.commuteAccess
+    || previous.minCommuteMinutes !== next.minCommuteMinutes
+    || previous.maxCommuteMinutes !== next.maxCommuteMinutes
+  ) changed.push("commute");
   if (!sameStringArray(previous.neighborhoods, next.neighborhoods)) changed.push("neighborhoods");
   if (!sameStringArray(previous.mustHaves, next.mustHaves)) changed.push("must-haves");
   if (!sameStringArray(previous.niceToHaves, next.niceToHaves)) changed.push("nice-to-haves");
@@ -114,10 +133,13 @@ function starterSeedToListingRecord(seed: ReturnType<typeof buildStarterListings
     sourceUrl: seed.sourceUrl ?? null,
     externalId: null,
     address: seed.address,
+    unit: null,
     city: seed.city,
     state: seed.state,
     zip: null,
     neighborhood: seed.neighborhood,
+    latitude: null,
+    longitude: null,
     price: seed.price,
     bedrooms: seed.bedrooms,
     bathrooms: seed.bathrooms,
@@ -133,6 +155,11 @@ function starterSeedToListingRecord(seed: ReturnType<typeof buildStarterListings
     },
     description: seed.description,
     images: seed.images ?? [],
+    providerData: {},
+    providerStatus: null,
+    providerListedAt: null,
+    providerLastSeenAt: null,
+    providerFetchedAt: null,
     status: seed.status,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString(),
@@ -168,7 +195,8 @@ function profilePriorityWeight(profile: SearchProfileData, label: string) {
 
 function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData): GroupSynthesis {
   const budgets = roommates.map((roommate) => roommate.budgetMax).filter((value): value is number => value !== null);
-  const groupBudgetMax = budgets.length > 0 ? Math.min(...budgets) : (profile.budgetMax ?? null);
+  const affordability = summarizeMemberAffordability(roommates);
+  const groupBudgetMax = affordability.groupBudgetMax;
   const commuteDestinations = unique(roommates.map((roommate) => roommate.commuteDestination ?? ""));
   const preferredNeighborhoods = unique([
     ...profile.neighborhoods,
@@ -230,11 +258,8 @@ function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData)
       ? `The current center of gravity is around ${compromiseAreas.join(", ")}.`
       : "The group has not settled on obvious compromise neighborhoods yet.";
 
-  const budgetFloor =
-    budgets.length > 0
-      ? Math.max(0, Math.min(...budgets) - 300)
-      : profile.budgetMin ?? profile.budgetMax ?? null;
-  const budgetCeiling = budgets.length > 0 ? Math.max(...budgets) : profile.budgetMax ?? null;
+  const budgetFloor = affordability.groupBudgetMin;
+  const budgetCeiling = affordability.groupBudgetMax;
   const budgetSpread = budgets.length >= 2 ? Math.max(...budgets) - Math.min(...budgets) : 0;
   const budgetOverlapStatus: GroupSynthesis["budgetOverlapStatus"] =
     budgets.length <= 1 ? "strong" : budgetSpread <= 300 ? "strong" : budgetSpread <= 800 ? "mixed" : "weak";
@@ -244,10 +269,10 @@ function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData)
     compromiseAreas.length >= 2 ? "aligned" : preferredNeighborhoods.length <= 1 ? "aligned" : compromiseAreas.length === 1 ? "mixed" : "split";
   const budgetRangeText =
     budgetFloor !== null && budgetCeiling !== null
-      ? `$${budgetFloor.toLocaleString()} to $${budgetCeiling.toLocaleString()}`
+      ? `$${budgetFloor.toLocaleString()}–$${budgetCeiling.toLocaleString()} combined`
       : groupBudgetMax !== null
-        ? `up to $${groupBudgetMax.toLocaleString()}`
-        : "still loose";
+        ? `Up to $${groupBudgetMax.toLocaleString()} combined`
+        : "Waiting for member budgets";
   const confidencePenalty =
     (budgetOverlapStatus === "weak" ? 2 : budgetOverlapStatus === "mixed" ? 1 : 0) +
     (commuteAlignment === "split" ? 2 : commuteAlignment === "mixed" ? 1 : 0) +
@@ -270,7 +295,11 @@ function summarizeGroup(roommates: RoommateRecord[], profile: SearchProfileData)
         }`;
 
   return {
+    groupBudgetMin: affordability.groupBudgetMin,
     groupBudgetMax,
+    groupStretchBudget: affordability.groupStretchBudget,
+    budgetMemberCount: affordability.budgetMemberCount,
+    missingBudgetMemberNames: affordability.missingBudgetMemberNames,
     budgetRangeText,
     budgetOverlapStatus,
     commuteDestinations,
@@ -361,7 +390,7 @@ function mapInvitationRow(row: {
   id: string;
   boardId: string;
   invitedByUserId: string;
-  email: string;
+  email: string | null;
   inviteCode: string;
   status: string;
   createdAt: Date;
@@ -385,19 +414,6 @@ function invitationIsExpired(row: { status: string; expiresAt: Date | null }) {
   return row.status === "pending" && Boolean(row.expiresAt && row.expiresAt.getTime() < Date.now());
 }
 
-async function expireStaleBoardInvitations(boardId: string) {
-  await prisma.boardInvitation.updateMany({
-    where: {
-      boardId,
-      status: "pending",
-      expiresAt: { lt: new Date() },
-    },
-    data: {
-      status: "revoked",
-    },
-  });
-}
-
 function mapListingRow(row: {
   id: string;
   source: string;
@@ -405,10 +421,13 @@ function mapListingRow(row: {
   sourceUrl: string | null;
   externalId: string | null;
   address: string | null;
+  unit: string | null;
   city: string | null;
   state: string | null;
   zip: string | null;
   neighborhood: string | null;
+  latitude: number | null;
+  longitude: number | null;
   price: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -419,6 +438,11 @@ function mapListingRow(row: {
   fees: string | null;
   description: string | null;
   images: string | null;
+  providerData: unknown;
+  providerStatus: string | null;
+  providerListedAt: Date | null;
+  providerLastSeenAt: Date | null;
+  providerFetchedAt: Date | null;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -430,10 +454,13 @@ function mapListingRow(row: {
     sourceUrl: row.sourceUrl,
     externalId: row.externalId,
     address: row.address,
+    unit: row.unit,
     city: row.city,
     state: row.state,
     zip: row.zip,
     neighborhood: row.neighborhood,
+    latitude: row.latitude,
+    longitude: row.longitude,
     price: row.price,
     bedrooms: row.bedrooms,
     bathrooms: row.bathrooms,
@@ -444,6 +471,14 @@ function mapListingRow(row: {
     fees: parseJsonObject(row.fees),
     description: row.description,
     images: parseJsonArray(row.images),
+    providerData:
+      row.providerData && typeof row.providerData === "object" && !Array.isArray(row.providerData)
+        ? row.providerData as Record<string, unknown>
+        : {},
+    providerStatus: row.providerStatus,
+    providerListedAt: row.providerListedAt?.toISOString() ?? null,
+    providerLastSeenAt: row.providerLastSeenAt?.toISOString() ?? null,
+    providerFetchedAt: row.providerFetchedAt?.toISOString() ?? null,
     status: row.status as ListingRecord["status"],
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -456,8 +491,14 @@ function mapRoommateRow(row: {
   linkedUserId: string | null;
   name: string;
   roleLabel: string;
+  budgetMin: number | null;
+  idealBudget: number | null;
   budgetMax: number | null;
+  stretchBudget: number | null;
   commuteDestination: string | null;
+  commuteAccess: string | null;
+  preferredCommuteMinutes: number | null;
+  maxCommuteMinutes: number | null;
   commutePriority: string;
   neighborhoodPriority: string;
   spacePriority: string;
@@ -465,6 +506,8 @@ function mapRoommateRow(row: {
   preferredNeighborhoods: string | null;
   mustHaves: string | null;
   dealbreakers: string | null;
+  petsRequired: boolean | null;
+  accessibilityNeeds: string | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -475,8 +518,21 @@ function mapRoommateRow(row: {
     linkedUserId: row.linkedUserId,
     name: row.name,
     roleLabel: row.roleLabel,
+    budgetMin: row.budgetMin,
+    idealBudget: row.idealBudget,
     budgetMax: row.budgetMax,
+    stretchBudget: row.stretchBudget,
     commuteDestination: row.commuteDestination,
+    commuteAccess:
+      row.commuteAccess === "car"
+      || row.commuteAccess === "transit"
+      || row.commuteAccess === "flexible"
+      || row.commuteAccess === "remote"
+      || row.commuteAccess === "skip"
+        ? row.commuteAccess
+        : null,
+    preferredCommuteMinutes: row.preferredCommuteMinutes,
+    maxCommuteMinutes: row.maxCommuteMinutes,
     commutePriority: row.commutePriority as RoommateRecord["commutePriority"],
     neighborhoodPriority: row.neighborhoodPriority as RoommateRecord["neighborhoodPriority"],
     spacePriority: row.spacePriority as RoommateRecord["spacePriority"],
@@ -484,6 +540,8 @@ function mapRoommateRow(row: {
     preferredNeighborhoods: parseJsonArray(row.preferredNeighborhoods),
     mustHaves: parseJsonArray(row.mustHaves),
     dealbreakers: parseJsonArray(row.dealbreakers),
+    petsRequired: row.petsRequired,
+    accessibilityNeeds: parseJsonArray(row.accessibilityNeeds),
     notes: row.notes,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -597,6 +655,7 @@ export async function updateBoardProfileForUser(
     groupSize?: number | null;
     hasRoommates?: boolean | null;
     commuteTarget?: string;
+    commuteAccess?: SearchProfileData["commuteAccess"];
     maxCommuteMinutes?: number | null;
     neighborhoods?: string[];
     mustHaves?: string[];
@@ -613,7 +672,7 @@ export async function updateBoardProfileForUser(
     throw new Error("Workspace not found.");
   }
 
-  const data = await getBoardPageData(boardId, userId);
+  const data = await getBoardPageData(boardId, userId, { includeSuggestedListings: true });
   if (!data) {
     throw new Error("Shared brief not found.");
   }
@@ -632,6 +691,7 @@ export async function updateBoardProfileForUser(
     groupSize: input.groupSize ?? undefined,
     hasRoommates: input.hasRoommates ?? undefined,
     commuteTarget: input.commuteTarget?.trim() || undefined,
+    commuteAccess: input.commuteAccess ?? data.profile.commuteAccess,
     maxCommuteMinutes: input.maxCommuteMinutes ?? undefined,
     neighborhoods: input.neighborhoods ?? [],
     mustHaves: input.mustHaves ?? [],
@@ -664,11 +724,18 @@ export async function completeJoinedMemberSetup(
   userId: string,
   input: {
     workAddress?: string;
+    budgetMin?: string;
+    idealBudget?: string;
     budgetMax?: string;
+    stretchBudget?: string;
     commuteDestination?: string;
+    preferredCommuteMinutes?: string;
+    maxCommuteMinutes?: string;
     preferredNeighborhoods?: string;
     mustHaves?: string;
     dealbreakers?: string;
+    petsRequired?: string;
+    accessibilityNeeds?: string;
     notes?: string;
   },
 ) {
@@ -698,11 +765,18 @@ export async function completeJoinedMemberSetup(
   }
 
   await updateRoommateProfile(roommate.id, {
+    budgetMin: input.budgetMin,
+    idealBudget: input.idealBudget,
     budgetMax: input.budgetMax,
+    stretchBudget: input.stretchBudget,
     commuteDestination: input.commuteDestination || input.workAddress,
+    preferredCommuteMinutes: input.preferredCommuteMinutes,
+    maxCommuteMinutes: input.maxCommuteMinutes,
     preferredNeighborhoods: input.preferredNeighborhoods,
     mustHaves: input.mustHaves,
     dealbreakers: input.dealbreakers,
+    petsRequired: input.petsRequired,
+    accessibilityNeeds: input.accessibilityNeeds,
     notes: input.notes,
     commutePriority: roommate.commutePriority,
     neighborhoodPriority: roommate.neighborhoodPriority,
@@ -725,11 +799,18 @@ export async function updateLinkedMemberProfile(
   userId: string,
   input: {
     workAddress?: string;
+    budgetMin?: string;
+    idealBudget?: string;
     budgetMax?: string;
+    stretchBudget?: string;
     commuteDestination?: string;
+    preferredCommuteMinutes?: string;
+    maxCommuteMinutes?: string;
     preferredNeighborhoods?: string;
     mustHaves?: string;
     dealbreakers?: string;
+    petsRequired?: string;
+    accessibilityNeeds?: string;
     notes?: string;
     commutePriority?: string;
     neighborhoodPriority?: string;
@@ -763,11 +844,18 @@ export async function updateLinkedMemberProfile(
   }
 
   await updateRoommateProfile(roommate.id, {
+    budgetMin: input.budgetMin,
+    idealBudget: input.idealBudget,
     budgetMax: input.budgetMax,
+    stretchBudget: input.stretchBudget,
     commuteDestination: input.commuteDestination || input.workAddress,
+    preferredCommuteMinutes: input.preferredCommuteMinutes,
+    maxCommuteMinutes: input.maxCommuteMinutes,
     preferredNeighborhoods: input.preferredNeighborhoods,
     mustHaves: input.mustHaves,
     dealbreakers: input.dealbreakers,
+    petsRequired: input.petsRequired,
+    accessibilityNeeds: input.accessibilityNeeds,
     notes: input.notes,
     commutePriority: input.commutePriority || roommate.commutePriority,
     neighborhoodPriority: input.neighborhoodPriority || roommate.neighborhoodPriority,
@@ -791,7 +879,7 @@ export async function confirmBoardProfileForUser(boardId: string, userId: string
     throw new Error("Workspace not found.");
   }
 
-  const data = await getBoardPageData(boardId, userId);
+  const data = await getBoardPageData(boardId, userId, { includeSuggestedListings: true });
   if (!data) {
     throw new Error("Shared brief not found.");
   }
@@ -982,29 +1070,12 @@ function describeListingFit(
   };
 }
 
-function getCommuteAnchors(
-  profile: SearchProfileData,
-  members: Array<{ displayName: string; workAddress: string | null; secondaryWorkAddress: string | null }>,
-  roommates: RoommateRecord[],
-) {
+function getCommuteAnchors(roommates: RoommateRecord[]) {
   const anchors: Array<{ label: string; query: string }> = [];
-
-  if (profile.commuteTarget) {
-    anchors.push({ label: profile.commuteTarget, query: profile.commuteTarget });
-  }
 
   for (const roommate of roommates) {
     if (roommate.commuteDestination) {
       anchors.push({ label: roommate.name, query: roommate.commuteDestination });
-    }
-  }
-
-  for (const member of members) {
-    if (member.workAddress) {
-      anchors.push({ label: `${member.displayName} primary`, query: member.workAddress });
-    }
-    if (member.secondaryWorkAddress) {
-      anchors.push({ label: `${member.displayName} secondary`, query: member.secondaryWorkAddress });
     }
   }
 
@@ -1014,12 +1085,10 @@ function getCommuteAnchors(
 async function getSuggestedListings(
   profile: SearchProfileData,
   boardListings: BoardListingRecord[],
-  members: Array<{ displayName: string; workAddress: string | null; secondaryWorkAddress: string | null }>,
   roommates: RoommateRecord[],
 ): Promise<SuggestedListingRecord[]> {
-  await ensureStarterCatalog();
-
   if (isDemoModeEnabled()) {
+    await ensureStarterCatalog();
     const scenario = matchDemoScenarioForProfile(profile);
     if (scenario) {
       const existingByListingId = new Map(
@@ -1064,6 +1133,20 @@ async function getSuggestedListings(
         .map(({ seed, property }, index) => {
           const listing = starterSeedToListingRecord(seed, index);
           const existing = existingByListingId.get(listing.id) ?? null;
+          const commute = {
+            listingId: listing.id,
+            bestDurationMinutes: property?.demoCommuteMinutes ?? null,
+            bestDistanceMiles: property?.demoCommuteMiles ?? null,
+            bestOriginLabel: property?.demoCommuteLabel ?? null,
+            evaluatedAnchors: property?.demoCommuteLabel ? [property.demoCommuteLabel] : [],
+            routes: property?.demoCommuteLabel
+              ? [{
+                  originLabel: property.demoCommuteLabel,
+                  durationMinutes: property.demoCommuteMinutes ?? null,
+                  distanceMiles: property.demoCommuteMiles ?? null,
+                }]
+              : [],
+          };
 
           return {
             listing,
@@ -1076,14 +1159,14 @@ async function getSuggestedListings(
             tradeoffSummary:
               property?.demoTradeoffSummary ??
               "This is a demo-mode listing, so the workspace is presenting a staged recommendation instead of a live match.",
-            commute: {
-              listingId: listing.id,
-              bestDurationMinutes: property?.demoCommuteMinutes ?? null,
-              bestDistanceMiles: property?.demoCommuteMiles ?? null,
-              bestOriginLabel: property?.demoCommuteLabel ?? null,
-              evaluatedAnchors: property?.demoCommuteLabel ? [property.demoCommuteLabel] : [],
-            },
+            commute,
             neighborhoodSignal: getNeighborhoodSignal(listing.city, listing.neighborhood),
+            analysis: analyzeListingForGroup({
+              listing,
+              members: roommates,
+              routes: commute.routes,
+              sourceConfirmed: false,
+            }),
           };
         })
         .filter((entry) => entry.existingStatus === null);
@@ -1094,9 +1177,13 @@ async function getSuggestedListings(
     ? buildStarterListings().map(starterSeedToListingRecord)
     : (
         await prisma.listing.findMany({
-          where: { NOT: { status: "removed" } },
+          where: {
+            source: "api",
+            sourceName: "rentcast",
+            NOT: { status: "removed" },
+          },
           orderBy: { updatedAt: "desc" },
-          take: 600,
+          take: 500,
         })
       ).map(mapListingRow);
 
@@ -1105,7 +1192,7 @@ async function getSuggestedListings(
   );
 
   const scenarioListingIds = isDemoModeEnabled() ? new Set(getDemoScenarioListingIds(profile)) : null;
-  const commuteAnchors = getCommuteAnchors(profile, members, roommates);
+  const commuteAnchors = getCommuteAnchors(roommates);
   const commuteEstimates = isDemoModeEnabled()
     ? listings.map((listing) => ({
         listingId: listing.id,
@@ -1113,6 +1200,11 @@ async function getSuggestedListings(
         bestDistanceMiles: null,
         bestOriginLabel: null,
         evaluatedAnchors: commuteAnchors.map((anchor) => anchor.label),
+        routes: commuteAnchors.map((anchor) => ({
+          originLabel: anchor.label,
+          durationMinutes: null,
+          distanceMiles: null,
+        })),
       }))
     : await estimateCommutes({
         anchors: commuteAnchors,
@@ -1143,6 +1235,12 @@ async function getSuggestedListings(
         tradeoffSummary: fit.tradeoffSummary,
         commute,
         neighborhoodSignal,
+        analysis: analyzeListingForGroup({
+          listing,
+          members: roommates,
+          routes: commute?.routes ?? [],
+          sourceConfirmed: false,
+        }),
       };
     })
     .filter((entry) => entry.score > 0 && entry.existingStatus === null)
@@ -1154,7 +1252,7 @@ async function getSuggestedListings(
       }
       return right.score - left.score;
     })
-    .slice(0, 48)
+    .slice(0, 500)
     .map(({ score: _score, ...entry }) => entry);
 }
 
@@ -1210,57 +1308,24 @@ function buildDeckListings(listings: SuggestedListingRecord[], requests: Listing
   return ordered.slice(offset, offset + batchSize);
 }
 
-async function ensureOwnerMembership(boardId: string, ownerUserId: string) {
-  await prisma.boardMember.upsert({
-    where: { boardId_userId: { boardId, userId: ownerUserId } },
-    update: {},
-    create: {
-      boardId,
-      userId: ownerUserId,
-      role: "owner",
-    },
-  });
-
-  const owner = await prisma.user.findUnique({ where: { id: ownerUserId } });
-  if (!owner) return;
-
-  const existingRoommate = await prisma.roommateProfile.findFirst({
-    where: { boardId, linkedUserId: ownerUserId },
-  });
-
-  if (!existingRoommate) {
-    await prisma.roommateProfile.create({
-      data: {
-        boardId,
-        linkedUserId: ownerUserId,
-        name: owner.displayName,
-        roleLabel: "workspace owner",
-        budgetMax: null,
-        commuteDestination: owner.workAddress,
-        commutePriority: "medium",
-        neighborhoodPriority: "medium",
-        spacePriority: "medium",
-        privacyPriority: "medium",
-        preferredNeighborhoods: json([]),
-        mustHaves: json([]),
-        dealbreakers: json([]),
-        notes: null,
-      },
-    });
-  }
-}
-
-export async function getBoardPageData(boardId: string, viewerUserId: string): Promise<BoardPageData | null> {
-  await ensureStarterCatalog();
+export async function getBoardPageData(
+  boardId: string,
+  viewerUserId: string,
+  options: { includeSuggestedListings?: boolean } = { includeSuggestedListings: false },
+): Promise<BoardPageData | null> {
   const demoMode = isDemoModeEnabled();
+  if (demoMode && options.includeSuggestedListings === true) {
+    await ensureStarterCatalog();
+  }
 
-  const boardAccess = await ensureBoard(boardId, viewerUserId);
-  if (!boardAccess) return null;
-  await ensureOwnerMembership(boardId, boardAccess.userId);
-  await expireStaleBoardInvitations(boardId);
-
-  const board = await prisma.searchBoard.findUnique({
-    where: { id: boardId },
+  const board = await prisma.searchBoard.findFirst({
+    where: {
+      id: boardId,
+      OR: [
+        { members: { some: { userId: viewerUserId } } },
+        { userId: viewerUserId },
+      ],
+    },
     include: {
       searchProfile: true,
       roommates: { orderBy: [{ createdAt: "asc" }, { name: "asc" }] },
@@ -1269,7 +1334,13 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
         include: { user: true },
       },
       invitations: {
-        where: { status: "pending" },
+        where: {
+          status: "pending",
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } },
+          ],
+        },
         orderBy: { createdAt: "desc" },
       },
       chatMessages: { orderBy: { createdAt: "asc" } },
@@ -1279,6 +1350,32 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
           listing: true,
           votes: { include: { roommate: true }, orderBy: { createdAt: "desc" } },
           comments: { include: { roommate: true }, orderBy: { createdAt: "desc" } },
+          ratings: { include: { roommate: true }, orderBy: { updatedAt: "desc" } },
+          sources: {
+            include: {
+              createdByRoommate: true,
+              catalogSource: {
+                include: {
+                  _count: {
+                    select: {
+                      boardSources: true,
+                      attestations: { where: { attestedAt: { not: null } } },
+                      reports: true,
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+          },
+          verifications: { include: { roommate: true }, orderBy: { createdAt: "desc" } },
+          reviews: { include: { roommate: true }, orderBy: { updatedAt: "desc" } },
+          decisions: {
+            include: {
+              votes: { include: { roommate: true }, orderBy: { updatedAt: "desc" } },
+            },
+            orderBy: { createdAt: "desc" },
+          },
         },
       },
       boardEvents: { orderBy: { createdAt: "desc" }, take: 18 },
@@ -1306,6 +1403,14 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
 
   const members = board.members.map(mapBoardMemberRow);
   const invitations = board.invitations.map(mapInvitationRow);
+  const groupSynthesis = summarizeGroup(roommates, profile);
+  const effectiveProfile: SearchProfileData = {
+    ...profile,
+    budgetMin: groupSynthesis.groupBudgetMin ?? undefined,
+    budgetMax: groupSynthesis.groupBudgetMax ?? undefined,
+    stretchBudget: groupSynthesis.groupStretchBudget ?? undefined,
+    commuteTarget: groupSynthesis.commuteDestinations[0] ?? undefined,
+  };
 
   const messages = board.chatMessages.map((message) => ({
     id: message.id,
@@ -1322,6 +1427,7 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
     boardId: entry.boardId,
     listingId: entry.listingId,
     userStatus: entry.userStatus as BoardListingRecord["userStatus"],
+    workflowStatus: entry.workflowStatus,
     userNotes: entry.userNotes,
     aiSummary: entry.aiSummary,
     aiTradeoffAnalysis: entry.aiTradeoffAnalysis,
@@ -1363,6 +1469,112 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
     })),
   );
 
+  const ratingRows: BoardListingRatingRecord[] = board.boardListings.flatMap((entry) =>
+    entry.ratings.map((rating) => ({
+      id: rating.id,
+      boardListingId: rating.boardListingId,
+      roommateId: rating.roommateId,
+      ratings: Object.fromEntries(
+        Object.entries(rating.ratings as Record<string, unknown>)
+          .filter((entry): entry is [string, number] => typeof entry[1] === "number"),
+      ),
+      createdAt: rating.createdAt.toISOString(),
+      updatedAt: rating.updatedAt.toISOString(),
+      roommate: {
+        id: rating.roommate.id,
+        name: rating.roommate.name,
+        roleLabel: rating.roommate.roleLabel,
+        linkedUserId: rating.roommate.linkedUserId,
+      },
+    })),
+  );
+
+  const sourceRows: BoardListingSourceRecord[] = board.boardListings.flatMap((entry) =>
+    entry.sources.map((source) => ({
+      id: source.id,
+      boardListingId: source.boardListingId,
+      catalogSourceId: source.catalogSourceId,
+      url: source.url,
+      label: source.label,
+      kind: source.kind,
+      createdByRoommateId: source.createdByRoommateId,
+      confirmedAt: source.confirmedAt?.toISOString() ?? null,
+      createdAt: source.createdAt.toISOString(),
+      createdByRoommate: source.createdByRoommate
+        ? { id: source.createdByRoommate.id, name: source.createdByRoommate.name }
+        : null,
+      catalogSource: source.catalogSource
+        ? {
+            id: source.catalogSource.id,
+            trustStatus: source.catalogSource.trustStatus,
+            resolutionStatus: source.catalogSource.resolutionStatus,
+            warning: listingSourceTrustWarning(source.catalogSource.trustStatus),
+            boardCount: source.catalogSource._count.boardSources,
+            confirmationCount: source.catalogSource._count.attestations,
+            reportCount: source.catalogSource._count.reports,
+            globallyDiscoverable: sourceIsGloballyDiscoverable(source.catalogSource.trustStatus),
+          }
+        : null,
+    })),
+  );
+
+  const verificationRows: BoardListingVerificationRecord[] = board.boardListings.flatMap((entry) =>
+    entry.verifications.map((verification) => ({
+      id: verification.id,
+      boardListingId: verification.boardListingId,
+      roommateId: verification.roommateId,
+      status: verification.status,
+      note: verification.note,
+      createdAt: verification.createdAt.toISOString(),
+      roommate: verification.roommate
+        ? { id: verification.roommate.id, name: verification.roommate.name }
+        : null,
+    })),
+  );
+
+  const reviewRows: BoardListingReviewRecord[] = board.boardListings.flatMap((entry) =>
+    entry.reviews.map((review) => ({
+      id: review.id,
+      boardListingId: review.boardListingId,
+      roommateId: review.roommateId,
+      tourIntent: review.tourIntent,
+      interiorAppeal: review.interiorAppeal,
+      naturalLight: review.naturalLight,
+      mainConcern: review.mainConcern,
+      sourceViewedAt: review.sourceViewedAt?.toISOString() ?? null,
+      createdAt: review.createdAt.toISOString(),
+      updatedAt: review.updatedAt.toISOString(),
+      roommate: {
+        id: review.roommate.id,
+        name: review.roommate.name,
+        linkedUserId: review.roommate.linkedUserId,
+      },
+    })),
+  );
+
+  const decisionRows: BoardListingDecisionRecord[] = board.boardListings.flatMap((entry) =>
+    entry.decisions.map((decision) => ({
+      id: decision.id,
+      boardListingId: decision.boardListingId,
+      type: decision.type,
+      createdByRoommateId: decision.createdByRoommateId,
+      createdAt: decision.createdAt.toISOString(),
+      closedAt: decision.closedAt?.toISOString() ?? null,
+      votes: decision.votes.map((vote) => ({
+        id: vote.id,
+        roommateId: vote.roommateId,
+        choice: vote.choice,
+        createdAt: vote.createdAt.toISOString(),
+        updatedAt: vote.updatedAt.toISOString(),
+        roommate: {
+          id: vote.roommate.id,
+          name: vote.roommate.name,
+          linkedUserId: vote.roommate.linkedUserId,
+        },
+      })),
+    })),
+  );
+
   const activity: BoardActivityRecord[] = board.boardEvents.map((event) => ({
     id: event.id,
     boardId: event.boardId,
@@ -1373,25 +1585,15 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
     createdAt: event.createdAt.toISOString(),
   }));
 
-  const suggestedListings = await getSuggestedListings(
-    profile,
-    boardListings,
-    members.map((member) => ({
-      displayName: member.user.displayName,
-      workAddress: member.user.workAddress,
-      secondaryWorkAddress: member.user.secondaryWorkAddress,
-    })),
-    roommates,
-  );
-  const commuteAnchors = getCommuteAnchors(
-    profile,
-    members.map((member) => ({
-      displayName: member.user.displayName,
-      workAddress: member.user.workAddress,
-      secondaryWorkAddress: member.user.secondaryWorkAddress,
-    })),
-    roommates,
-  );
+  const suggestedListings =
+    options.includeSuggestedListings === true
+      ? await getSuggestedListings(
+          effectiveProfile,
+          boardListings,
+          roommates,
+        )
+      : [];
+  const commuteAnchors = getCommuteAnchors(roommates);
   const savedListingCommutesRaw = isDemoModeEnabled()
     ? boardListings.map((entry) => ({
         listingId: entry.id,
@@ -1399,6 +1601,11 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
         bestDistanceMiles: null,
         bestOriginLabel: null,
         evaluatedAnchors: commuteAnchors.map((anchor) => anchor.label),
+        routes: commuteAnchors.map((anchor) => ({
+          originLabel: anchor.label,
+          durationMinutes: null,
+          distanceMiles: null,
+        })),
       }))
     : await estimateCommutes({
         anchors: commuteAnchors,
@@ -1417,14 +1624,35 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
         bestDistanceMiles: entry.bestDistanceMiles,
         bestOriginLabel: entry.bestOriginLabel,
         evaluatedAnchors: entry.evaluatedAnchors,
+        routes: entry.routes,
       };
       return accumulator;
     },
     {},
   );
+  const listingSourcesByBoardListingId = groupByKey(sourceRows, "boardListingId");
+  const listingVerificationsByBoardListingId = groupByKey(verificationRows, "boardListingId");
+  const listingReviewsByBoardListingId = groupByKey(reviewRows, "boardListingId");
+  const listingDecisionsByBoardListingId = groupByKey(decisionRows, "boardListingId");
+  const listingAnalysisByBoardListingId = Object.fromEntries(
+    boardListings.map((entry) => {
+      const sources = listingSourcesByBoardListingId[entry.id] ?? [];
+      const verifications = listingVerificationsByBoardListingId[entry.id] ?? [];
+      return [
+        entry.id,
+        analyzeListingForGroup({
+          listing: entry.listing,
+          members: roommates,
+          routes: boardListingCommutesByBoardListingId[entry.id]?.routes ?? [],
+          reviews: listingReviewsByBoardListingId[entry.id] ?? [],
+          sourceConfirmed: sources.some((source) => source.confirmedAt !== null),
+          latestVerification: verifications[0]?.status ?? "unverified",
+        }),
+      ];
+    }),
+  );
   const browseRequests = getBrowseRequests(messages);
   const currentBrowseRequest = browseRequests.at(-1) ?? null;
-  const groupSynthesis = summarizeGroup(roommates, profile);
   const commuteMode = getCommuteServiceMode(demoMode);
 
   return {
@@ -1454,12 +1682,20 @@ export async function getBoardPageData(boardId: string, viewerUserId: string): P
     boardListingCommutesByBoardListingId,
     listingVotesByBoardListingId: groupByKey(voteRows, "boardListingId"),
     listingCommentsByBoardListingId: groupByKey(commentRows, "boardListingId"),
+    listingRatingsByBoardListingId: groupByKey(ratingRows, "boardListingId"),
+    listingSourcesByBoardListingId,
+    listingVerificationsByBoardListingId,
+    listingReviewsByBoardListingId,
+    listingDecisionsByBoardListingId,
+    listingAnalysisByBoardListingId,
     suggestedListings,
     currentDeckListings: buildDeckListings(suggestedListings, browseRequests),
     currentBrowseRequest,
-    comparison: demoMode ? getDemoComparisonCopy(profile) ?? generateComparison(profile, boardListings) : generateComparison(profile, boardListings),
-    missingFields: getMissingFields(profile),
-    completion: getProfileCompletion(profile),
+    comparison: demoMode
+      ? getDemoComparisonCopy(effectiveProfile) ?? generateComparison(effectiveProfile, boardListings)
+      : generateComparison(effectiveProfile, boardListings),
+    missingFields: getMissingFields(effectiveProfile),
+    completion: getProfileCompletion(effectiveProfile),
   };
 }
 
@@ -1523,11 +1759,16 @@ export async function createBoardAndReturnId(input: {
       },
       roommates: {
         create: {
-        linkedUserId: input.userId,
-        name: input.authorName,
-        roleLabel: "workspace owner",
-          budgetMax: null,
-          commuteDestination: null,
+          linkedUserId: input.userId,
+          name: input.authorName,
+          roleLabel: "workspace owner",
+          budgetMin: seededProfile.budgetMin,
+          budgetMax: seededProfile.budgetMax,
+          stretchBudget: seededProfile.stretchBudget,
+          commuteDestination: seededProfile.commuteTarget,
+          commuteAccess: seededProfile.commuteAccess ?? null,
+          preferredCommuteMinutes: seededProfile.minCommuteMinutes,
+          maxCommuteMinutes: seededProfile.maxCommuteMinutes,
           commutePriority: "medium",
           neighborhoodPriority: "medium",
           spacePriority: "medium",
@@ -1585,8 +1826,55 @@ async function updateProfile(nextProfile: SearchProfileData) {
   });
 }
 
+export async function saveBoardProfile(boardId: string, actingUserId: string, nextProfile: SearchProfileData) {
+  const boardData = await getBoardPageData(boardId, actingUserId, { includeSuggestedListings: true });
+  if (!boardData) {
+    throw new Error("Workspace not found.");
+  }
+
+  const finalizedProfile = finalizeProfileState({
+    ...boardData.profile,
+    ...nextProfile,
+    id: boardData.profile.id,
+    boardId: boardData.profile.boardId,
+    name: nextProfile.name || boardData.profile.name,
+    email: nextProfile.email || boardData.profile.email,
+    city: nextProfile.city || boardData.profile.city,
+    locations: nextProfile.city
+      ? [nextProfile.city]
+      : (nextProfile.locations.length > 0 ? nextProfile.locations : boardData.profile.locations),
+    updatedAt: new Date().toISOString(),
+  });
+
+  await updateProfile(finalizedProfile);
+
+  await prisma.roommateProfile.updateMany({
+    where: { boardId, linkedUserId: actingUserId },
+    data: {
+      commuteDestination: finalizedProfile.commuteTarget ?? null,
+      commuteAccess: finalizedProfile.commuteAccess ?? null,
+      preferredCommuteMinutes: finalizedProfile.minCommuteMinutes ?? null,
+      maxCommuteMinutes: finalizedProfile.maxCommuteMinutes ?? null,
+    },
+  });
+
+  const changedFields = summarizeProfileChanges(boardData.profile, finalizedProfile);
+  if (changedFields.length > 0) {
+    await addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "profile_updated",
+      `Board brief updated: ${changedFields.join(", ")}.`,
+    );
+  }
+
+  await touchBoard(boardId);
+  return finalizedProfile;
+}
+
 export async function sendChat(boardId: string, content: string, author: { userId: string; authorName: string }) {
-  const boardData = await getBoardPageData(boardId, author.userId);
+  const boardData = await getBoardPageData(boardId, author.userId, { includeSuggestedListings: true });
   if (!boardData) return;
   const previousStatus = boardData.profile.completionStatus;
 
@@ -1629,19 +1917,26 @@ export async function sendChat(boardId: string, content: string, author: { userI
 
     nextProfile =
       aiExtraction?.updates && Object.keys(aiExtraction.updates).length > 0
-        ? mergeProfileUpdates(ruleProfile, aiExtraction.updates)
+        ? mergeProfileUpdatesWithGuards({
+            profile: boardData.profile,
+            ruleProfile,
+            updates: aiExtraction.updates,
+            message: content,
+            conversationHint,
+          })
         : ruleProfile;
     nextProfile = finalizeProfileState(nextProfile);
 
+    const groupSynthesis = summarizeGroup(boardData.roommates, nextProfile);
     const suggestedCount = (
       await getSuggestedListings(
-        nextProfile,
+        {
+          ...nextProfile,
+          budgetMin: groupSynthesis.groupBudgetMin ?? undefined,
+          budgetMax: groupSynthesis.groupBudgetMax ?? undefined,
+          stretchBudget: groupSynthesis.groupStretchBudget ?? undefined,
+        },
         boardData.boardListings,
-        boardData.members.map((member) => ({
-          displayName: member.user.displayName,
-          workAddress: member.user.workAddress,
-          secondaryWorkAddress: member.user.secondaryWorkAddress,
-        })),
         boardData.roommates,
       )
     ).length;
@@ -1730,23 +2025,48 @@ export async function addListingToBoard(
     method: "pasted_link" | "pasted_text" | "manual";
     sourceUrl?: string;
     pastedText?: string;
+    listingTitle?: string;
     address?: string;
+    unit?: string;
     city?: string;
     neighborhood?: string;
+    latitude?: number;
+    longitude?: number;
     price?: string;
     bedrooms?: string;
     bathrooms?: string;
     squareFeet?: string;
+    amenities?: string[];
+    modelInsights?: ListingModelInsight[];
     description?: string;
+    imageUrl?: string;
+    userNotes?: string;
+    actorRoommateId?: string;
+    actorUserId?: string;
   },
 ) {
   const extracted = input.pastedText ? extractListingFromText(input.pastedText) : null;
-  const normalizedSourceUrl = normalizeLooseText(input.sourceUrl);
-  const normalizedAddress = normalizeLooseText(input.address);
-  const normalizedCity = normalizeLooseText(input.city || extracted?.city);
-  const normalizedNeighborhood = normalizeLooseText(input.neighborhood || extracted?.neighborhood);
+  const rawSourceUrl = normalizeLooseText(input.sourceUrl);
   const parsedPrice = input.price ? Number(input.price) : extracted?.price ?? null;
   const parsedBedrooms = input.bedrooms ? Number(input.bedrooms) : extracted?.bedrooms ?? null;
+  const parsedBathrooms = input.bathrooms ? Number(input.bathrooms) : extracted?.bathrooms ?? null;
+  const importPreview = rawSourceUrl
+    ? previewListingImport({
+        url: rawSourceUrl,
+        address: input.address,
+        unit: input.unit,
+        price: parsedPrice,
+        bedrooms: parsedBedrooms,
+        bathrooms: parsedBathrooms,
+      })
+    : null;
+  const normalizedSourceUrl = importPreview?.normalizedUrl ?? rawSourceUrl;
+  const normalizedAddress = normalizeLooseText(
+    input.address || importPreview?.suggestedAddress,
+  );
+  const normalizedUnit = normalizeLooseText(input.unit || importPreview?.suggestedUnit);
+  const normalizedCity = normalizeLooseText(input.city || extracted?.city);
+  const normalizedNeighborhood = normalizeLooseText(input.neighborhood || extracted?.neighborhood);
 
   const existingBoardListings = await prisma.boardListing.findMany({
     where: { boardId },
@@ -1755,7 +2075,11 @@ export async function addListingToBoard(
 
   const duplicateBoardListing = existingBoardListings.find((entry) => {
     const listing = entry.listing;
-    if (normalizedSourceUrl && normalizedSourceUrl === normalizeLooseText(listing.sourceUrl)) return true;
+    if (
+      normalizedSourceUrl
+      && normalizedSourceUrl === normalizeLooseText(listing.sourceUrl)
+      && normalizedUnit === normalizeLooseText(listing.unit)
+    ) return true;
     if (!normalizedSourceUrl && normalizedAddress && normalizedAddress === normalizeLooseText(listing.address)) {
       const samePrice = parsedPrice === null || listing.price === null || parsedPrice === listing.price;
       const sameBedrooms = parsedBedrooms === null || listing.bedrooms === null || parsedBedrooms === listing.bedrooms;
@@ -1771,6 +2095,25 @@ export async function addListingToBoard(
       where: { id: duplicateBoardListing.id },
       data: { userStatus: duplicateBoardListing.userStatus === "rejected" ? "maybe" : duplicateBoardListing.userStatus },
     });
+    if (input.modelInsights?.length || input.listingTitle?.trim()) {
+      const existingProviderData = duplicateBoardListing.listing.providerData;
+      await prisma.listing.update({
+        where: { id: duplicateBoardListing.listing.id },
+        data: {
+          providerData: {
+            ...(existingProviderData && typeof existingProviderData === "object" && !Array.isArray(existingProviderData)
+              ? existingProviderData as Record<string, unknown>
+              : {}),
+            ...(input.modelInsights?.length
+              ? { homeboardModelInsights: input.modelInsights }
+              : {}),
+            ...(input.listingTitle?.trim()
+              ? { homeboardListingTitle: input.listingTitle.trim() }
+              : {}),
+          },
+        },
+      });
+    }
     await addBoardEvent(
       boardId,
       "system",
@@ -1785,22 +2128,36 @@ export async function addListingToBoard(
   const listing = await prisma.listing.create({
     data: {
       source: input.method,
-      sourceUrl: input.sourceUrl?.trim() || null,
-      address: input.address?.trim() || null,
+      sourceUrl: normalizedSourceUrl,
+      address: normalizedAddress,
+      unit: input.unit?.trim() || importPreview?.suggestedUnit || null,
       city: input.city?.trim() || extracted?.city || null,
       neighborhood: input.neighborhood?.trim() || extracted?.neighborhood || null,
+      latitude: Number.isFinite(input.latitude) ? input.latitude : null,
+      longitude: Number.isFinite(input.longitude) ? input.longitude : null,
       price: parsedPrice,
       bedrooms: parsedBedrooms,
-      bathrooms: input.bathrooms ? Number(input.bathrooms) : extracted?.bathrooms ?? null,
+      bathrooms: parsedBathrooms,
       squareFeet: input.squareFeet ? Number(input.squareFeet) : extracted?.squareFeet ?? null,
       description: input.description?.trim() || input.pastedText?.trim() || null,
-      amenities: json([]),
+      amenities: json(input.amenities ?? []),
+      providerData: {
+        homeboardModelInsights: input.modelInsights ?? [],
+        ...(input.listingTitle?.trim()
+          ? { homeboardListingTitle: input.listingTitle.trim() }
+          : {}),
+      },
       fees: json({ brokerFee: null, applicationFee: null, deposit: null, utilitiesIncluded: null }),
-      images: json([]),
+      images: json(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
       propertyType: null,
       state: null,
       zip: null,
-      sourceName: input.method === "pasted_link" ? "pasted link" : input.method === "pasted_text" ? "pasted text" : "manual entry",
+      sourceName:
+        input.method === "pasted_link" && input.sourceUrl
+          ? detectListingProvider(input.sourceUrl)
+          : input.method === "pasted_text"
+            ? "pasted text"
+            : "manual entry",
       status: input.method === "pasted_link" ? "saved_only" : "unknown",
     },
   });
@@ -1812,14 +2169,47 @@ export async function addListingToBoard(
     questionsToAsk: json(["Can you confirm the current availability and full monthly cost?"]),
   };
 
-  await prisma.boardListing.create({
+  const boardListing = await prisma.boardListing.create({
     data: {
       boardId,
       listingId: listing.id,
       userStatus: "new",
+      workflowStatus: input.sourceUrl ? "source_confirmed" : "suggested",
+      userNotes: input.userNotes?.trim() || null,
       ...analysis,
     },
   });
+
+  if (input.sourceUrl?.trim() && (input.actorRoommateId || input.actorUserId)) {
+    const actor = input.actorRoommateId
+      ? await prisma.roommateProfile.findUnique({
+          where: { id: input.actorRoommateId },
+          select: { linkedUserId: true },
+        })
+      : await prisma.roommateProfile.findFirst({
+          where: { boardId, linkedUserId: input.actorUserId },
+          select: { linkedUserId: true },
+        });
+    if (actor?.linkedUserId) {
+      await submitBoardListingSource({
+        boardListingId: boardListing.id,
+        userId: actor.linkedUserId,
+        url: input.sourceUrl,
+        label: `${detectListingProvider(input.sourceUrl)} listing`,
+      });
+    }
+  }
+
+  if (listing.price !== null) {
+    await prisma.priceHistory.create({
+      data: {
+        listingId: listing.id,
+        price: listing.price,
+        observedAt: new Date(),
+        source: "manual",
+      },
+    });
+  }
 
   await addBoardEvent(
     boardId,
@@ -1834,18 +2224,30 @@ export async function addListingToBoard(
           : "A manual listing was created"
     }: ${formatListingLabel(listing)}.`,
   );
+  await trackEvent("listing_imported", {
+    boardId,
+    boardListingId: boardListing.id,
+    listingId: listing.id,
+    method: input.method,
+    provider: listing.sourceName,
+  });
   await touchBoard(boardId);
 }
 
-export async function createBoardInvitation(boardId: string, invitedByUserId: string, email: string) {
+export async function createBoardInvitation(
+  boardId: string,
+  invitedByUserId: string,
+  email?: string | null,
+) {
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail) throw new Error("Invite email is required.");
+  const normalizedEmail = email?.trim().toLowerCase() || null;
 
   const board = await ensureBoard(boardId, invitedByUserId);
   if (!board) throw new Error("Workspace not found.");
 
-  const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  const existingUser = normalizedEmail
+    ? await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    : null;
   if (existingUser) {
     const existingMember = await prisma.boardMember.findUnique({
       where: { boardId_userId: { boardId, userId: existingUser.id } },
@@ -1872,7 +2274,9 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
       "system",
       "System",
       "invitation_refreshed",
-      `Invitation refreshed for ${normalizedEmail}.`,
+      normalizedEmail
+        ? `Invitation refreshed for ${normalizedEmail}.`
+        : "Shareable roommate invitation refreshed.",
     );
     await trackEvent("invite_refreshed", {
       boardId,
@@ -1894,7 +2298,15 @@ export async function createBoardInvitation(boardId: string, invitedByUserId: st
     },
   });
 
-  await addBoardEvent(boardId, "system", "System", "invitation_created", `Invitation created for ${normalizedEmail}.`);
+  await addBoardEvent(
+    boardId,
+    "system",
+    "System",
+    "invitation_created",
+    normalizedEmail
+      ? `Invitation created for ${normalizedEmail}.`
+      : "Shareable roommate invitation created.",
+  );
   await trackEvent("invite_created", {
     boardId,
     invitedByUserId,
@@ -1933,7 +2345,9 @@ export async function revokeBoardInvitation(invitationId: string, actingUserId: 
     "system",
     "System",
     "invitation_revoked",
-    `Invitation revoked for ${invitation.email}.`,
+    invitation.email
+      ? `Invitation revoked for ${invitation.email}.`
+      : "Shareable roommate invitation revoked.",
   );
   await trackEvent("invite_revoked", {
     boardId: invitation.boardId,
@@ -2092,7 +2506,7 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
   if (!user) throw new Error("Account not found.");
   if (!user.email) throw new Error("Your account is missing an email address.");
 
-  if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
+  if (invitation.email && user.email.toLowerCase() !== invitation.email.toLowerCase()) {
     throw new Error(`This invite is for ${invitation.email}, but you are signed in as ${user.email}.`);
   }
 
@@ -2117,8 +2531,11 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
         linkedUserId: userId,
         name: user.displayName,
         roleLabel: "roommate",
+        budgetMin: null,
         budgetMax: null,
-        commuteDestination: user.workAddress,
+        stretchBudget: null,
+        commuteDestination: null,
+        maxCommuteMinutes: null,
         commutePriority: "medium",
         neighborhoodPriority: "medium",
         spacePriority: "medium",
@@ -2150,15 +2567,38 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
 
 export async function addRoommateToBoard(
   boardId: string,
-  input: { name: string; roleLabel?: string; budgetMax?: string; commuteDestination?: string },
+  input: {
+    name: string;
+    roleLabel?: string;
+    budgetMin?: string;
+    idealBudget?: string;
+    budgetMax?: string;
+    stretchBudget?: string;
+    commuteDestination?: string;
+    commuteAccess?: string;
+    preferredCommuteMinutes?: string;
+    maxCommuteMinutes?: string;
+    petsRequired?: string;
+    accessibilityNeeds?: string;
+  },
 ) {
-  await prisma.roommateProfile.create({
+  const roommate = await prisma.roommateProfile.create({
     data: {
       boardId,
       name: input.name.trim() || "New roommate",
       roleLabel: input.roleLabel?.trim() || "roommate",
+      budgetMin: input.budgetMin ? Number(input.budgetMin) : null,
+      idealBudget: input.idealBudget ? Number(input.idealBudget) : null,
       budgetMax: input.budgetMax ? Number(input.budgetMax) : null,
+      stretchBudget: input.stretchBudget ? Number(input.stretchBudget) : null,
       commuteDestination: input.commuteDestination?.trim() || null,
+      commuteAccess: input.commuteAccess?.trim() || null,
+      preferredCommuteMinutes: input.commuteDestination?.trim() && input.preferredCommuteMinutes
+        ? Number(input.preferredCommuteMinutes)
+        : null,
+      maxCommuteMinutes: input.commuteDestination?.trim() && input.maxCommuteMinutes
+        ? Number(input.maxCommuteMinutes)
+        : null,
       commutePriority: "medium",
       neighborhoodPriority: "medium",
       spacePriority: "medium",
@@ -2166,16 +2606,29 @@ export async function addRoommateToBoard(
       preferredNeighborhoods: json([]),
       mustHaves: json([]),
       dealbreakers: json([]),
+      petsRequired:
+        input.petsRequired === "true" ? true : input.petsRequired === "false" ? false : null,
+      accessibilityNeeds: json(
+        input.accessibilityNeeds?.split(",").map((value) => value.trim()).filter(Boolean) ?? [],
+      ),
       notes: null,
     },
   });
+  await addBoardEvent(boardId, "system", "System", "member_profile_added", `${roommate.name} was added to the group brief.`);
+  await touchBoard(boardId);
 }
 
 export async function updateRoommateProfile(
   roommateId: string,
   input: {
+    budgetMin?: string;
+    idealBudget?: string;
     budgetMax?: string;
+    stretchBudget?: string;
     commuteDestination?: string;
+    commuteAccess?: string;
+    preferredCommuteMinutes?: string;
+    maxCommuteMinutes?: string;
     commutePriority?: string;
     neighborhoodPriority?: string;
     spacePriority?: string;
@@ -2183,29 +2636,154 @@ export async function updateRoommateProfile(
     preferredNeighborhoods?: string;
     mustHaves?: string;
     dealbreakers?: string;
+    petsRequired?: string;
+    accessibilityNeeds?: string;
     notes?: string;
   },
 ) {
-  await prisma.roommateProfile.update({
+  const current = await prisma.roommateProfile.findUnique({ where: { id: roommateId } });
+  if (!current) throw new Error("Member profile not found.");
+  const wasComplete =
+    current.idealBudget !== null &&
+    current.budgetMax !== null &&
+    (Boolean(current.commuteDestination) || parseJsonArray(current.preferredNeighborhoods).length > 0) &&
+    parseJsonArray(current.mustHaves).length > 0 &&
+    parseJsonArray(current.dealbreakers).length > 0;
+
+  const parseBudget = (value: string | undefined, fallback: number | null) =>
+    value === undefined ? fallback : value ? Number(value) : null;
+  const nextBudgetMin = parseBudget(input.budgetMin, current.budgetMin);
+  const nextIdealBudget = parseBudget(input.idealBudget, current.idealBudget);
+  const nextBudgetMax = parseBudget(input.budgetMax, current.budgetMax);
+  const nextStretchBudget = parseBudget(input.stretchBudget, current.stretchBudget);
+  const nextCommuteDestination =
+    input.commuteDestination === undefined
+      ? current.commuteDestination
+      : input.commuteDestination.trim() || null;
+  const nextMaxCommuteMinutes =
+    input.maxCommuteMinutes === undefined
+      ? current.maxCommuteMinutes
+      : nextCommuteDestination && input.maxCommuteMinutes
+        ? Number(input.maxCommuteMinutes)
+        : null;
+  const nextPreferredCommuteMinutes =
+    input.preferredCommuteMinutes === undefined
+      ? current.preferredCommuteMinutes
+      : nextCommuteDestination && input.preferredCommuteMinutes
+        ? Number(input.preferredCommuteMinutes)
+        : null;
+
+  if (nextBudgetMin !== null && nextBudgetMax !== null && nextBudgetMin > nextBudgetMax) {
+    throw new Error("The comfortable minimum cannot be higher than the comfortable maximum.");
+  }
+  if (nextIdealBudget !== null && nextBudgetMin !== null && nextIdealBudget < nextBudgetMin) {
+    throw new Error("The ideal budget cannot be lower than the minimum contribution.");
+  }
+  if (nextIdealBudget !== null && nextBudgetMax !== null && nextIdealBudget > nextBudgetMax) {
+    throw new Error("The ideal budget cannot be higher than the absolute maximum.");
+  }
+  if (nextStretchBudget !== null && nextBudgetMax !== null && nextStretchBudget < nextBudgetMax) {
+    throw new Error("The stretch budget cannot be lower than the comfortable maximum.");
+  }
+  if (nextMaxCommuteMinutes !== null && !nextCommuteDestination) {
+    throw new Error("Add a commute address before setting a commute limit.");
+  }
+  if (
+    nextPreferredCommuteMinutes !== null &&
+    nextMaxCommuteMinutes !== null &&
+    nextPreferredCommuteMinutes > nextMaxCommuteMinutes
+  ) {
+    throw new Error("The preferred commute cannot be longer than the maximum commute.");
+  }
+
+  const roommate = await prisma.roommateProfile.update({
     where: { id: roommateId },
     data: {
-      budgetMax: input.budgetMax ? Number(input.budgetMax) : null,
-      commuteDestination: input.commuteDestination?.trim() || null,
-      commutePriority: (input.commutePriority as RoommateRecord["commutePriority"]) || "medium",
-      neighborhoodPriority: (input.neighborhoodPriority as RoommateRecord["neighborhoodPriority"]) || "medium",
-      spacePriority: (input.spacePriority as RoommateRecord["spacePriority"]) || "medium",
-      privacyPriority: (input.privacyPriority as RoommateRecord["privacyPriority"]) || "medium",
-      preferredNeighborhoods: json(
-        input.preferredNeighborhoods
-          ?.split(",")
-          .map((value) => value.trim())
-          .filter(Boolean) ?? [],
-      ),
-      mustHaves: json(input.mustHaves?.split(",").map((value) => value.trim()).filter(Boolean) ?? []),
-      dealbreakers: json(input.dealbreakers?.split(",").map((value) => value.trim()).filter(Boolean) ?? []),
-      notes: input.notes?.trim() || null,
+      ...(input.budgetMin !== undefined ? { budgetMin: nextBudgetMin } : {}),
+      ...(input.idealBudget !== undefined ? { idealBudget: nextIdealBudget } : {}),
+      ...(input.budgetMax !== undefined ? { budgetMax: nextBudgetMax } : {}),
+      ...(input.stretchBudget !== undefined ? { stretchBudget: nextStretchBudget } : {}),
+      ...(input.commuteDestination !== undefined ? { commuteDestination: nextCommuteDestination } : {}),
+      ...(input.commuteAccess !== undefined
+        ? { commuteAccess: input.commuteAccess.trim() || null }
+        : {}),
+      ...(input.preferredCommuteMinutes !== undefined
+        ? { preferredCommuteMinutes: nextPreferredCommuteMinutes }
+        : {}),
+      ...(input.maxCommuteMinutes !== undefined ? { maxCommuteMinutes: nextMaxCommuteMinutes } : {}),
+      ...(input.commutePriority !== undefined
+        ? { commutePriority: input.commutePriority as RoommateRecord["commutePriority"] }
+        : {}),
+      ...(input.neighborhoodPriority !== undefined
+        ? { neighborhoodPriority: input.neighborhoodPriority as RoommateRecord["neighborhoodPriority"] }
+        : {}),
+      ...(input.spacePriority !== undefined
+        ? { spacePriority: input.spacePriority as RoommateRecord["spacePriority"] }
+        : {}),
+      ...(input.privacyPriority !== undefined
+        ? { privacyPriority: input.privacyPriority as RoommateRecord["privacyPriority"] }
+        : {}),
+      ...(input.preferredNeighborhoods !== undefined
+        ? {
+            preferredNeighborhoods: json(
+              input.preferredNeighborhoods
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean),
+            ),
+          }
+        : {}),
+      ...(input.mustHaves !== undefined
+        ? { mustHaves: json(input.mustHaves.split(",").map((value) => value.trim()).filter(Boolean)) }
+        : {}),
+      ...(input.dealbreakers !== undefined
+        ? { dealbreakers: json(input.dealbreakers.split(",").map((value) => value.trim()).filter(Boolean)) }
+        : {}),
+      ...(input.petsRequired !== undefined
+        ? { petsRequired: input.petsRequired === "true" ? true : input.petsRequired === "false" ? false : null }
+        : {}),
+      ...(input.accessibilityNeeds !== undefined
+        ? {
+            accessibilityNeeds: json(
+              input.accessibilityNeeds.split(",").map((value) => value.trim()).filter(Boolean),
+            ),
+          }
+        : {}),
+      ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
     },
   });
+  await addBoardEvent(roommate.boardId, "system", "System", "member_profile_updated", `${roommate.name}'s preferences were updated.`);
+  const isComplete =
+    roommate.idealBudget !== null &&
+    roommate.budgetMax !== null &&
+    (Boolean(roommate.commuteDestination) || parseJsonArray(roommate.preferredNeighborhoods).length > 0) &&
+    parseJsonArray(roommate.mustHaves).length > 0 &&
+    parseJsonArray(roommate.dealbreakers).length > 0;
+  if (!wasComplete && isComplete) {
+    await addBoardEvent(
+      roommate.boardId,
+      "roommate",
+      roommate.name,
+      "preferences_completed",
+      `${roommate.name} completed their individual search limits.`,
+    );
+    await trackEvent("preferences_completed", {
+      boardId: roommate.boardId,
+      roommateId: roommate.id,
+    });
+  }
+  await touchBoard(roommate.boardId);
+}
+
+export async function renameBoard(boardId: string, actorUserId: string, title: string) {
+  const cleanedTitle = title.trim();
+  if (!cleanedTitle) throw new Error("Board title is required.");
+  const board = await ensureBoard(boardId, actorUserId);
+  if (!board) throw new Error("Workspace not found.");
+  await prisma.searchBoard.update({ where: { id: boardId }, data: { title: cleanedTitle } });
+  const actor = await prisma.user.findUnique({ where: { id: actorUserId }, select: { displayName: true } });
+  await addBoardEvent(boardId, "roommate", actor?.displayName || "A member", "board_renamed", `Renamed the workspace to ${cleanedTitle}.`);
+  await touchBoard(boardId);
 }
 
 export async function updateBoardListingStatus(boardListingId: string, status: BoardListingRecord["userStatus"]) {
@@ -2221,7 +2799,339 @@ export async function updateBoardListingStatus(boardListingId: string, status: B
     "listing_status_updated",
     `${formatListingLabel(boardListing.listing)} is now marked ${status}.`,
   );
+  await trackEvent("listing_status_changed", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    status,
+  });
   await touchBoard(boardListing.boardId);
+}
+
+export async function updateBoardListingWorkflow(
+  boardListingId: string,
+  workflowStatus: BoardListingRecord["workflowStatus"],
+  actorName = "A member",
+) {
+  const boardListing = await prisma.boardListing.update({
+    where: { id: boardListingId },
+    data: { workflowStatus },
+    include: { listing: true },
+  });
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    actorName,
+    "listing_workflow_updated",
+    `${formatListingLabel(boardListing.listing)} moved to ${workflowStatus.replaceAll("_", " ")}.`,
+  );
+  await trackEvent("listing_status_changed", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    workflowStatus,
+  });
+  await touchBoard(boardListing.boardId);
+}
+
+export async function attachBoardListingSource(
+  boardListingId: string,
+  roommateId: string,
+  input: { url: string; label?: string; kind?: "confirmed_exact" | "member_reference" },
+) {
+  const [boardListing, roommate] = await Promise.all([
+    prisma.boardListing.findUnique({ where: { id: boardListingId }, include: { listing: true } }),
+    prisma.roommateProfile.findUnique({ where: { id: roommateId } }),
+  ]);
+  if (!boardListing || !roommate || roommate.boardId !== boardListing.boardId) {
+    throw new Error("Listing or member profile not found.");
+  }
+  if (!roommate.linkedUserId) {
+    throw new Error("Sign in with the member account before attaching a source.");
+  }
+  const result = await submitBoardListingSource({
+    boardListingId,
+    userId: roommate.linkedUserId,
+    url: input.url,
+    label: input.label,
+  });
+  const provider = detectListingProvider(input.url);
+  await prisma.boardListing.update({
+    where: { id: boardListingId },
+    data: { workflowStatus: "source_confirmed" },
+  });
+
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    roommate.name,
+    "listing_source_added",
+    `${roommate.name} attached a board source for ${formatListingLabel(boardListing.listing)}.`,
+  );
+  await trackEvent("listing_source_confirmed", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    roommateId,
+    provider,
+    trustStatus: result.status,
+  });
+  await touchBoard(boardListing.boardId);
+  return result;
+}
+
+export async function verifyBoardListing(
+  boardListingId: string,
+  roommateId: string,
+  status: BoardListingVerificationRecord["status"],
+  note?: string,
+) {
+  const [boardListing, roommate] = await Promise.all([
+    prisma.boardListing.findUnique({ where: { id: boardListingId }, include: { listing: true } }),
+    prisma.roommateProfile.findUnique({ where: { id: roommateId } }),
+  ]);
+  if (!boardListing || !roommate || roommate.boardId !== boardListing.boardId) {
+    throw new Error("Listing or member profile not found.");
+  }
+
+  await prisma.boardListingVerification.create({
+    data: {
+      boardListingId,
+      roommateId,
+      status,
+      note: note?.trim() || null,
+    },
+  });
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    roommate.name,
+    "listing_verified",
+    `${roommate.name} marked ${formatListingLabel(boardListing.listing)} as ${status.replaceAll("_", " ")}.`,
+  );
+  await touchBoard(boardListing.boardId);
+}
+
+export async function saveBoardListingReview(
+  boardListingId: string,
+  roommateId: string,
+  input: {
+    tourIntent: "yes" | "maybe" | "no";
+    interiorAppeal?: number | null;
+    naturalLight: "unknown" | "poor" | "fair" | "good" | "excellent";
+    mainConcern?: string;
+    sourceViewed?: boolean;
+  },
+) {
+  const [boardListing, roommate] = await Promise.all([
+    prisma.boardListing.findUnique({ where: { id: boardListingId }, include: { listing: true } }),
+    prisma.roommateProfile.findUnique({ where: { id: roommateId } }),
+  ]);
+  if (!boardListing || !roommate || roommate.boardId !== boardListing.boardId) {
+    throw new Error("Listing or member profile not found.");
+  }
+
+  await prisma.boardListingReview.upsert({
+    where: { boardListingId_roommateId: { boardListingId, roommateId } },
+    create: {
+      boardListingId,
+      roommateId,
+      tourIntent: input.tourIntent,
+      interiorAppeal: input.interiorAppeal ?? null,
+      naturalLight: input.naturalLight,
+      mainConcern: input.mainConcern?.trim() || null,
+      sourceViewedAt: input.sourceViewed ? new Date() : null,
+    },
+    update: {
+      tourIntent: input.tourIntent,
+      interiorAppeal: input.interiorAppeal ?? null,
+      naturalLight: input.naturalLight,
+      mainConcern: input.mainConcern?.trim() || null,
+      ...(input.sourceViewed ? { sourceViewedAt: new Date() } : {}),
+    },
+  });
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    roommate.name,
+    "listing_reviewed",
+    `${roommate.name} completed a post-gallery review for ${formatListingLabel(boardListing.listing)}.`,
+  );
+  await trackEvent("listing_reviewed", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    roommateId,
+    tourIntent: input.tourIntent,
+  });
+  await touchBoard(boardListing.boardId);
+}
+
+export async function voteOnBoardListingDecision(
+  boardListingId: string,
+  roommateId: string,
+  type: "shortlist" | "request_viewing" | "apply",
+  choice: "yes" | "no" | "abstain",
+) {
+  const [boardListing, roommate] = await Promise.all([
+    prisma.boardListing.findUnique({ where: { id: boardListingId }, include: { listing: true } }),
+    prisma.roommateProfile.findUnique({ where: { id: roommateId } }),
+  ]);
+  if (!boardListing || !roommate || roommate.boardId !== boardListing.boardId) {
+    throw new Error("Listing or member profile not found.");
+  }
+
+  let decision = await prisma.boardListingDecision.findFirst({
+    where: { boardListingId, type, closedAt: null },
+    orderBy: { createdAt: "desc" },
+  });
+  decision ??= await prisma.boardListingDecision.create({
+    data: { boardListingId, type, createdByRoommateId: roommateId },
+  });
+
+  await prisma.boardListingDecisionVote.upsert({
+    where: { decisionId_roommateId: { decisionId: decision.id, roommateId } },
+    create: { decisionId: decision.id, roommateId, choice },
+    update: { choice },
+  });
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    roommate.name,
+    "listing_decision_voted",
+    `${roommate.name} voted ${choice} on whether to ${type.replaceAll("_", " ")} ${formatListingLabel(boardListing.listing)}.`,
+  );
+  await trackEvent("listing_vote_cast", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    roommateId,
+    type,
+    choice,
+  });
+  await touchBoard(boardListing.boardId);
+}
+
+export async function updateBoardListingDetails(
+  boardListingId: string,
+  input: {
+    address?: string;
+    city?: string;
+    neighborhood?: string;
+    price?: number | null;
+    bedrooms?: number | null;
+    bathrooms?: number | null;
+    description?: string;
+    sourceUrl?: string;
+    imageUrl?: string;
+    userNotes?: string;
+  },
+) {
+  const existing = await prisma.boardListing.findUnique({
+    where: { id: boardListingId },
+    include: { listing: true },
+  });
+  if (!existing) throw new Error("Listing not found.");
+
+  const nextPrice = input.price === undefined ? existing.listing.price : input.price;
+  await prisma.$transaction(async (tx) => {
+    await tx.listing.update({
+      where: { id: existing.listingId },
+      data: {
+        address: input.address?.trim() || existing.listing.address,
+        city: input.city?.trim() || existing.listing.city,
+        neighborhood: input.neighborhood?.trim() || existing.listing.neighborhood,
+        price: nextPrice,
+        bedrooms: input.bedrooms === undefined ? existing.listing.bedrooms : input.bedrooms,
+        bathrooms: input.bathrooms === undefined ? existing.listing.bathrooms : input.bathrooms,
+        description: input.description?.trim() || existing.listing.description,
+        sourceUrl: input.sourceUrl?.trim() || existing.listing.sourceUrl,
+        images: input.imageUrl?.trim() ? json([input.imageUrl.trim()]) : existing.listing.images,
+      },
+    });
+    await tx.boardListing.update({
+      where: { id: boardListingId },
+      data: { userNotes: input.userNotes?.trim() || null },
+    });
+    if (nextPrice !== null && nextPrice !== existing.listing.price) {
+      await tx.priceHistory.create({
+        data: {
+          listingId: existing.listingId,
+          price: nextPrice,
+          observedAt: new Date(),
+          source: "user_update",
+        },
+      });
+    }
+  });
+
+  await addBoardEvent(
+    existing.boardId,
+    "system",
+    "System",
+    "listing_updated",
+    `${formatListingLabel({ ...existing.listing, price: nextPrice })} was updated.`,
+  );
+  await touchBoard(existing.boardId);
+}
+
+export async function addManualBoardUpdate(
+  boardId: string,
+  actor: { userId: string; authorName: string },
+  content: string,
+) {
+  const message = content.trim();
+  if (!message) throw new Error("Update cannot be empty.");
+
+  await prisma.$transaction([
+    prisma.chatMessage.create({
+      data: {
+        boardId,
+        role: "user",
+        authorUserId: actor.userId,
+        authorName: actor.authorName,
+        content: message,
+      },
+    }),
+    prisma.boardEvent.create({
+      data: {
+        boardId,
+        actorType: "roommate",
+        actorName: actor.authorName,
+        eventType: "board_update",
+        content: `${actor.authorName}: ${message}`,
+      },
+    }),
+    prisma.searchBoard.update({
+      where: { id: boardId },
+      data: { updatedAt: new Date() },
+    }),
+  ]);
+}
+
+export async function addBoardDecision(boardId: string, actorName: string, question: string) {
+  const text = question.trim();
+  if (!text) throw new Error("Decision cannot be empty.");
+  await addBoardEvent(boardId, "roommate", actorName, "decision_opened", text);
+  await touchBoard(boardId);
+}
+
+export async function resolveBoardDecision(boardId: string, actorName: string, question: string, resolution?: string) {
+  const text = question.trim();
+  if (!text) throw new Error("Decision cannot be empty.");
+  const result = resolution?.trim();
+  await addBoardEvent(
+    boardId,
+    "roommate",
+    actorName,
+    "decision_resolved",
+    result ? `${text} || ${result}` : text,
+  );
+  await touchBoard(boardId);
+}
+
+export async function removeRoommateProfile(roommateId: string) {
+  const roommate = await prisma.roommateProfile.findUnique({ where: { id: roommateId } });
+  if (!roommate) throw new Error("Member profile not found.");
+  if (roommate.linkedUserId) throw new Error("Account-backed members must be removed through board membership controls.");
+  await prisma.roommateProfile.delete({ where: { id: roommateId } });
+  await addBoardEvent(roommate.boardId, "system", "System", "roommate_profile_removed", `${roommate.name} was removed from the board.`);
+  await touchBoard(roommate.boardId);
 }
 
 export async function saveSuggestedListingToBoard(
@@ -2245,7 +3155,7 @@ export async function saveSuggestedListingToBoard(
     return;
   }
 
-  const boardData = await getBoardPageData(boardId, actorUserId);
+  const boardData = await getBoardPageData(boardId, actorUserId, { includeSuggestedListings: true });
   if (!boardData) return;
 
   const listing = boardData.suggestedListings.find((entry) => entry.listing.id === listingId);
@@ -2306,6 +3216,12 @@ export async function saveBoardListingVote(
       "listing_vote_saved",
       `${roommate.name} marked ${formatListingLabel(boardListing.listing)} as ${voteRecord.vote}.`,
     );
+    await trackEvent("listing_reaction_added", {
+      boardId: boardListing.boardId,
+      boardListingId,
+      roommateId,
+      vote: voteRecord.vote,
+    });
     await touchBoard(boardListing.boardId);
   }
 }
@@ -2328,6 +3244,43 @@ export async function addBoardListingComment(boardListingId: string, roommateId:
       "listing_comment_added",
       `${roommate.name} left a note on ${formatListingLabel(boardListing.listing)}: ${trimmedContent}`,
     );
+    await trackEvent("listing_comment_added", {
+      boardId: boardListing.boardId,
+      boardListingId,
+      roommateId,
+    });
+    await touchBoard(boardListing.boardId);
+  }
+}
+
+export async function saveBoardListingRatings(
+  boardListingId: string,
+  roommateId: string,
+  ratings: Record<string, number>,
+) {
+  await prisma.boardListingRating.upsert({
+    where: { boardListingId_roommateId: { boardListingId, roommateId } },
+    create: { boardListingId, roommateId, ratings },
+    update: { ratings },
+  });
+  const boardListing = await prisma.boardListing.findUnique({
+    where: { id: boardListingId },
+    include: { listing: true },
+  });
+  const roommate = await prisma.roommateProfile.findUnique({ where: { id: roommateId } });
+  if (boardListing && roommate) {
+    await addBoardEvent(
+      boardListing.boardId,
+      "roommate",
+      roommate.name,
+      "listing_dimensions_rated",
+      `${roommate.name} updated their group fit read on ${formatListingLabel(boardListing.listing)}.`,
+    );
+    await trackEvent("listing_rated", {
+      boardId: boardListing.boardId,
+      boardListingId,
+      roommateId,
+    });
     await touchBoard(boardListing.boardId);
   }
 }

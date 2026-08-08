@@ -1,11 +1,27 @@
 node_modules
+node_modules.dataless-old
 # Keep environment variables out of version control
 .env
 .env.local
+.env*.icloud-placeholder-*
+*.icloud-placeholder-*
 
 .next
+*.tsbuildinfo
 
 /generated/prisma
 data/*.db
 data/*.db-shm
 data/*.db-wal
+
+# Xcode local state and build products
+.xcodebuildmcp/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+.DS_Store
+
+# Accidental local duplicate; RootView.swift is the active source.
+ios/HomeboardNative/HomeboardNative/Sources/RootView 2.swift

@@ -60,7 +60,9 @@ export default async function SettingsPage({
     typeof params.boardId === "string" && recentBoards.some((board) => board.id === params.boardId)
       ? params.boardId
       : recentBoards[0]?.id;
-  const boardData = selectedBoardId ? await getBoardPageData(selectedBoardId, currentUser.id) : null;
+  const boardData = selectedBoardId
+    ? await getBoardPageData(selectedBoardId, currentUser.id, { includeSuggestedListings: false })
+    : null;
 
   return (
     <main className="settings-shell">
@@ -278,16 +280,24 @@ export default async function SettingsPage({
                               <input type="hidden" name="boardId" value={boardData.board.id} />
                               <div className="account-form-grid account-form-grid-2">
                                 <label className="field-stack">
-                                  <span>Work or commute address</span>
-                                  <input name="workAddress" defaultValue={currentUser.workAddress ?? ""} placeholder="350 5th Ave, New York, NY" />
+                                  <span>Comfortable monthly minimum</span>
+                                  <input name="budgetMin" defaultValue={currentRoommate.budgetMin ?? ""} inputMode="numeric" placeholder="1200" />
                                 </label>
                                 <label className="field-stack">
-                                  <span>Monthly budget ceiling</span>
+                                  <span>Comfortable monthly maximum</span>
                                   <input name="budgetMax" defaultValue={currentRoommate.budgetMax ?? ""} inputMode="numeric" placeholder="1700" />
                                 </label>
                                 <label className="field-stack">
-                                  <span>Commute target</span>
-                                  <input name="commuteDestination" defaultValue={currentRoommate.commuteDestination ?? ""} placeholder="Midtown" />
+                                  <span>Stretch maximum</span>
+                                  <input name="stretchBudget" defaultValue={currentRoommate.stretchBudget ?? ""} inputMode="numeric" placeholder="1800" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Commute address (optional)</span>
+                                  <input name="commuteDestination" defaultValue={currentRoommate.commuteDestination ?? ""} placeholder="350 5th Ave, New York, NY" />
+                                </label>
+                                <label className="field-stack">
+                                  <span>Maximum commute in minutes</span>
+                                  <input name="maxCommuteMinutes" defaultValue={currentRoommate.maxCommuteMinutes ?? ""} inputMode="numeric" placeholder="40" />
                                 </label>
                                 <label className="field-stack">
                                   <span>Preferred neighborhoods</span>
@@ -388,26 +398,6 @@ export default async function SettingsPage({
                     <label className="field-stack">
                       <span>Group size</span>
                       <input name="groupSize" defaultValue={boardData.profile.groupSize ?? ""} inputMode="numeric" placeholder="3" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Budget min</span>
-                      <input name="budgetMin" defaultValue={boardData.profile.budgetMin ?? ""} inputMode="numeric" placeholder="1400" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Budget max</span>
-                      <input name="budgetMax" defaultValue={boardData.profile.budgetMax ?? ""} inputMode="numeric" placeholder="1600" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Stretch budget</span>
-                      <input name="stretchBudget" defaultValue={boardData.profile.stretchBudget ?? ""} inputMode="numeric" placeholder="1750" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Commute target</span>
-                      <input name="commuteTarget" defaultValue={boardData.profile.commuteTarget ?? ""} placeholder="Midtown" />
-                    </label>
-                    <label className="field-stack">
-                      <span>Max commute (minutes)</span>
-                      <input name="maxCommuteMinutes" defaultValue={boardData.profile.maxCommuteMinutes ?? ""} inputMode="numeric" placeholder="40" />
                     </label>
                     <label className="field-stack">
                       <span>Preferred neighborhoods</span>
@@ -561,17 +551,17 @@ export default async function SettingsPage({
                 <div className="settings-subsection">
                   <h3>Workspace invites</h3>
                   <p className="settings-help-copy">
-                    Invite collaborators by email, then send them the generated join link. Once they accept, they become a real
+                    Create a code and send it by text or any app. Optionally lock it to one email. Once they accept, they become a real
                     workspace member and can add their own commute and preference layer.
                   </p>
                   <form action={createBoardInvitationAction} className="account-form">
                     <input type="hidden" name="boardId" value={boardData.board.id} />
                     <input type="hidden" name="redirectTo" value={`/settings?boardId=${boardData.board.id}`} />
                     <label className="field-stack">
-                      <span>Invite by email</span>
-                      <input name="email" type="email" placeholder="roommate@example.com" />
+                      <span>Restrict to email (optional)</span>
+                      <input name="email" type="email" placeholder="Leave blank for anyone" />
                     </label>
-                    <button type="submit" className="account-primary-button">Generate invite link</button>
+                    <button type="submit" className="account-primary-button">Create shareable code</button>
                   </form>
 
                   <BoardInvitePanel boardId={boardData.board.id} invitations={boardData.invitations} />

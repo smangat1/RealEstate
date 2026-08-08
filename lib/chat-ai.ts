@@ -217,6 +217,40 @@ export function mergeProfileUpdates(profile: SearchProfileData, updates: Extract
   };
 }
 
+export function mergeProfileUpdatesWithGuards(input: {
+  profile: SearchProfileData;
+  ruleProfile: SearchProfileData;
+  updates: ExtractedUpdates;
+  message: string;
+  conversationHint: ConversationHint;
+}) {
+  const message = input.message.toLowerCase();
+  const mentionsBudget = /\$|\bbudget\b|\brent\b|\bunder\b|\bup to\b|\bmax(?:imum)?\b|\bafford|per month|monthly/.test(message);
+  const mentionsBedrooms = /\bstudio\b|\bbed(?:room)?s?\b|\b\d+(?:\.\d+)?\s*(?:br|bd)\b/.test(message);
+  const guarded: ExtractedUpdates = { ...input.updates };
+
+  // Small bare numbers answering a bedroom question must never overwrite a real rent budget.
+  if ((mentionsBedrooms || input.conversationHint === "bedrooms") && !mentionsBudget) {
+    delete guarded.budgetMin;
+    delete guarded.budgetMax;
+    delete guarded.stretchBudget;
+  }
+
+  // Likewise, a budget answer such as "probably 4500" is not a 4,500-bedroom request.
+  if ((mentionsBudget || input.conversationHint === "budget") && !mentionsBedrooms) {
+    delete guarded.bedroomsPreferred;
+    delete guarded.bedroomsFlexible;
+  }
+
+  // Deterministic parsing wins for fields explicitly changed by the message; AI can still add context elsewhere.
+  const merged = mergeProfileUpdates(input.ruleProfile, guarded);
+  if (input.ruleProfile.budgetMax !== input.profile.budgetMax) merged.budgetMax = input.ruleProfile.budgetMax;
+  if (input.ruleProfile.budgetMin !== input.profile.budgetMin) merged.budgetMin = input.ruleProfile.budgetMin;
+  if (input.ruleProfile.stretchBudget !== input.profile.stretchBudget) merged.stretchBudget = input.ruleProfile.stretchBudget;
+  if (input.ruleProfile.bedroomsPreferred !== input.profile.bedroomsPreferred) merged.bedroomsPreferred = input.ruleProfile.bedroomsPreferred;
+  return merged;
+}
+
 export async function generateConversationalReplyWithAI(input: {
   previousProfile: SearchProfileData;
   nextProfile: SearchProfileData;

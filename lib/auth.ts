@@ -126,6 +126,7 @@ export function getOnboardingSeedFromAuthUser(authUser: SupabaseAuthUser) {
     neighborhoods: metadataStringArray(authUser.user_metadata?.neighborhoods),
     locations: metadataString(authUser.user_metadata?.city) ? [String(authUser.user_metadata?.city).trim()] : [],
     commuteTarget: metadataString(authUser.user_metadata?.commuteTarget),
+    minCommuteMinutes: metadataNumber(authUser.user_metadata?.minCommuteMinutes),
     maxCommuteMinutes: metadataNumber(authUser.user_metadata?.maxCommuteMinutes),
     mustHaves: metadataStringArray(authUser.user_metadata?.mustHaves),
     dealbreakers: metadataStringArray(authUser.user_metadata?.dealbreakers),

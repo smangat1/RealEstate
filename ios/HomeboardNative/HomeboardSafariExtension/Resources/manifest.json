@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Save to Homeboard",
+  "description": "Collect the rental open in Safari and send it to your shared Homeboard.",
+  "version": "0.0.12",
+  "action": {
+    "default_title": "Save to Homeboard",
+    "default_icon": "toolbar-icon.svg"
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.zillow.com/*",
+        "*://*.streeteasy.com/*",
+        "*://*.realtor.com/*",
+        "*://*.apartments.com/*",
+        "*://*.redfin.com/*",
+        "*://*.rent.com/*",
+        "*://*.renthop.com/*",
+        "*://*.craigslist.org/*",
+        "*://*.compass.com/*",
+        "*://*.corcoran.com/*",
+        "*://*.elliman.com/*",
+        "*://*.serhant.com/*",
+        "*://*.sothebysrealty.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "*://*.zillow.com/*",
+    "*://*.streeteasy.com/*",
+    "*://*.realtor.com/*",
+    "*://*.apartments.com/*",
+    "*://*.redfin.com/*",
+    "*://*.rent.com/*",
+    "*://*.renthop.com/*",
+    "*://*.craigslist.org/*",
+    "*://*.compass.com/*",
+    "*://*.corcoran.com/*",
+    "*://*.elliman.com/*",
+    "*://*.serhant.com/*",
+    "*://*.sothebysrealty.com/*"
+  ],
+  "permissions": ["activeTab", "nativeMessaging", "scripting", "tabs"]
+}

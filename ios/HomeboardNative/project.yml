@@ -1,0 +1,213 @@
+name: HomeboardNative
+options:
+  bundleIdPrefix: com.homeboard
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+targets:
+  HomeboardNative:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HomeboardNative/Sources/HomeboardNativeApp.swift
+      - path: HomeboardNative/Sources/AppModel.swift
+      - path: HomeboardNative/Sources/HomeboardModels.swift
+      - path: HomeboardNative/Sources/HomeboardConfig.swift
+      - path: HomeboardNative/Sources/HomeboardAPI.swift
+      - path: HomeboardNative/Sources/InAppSafariView.swift
+      - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
+      - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
+      - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
+      - path: HomeboardNative/Shared/HomeboardAppleSignIn.swift
+      - path: HomeboardNative/Sources/HomeboardPalette.swift
+      - path: HomeboardNative/Sources/HomeboardBackgroundView.swift
+      - path: HomeboardNative/Sources/RootView.swift
+      - path: HomeboardNative/Sources/WelcomeView.swift
+      - path: HomeboardNative/Sources/AccountOnboardingView.swift
+      - path: HomeboardNative/Sources/AppleAuthView.swift
+      - path: HomeboardNative/Sources/BoardShellView.swift
+      - path: HomeboardNative/Sources/SharedWorkspaceView.swift
+      - path: HomeboardNative/Resources/Assets.xcassets
+        buildPhase: resources
+      - path: HomeboardNative/Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardNative
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: HomeboardNative/Info.plist
+        CURRENT_PROJECT_VERSION: 13
+        MARKETING_VERSION: 0.0.12
+        HOMEBOARD_API_BASE_URL: "http://Samyans-Laptop.local:3000"
+        HOMEBOARD_PUBLIC_WEB_URL: ""
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: HomeboardNative/HomeboardNativeDebug.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: HomeboardNative/HomeboardNative.entitlements
+    dependencies:
+      - target: HomeboardShareExtension
+      - target: HomeboardSafariExtension
+  HomeboardShareExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HomeboardShareExtension/ShareViewController.swift
+      - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
+      - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
+      - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
+      - path: HomeboardShareExtension/SharePreprocessor.js
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardShareExtension
+        PRODUCT_MODULE_NAME: HomeboardShareExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.share
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: HomeboardShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HomeboardShareExtension/HomeboardShareExtension.entitlements
+        CURRENT_PROJECT_VERSION: 13
+        MARKETING_VERSION: 0.0.12
+        HOMEBOARD_API_BASE_URL: "http://Samyans-Laptop.local:3000"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        TARGETED_DEVICE_FAMILY: "1"
+  HomeboardSafariExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HomeboardSafariExtension/SafariWebExtensionHandler.swift
+      - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
+      - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
+      - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
+      - path: HomeboardSafariExtension/Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardSafariExtension
+        PRODUCT_MODULE_NAME: HomeboardSafariExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.safari
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: HomeboardSafariExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HomeboardSafariExtension/HomeboardSafariExtension.entitlements
+        CURRENT_PROJECT_VERSION: 13
+        MARKETING_VERSION: 0.0.12
+        HOMEBOARD_API_BASE_URL: "http://Samyans-Laptop.local:3000"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        TARGETED_DEVICE_FAMILY: "1"
+        OTHER_LDFLAGS: "-framework SafariServices"
+  HomeboardMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: HomeboardMac/HomeboardMacApp.swift
+      - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
+      - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
+      - path: HomeboardNative/Shared/HomeboardAppleSignIn.swift
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardSafariSetup
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.mac
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: HomeboardMac/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HomeboardMac/HomeboardMac.entitlements
+        CURRENT_PROJECT_VERSION: 13
+        MARKETING_VERSION: 0.0.12
+        HOMEBOARD_API_BASE_URL: "http://127.0.0.1:3000"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.mac.dev
+    dependencies:
+      - target: HomeboardMacSafariExtension
+  HomeboardMacSafariExtension:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: HomeboardSafariExtension/SafariWebExtensionHandler.swift
+      - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
+      - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
+      - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
+      - path: HomeboardSafariExtension/Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardMacSafariExtension
+        PRODUCT_MODULE_NAME: HomeboardMacSafariExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.mac.safari
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: HomeboardMacSafariExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements
+        CURRENT_PROJECT_VERSION: 13
+        MARKETING_VERSION: 0.0.12
+        HOMEBOARD_API_BASE_URL: "http://127.0.0.1:3000"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        OTHER_LDFLAGS: "-framework SafariServices"
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.mac.dev.safari
+  HomeboardNativeTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HomeboardNativeTests
+    dependencies:
+      - target: HomeboardNative
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardNativeTests
+        PRODUCT_MODULE_NAME: HomeboardNativeTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        TARGETED_DEVICE_FAMILY: "1"
+  HomeboardNativeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HomeboardNativeUITests
+    dependencies:
+      - target: HomeboardNative
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardNativeUITests
+        PRODUCT_MODULE_NAME: HomeboardNativeUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        TARGETED_DEVICE_FAMILY: "1"
+schemes:
+  HomeboardNative:
+    build:
+      targets:
+        HomeboardNative: all
+        HomeboardNativeTests: [test]
+        HomeboardNativeUITests: [test]
+    test:
+      targets:
+        - HomeboardNativeTests
+        - HomeboardNativeUITests
+  Homeboard Safari Setup (Mac):
+    build:
+      targets:
+        HomeboardMac: all

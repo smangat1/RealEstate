@@ -1,0 +1,2 @@
+ALTER TABLE "BoardInvitation"
+ALTER COLUMN "email" DROP NOT NULL;

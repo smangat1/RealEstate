@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>219 Kent Avenue, Brooklyn, NY 11249 | Test Rental</title>
+  <meta property="og:title" content="219 Kent Avenue, Brooklyn, NY 11249">
+  <meta property="og:description" content="A bright three-bedroom rental near the waterfront.">
+  <style>
+    body {
+      margin: 0;
+      background: #f7f3ed;
+      color: #17202b;
+      font: 17px/1.6 -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      padding: 16px 7vw;
+      background: rgba(255, 255, 255, 0.94);
+      border-bottom: 1px solid #ddd6cc;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 52px 24px 180px;
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: clamp(30px, 6vw, 52px);
+      line-height: 1.08;
+    }
+    .facts {
+      color: #24608e;
+      font-size: 21px;
+      font-weight: 750;
+    }
+    section {
+      margin-top: 42px;
+      padding-top: 24px;
+      border-top: 1px solid #ddd6cc;
+    }
+    .similar-card {
+      margin-top: 12px;
+      padding: 18px;
+      border-radius: 14px;
+      background: white;
+    }
+  </style>
+  <script type="application/ld+json">
+    {
+      "@type": "Apartment",
+      "name": "219 Kent Avenue, Unit 3B",
+      "url": "http://127.0.0.1:4173/tests/fixtures/safari-extension-listing.html",
+      "address": {
+        "streetAddress": "219 Kent Avenue",
+        "addressLocality": "Brooklyn",
+        "addressRegion": "NY",
+        "postalCode": "11249"
+      },
+      "apartmentSuite": "3B",
+      "offers": { "price": 4800 },
+      "numberOfBedrooms": 3,
+      "numberOfBathroomsTotal": 2
+    }
+  </script>
+  <script>
+    window.__homeboardMessageListeners = [];
+    window.browser = {
+      runtime: {
+        onMessage: {
+          addListener(listener) {
+            window.__homeboardMessageListeners.push(listener);
+          }
+        },
+        async sendMessage(request) {
+          if (request.type === "homeboard.analyzeListing") {
+            return {
+              analyzed: true,
+              analysis: {
+                scope: "unit",
+                facts: request.capture,
+                options: [],
+                missingFields: [],
+                message: "Homeboard found the core listing details.",
+                usedOnDeviceModel: true
+              }
+            };
+          }
+          if (request.type === "homeboard.saveListing") {
+            return { saved: true, hasActiveBoard: true };
+          }
+          return null;
+        }
+      }
+    };
+  </script>
+</head>
+<body>
+  <nav>Test Rentals</nav>
+  <main>
+    <article>
+      <h1>219 Kent Avenue, Brooklyn, NY 11249</h1>
+      <p class="facts">$4,800 per month · 3 bd · 2 ba · Unit 3B</p>
+      <p>The living room faces west and receives warm afternoon light. Large windows run across the front wall.</p>
+      <p>The renovated kitchen includes a dishwasher and generous counter space. A dining table fits beside the island.</p>
+      <p>All three bedrooms have closets. The primary bedroom has space for a queen bed and a desk.</p>
+      <p>The building has an elevator and a shared roof deck. Laundry is available on every floor.</p>
+      <p>The L train is a short walk away. The waterfront and grocery stores are nearby.</p>
+    </article>
+
+    <section aria-label="Similar listings">
+      <h2>Similar listings nearby</h2>
+      <div class="similar-card property-card">
+        Another apartment is $4,600 per month. It has 2 bd and 2 ba.
+      </div>
+    </section>
+  </main>
+  <script src="/ios/HomeboardNative/HomeboardSafariExtension/Resources/content.js"></script>
+  <script>
+    window.setTimeout(() => {
+      const listener = window.__homeboardMessageListeners.at(-1);
+      listener?.({ type: "homeboard.startPageScan" });
+    }, 180);
+  </script>
+</body>
+</html>

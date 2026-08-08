@@ -21,6 +21,7 @@ function formatInviteExpiry(value: string | null) {
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token: inviteCode } = await params;
+  const nativeInviteUrl = `homeboard://invite/${encodeURIComponent(inviteCode)}`;
   if (!isAppEnabled()) {
     redirect("/?notice=Workspace%20invites%20are%20currently%20disabled.");
   }
@@ -43,6 +44,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     );
   }
 
+  const inviteEmail = inviteData.invitation.email;
   const isExpired = inviteData.wasExpired;
 
   if (isExpired) {
@@ -54,7 +56,11 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               <div className="home-badge">Workspace invite</div>
               <h1>This invite expired.</h1>
               <p>
-                The link for <strong>{inviteData.invitation.email}</strong> is no longer active. Ask the workspace owner to refresh the invite and send you a new link.
+                {inviteEmail ? (
+                  <>The link for <strong>{inviteEmail}</strong> is no longer active.</>
+                ) : (
+                  <>This shareable roommate link is no longer active.</>
+                )} Ask the workspace owner to create a new code.
               </p>
               <div className="account-feature-list">
                 <div className="account-feature">
@@ -85,10 +91,10 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               <div className="home-badge">Workspace invite</div>
               <h1>{inviteData.invitation.status === "accepted" ? "This invite has already been accepted." : "This invite is no longer active."}</h1>
               <p>
-                The link for {inviteData.invitation.email} is no longer pending. If someone still needs access, the workspace owner can
-                generate a fresh link from the workspace.
+                This code is no longer pending. If someone still needs access, the workspace owner can generate a fresh one.
               </p>
               <div className="register-actions">
+                <a href={nativeInviteUrl} className="secondary-button">Open in iPhone app</a>
                 <Link href="/" className="secondary-button">Back to Homeboard</Link>
                 <Link href={`/boards/${inviteData.board.id}`} className="account-primary-button account-link-button">Open workspace</Link>
               </div>
@@ -109,7 +115,8 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               <div className="home-badge">Workspace invite</div>
               <h1>Join {inviteData.board.title}</h1>
               <p>
-                {inviteData.invitedBy.displayName} invited <strong>{inviteData.invitation.email}</strong> into this shared Homeboard workspace.
+                {inviteData.invitedBy.displayName} invited you into this shared Homeboard workspace
+                {inviteEmail ? <> using <strong>{inviteEmail}</strong>.</> : "."}
               </p>
               {inviteData.invitation.expiresAt ? (
                 <div className="account-message account-message-notice">
@@ -119,8 +126,12 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
               <div className="account-feature-list">
                 <div className="account-feature">
-                  <strong>Use the invited email</strong>
-                  <span>Create or sign into the account for {inviteData.invitation.email} so the workspace can attach your identity correctly.</span>
+                  <strong>{inviteEmail ? "Use the invited email" : "Use your Homeboard account"}</strong>
+                  <span>
+                    {inviteEmail
+                      ? `Create or sign into the account for ${inviteEmail} so the workspace can attach your identity correctly.`
+                      : "Sign in or create an account, then return to accept this code."}
+                  </span>
                 </div>
                 <div className="account-feature">
                   <strong>Then accept the invite</strong>
@@ -129,14 +140,15 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               </div>
 
               <div className="register-actions">
+                <a href={nativeInviteUrl} className="secondary-button">Open in iPhone app</a>
                 <Link
-                  href={`/?next=${encodeURIComponent(`/invite/${inviteCode}`)}&email=${encodeURIComponent(inviteData.invitation.email)}&notice=${encodeURIComponent("Sign in to accept this workspace invite.")}`}
+                  href={`/?next=${encodeURIComponent(`/invite/${inviteCode}`)}${inviteEmail ? `&email=${encodeURIComponent(inviteEmail)}` : ""}&notice=${encodeURIComponent("Sign in to accept this workspace invite.")}`}
                   className="secondary-button"
                 >
                   Sign in
                 </Link>
                 <Link
-                  href={`/register?next=${encodeURIComponent(`/invite/${inviteCode}`)}&email=${encodeURIComponent(inviteData.invitation.email)}`}
+                  href={`/register?next=${encodeURIComponent(`/invite/${inviteCode}`)}${inviteEmail ? `&email=${encodeURIComponent(inviteEmail)}` : ""}`}
                   className="account-primary-button account-link-button"
                 >
                   Create account
@@ -149,7 +161,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     );
   }
 
-  const emailMatches = currentUser.email.toLowerCase() === inviteData.invitation.email.toLowerCase();
+  const emailMatches = !inviteEmail || currentUser.email.toLowerCase() === inviteEmail.toLowerCase();
 
   return (
     <main className="account-shell">
@@ -159,7 +171,8 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
             <div className="home-badge">Workspace invite</div>
             <h1>Join {inviteData.board.title}</h1>
             <p>
-              {inviteData.invitedBy.displayName} invited <strong>{inviteData.invitation.email}</strong> into this shared Homeboard workspace.
+              {inviteData.invitedBy.displayName} invited you into this shared Homeboard workspace
+              {inviteEmail ? <> using <strong>{inviteEmail}</strong>.</> : "."}
             </p>
             {inviteData.invitation.expiresAt ? (
               <div className="account-message account-message-notice">
@@ -170,7 +183,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
             {!emailMatches ? (
               <>
                 <div className="account-message account-message-error">
-                  You are signed in as {currentUser.email}, but this invite belongs to {inviteData.invitation.email}.
+                  You are signed in as {currentUser.email}, but this invite belongs to {inviteEmail}.
                 </div>
                 <form action={signOutAction}>
                   <button type="submit" className="secondary-button">Sign out and switch accounts</button>

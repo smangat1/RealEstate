@@ -240,23 +240,35 @@ export async function sendChatAction(formData: FormData) {
 export async function addListingAction(formData: FormData) {
   const boardId = String(formData.get("boardId") || "");
   const method = String(formData.get("method") || "manual") as "pasted_link" | "pasted_text" | "manual";
-  if (!boardId) return;
+  const currentUser = await getCurrentAppUser();
+  if (!boardId || !currentUser) return;
 
-  await addListingToBoard(boardId, {
-    method,
-    sourceUrl: String(formData.get("sourceUrl") || ""),
-    pastedText: String(formData.get("pastedText") || ""),
-    address: String(formData.get("address") || ""),
-    city: String(formData.get("city") || ""),
-    neighborhood: String(formData.get("neighborhood") || ""),
-    price: String(formData.get("price") || ""),
-    bedrooms: String(formData.get("bedrooms") || ""),
-    bathrooms: String(formData.get("bathrooms") || ""),
-    squareFeet: String(formData.get("squareFeet") || ""),
-    description: String(formData.get("description") || ""),
-  });
+  try {
+    await addListingToBoard(boardId, {
+      method,
+      sourceUrl: String(formData.get("sourceUrl") || ""),
+      pastedText: String(formData.get("pastedText") || ""),
+      address: String(formData.get("address") || ""),
+      unit: String(formData.get("unit") || ""),
+      city: String(formData.get("city") || ""),
+      neighborhood: String(formData.get("neighborhood") || ""),
+      price: String(formData.get("price") || ""),
+      bedrooms: String(formData.get("bedrooms") || ""),
+      bathrooms: String(formData.get("bathrooms") || ""),
+      squareFeet: String(formData.get("squareFeet") || ""),
+      description: String(formData.get("description") || ""),
+      actorUserId: currentUser.id,
+    });
+  } catch (error) {
+    redirectWithMessage(
+      `/boards/${boardId}`,
+      "error",
+      error instanceof Error ? error.message : "Unable to import that listing link.",
+    );
+  }
 
   revalidatePath(`/boards/${boardId}`);
+  redirectWithMessage(`/boards/${boardId}`, "notice", "Listing link imported to Homeboard.");
 }
 
 export async function updateListingStatusAction(formData: FormData) {
@@ -299,8 +311,8 @@ export async function createBoardInvitationAction(formData: FormData) {
   const boardId = String(formData.get("boardId") || "");
   const email = String(formData.get("email") || "");
   const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
-  if (!currentUser || !boardId || !email.trim()) {
-    redirectWithMessage(redirectTo, "error", "Invite email is required.");
+  if (!currentUser || !boardId) {
+    redirectWithMessage(redirectTo, "error", "A workspace is required to create an invite.");
   }
 
   try {
@@ -316,7 +328,7 @@ export async function createBoardInvitationAction(formData: FormData) {
   }
 
   try {
-    await createBoardInvitation(boardId, currentUser.id, email);
+    await createBoardInvitation(boardId, currentUser.id, email.trim() || null);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create that invite.";
     redirectWithMessage(redirectTo, "error", message);
@@ -324,7 +336,13 @@ export async function createBoardInvitationAction(formData: FormData) {
 
   revalidatePath(`/settings?boardId=${boardId}`);
   revalidatePath(`/boards/${boardId}`);
-  redirectWithMessage(redirectTo, "notice", `Invite created for ${email.trim().toLowerCase()}.`);
+  redirectWithMessage(
+    redirectTo,
+    "notice",
+    email.trim()
+      ? `Invite code created for ${email.trim().toLowerCase()}. Share it yourself.`
+      : "Shareable roommate code created.",
+  );
 }
 
 export async function acceptBoardInvitationAction(formData: FormData) {
@@ -355,8 +373,11 @@ export async function completeJoinedMemberSetupAction(formData: FormData) {
   try {
     await completeJoinedMemberSetup(boardId, currentUser.id, {
       workAddress: String(formData.get("workAddress") || ""),
+      budgetMin: String(formData.get("budgetMin") || ""),
       budgetMax: String(formData.get("budgetMax") || ""),
+      stretchBudget: String(formData.get("stretchBudget") || ""),
       commuteDestination: String(formData.get("commuteDestination") || ""),
+      maxCommuteMinutes: String(formData.get("maxCommuteMinutes") || ""),
       preferredNeighborhoods: String(formData.get("preferredNeighborhoods") || ""),
       mustHaves: String(formData.get("mustHaves") || ""),
       dealbreakers: String(formData.get("dealbreakers") || ""),
@@ -532,8 +553,11 @@ export async function updateLinkedMemberProfileAction(formData: FormData) {
   try {
     await updateLinkedMemberProfile(boardId, currentUser.id, {
       workAddress: String(formData.get("workAddress") || ""),
+      budgetMin: String(formData.get("budgetMin") || ""),
       budgetMax: String(formData.get("budgetMax") || ""),
+      stretchBudget: String(formData.get("stretchBudget") || ""),
       commuteDestination: String(formData.get("commuteDestination") || ""),
+      maxCommuteMinutes: String(formData.get("maxCommuteMinutes") || ""),
       preferredNeighborhoods: String(formData.get("preferredNeighborhoods") || ""),
       mustHaves: String(formData.get("mustHaves") || ""),
       dealbreakers: String(formData.get("dealbreakers") || ""),

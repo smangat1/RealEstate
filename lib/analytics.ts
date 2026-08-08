@@ -15,6 +15,16 @@ export type AnalyticsEventName =
   | "invite_refreshed"
   | "invite_revoked"
   | "invite_accepted"
+  | "listing_imported"
+  | "listing_source_confirmed"
+  | "listing_comparison_opened"
+  | "listing_vote_cast"
+  | "listing_reaction_added"
+  | "listing_comment_added"
+  | "listing_reviewed"
+  | "listing_rated"
+  | "listing_status_changed"
+  | "preferences_completed"
   | "analytics_exported"
   | "runtime_status_viewed";
 

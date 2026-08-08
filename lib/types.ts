@@ -1,4 +1,5 @@
 export type PriorityLevel = "low" | "medium" | "high";
+export type CommuteAccess = "car" | "transit" | "flexible" | "remote" | "skip";
 
 export type RentalReadiness = {
   hasOfferLetter?: boolean;
@@ -38,6 +39,8 @@ export type RentalProfile = {
   stretchBudget?: number;
   neighborhoods: string[];
   commuteTarget?: string;
+  commuteAccess?: CommuteAccess;
+  minCommuteMinutes?: number;
   maxCommuteMinutes?: number;
   mustHaves: string[];
   dealbreakers: string[];
@@ -89,7 +92,11 @@ export type BoardMember = {
 export type BoardMemberRecord = BoardMember;
 
 export type GroupProfile = {
+  groupBudgetMin?: number | null;
   groupBudgetMax: number | null;
+  groupStretchBudget?: number | null;
+  budgetMemberCount?: number;
+  missingBudgetMemberNames?: string[];
   budgetRangeText?: string;
   budgetOverlapStatus?: "strong" | "mixed" | "weak";
   commuteDestinations: string[];
@@ -112,7 +119,7 @@ export type BoardInvite = {
   id: string;
   boardId: string;
   invitedByUserId: string;
-  email: string;
+  email: string | null;
   inviteCode: string;
   status: "pending" | "accepted" | "revoked";
   createdAt: string;
@@ -144,8 +151,14 @@ export type RoommateRecord = {
   linkedUserId?: string | null;
   name: string;
   roleLabel: string;
+  budgetMin: number | null;
+  idealBudget: number | null;
   budgetMax: number | null;
+  stretchBudget: number | null;
   commuteDestination: string | null;
+  commuteAccess?: CommuteAccess | null;
+  preferredCommuteMinutes: number | null;
+  maxCommuteMinutes: number | null;
   commutePriority: PriorityLevel;
   neighborhoodPriority: PriorityLevel;
   spacePriority: PriorityLevel;
@@ -153,9 +166,19 @@ export type RoommateRecord = {
   preferredNeighborhoods: string[];
   mustHaves: string[];
   dealbreakers: string[];
+  petsRequired: boolean | null;
+  accessibilityNeeds: string[];
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ListingModelInsight = {
+  category: "amenity" | "interior" | "space" | "layout" | "storage" | "light" | "noise" | "transit" | "neighborhood" | "building" | "outdoor" | "fee" | "risk";
+  label: string;
+  sentiment: number;
+  confidence: number;
+  evidence: string;
 };
 
 export type Listing = {
@@ -165,10 +188,13 @@ export type Listing = {
   sourceUrl: string | null;
   externalId: string | null;
   address: string | null;
+  unit: string | null;
   city: string | null;
   state: string | null;
   zip: string | null;
   neighborhood: string | null;
+  latitude: number | null;
+  longitude: number | null;
   price: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -179,6 +205,11 @@ export type Listing = {
   fees: Record<string, unknown>;
   description: string | null;
   images: string[];
+  providerData: Record<string, unknown>;
+  providerStatus: string | null;
+  providerListedAt: string | null;
+  providerLastSeenAt: string | null;
+  providerFetchedAt: string | null;
   status: "active" | "unknown" | "removed" | "rented" | "saved_only";
   createdAt: string;
   updatedAt: string;
@@ -191,6 +222,7 @@ export type BoardListingRecord = {
   boardId: string;
   listingId: string;
   userStatus: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied";
+  workflowStatus: ListingWorkflowStatus;
   userNotes: string | null;
   aiSummary: string | null;
   aiTradeoffAnalysis: string | null;
@@ -199,6 +231,133 @@ export type BoardListingRecord = {
   createdAt: string;
   updatedAt: string;
   listing: ListingRecord;
+};
+
+export type ListingWorkflowStatus =
+  | "suggested"
+  | "source_confirmed"
+  | "considering"
+  | "shortlisted"
+  | "viewing"
+  | "applying"
+  | "decided";
+
+export type ListingVerificationStatus =
+  | "unverified"
+  | "active"
+  | "unavailable"
+  | "possibly_stale"
+  | "incorrect_match";
+
+export type BoardListingSourceRecord = {
+  id: string;
+  boardListingId: string;
+  catalogSourceId: string | null;
+  url: string;
+  label: string;
+  kind: "imported_exact" | "confirmed_exact" | "member_reference";
+  createdByRoommateId: string | null;
+  confirmedAt: string | null;
+  createdAt: string;
+  createdByRoommate: Pick<RoommateRecord, "id" | "name"> | null;
+  catalogSource: {
+    id: string;
+    trustStatus:
+      | "board_only"
+      | "pending_review"
+      | "community_supported"
+      | "verified"
+      | "review_hold"
+      | "rejected";
+    resolutionStatus:
+      | "unattempted"
+      | "no_match"
+      | "exact_match"
+      | "ambiguous"
+      | "failed";
+    warning: string | null;
+    boardCount: number;
+    confirmationCount: number;
+    reportCount: number;
+    globallyDiscoverable: boolean;
+  } | null;
+};
+
+export type BoardListingVerificationRecord = {
+  id: string;
+  boardListingId: string;
+  roommateId: string | null;
+  status: ListingVerificationStatus;
+  note: string | null;
+  createdAt: string;
+  roommate: Pick<RoommateRecord, "id" | "name"> | null;
+};
+
+export type BoardListingReviewRecord = {
+  id: string;
+  boardListingId: string;
+  roommateId: string;
+  tourIntent: "yes" | "maybe" | "no";
+  interiorAppeal: number | null;
+  naturalLight: "unknown" | "poor" | "fair" | "good" | "excellent";
+  mainConcern: string | null;
+  sourceViewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  roommate: Pick<RoommateRecord, "id" | "name" | "linkedUserId">;
+};
+
+export type BoardListingDecisionRecord = {
+  id: string;
+  boardListingId: string;
+  type: "shortlist" | "request_viewing" | "apply";
+  createdByRoommateId: string;
+  createdAt: string;
+  closedAt: string | null;
+  votes: Array<{
+    id: string;
+    roommateId: string;
+    choice: "yes" | "no" | "abstain";
+    createdAt: string;
+    updatedAt: string;
+    roommate: Pick<RoommateRecord, "id" | "name" | "linkedUserId">;
+  }>;
+};
+
+export type ListingDimensionResult = {
+  score: number | null;
+  explanation: string;
+  known: boolean;
+};
+
+export type RoommateListingFit = {
+  roommateId: string;
+  name: string;
+  overallScore: number | null;
+  dimensions: {
+    price: ListingDimensionResult;
+    commute: ListingDimensionResult;
+    location: ListingDimensionResult;
+    space: ListingDimensionResult;
+    amenities: ListingDimensionResult;
+  };
+  hardFailures: string[];
+  unknownConstraints: string[];
+  explanation: string;
+};
+
+export type GroupListingAnalysis = {
+  overallScore: number | null;
+  lowestRoommateScore: number | null;
+  disagreement: number | null;
+  fairnessScore: number | null;
+  hardFailureCount: number;
+  rankingLabel: "best overall" | "best value" | "best commute balance" | "visually liked" | "needs review";
+  verdict: string;
+  confidence: "high" | "medium" | "low";
+  confidenceReason: string;
+  nextActions: string[];
+  members: RoommateListingFit[];
 };
 
 export type SuggestedListingRecord = {
@@ -218,6 +377,7 @@ export type SuggestedListingRecord = {
     tags: string[];
     summary: string;
   } | null;
+  analysis?: GroupListingAnalysis;
 };
 
 export type BoardListingCommuteRecord = {
@@ -226,6 +386,11 @@ export type BoardListingCommuteRecord = {
   bestDistanceMiles: number | null;
   bestOriginLabel: string | null;
   evaluatedAnchors: string[];
+  routes: Array<{
+    originLabel: string;
+    durationMinutes: number | null;
+    distanceMiles: number | null;
+  }>;
 };
 
 export type ListingBrowseRequest = {
@@ -253,6 +418,16 @@ export type BoardListingCommentRecord = {
   content: string;
   createdAt: string;
   roommate: Pick<RoommateRecord, "id" | "name" | "roleLabel">;
+};
+
+export type BoardListingRatingRecord = {
+  id: string;
+  boardListingId: string;
+  roommateId: string;
+  ratings: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+  roommate: Pick<RoommateRecord, "id" | "name" | "roleLabel" | "linkedUserId">;
 };
 
 export type BoardActivityRecord = {
@@ -303,6 +478,12 @@ export type BoardPageData = {
   boardListingCommutesByBoardListingId: Record<string, BoardListingCommuteRecord>;
   listingVotesByBoardListingId: Record<string, BoardListingVoteRecord[]>;
   listingCommentsByBoardListingId: Record<string, BoardListingCommentRecord[]>;
+  listingRatingsByBoardListingId: Record<string, BoardListingRatingRecord[]>;
+  listingSourcesByBoardListingId: Record<string, BoardListingSourceRecord[]>;
+  listingVerificationsByBoardListingId: Record<string, BoardListingVerificationRecord[]>;
+  listingReviewsByBoardListingId: Record<string, BoardListingReviewRecord[]>;
+  listingDecisionsByBoardListingId: Record<string, BoardListingDecisionRecord[]>;
+  listingAnalysisByBoardListingId: Record<string, GroupListingAnalysis>;
   suggestedListings: SuggestedListingRecord[];
   currentDeckListings: SuggestedListingRecord[];
   currentBrowseRequest: ListingBrowseRequest | null;

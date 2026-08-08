@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
+  addListingAction,
   completeJoinedMemberSetupAction,
   confirmBoardProfileAction,
   createBoardInvitationAction,
   deleteBoardAction,
-  saveSuggestedListingAction,
   sendChatAction,
 } from "@/app/actions";
 import { BoardInvitePanel } from "@/components/board-invite-panel";
@@ -19,7 +19,6 @@ import type {
   BoardListingRecord,
   BoardListingVoteRecord,
   BoardPageData,
-  SuggestedListingRecord,
 } from "@/lib/types";
 
 type BoardExperienceProps = {
@@ -34,18 +33,6 @@ type BoardExperienceProps = {
 const VOTE_ORDER = ["love", "like", "maybe", "pass", "veto"] as const;
 const SHORTLIST_STATUS_OPTIONS = ["all", "new", "interested", "maybe", "toured", "applied"] as const;
 const SORT_OPTIONS = ["updated", "price-asc", "price-desc", "bedrooms-desc"] as const;
-const LISTING_METHODS = ["pasted_link", "pasted_text", "manual"] as const;
-
-function matchesDirectNycDemoRequest(message: string) {
-  const lower = message.toLowerCase();
-  return (
-    /new york|nyc|new york city/.test(lower) &&
-    /\bhouse\b/.test(lower) &&
-    (/2 bedroom|2 bed|two bedroom|two bed/.test(lower)) &&
-    (/<\s*\$?\s*5000|less than\s*\$?\s*5000|under\s*\$?\s*5000/.test(lower)) &&
-    /\bjuly\b/.test(lower)
-  );
-}
 
 function formatTimestamp(value: string) {
   return new Date(value).toLocaleString([], {
@@ -170,7 +157,6 @@ function buildOpenQuestions(data: BoardPageData, shortlistItems: BoardListingRec
 function getRoommateSetupSignals(roommate: BoardPageData["roommates"][number]) {
   return [
     roommate.budgetMax !== null,
-    Boolean(roommate.commuteDestination),
     roommate.preferredNeighborhoods.length > 0,
     roommate.mustHaves.length > 0,
     roommate.dealbreakers.length > 0,
@@ -180,7 +166,7 @@ function getRoommateSetupSignals(roommate: BoardPageData["roommates"][number]) {
 function getRoommateMissingSetup(roommate: BoardPageData["roommates"][number]) {
   const missing: string[] = [];
   if (roommate.budgetMax === null) missing.push("budget");
-  if (!roommate.commuteDestination) missing.push("commute");
+  if (roommate.maxCommuteMinutes !== null && !roommate.commuteDestination) missing.push("commute address");
   if (roommate.preferredNeighborhoods.length === 0) missing.push("neighborhoods");
   if (roommate.mustHaves.length === 0) missing.push("must-haves");
   if (roommate.dealbreakers.length === 0) missing.push("dealbreakers");
@@ -213,10 +199,10 @@ function buildNextAction(
 
   if (shortlistCount === 0) {
     return {
-      title: "Save the first contenders",
-      detail: "Open the match deck and save a few options so the group can start reacting to something real instead of hypotheticals.",
-      action: "deck" as const,
-      label: data.currentBrowseRequest ? `Review ${data.currentBrowseRequest.count} matches` : "Open match deck",
+      title: "Import the first contender",
+      detail: "Paste an exact listing link so the group can react to a real source instead of an unverified suggestion.",
+      action: "import-link" as const,
+      label: "Import a listing link",
     };
   }
 
@@ -239,15 +225,21 @@ function buildNextAction(
 
 function formatRoommateBudget(roommate: BoardPageData["roommates"][number]) {
   if (roommate.budgetMax !== null) {
-    const floor = Math.max(0, roommate.budgetMax - 300);
-    return `$${floor.toLocaleString()}–$${roommate.budgetMax.toLocaleString()}`;
+    const comfortable = roommate.budgetMin !== null
+      ? `$${roommate.budgetMin.toLocaleString()}–$${roommate.budgetMax.toLocaleString()}`
+      : `Up to $${roommate.budgetMax.toLocaleString()}`;
+    return roommate.stretchBudget !== null && roommate.stretchBudget > roommate.budgetMax
+      ? `${comfortable} · stretch $${roommate.stretchBudget.toLocaleString()}`
+      : comfortable;
   }
   return "Budget still open";
 }
 
 function formatRoommateCommute(roommate: BoardPageData["roommates"][number]) {
-  if (!roommate.commuteDestination) return "No commute target yet";
-  return roommate.commuteDestination;
+  if (!roommate.commuteDestination) return "Commute not included";
+  return roommate.maxCommuteMinutes
+    ? `${roommate.commuteDestination} · max ${roommate.maxCommuteMinutes} min`
+    : roommate.commuteDestination;
 }
 
 function formatRoommateStatus(roommate: BoardPageData["roommates"][number]) {
@@ -259,7 +251,7 @@ function formatRoommateStatus(roommate: BoardPageData["roommates"][number]) {
 }
 
 function formatSetupProgress(roommate: BoardPageData["roommates"][number]) {
-  return `${getRoommateSetupSignals(roommate)}/5 fields`;
+  return `${getRoommateSetupSignals(roommate)}/4 core fields`;
 }
 
 function priorityWeight(priorities: string[], label: string) {
@@ -347,7 +339,7 @@ function buildCompareSummary(selectedListings: BoardListingRecord[], data: Board
     summaryParts.push(
       `This workspace read is still provisional because ${membersNeedingSetup.length} collaborator${
         membersNeedingSetup.length === 1 ? "" : "s"
-      } still need to finish setup, so budget and commute tradeoffs may still move.`,
+      } still need to finish setup, so affordability and preference tradeoffs may still move.`,
     );
   } else if (confidenceLabel === "low") {
     summaryParts.push(
@@ -414,12 +406,9 @@ function buildCompareSummary(selectedListings: BoardListingRecord[], data: Board
 export function BoardExperience({ currentUser, data, recentBoards, notice = null, error = null, forceMemberSetup = false }: BoardExperienceProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [isDeckOpen, setIsDeckOpen] = useState(false);
-  const [currentDeckIndex, setCurrentDeckIndex] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [chatInput, setChatInput] = useState("");
-  const [listingMethod, setListingMethod] = useState<(typeof LISTING_METHODS)[number]>("pasted_link");
   const [shortlistStatusFilter, setShortlistStatusFilter] = useState<(typeof SHORTLIST_STATUS_OPTIONS)[number]>("all");
   const [voteFilter, setVoteFilter] = useState<"all" | (typeof VOTE_ORDER)[number]>("all");
   const [sortMode, setSortMode] = useState<(typeof SORT_OPTIONS)[number]>("updated");
@@ -445,8 +434,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
     });
   }, [data.boardListings, data.listingVotesByBoardListingId, shortlistStatusFilter, sortMode, voteFilter]);
-  const deckListings = data.currentDeckListings.length > 0 ? data.currentDeckListings : data.suggestedListings;
-  const currentSuggestion = deckListings[currentDeckIndex] ?? null;
   const isDemoMode = data.isDemoMode;
   const currentRoommateId = data.roommates.find((roommate) => roommate.linkedUserId === currentUser?.id)?.id ?? data.roommates[0]?.id ?? "";
   const shortlistCountLabel = shortlistItems.length === 1 ? "1 active listing" : `${shortlistItems.length} active listings`;
@@ -464,13 +451,12 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     forceMemberSetup ||
     (currentRoommate
       ? currentRoommate.budgetMax === null ||
-        !currentRoommate.commuteDestination ||
         currentRoommate.preferredNeighborhoods.length === 0 ||
         currentRoommate.mustHaves.length === 0
       : false);
   const groupSizeLabel = data.profile.groupSize ?? data.members.length ?? data.roommates.length;
   const commuteTargets = Array.from(
-    new Set([data.profile.commuteTarget, ...data.groupSynthesis.commuteDestinations].filter(Boolean)),
+    new Set(data.groupSynthesis.commuteDestinations.filter(Boolean)),
   ) as string[];
   const openDecisions = useMemo(() => {
     const decisions = buildOpenDecisions(data, shortlistItems.length);
@@ -509,7 +495,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
         key: `ready:${roommate.id}`,
         label: roommate.name,
         state: "Active and ready",
-        detail: `Commute, budget, neighborhoods, and core constraints are in.`,
+        detail: `Budget, neighborhoods, and core constraints are in${roommate.commuteDestination ? ", with commute enabled" : ""}.`,
       })),
       ...membersNeedingSetup.map((roommate) => ({
         key: `incomplete:${roommate.id}`,
@@ -519,37 +505,13 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       })),
       ...data.invitations.map((invitation) => ({
         key: `invite:${invitation.id}`,
-        label: invitation.email,
+        label: invitation.email ?? "Anyone with the code",
         state: "Invited, not joined",
         detail: `Invite created ${formatTimestamp(invitation.createdAt)}.`,
       })),
     ],
     [data.invitations, membersNeedingSetup, readyMembers],
   );
-
-  const shouldOpenDeckFromConversation = useMemo(() => {
-    const latestUser = [...data.messages].reverse().find((message) => message.role === "user");
-    const latestAssistant = [...data.messages].reverse().find((message) => message.role === "assistant");
-    const assistantTriggeredDeck =
-      latestAssistant
-        ? /staged .*demo batch|open the match deck|curated listings right away|lined up the strongest starting options/i.test(latestAssistant.content)
-        : false;
-    if (!latestUser) return false;
-    return (
-      assistantTriggeredDeck ||
-      matchesDirectNycDemoRequest(latestUser.content) ||
-      /\b(more|another|next)\b/i.test(latestUser.content) ||
-      (/show|see|browse|open|give/i.test(latestUser.content) &&
-        /listing|match|option|place|property|apartment|rental|home/i.test(latestUser.content))
-    );
-  }, [data.messages]);
-
-  useEffect(() => {
-    if (shouldOpenDeckFromConversation && deckListings.length > 0) {
-      setIsDeckOpen(true);
-      setCurrentDeckIndex(0);
-    }
-  }, [shouldOpenDeckFromConversation, deckListings.length]);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("rental-advisor-theme");
@@ -565,37 +527,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     const collapsed = window.localStorage.getItem("rental-advisor-sidebar-collapsed");
     if (collapsed === "true") setIsSidebarCollapsed(true);
   }, []);
-
-  useEffect(() => {
-    if (!isDeckOpen) return;
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setIsDeckOpen(false);
-      if (event.key === "ArrowRight") setCurrentDeckIndex((index) => (index + 1 < deckListings.length ? index + 1 : index));
-      if (event.key === "ArrowLeft") setCurrentDeckIndex((index) => Math.max(0, index - 1));
-      if (event.key.toLowerCase() === "j") saveSuggestion("interested");
-      if (event.key.toLowerCase() === "m") saveSuggestion("maybe");
-      if (event.key.toLowerCase() === "x") saveSuggestion("rejected");
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isDeckOpen, deckListings.length, currentSuggestion]);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const previousTouchAction = document.body.style.touchAction;
-
-    if (isDeckOpen) {
-      document.body.style.overflow = "hidden";
-      document.body.style.touchAction = "none";
-    }
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.touchAction = previousTouchAction;
-    };
-  }, [isDeckOpen]);
 
   useEffect(() => {
     if (!chatThreadRef.current) return;
@@ -655,11 +586,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
   async function submitChat() {
     if (!chatInput.trim()) return;
 
-    const wantsDeck =
-      matchesDirectNycDemoRequest(chatInput) ||
-      /\b(more|another|next)\b/i.test(chatInput) ||
-      (/show|see|browse|open|give/i.test(chatInput) &&
-        /listing|match|option|place|property|apartment|rental|home/i.test(chatInput));
     const formData = new FormData();
     formData.set("boardId", data.board.id);
     formData.set("content", chatInput);
@@ -667,7 +593,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     startTransition(async () => {
       await sendChatAction(formData);
       setChatInput("");
-      if (wantsDeck) setIsDeckOpen(true);
       router.refresh();
     });
   }
@@ -685,24 +610,10 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     }
   }
 
-  function saveSuggestion(status: "interested" | "maybe" | "rejected") {
-    if (!currentSuggestion) return;
-
-    const formData = new FormData();
-    formData.set("boardId", data.board.id);
-    formData.set("listingId", currentSuggestion.listing.id);
-    formData.set("status", status);
-
-    startTransition(async () => {
-      await saveSuggestedListingAction(formData);
-      setCurrentDeckIndex((index) => Math.min(index + 1, Math.max(0, deckListings.length - 1)));
-      router.refresh();
-    });
-  }
-
   function handleNextAction() {
-    if (nextAction.action === "deck") {
-      setIsDeckOpen(true);
+    if (nextAction.action === "import-link") {
+      const importSection = document.getElementById("link-import-section");
+      importSection?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
     if (nextAction.action === "member-setup") {
@@ -823,9 +734,9 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
               <Link href={`/settings?boardId=${data.board.id}`} className="secondary-button">
                 Edit board
               </Link>
-              <button type="button" className="primary-sidebar-button" onClick={() => setIsDeckOpen(true)}>
-                {data.currentBrowseRequest ? `Review ${data.currentBrowseRequest.count} matches` : "Open match deck"}
-              </button>
+              <a href="#link-import-section" className="primary-sidebar-button">
+                Import listing link
+              </a>
             </div>
           </header>
 
@@ -846,8 +757,8 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 <span>{formatSetupProgress(currentRoommate)}</span>
               </div>
               <p>
-                Add the details that make your voice useful to the group right away: your budget ceiling, commute anchor,
-                neighborhood lean, and your must-haves.
+                Add your own contribution range and preferences. Commute matching is optional, but it requires a real
+                work or school address when enabled.
               </p>
               <div className="detail-chip-wrap">
                 {getRoommateMissingSetup(currentRoommate).map((field) => (
@@ -858,15 +769,16 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 <input type="hidden" name="boardId" value={data.board.id} />
                 <div className="account-form-grid account-form-grid-2">
                   <label className="field-stack">
-                    <span>Work or commute address</span>
+                    <span>Comfortable monthly minimum</span>
                     <input
-                      name="workAddress"
-                      placeholder="350 5th Ave, New York, NY"
-                      defaultValue={currentUser?.workAddress ?? ""}
+                      name="budgetMin"
+                      placeholder="1200"
+                      inputMode="numeric"
+                      defaultValue={currentRoommate.budgetMin ?? ""}
                     />
                   </label>
                   <label className="field-stack">
-                    <span>Monthly budget ceiling</span>
+                    <span>Comfortable monthly maximum</span>
                     <input
                       name="budgetMax"
                       placeholder="1700"
@@ -877,11 +789,31 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 </div>
                 <div className="account-form-grid account-form-grid-2">
                   <label className="field-stack">
-                    <span>Commute target</span>
+                    <span>Stretch maximum</span>
+                    <input
+                      name="stretchBudget"
+                      placeholder="1800"
+                      inputMode="numeric"
+                      defaultValue={currentRoommate.stretchBudget ?? ""}
+                    />
+                  </label>
+                  <label className="field-stack">
+                    <span>Commute address (optional)</span>
                     <input
                       name="commuteDestination"
-                      placeholder="Midtown"
+                      placeholder="350 5th Ave, New York, NY"
                       defaultValue={currentRoommate.commuteDestination ?? ""}
+                    />
+                  </label>
+                </div>
+                <div className="account-form-grid account-form-grid-2">
+                  <label className="field-stack">
+                    <span>Maximum commute in minutes</span>
+                    <input
+                      name="maxCommuteMinutes"
+                      placeholder="40"
+                      inputMode="numeric"
+                      defaultValue={currentRoommate.maxCommuteMinutes ?? ""}
                     />
                   </label>
                   <label className="field-stack">
@@ -975,8 +907,9 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                   <span>{formatToneLabel(data.groupSynthesis.confidenceLabel ?? data.profile.completionStatus)}</span>
                 </div>
                 <p>
-                  The workspace is currently centered on {cityLabel}, moving {moveInLabel.toLowerCase()}, with a target range of{" "}
-                  {formatBudgetRange(data.profile).toLowerCase()}. Bedroom preference is {formatBedroomPreference(data.profile).toLowerCase()}.
+                  The workspace is currently centered on {cityLabel}, moving {moveInLabel.toLowerCase()}, with{" "}
+                  {(data.groupSynthesis.budgetRangeText ?? "member budgets still open").toLowerCase()} available across the group.
+                  Bedroom preference is {formatBedroomPreference(data.profile).toLowerCase()}.
                 </p>
                 {data.groupSynthesis.confidenceReason ? <p>{data.groupSynthesis.confidenceReason}</p> : null}
                 <div className="detail-chip-wrap">
@@ -1043,6 +976,35 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 )}
               </section>
 
+              <section id="link-import-section" className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Import listing link</h2>
+                  <span>Exact source only</span>
+                </div>
+                <p>
+                  Paste the individual Zillow, StreetEasy, or broker listing URL.
+                  Homeboard keeps the original source attached to the shared board.
+                </p>
+                <form action={addListingAction} className="account-form">
+                  <input type="hidden" name="boardId" value={data.board.id} />
+                  <input type="hidden" name="method" value="pasted_link" />
+                  <label className="field-stack">
+                    <span>Listing link</span>
+                    <input
+                      name="sourceUrl"
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
+                      placeholder="https://www.zillow.com/homedetails/..."
+                      required
+                    />
+                  </label>
+                  <button type="submit" className="account-primary-button">
+                    Import to Homeboard
+                  </button>
+                </form>
+              </section>
+
               <section id="shortlist-section" className="rail-card board-home-section">
                 <div className="rail-card-header">
                   <h2>Shortlist</h2>
@@ -1080,7 +1042,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                     ) : null}
                   </>
                 ) : (
-                  <p>Nothing is on the shortlist yet. Open the match deck or add a listing so the group can react to real options.</p>
+                  <p>Nothing is on the shortlist yet. Import an exact listing link so the group can react to a real source.</p>
                 )}
               </section>
 
@@ -1143,16 +1105,16 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                   <span>{data.invitations.length} pending</span>
                 </div>
                 <p>
-                  Bring collaborators into the workspace by email. Once they join, their commute anchors and preferences can feed directly into the shared tradeoff view.
+                  Create a code and send it by text or any app. Email-locking is optional; Homeboard does not send the message for you.
                 </p>
                 <form action={createBoardInvitationAction} className="account-form">
                   <input type="hidden" name="boardId" value={data.board.id} />
                   <input type="hidden" name="redirectTo" value={`/boards/${data.board.id}`} />
                   <label className="field-stack">
-                    <span>Invite by email</span>
-                    <input name="email" type="email" placeholder="roommate@example.com" />
+                    <span>Restrict to email (optional)</span>
+                    <input name="email" type="email" placeholder="Leave blank for anyone" />
                   </label>
-                  <button type="submit" className="account-primary-button">Generate invite link</button>
+                  <button type="submit" className="account-primary-button">Create shareable code</button>
                 </form>
                 <BoardInvitePanel boardId={data.board.id} invitations={data.invitations} redirectTo={`/boards/${data.board.id}`} />
               </section>
@@ -1275,26 +1237,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
           </div>
         </section>
       </section>
-
-      {isDeckOpen ? (
-        <MatchDeck
-          currentIndex={currentDeckIndex}
-          currentSuggestion={currentSuggestion}
-          total={deckListings.length}
-          batchLabel={
-            data.currentBrowseRequest
-              ? data.currentBrowseRequest.isMoreRequest
-                ? `Another ${data.currentBrowseRequest.count} fresh matches`
-                : `${data.currentBrowseRequest.count} fresh matches`
-              : "Current match batch"
-          }
-          onClose={() => setIsDeckOpen(false)}
-          onNext={() => setCurrentDeckIndex((index) => (index + 1 < deckListings.length ? index + 1 : index))}
-          onPrev={() => setCurrentDeckIndex((index) => Math.max(0, index - 1))}
-          onSave={saveSuggestion}
-          isPending={isPending}
-        />
-      ) : null}
 
       {focusedListing ? (
         <ListingDetailModal
@@ -1448,141 +1390,6 @@ function ListingDetailModal({
             <CommentFeed comments={comments} />
             <strong>Listing note</strong>
             <p>{listing.description ?? "No description saved for this listing yet."}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type MatchDeckProps = {
-  currentIndex: number;
-  currentSuggestion: SuggestedListingRecord | null;
-  total: number;
-  batchLabel: string;
-  onClose: () => void;
-  onNext: () => void;
-  onPrev: () => void;
-  onSave: (status: "interested" | "maybe" | "rejected") => void;
-  isPending: boolean;
-};
-
-function MatchDeck({ currentIndex, currentSuggestion, total, batchLabel, onClose, onNext, onPrev, onSave, isPending }: MatchDeckProps) {
-  if (!currentSuggestion) {
-    return (
-      <div className="deck-overlay" onClick={onClose}>
-        <div className="deck-empty">
-          <h2>No listings surfaced yet</h2>
-          <p>Try giving me a location, budget, and bedroom preference, then ask for something like “show me 5 listings.”</p>
-          <button type="button" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const listing = currentSuggestion.listing;
-  const headline = [listing.neighborhood, listing.city].filter(Boolean).join(", ") || "Untitled listing";
-
-  return (
-    <div className="deck-overlay" onClick={onClose}>
-      <div className="deck-shell" onClick={(event) => event.stopPropagation()}>
-        <div className="deck-topbar">
-          <div>
-            <span className="deck-counter">
-              {currentIndex + 1} / {total}
-            </span>
-            <p className="deck-batch-label">{batchLabel}</p>
-            <h2>{headline}</h2>
-          </div>
-          <button type="button" className="deck-close" onClick={onClose}>
-            Close
-          </button>
-        </div>
-
-        <div className="deck-card">
-          <div className="deck-visual">
-            {listing.images[0] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={listing.images[0]} alt={headline} />
-            ) : (
-              <div className="deck-placeholder">No image in the dummy listing</div>
-            )}
-          </div>
-
-          <div className="deck-content">
-            <div className="deck-pill-row">
-              <span className="fit-pill">{currentSuggestion.fitLabel}</span>
-              {currentSuggestion.existingStatus ? <span className="saved-pill">already {currentSuggestion.existingStatus}</span> : null}
-            </div>
-
-            <div className="deck-price">
-              {listing.price ? `$${listing.price.toLocaleString()}` : "Price unknown"}
-              <span>
-                {listing.bedrooms !== null ? `${listing.bedrooms} bed` : "bed unknown"}
-                {listing.bathrooms !== null ? ` · ${listing.bathrooms} bath` : ""}
-                {listing.squareFeet !== null ? ` · ${listing.squareFeet} sq ft` : ""}
-              </span>
-            </div>
-
-            <p className="deck-reason">{currentSuggestion.fitReason}</p>
-            <p className="deck-tradeoff">{currentSuggestion.tradeoffSummary}</p>
-
-            <div className="deck-meta">
-              <span>Source: {listing.source}</span>
-              <span>Status: {listing.status}</span>
-              {currentSuggestion.commute && currentSuggestion.commute.bestDurationMinutes !== null ? (
-                <span>
-                  Commute: {currentSuggestion.commute.bestDurationMinutes} min
-                  {currentSuggestion.commute.bestOriginLabel ? ` to ${currentSuggestion.commute.bestOriginLabel}` : ""}
-                  {currentSuggestion.commute.bestDistanceMiles !== null ? ` · ${currentSuggestion.commute.bestDistanceMiles} mi` : ""}
-                </span>
-              ) : null}
-              {listing.sourceUrl ? (
-                <a href={listing.sourceUrl} target="_blank" rel="noreferrer">
-                  Source link
-                </a>
-              ) : null}
-            </div>
-
-            {currentSuggestion.neighborhoodSignal ? (
-              <div className="deck-description">
-                <strong>Neighborhood read</strong>
-                <p>{currentSuggestion.neighborhoodSignal.summary}</p>
-                <div className="starter-pills">
-                  {currentSuggestion.neighborhoodSignal.tags.map((tag) => (
-                    <span key={tag} className="saved-pill">{tag}</span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="deck-description">
-              <strong>Listing note</strong>
-              <p>{listing.description ?? "No description saved for this listing yet."}</p>
-            </div>
-
-            <div className="deck-actions">
-              <button type="button" className="deck-reject" onClick={() => onSave("rejected")} disabled={isPending}>
-                Pass <span className="shortcut-hint">X</span>
-              </button>
-              <button type="button" className="deck-maybe" onClick={() => onSave("maybe")} disabled={isPending}>
-                Save for later <span className="shortcut-hint">M</span>
-              </button>
-              <button type="button" className="deck-like" onClick={() => onSave("interested")} disabled={isPending}>
-                Like <span className="shortcut-hint">J</span>
-              </button>
-            </div>
-
-            <div className="deck-nav">
-              <button type="button" onClick={onPrev} disabled={currentIndex === 0}>
-                Previous <span className="shortcut-hint">←</span>
-              </button>
-              <button type="button" onClick={onNext} disabled={currentIndex + 1 >= total}>
-                Next <span className="shortcut-hint">→</span>
-              </button>
-            </div>
           </div>
         </div>
       </div>

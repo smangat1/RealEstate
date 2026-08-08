@@ -10,6 +10,7 @@ export type RuntimeStatus = {
   appEnabled: boolean;
   demoMode: boolean;
   supabaseConfigured: boolean;
+  supabasePasswordRecoveryConfigured: boolean;
   supabaseAdminConfigured: boolean;
   databaseConfigured: boolean;
   ollamaConfigured: boolean;
@@ -32,6 +33,9 @@ export function getRuntimeStatus(): RuntimeStatus {
     hasValue(process.env.SUPABASE_URL) && hasValue(process.env.SUPABASE_PUBLISHABLE_KEY);
   const supabaseAdminConfigured =
     hasValue(process.env.SUPABASE_URL) && hasValue(process.env.SUPABASE_SECRET_KEY);
+  const supabasePasswordRecoveryConfigured =
+    hasValue(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    hasValue(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
   const databaseConfigured = hasValue(process.env.DATABASE_URL);
   const ollamaConfigured = hasValue(process.env.OLLAMA_URL) || hasValue(process.env.OLLAMA_MODEL);
   const commuteConfigured = hasValue(process.env.OPENROUTESERVICE_API_KEY);
@@ -47,6 +51,7 @@ export function getRuntimeStatus(): RuntimeStatus {
     appEnabled,
     demoMode,
     supabaseConfigured,
+    supabasePasswordRecoveryConfigured,
     supabaseAdminConfigured,
     databaseConfigured,
     ollamaConfigured,

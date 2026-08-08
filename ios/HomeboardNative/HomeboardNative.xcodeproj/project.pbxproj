@@ -1,0 +1,1190 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		08DEA609F65BC5294136823A /* HomeboardPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */; };
+		0DE567EDBBAAFE1B0B3651F9 /* HomeboardAppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */; };
+		13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */; };
+		161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */; };
+		185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */; };
+		21FB9F95DFA6E03C89A806A3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C193B56530767CD0B8E7D7F /* Assets.xcassets */; };
+		259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */; };
+		2A5AF129395DD2397F963D4E /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */; };
+		39D434A8051644723A6D379F /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		3B944F23DC6F266974409897 /* HomeboardAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F52927D18A60DB80024121 /* HomeboardAPI.swift */; };
+		574FE78535771F9EBA7DCFC2 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		5A1BE148C7BC9B09EB658CD2 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
+		5B5E5368709897AAC0E90940 /* HomeboardConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6496F9883003DCBA86048476 /* HomeboardConfig.swift */; };
+		5DFEEEFF187B51E92D3ABC89 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
+		5E897B89E0B6F36099D889CD /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		686CAEBD6BC40E3F6C98457B /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */; };
+		6A91FA585D28736B4E8E78AE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
+		6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1F1A64964C190A30B424C5 /* RootView.swift */; };
+		6D62F6F14B1B1CC20F987A43 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		74B4031207603405891BB068 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */; };
+		790524246BBBD9B8761420CE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
+		792161098507BD52B60029E8 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
+		795DCA772BF2755776F130EE /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */; };
+		7D8FF96A80E3C4413CACBDDC /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		8346273ABDE9177129F67321 /* HomeboardShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		88ABA6BF0ED57B8296B4D99B /* HomeboardMacSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8C797C5D6D06865FC6AF413D /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */; };
+		8D6928B3E220035C109D7683 /* HomeboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */; };
+		98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69FCB73F4C2B9E99A5B401A /* AppModel.swift */; };
+		9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9F3B2B705031CFD24F556D /* BoardShellView.swift */; };
+		9ECE8063C952796CE3826F05 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		A07C44532C2D0AFAB30976F7 /* HomeboardNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */; };
+		AC93FEA3832938FE343A2469 /* HomeboardAppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */; };
+		AD2DAE3F54FDC6E12EC53216 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 65FC9AAA1DE307DE8A4A3D50 /* content.js */; };
+		AE6C78096E09AE9AC6220663 /* HomeboardSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B127D29D704A6A6E994982E9 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
+		B5B500245ED71175ED5AD84C /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
+		B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */; };
+		BB00C219498B248279BC3A3B /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
+		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
+		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
+		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		E5ADE81D14E97FFB8B2FAB6D /* SharePreprocessor.js in Resources */ = {isa = PBXBuildFile; fileRef = C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */; };
+		F0E38EF838CE4A52F313FD07 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
+		F109A7AD071A6E5861A32430 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
+		F5EEA5FB9B27310924110C71 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 65FC9AAA1DE307DE8A4A3D50 /* content.js */; };
+		F7844558BD8DC715DB2DD24A /* HomeboardNativeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1802C100F22E1B0B3B0771A6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B981AD18EFA6ABD0109E9F8A;
+			remoteInfo = HomeboardNative;
+		};
+		18882AD9ECC4010BE2D479C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B981AD18EFA6ABD0109E9F8A;
+			remoteInfo = HomeboardNative;
+		};
+		21EC9FDF4C4052801F5BAB0D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B63F767E040CC42FC2E52195;
+			remoteInfo = HomeboardSafariExtension;
+		};
+		BB54900C6EA5E567B590AC2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 01FC2A34459B347E132A79D9;
+			remoteInfo = HomeboardShareExtension;
+		};
+		E550511C61EE262E59D91D97 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EED59AAC337296881A6CB796;
+			remoteInfo = HomeboardMacSafariExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		046C94C336501011012AA13D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8346273ABDE9177129F67321 /* HomeboardShareExtension.appex in Embed Foundation Extensions */,
+				AE6C78096E09AE9AC6220663 /* HomeboardSafariExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		071BB16EF385738F636FD06E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				88ABA6BF0ED57B8296B4D99B /* HomeboardMacSafariExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HomeboardMacSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardBackgroundView.swift; sourceTree = "<group>"; };
+		091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeApp.swift; sourceTree = "<group>"; };
+		2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeTests.swift; sourceTree = "<group>"; };
+		3C193B56530767CD0B8E7D7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountOnboardingView.swift; sourceTree = "<group>"; };
+		498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardPalette.swift; sourceTree = "<group>"; };
+		4AB61DA2FD0EAA808AE128B6 /* HomeboardNativeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C7722106E8643B35B4B2A69 /* HomeboardMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeboardMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E61E97384A9AFC7C18F3E63 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+		52BC4419FB3FD9C9031892FD /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		575C511E3BC5CCE16A232686 /* toolbar-icon.svg */ = {isa = PBXFileReference; path = "toolbar-icon.svg"; sourceTree = "<group>"; };
+		5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardMacApp.swift; sourceTree = "<group>"; };
+		5C9F3B2B705031CFD24F556D /* BoardShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardShellView.swift; sourceTree = "<group>"; };
+		6496F9883003DCBA86048476 /* HomeboardConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardConfig.swift; sourceTree = "<group>"; };
+		65FC9AAA1DE307DE8A4A3D50 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = content.js; sourceTree = "<group>"; };
+		694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardExtensionSync.swift; sourceTree = "<group>"; };
+		6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardSharedImportStore.swift; sourceTree = "<group>"; };
+		75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardModels.swift; sourceTree = "<group>"; };
+		7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthView.swift; sourceTree = "<group>"; };
+		896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		92AD297999D5B2DCD97EE617 /* HomeboardNativeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		958E86AF374173284BD9D79E /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
+		95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		A69FCB73F4C2B9E99A5B401A /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardListingIntelligence.swift; sourceTree = "<group>"; };
+		AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAppleSignIn.swift; sourceTree = "<group>"; };
+		B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppSafariView.swift; sourceTree = "<group>"; };
+		BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeUITests.swift; sourceTree = "<group>"; };
+		C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = SharePreprocessor.js; sourceTree = "<group>"; };
+		C9F52927D18A60DB80024121 /* HomeboardAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAPI.swift; sourceTree = "<group>"; };
+		CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedWorkspaceView.swift; sourceTree = "<group>"; };
+		D2CF740AFC2099E6B35681BD /* HomeboardNative.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HomeboardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EA1F1A64964C190A30B424C5 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		24D0DFE06F1207EB04A02F7C /* HomeboardShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */,
+				52BC4419FB3FD9C9031892FD /* ShareViewController.swift */,
+			);
+			path = HomeboardShareExtension;
+			sourceTree = "<group>";
+		};
+		A57FD7D580497D69506B66AB = {
+			isa = PBXGroup;
+			children = (
+				F1B5F3291EBE6C1D0BA6ED1E /* HomeboardMac */,
+				FCF367056B942BD65F5E86B9 /* HomeboardNativeTests */,
+				EE2311E913ECF36308A7C1E0 /* HomeboardNativeUITests */,
+				D217534B1C021FD38360BF6A /* HomeboardSafariExtension */,
+				24D0DFE06F1207EB04A02F7C /* HomeboardShareExtension */,
+				FD04B5275A2070B4295787E2 /* Resources */,
+				B6083A4E534CB687565407A8 /* Resources */,
+				B20937C6F382874211E8AF9D /* Shared */,
+				E737DAD798A5614F5691E315 /* Sources */,
+				B4EBDCF9F5C9DA446E68381F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B20937C6F382874211E8AF9D /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */,
+				694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */,
+				AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */,
+				6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */,
+			);
+			name = Shared;
+			path = HomeboardNative/Shared;
+			sourceTree = "<group>";
+		};
+		B4EBDCF9F5C9DA446E68381F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4C7722106E8643B35B4B2A69 /* HomeboardMac.app */,
+				00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */,
+				D2CF740AFC2099E6B35681BD /* HomeboardNative.app */,
+				92AD297999D5B2DCD97EE617 /* HomeboardNativeTests.xctest */,
+				4AB61DA2FD0EAA808AE128B6 /* HomeboardNativeUITests.xctest */,
+				5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */,
+				89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B6083A4E534CB687565407A8 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				958E86AF374173284BD9D79E /* background.js */,
+				65FC9AAA1DE307DE8A4A3D50 /* content.js */,
+				4E61E97384A9AFC7C18F3E63 /* manifest.json */,
+				575C511E3BC5CCE16A232686 /* toolbar-icon.svg */,
+			);
+			name = Resources;
+			path = HomeboardSafariExtension/Resources;
+			sourceTree = "<group>";
+		};
+		D217534B1C021FD38360BF6A /* HomeboardSafariExtension */ = {
+			isa = PBXGroup;
+			children = (
+				896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */,
+			);
+			path = HomeboardSafariExtension;
+			sourceTree = "<group>";
+		};
+		E737DAD798A5614F5691E315 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */,
+				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
+				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
+				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
+				C9F52927D18A60DB80024121 /* HomeboardAPI.swift */,
+				033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */,
+				6496F9883003DCBA86048476 /* HomeboardConfig.swift */,
+				75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */,
+				091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */,
+				498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */,
+				B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */,
+				EA1F1A64964C190A30B424C5 /* RootView.swift */,
+				CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */,
+				95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */,
+			);
+			name = Sources;
+			path = HomeboardNative/Sources;
+			sourceTree = "<group>";
+		};
+		EE2311E913ECF36308A7C1E0 /* HomeboardNativeUITests */ = {
+			isa = PBXGroup;
+			children = (
+				BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */,
+			);
+			path = HomeboardNativeUITests;
+			sourceTree = "<group>";
+		};
+		F1B5F3291EBE6C1D0BA6ED1E /* HomeboardMac */ = {
+			isa = PBXGroup;
+			children = (
+				5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */,
+			);
+			path = HomeboardMac;
+			sourceTree = "<group>";
+		};
+		FCF367056B942BD65F5E86B9 /* HomeboardNativeTests */ = {
+			isa = PBXGroup;
+			children = (
+				2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */,
+			);
+			path = HomeboardNativeTests;
+			sourceTree = "<group>";
+		};
+		FD04B5275A2070B4295787E2 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				3C193B56530767CD0B8E7D7F /* Assets.xcassets */,
+				F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */,
+			);
+			name = Resources;
+			path = HomeboardNative/Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		01FC2A34459B347E132A79D9 /* HomeboardShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B06A95329C7CB49F86B1D5AF /* Build configuration list for PBXNativeTarget "HomeboardShareExtension" */;
+			buildPhases = (
+				B0FB5BC7B1BF7C09346C1C50 /* Sources */,
+				591F9FDAE6B988B799A86EE2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeboardShareExtension;
+			packageProductDependencies = (
+			);
+			productName = HomeboardShareExtension;
+			productReference = 89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		41590900BFF8384B1640C131 /* HomeboardNativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2BFA6154B4EC087A43BFA26B /* Build configuration list for PBXNativeTarget "HomeboardNativeTests" */;
+			buildPhases = (
+				16E3DD2FB1C9F38E582A0C68 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ED5E50708F183644171FED27 /* PBXTargetDependency */,
+			);
+			name = HomeboardNativeTests;
+			packageProductDependencies = (
+			);
+			productName = HomeboardNativeTests;
+			productReference = 92AD297999D5B2DCD97EE617 /* HomeboardNativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		65F793DE696A8BC402B29D19 /* HomeboardNativeUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B44CAD03D9B457EEE3E8FD7B /* Build configuration list for PBXNativeTarget "HomeboardNativeUITests" */;
+			buildPhases = (
+				BA75412604A0116C2B02F53F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BB4580A9C22AECF7CC7CA06B /* PBXTargetDependency */,
+			);
+			name = HomeboardNativeUITests;
+			packageProductDependencies = (
+			);
+			productName = HomeboardNativeUITests;
+			productReference = 4AB61DA2FD0EAA808AE128B6 /* HomeboardNativeUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		B0F887A3E4CC5BEEE037B64C /* HomeboardMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 74A6866A9FF81BB2131CC634 /* Build configuration list for PBXNativeTarget "HomeboardMac" */;
+			buildPhases = (
+				433371AED6A7665301592676 /* Sources */,
+				071BB16EF385738F636FD06E /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6C28850E25F0173967EF140B /* PBXTargetDependency */,
+			);
+			name = HomeboardMac;
+			packageProductDependencies = (
+			);
+			productName = HomeboardMac;
+			productReference = 4C7722106E8643B35B4B2A69 /* HomeboardMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B63F767E040CC42FC2E52195 /* HomeboardSafariExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3026ECC1A8DDAE36AB110B7 /* Build configuration list for PBXNativeTarget "HomeboardSafariExtension" */;
+			buildPhases = (
+				17566395C374BA58AC1289E6 /* Sources */,
+				DE089BAA767514CBF8E6311B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeboardSafariExtension;
+			packageProductDependencies = (
+			);
+			productName = HomeboardSafariExtension;
+			productReference = 5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B981AD18EFA6ABD0109E9F8A /* HomeboardNative */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6A724A2DDEA3B19BD6309B0A /* Build configuration list for PBXNativeTarget "HomeboardNative" */;
+			buildPhases = (
+				B7512B1F7EE85DFD894AA67E /* Sources */,
+				403384A673FE13C255C61089 /* Resources */,
+				046C94C336501011012AA13D /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				014117D3103AEE60F389FB72 /* PBXTargetDependency */,
+				D8AAEA224D4859E357E065FE /* PBXTargetDependency */,
+			);
+			name = HomeboardNative;
+			packageProductDependencies = (
+			);
+			productName = HomeboardNative;
+			productReference = D2CF740AFC2099E6B35681BD /* HomeboardNative.app */;
+			productType = "com.apple.product-type.application";
+		};
+		EED59AAC337296881A6CB796 /* HomeboardMacSafariExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B45322E21FA2D7666BAEBF92 /* Build configuration list for PBXNativeTarget "HomeboardMacSafariExtension" */;
+			buildPhases = (
+				5AA2606D4595FAAC46AB97DC /* Sources */,
+				8978C5788322181754EB702A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeboardMacSafariExtension;
+			packageProductDependencies = (
+			);
+			productName = HomeboardMacSafariExtension;
+			productReference = 00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8CD380EF1611310C99AA1F8A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					01FC2A34459B347E132A79D9 = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
+					41590900BFF8384B1640C131 = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
+					65F793DE696A8BC402B29D19 = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+						TestTargetID = B981AD18EFA6ABD0109E9F8A;
+					};
+					B0F887A3E4CC5BEEE037B64C = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
+					B63F767E040CC42FC2E52195 = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
+					B981AD18EFA6ABD0109E9F8A = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
+					EED59AAC337296881A6CB796 = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 020911D25828F70EC40B27DF /* Build configuration list for PBXProject "HomeboardNative" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A57FD7D580497D69506B66AB;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B4EBDCF9F5C9DA446E68381F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B0F887A3E4CC5BEEE037B64C /* HomeboardMac */,
+				EED59AAC337296881A6CB796 /* HomeboardMacSafariExtension */,
+				B981AD18EFA6ABD0109E9F8A /* HomeboardNative */,
+				41590900BFF8384B1640C131 /* HomeboardNativeTests */,
+				65F793DE696A8BC402B29D19 /* HomeboardNativeUITests */,
+				B63F767E040CC42FC2E52195 /* HomeboardSafariExtension */,
+				01FC2A34459B347E132A79D9 /* HomeboardShareExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		403384A673FE13C255C61089 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				21FB9F95DFA6E03C89A806A3 /* Assets.xcassets in Resources */,
+				74B4031207603405891BB068 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		591F9FDAE6B988B799A86EE2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E5ADE81D14E97FFB8B2FAB6D /* SharePreprocessor.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8978C5788322181754EB702A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B5B500245ED71175ED5AD84C /* background.js in Resources */,
+				AD2DAE3F54FDC6E12EC53216 /* content.js in Resources */,
+				F0E38EF838CE4A52F313FD07 /* manifest.json in Resources */,
+				F109A7AD071A6E5861A32430 /* toolbar-icon.svg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DE089BAA767514CBF8E6311B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A1BE148C7BC9B09EB658CD2 /* background.js in Resources */,
+				F5EEA5FB9B27310924110C71 /* content.js in Resources */,
+				BB00C219498B248279BC3A3B /* manifest.json in Resources */,
+				792161098507BD52B60029E8 /* toolbar-icon.svg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		16E3DD2FB1C9F38E582A0C68 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		17566395C374BA58AC1289E6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				574FE78535771F9EBA7DCFC2 /* HomeboardExtensionSync.swift in Sources */,
+				5DFEEEFF187B51E92D3ABC89 /* HomeboardListingIntelligence.swift in Sources */,
+				5E897B89E0B6F36099D889CD /* HomeboardSharedImportStore.swift in Sources */,
+				686CAEBD6BC40E3F6C98457B /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		433371AED6A7665301592676 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0DE567EDBBAAFE1B0B3651F9 /* HomeboardAppleSignIn.swift in Sources */,
+				2A5AF129395DD2397F963D4E /* HomeboardExtensionSync.swift in Sources */,
+				185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */,
+				8C797C5D6D06865FC6AF413D /* HomeboardSharedImportStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5AA2606D4595FAAC46AB97DC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				39D434A8051644723A6D379F /* HomeboardExtensionSync.swift in Sources */,
+				790524246BBBD9B8761420CE /* HomeboardListingIntelligence.swift in Sources */,
+				6D62F6F14B1B1CC20F987A43 /* HomeboardSharedImportStore.swift in Sources */,
+				795DCA772BF2755776F130EE /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B0FB5BC7B1BF7C09346C1C50 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */,
+				6A91FA585D28736B4E8E78AE /* HomeboardListingIntelligence.swift in Sources */,
+				9ECE8063C952796CE3826F05 /* HomeboardSharedImportStore.swift in Sources */,
+				D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B7512B1F7EE85DFD894AA67E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */,
+				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
+				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
+				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,
+				3B944F23DC6F266974409897 /* HomeboardAPI.swift in Sources */,
+				AC93FEA3832938FE343A2469 /* HomeboardAppleSignIn.swift in Sources */,
+				B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */,
+				5B5E5368709897AAC0E90940 /* HomeboardConfig.swift in Sources */,
+				7D8FF96A80E3C4413CACBDDC /* HomeboardExtensionSync.swift in Sources */,
+				B127D29D704A6A6E994982E9 /* HomeboardListingIntelligence.swift in Sources */,
+				8D6928B3E220035C109D7683 /* HomeboardModels.swift in Sources */,
+				A07C44532C2D0AFAB30976F7 /* HomeboardNativeApp.swift in Sources */,
+				08DEA609F65BC5294136823A /* HomeboardPalette.swift in Sources */,
+				585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */,
+				259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */,
+				6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */,
+				DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */,
+				13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA75412604A0116C2B02F53F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F7844558BD8DC715DB2DD24A /* HomeboardNativeUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		014117D3103AEE60F389FB72 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 01FC2A34459B347E132A79D9 /* HomeboardShareExtension */;
+			targetProxy = BB54900C6EA5E567B590AC2A /* PBXContainerItemProxy */;
+		};
+		6C28850E25F0173967EF140B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EED59AAC337296881A6CB796 /* HomeboardMacSafariExtension */;
+			targetProxy = E550511C61EE262E59D91D97 /* PBXContainerItemProxy */;
+		};
+		BB4580A9C22AECF7CC7CA06B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B981AD18EFA6ABD0109E9F8A /* HomeboardNative */;
+			targetProxy = 18882AD9ECC4010BE2D479C0 /* PBXContainerItemProxy */;
+		};
+		D8AAEA224D4859E357E065FE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B63F767E040CC42FC2E52195 /* HomeboardSafariExtension */;
+			targetProxy = 21EC9FDF4C4052801F5BAB0D /* PBXContainerItemProxy */;
+		};
+		ED5E50708F183644171FED27 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B981AD18EFA6ABD0109E9F8A /* HomeboardNative */;
+			targetProxy = 1802C100F22E1B0B3B0771A6 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1609EFF142401E996139114B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://Samyans-Laptop.local:3000";
+				INFOPLIST_FILE = HomeboardSafariExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.12;
+				OTHER_LDFLAGS = "-framework SafariServices";
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.safari;
+				PRODUCT_MODULE_NAME = HomeboardSafariExtension;
+				PRODUCT_NAME = HomeboardSafariExtension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		2D7705A96D2FE77260F74788 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://Samyans-Laptop.local:3000";
+				INFOPLIST_FILE = HomeboardShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.12;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.share;
+				PRODUCT_MODULE_NAME = HomeboardShareExtension;
+				PRODUCT_NAME = HomeboardShareExtension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		4625A0E5109F17BE3A44999A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.tests;
+				PRODUCT_MODULE_NAME = HomeboardNativeTests;
+				PRODUCT_NAME = HomeboardNativeTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HomeboardNative.app/HomeboardNative";
+			};
+			name = Release;
+		};
+		52B9045B5BEB7A815D17AB1A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://127.0.0.1:3000";
+				INFOPLIST_FILE = HomeboardMacSafariExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.0.12;
+				OTHER_LDFLAGS = "-framework SafariServices";
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac.safari;
+				PRODUCT_MODULE_NAME = HomeboardMacSafariExtension;
+				PRODUCT_NAME = HomeboardMacSafariExtension;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		5D5F67D2F7CCF0D6739B8FDD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://Samyans-Laptop.local:3000";
+				INFOPLIST_FILE = HomeboardShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.12;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.share;
+				PRODUCT_MODULE_NAME = HomeboardShareExtension;
+				PRODUCT_NAME = HomeboardShareExtension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		69E3A5902638FEFBEC473868 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6A123289C3A12BF1B8D007BC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNative.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://Samyans-Laptop.local:3000";
+				HOMEBOARD_PUBLIC_WEB_URL = "";
+				INFOPLIST_FILE = HomeboardNative/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.0.12;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native;
+				PRODUCT_NAME = HomeboardNative;
+				SDKROOT = iphoneos;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		817AAF120101A77D08273A64 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.tests;
+				PRODUCT_MODULE_NAME = HomeboardNativeTests;
+				PRODUCT_NAME = HomeboardNativeTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HomeboardNative.app/HomeboardNative";
+			};
+			name = Debug;
+		};
+		914BED57ECF79D08CF0658A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://Samyans-Laptop.local:3000";
+				INFOPLIST_FILE = HomeboardSafariExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.12;
+				OTHER_LDFLAGS = "-framework SafariServices";
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.safari;
+				PRODUCT_MODULE_NAME = HomeboardSafariExtension;
+				PRODUCT_NAME = HomeboardSafariExtension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A3DB16AFF7B484E62465889D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.uitests;
+				PRODUCT_MODULE_NAME = HomeboardNativeUITests;
+				PRODUCT_NAME = HomeboardNativeUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = HomeboardNative;
+			};
+			name = Debug;
+		};
+		A6DAADD38075779AFF9D99AE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B7CF040F1F524CFF6C455A8D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNativeDebug.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://Samyans-Laptop.local:3000";
+				HOMEBOARD_PUBLIC_WEB_URL = "";
+				INFOPLIST_FILE = HomeboardNative/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.0.12;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native;
+				PRODUCT_NAME = HomeboardNative;
+				SDKROOT = iphoneos;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		DAC21B8034BC3416A25C5604 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://127.0.0.1:3000";
+				INFOPLIST_FILE = HomeboardMac/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.0.12;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac;
+				PRODUCT_NAME = HomeboardSafariSetup;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		E201906CFF96A579F89E735A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.uitests;
+				PRODUCT_MODULE_NAME = HomeboardNativeUITests;
+				PRODUCT_NAME = HomeboardNativeUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = HomeboardNative;
+			};
+			name = Release;
+		};
+		E7F8ECDAADBC935D0A632F82 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://127.0.0.1:3000";
+				INFOPLIST_FILE = HomeboardMac/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.0.12;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac.dev;
+				PRODUCT_NAME = HomeboardSafariSetup;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F91AF7A0D51A87FECE69527C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 13;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "http://127.0.0.1:3000";
+				INFOPLIST_FILE = HomeboardMacSafariExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.0.12;
+				OTHER_LDFLAGS = "-framework SafariServices";
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac.dev.safari;
+				PRODUCT_MODULE_NAME = HomeboardMacSafariExtension;
+				PRODUCT_NAME = HomeboardMacSafariExtension;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		020911D25828F70EC40B27DF /* Build configuration list for PBXProject "HomeboardNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A6DAADD38075779AFF9D99AE /* Debug */,
+				69E3A5902638FEFBEC473868 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		2BFA6154B4EC087A43BFA26B /* Build configuration list for PBXNativeTarget "HomeboardNativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				817AAF120101A77D08273A64 /* Debug */,
+				4625A0E5109F17BE3A44999A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6A724A2DDEA3B19BD6309B0A /* Build configuration list for PBXNativeTarget "HomeboardNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B7CF040F1F524CFF6C455A8D /* Debug */,
+				6A123289C3A12BF1B8D007BC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		74A6866A9FF81BB2131CC634 /* Build configuration list for PBXNativeTarget "HomeboardMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E7F8ECDAADBC935D0A632F82 /* Debug */,
+				DAC21B8034BC3416A25C5604 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B06A95329C7CB49F86B1D5AF /* Build configuration list for PBXNativeTarget "HomeboardShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D5F67D2F7CCF0D6739B8FDD /* Debug */,
+				2D7705A96D2FE77260F74788 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B44CAD03D9B457EEE3E8FD7B /* Build configuration list for PBXNativeTarget "HomeboardNativeUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A3DB16AFF7B484E62465889D /* Debug */,
+				E201906CFF96A579F89E735A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B45322E21FA2D7666BAEBF92 /* Build configuration list for PBXNativeTarget "HomeboardMacSafariExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F91AF7A0D51A87FECE69527C /* Debug */,
+				52B9045B5BEB7A815D17AB1A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C3026ECC1A8DDAE36AB110B7 /* Build configuration list for PBXNativeTarget "HomeboardSafariExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1609EFF142401E996139114B /* Debug */,
+				914BED57ECF79D08CF0658A9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8CD380EF1611310C99AA1F8A /* Project object */;
+}

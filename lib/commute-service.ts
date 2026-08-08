@@ -10,6 +10,11 @@ export type CommuteEstimate = {
   bestDistanceMiles: number | null;
   bestOriginLabel: string | null;
   evaluatedAnchors: string[];
+  routes: Array<{
+    originLabel: string;
+    durationMinutes: number | null;
+    distanceMiles: number | null;
+  }>;
 };
 
 type Anchor = {
@@ -83,6 +88,11 @@ async function matrixDurations(
       bestDistanceMiles: null,
       bestOriginLabel: null,
       evaluatedAnchors: anchors.map((anchor) => anchor.label),
+      routes: anchors.map((anchor) => ({
+        originLabel: anchor.label,
+        durationMinutes: null,
+        distanceMiles: null,
+      })),
     }));
   }
 
@@ -114,6 +124,11 @@ async function matrixDurations(
       bestDistanceMiles: null,
       bestOriginLabel: null,
       evaluatedAnchors: anchors.map((anchor) => anchor.label),
+      routes: anchors.map((anchor) => ({
+        originLabel: anchor.label,
+        durationMinutes: null,
+        distanceMiles: null,
+      })),
     }));
   }
 
@@ -144,6 +159,21 @@ async function matrixDurations(
       bestDistanceMiles: bestDistanceMiles !== null ? Math.round(bestDistanceMiles * 10) / 10 : null,
       bestOriginLabel,
       evaluatedAnchors: anchors.map((anchor) => anchor.label),
+      routes: anchors.map((anchor, anchorIndex) => {
+        const duration = data.durations?.[anchorIndex]?.[destinationIndex];
+        const distance = data.distances?.[anchorIndex]?.[destinationIndex];
+        return {
+          originLabel: anchor.label,
+          durationMinutes:
+            typeof duration === "number" && Number.isFinite(duration)
+              ? Math.round(duration / 60)
+              : null,
+          distanceMiles:
+            typeof distance === "number" && Number.isFinite(distance)
+              ? Math.round(distance * 10) / 10
+              : null,
+        };
+      }),
     };
   });
 }
@@ -186,6 +216,11 @@ export async function estimateCommutes(input: {
       bestDistanceMiles: null,
       bestOriginLabel: null,
       evaluatedAnchors: resolvedAnchors.map((anchor) => anchor.label),
+      routes: resolvedAnchors.map((anchor) => ({
+        originLabel: anchor.label,
+        durationMinutes: null,
+        distanceMiles: null,
+      })),
     },
   );
 }
