@@ -195,6 +195,34 @@ test("Mac and iPhone Safari saves use the same authenticated board path", () => 
   assert.match(xcodeProjectSpec, /HomeboardMacSafariExtension:/);
 });
 
+test("Mac Safari shows grounded details before deeper SLM insights finish", () => {
+  const contentSource = readFileSync(
+    resolve(
+      process.cwd(),
+      "ios/HomeboardNative/HomeboardSafariExtension/Resources/content.js",
+    ),
+    "utf8",
+  );
+  assert.match(contentSource, /allowSystemModel:\s*visualTracking/);
+  assert.match(
+    contentSource,
+    /if \(!visualTracking\)[\s\S]*analyzePageCapture\(capture, \{ allowSystemModel: true \}\)/,
+  );
+  assert.match(contentSource, /applyEnhancedAnalysis/);
+  assert.match(contentSource, /resolvedFacts\.modelInsights = resolvedFacts\.insights/);
+  assert.match(
+    safariHandlerSource,
+    /message\["allowSystemModel"\] as\? Bool \?\? true/,
+  );
+});
+
+test("the connected Mac setup uses a compact self-contained panel", () => {
+  assert.match(macAppSource, /HomeboardMacWindowSizer/);
+  assert.match(macAppSource, /NSSize\(width: 580, height: 430\)/);
+  assert.match(macAppSource, /HomeboardMacPalette\.surface\.opacity\(0\.72\)/);
+  assert.match(macAppSource, /Label\("Enable in Safari", systemImage: "safari"\)/);
+});
+
 test("Mac Debug and installed Release builds cannot register the same Safari extension identity", () => {
   assert.match(
     xcodeProjectSpec,

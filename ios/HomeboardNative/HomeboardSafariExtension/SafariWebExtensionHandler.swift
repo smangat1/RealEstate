@@ -15,7 +15,11 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     if message["type"] as? String == "analyzeListing" {
       Task {
-        let analysis = await HomeboardListingIntelligence.analyze(message: message)
+        let allowSystemModel = message["allowSystemModel"] as? Bool ?? true
+        let analysis = await HomeboardListingIntelligence.analyze(
+          message: message,
+          allowSystemModel: allowSystemModel
+        )
         complete(context, message: [
           "analyzed": true,
           "analysis": analysis.dictionary

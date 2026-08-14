@@ -1190,11 +1190,14 @@
     }
   }
 
-  async function analyzePageCapture(capture) {
+  async function analyzePageCapture(capture, { allowSystemModel = true } = {}) {
     try {
       const response = await browser.runtime.sendMessage({
         type: "homeboard.analyzeListing",
-        capture
+        capture: {
+          ...capture,
+          allowSystemModel
+        }
       });
       if (response?.analyzed && response.analysis) return response.analysis;
     } catch {
@@ -1216,6 +1219,9 @@
       Object.entries(analysis?.facts || {})
         .filter(([, value]) => value !== null && value !== undefined && value !== "")
     );
+    if (Array.isArray(resolvedFacts.insights)) {
+      resolvedFacts.modelInsights = resolvedFacts.insights;
+    }
     return {
       ...capture,
       ...resolvedFacts,
@@ -1226,24 +1232,38 @@
   function configureReview(ui, originalCapture, analysis) {
     let reviewCapture = mergedCapture(originalCapture, analysis);
     let selectedExactOption = (analysis?.options || []).length === 0;
-    const fillFields = () => {
-      ui.fields.address.value = reviewCapture.address || "";
-      ui.fields.unit.value = reviewCapture.unit || "";
-      ui.fields.neighborhood.value = reviewCapture.neighborhood || reviewCapture.city || "";
-      ui.fields.price.value = Number.isFinite(reviewCapture.price)
+    let didSelectOption = false;
+    let reviewOpened = false;
+    const editedFields = new Set();
+    const fieldValues = () => ({
+      address: reviewCapture.address || "",
+      unit: reviewCapture.unit || "",
+      neighborhood: reviewCapture.neighborhood || reviewCapture.city || "",
+      price: Number.isFinite(reviewCapture.price)
         ? `$${formatScanNumber(reviewCapture.price)}`
-        : "";
-      ui.fields.bedrooms.value = Number.isFinite(reviewCapture.bedrooms)
+        : "",
+      bedrooms: Number.isFinite(reviewCapture.bedrooms)
         ? formatScanNumber(reviewCapture.bedrooms)
-        : "";
-      ui.fields.bathrooms.value = Number.isFinite(reviewCapture.bathrooms)
+        : "",
+      bathrooms: Number.isFinite(reviewCapture.bathrooms)
         ? formatScanNumber(reviewCapture.bathrooms)
-        : "";
+        : ""
+    });
+    const fillFields = ({ preserveUserInput = false } = {}) => {
+      Object.entries(fieldValues()).forEach(([key, value]) => {
+        const field = ui.fields[key];
+        if (preserveUserInput && (editedFields.has(key) || cleanText(field.value))) return;
+        field.value = value;
+      });
     };
     fillFields();
+    Object.entries(ui.fields).forEach(([key, field]) => {
+      field.addEventListener("input", () => editedFields.add(key));
+    });
 
-    const options = analysis?.options || [];
-    if (options.length > 0) {
+    const renderOptions = (options) => {
+      if (options.length === 0 || ui.optionList.childElementCount > 0) return;
+      selectedExactOption = false;
       ui.optionList.classList.remove("hidden");
       options.forEach((option) => {
         const button = document.createElement("button");
@@ -1258,6 +1278,7 @@
         button.append(label, price);
         button.addEventListener("click", () => {
           selectedExactOption = true;
+          didSelectOption = true;
           ui.optionList.querySelectorAll(".option-button").forEach((candidate) => {
             candidate.classList.toggle("selected", candidate === button);
           });
@@ -1276,12 +1297,15 @@
       });
       ui.panelNote.textContent =
         "This is a building page. Choose the exact unit before saving.";
-    } else if (analysis?.missingFields?.length) {
+    };
+    renderOptions(analysis?.options || []);
+    if ((analysis?.options || []).length === 0 && analysis?.missingFields?.length) {
       ui.panelNote.textContent =
         "Homeboard left uncertain details blank. Confirm them before saving.";
     }
 
     const showReview = () => {
+      reviewOpened = true;
       ui.backdrop.classList.remove("hidden");
       ui.reviewPanel.classList.remove("hidden");
       ui.fields.address.focus({ preventScroll: true });
@@ -1349,6 +1373,35 @@
         showReview();
       }
     });
+
+    return {
+      applyEnhancedAnalysis(enhancedAnalysis) {
+        const enhancedCapture = mergedCapture(originalCapture, enhancedAnalysis);
+        if (didSelectOption) {
+          const nonUnitFields = [
+            "address", "city", "neighborhood", "imageURL", "summary",
+            "amenities", "modelInsights"
+          ];
+          for (const key of nonUnitFields) {
+            if (enhancedCapture[key] !== null && enhancedCapture[key] !== undefined) {
+              reviewCapture[key] = enhancedCapture[key];
+            }
+          }
+        } else {
+          reviewCapture = { ...reviewCapture, ...enhancedCapture };
+        }
+        fillFields({ preserveUserInput: reviewOpened });
+        renderOptions(enhancedAnalysis?.options || []);
+        if (
+          (enhancedAnalysis?.options || []).length === 0
+          && enhancedAnalysis?.missingFields?.length === 0
+        ) {
+          ui.panelNote.textContent = enhancedAnalysis.usedOnDeviceModel
+            ? "Homeboard’s deeper check agreed with these listing details."
+            : "These details came from the main listing, not nearby or similar cards.";
+        }
+      }
+    };
   }
 
   async function startPageScan({ presentation = "visual" } = {}) {
@@ -1361,7 +1414,9 @@
     pageScanSession = session;
     const capture = extractListing();
     let analysisFinished = false;
-    const analysisTask = analyzePageCapture(capture).then((result) => {
+    const analysisTask = analyzePageCapture(capture, {
+      allowSystemModel: visualTracking
+    }).then((result) => {
       analysisFinished = true;
       return result;
     });
@@ -1389,7 +1444,21 @@
     ui.tag.classList.add("hidden");
     ui.completeSummary.textContent = listingSummary(resolved);
     ui.completeCard.classList.remove("hidden");
-    configureReview(ui, capture, analysis);
+    const review = configureReview(ui, capture, analysis);
+
+    if (!visualTracking) {
+      analyzePageCapture(capture, { allowSystemModel: true })
+        .then((enhancedAnalysis) => {
+          if (!ui.host.isConnected || pageScanSession !== session) return;
+          review.applyEnhancedAnalysis(enhancedAnalysis);
+          ui.completeSummary.textContent = listingSummary(
+            mergedCapture(capture, enhancedAnalysis)
+          );
+        })
+        .catch(() => {
+          // The fast grounded review remains usable if deeper analysis is unavailable.
+        });
+    }
   }
 
   browser.runtime.onMessage.addListener((request) => {

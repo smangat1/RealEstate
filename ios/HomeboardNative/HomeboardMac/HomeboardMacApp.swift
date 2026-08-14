@@ -23,7 +23,7 @@ struct HomeboardMacApp: App {
     WindowGroup {
       HomeboardMacConnectionView()
         .environmentObject(model)
-        .frame(minWidth: 520, minHeight: 510)
+        .frame(minWidth: 520, minHeight: model.isConnected ? 390 : 510)
     }
     .windowResizability(.contentMinSize)
   }
@@ -304,7 +304,7 @@ private struct HomeboardMacConnectionView: View {
       )
       .ignoresSafeArea()
 
-      VStack(alignment: .leading, spacing: 22) {
+      VStack(alignment: .leading, spacing: model.isConnected ? 18 : 22) {
         HStack(spacing: 12) {
           Image(systemName: "house.and.flag.fill")
             .font(.system(size: 23, weight: .bold))
@@ -338,16 +338,19 @@ private struct HomeboardMacConnectionView: View {
             .foregroundStyle(HomeboardMacPalette.success)
         }
 
-        Spacer(minLength: 0)
+        if !model.isConnected {
+          Spacer(minLength: 0)
+        }
 
         Text("Once connected, a listing saved from Mac Safari goes straight to the same shared board your iPhone refreshes.")
           .font(.system(size: 12))
           .foregroundStyle(.white.opacity(0.48))
           .fixedSize(horizontal: false, vertical: true)
       }
-      .padding(30)
+      .padding(model.isConnected ? 26 : 30)
       .foregroundStyle(HomeboardMacPalette.primaryText)
     }
+    .background(HomeboardMacWindowSizer(isConnected: model.isConnected))
   }
 
   private var signInContent: some View {
@@ -475,14 +478,19 @@ private struct HomeboardMacConnectionView: View {
   }
 
   private var connectedContent: some View {
-    VStack(alignment: .leading, spacing: 15) {
+    VStack(alignment: .leading, spacing: 14) {
       HStack {
-        VStack(alignment: .leading, spacing: 3) {
-          Text("Connected as \(model.connectedName)")
-            .font(.system(size: 16, weight: .bold))
-          Text(HomeboardSharedAuthStore.load()?.email ?? "Apple account")
-            .font(.system(size: 12))
-            .foregroundStyle(.white.opacity(0.56))
+        HStack(spacing: 10) {
+          Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(HomeboardMacPalette.success)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Connected as \(model.connectedName)")
+              .font(.system(size: 15, weight: .bold))
+            Text(HomeboardSharedAuthStore.load()?.email ?? "Apple account")
+              .font(.system(size: 11))
+              .foregroundStyle(.white.opacity(0.56))
+          }
         }
         Spacer()
         Button("Sign out") { model.signOut() }
@@ -490,49 +498,94 @@ private struct HomeboardMacConnectionView: View {
           .foregroundStyle(.white.opacity(0.62))
       }
 
-      VStack(alignment: .leading, spacing: 7) {
-        Text("SAFARI SAVES TO")
-          .font(.system(size: 10, weight: .heavy))
-          .tracking(1.1)
-          .foregroundStyle(HomeboardMacPalette.accent)
-        Picker("Destination board", selection: $model.activeBoardId) {
-          ForEach(model.boards) { board in
-            Text(board.title.isEmpty ? board.city : board.title)
-              .tag(board.id)
+      Divider().overlay(.white.opacity(0.1))
+
+      HStack(alignment: .bottom, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("SAFARI SAVES TO")
+            .font(.system(size: 10, weight: .heavy))
+            .tracking(1.1)
+            .foregroundStyle(HomeboardMacPalette.accent)
+          Picker("Destination board", selection: $model.activeBoardId) {
+            ForEach(model.boards) { board in
+              Text(board.title.isEmpty ? board.city : board.title)
+                .tag(board.id)
+            }
+          }
+          .labelsHidden()
+          .frame(maxWidth: .infinity)
+          .onChange(of: model.activeBoardId) { _, id in
+            model.selectBoard(id)
           }
         }
-        .labelsHidden()
-        .onChange(of: model.activeBoardId) { _, id in
-          model.selectBoard(id)
-        }
-      }
-      .padding(14)
-      .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 15))
-
-      HStack {
-        Button("Enable in Safari") {
-          model.openSafariExtensionSettings()
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(HomeboardMacPalette.accent)
-        .foregroundStyle(Color.black)
-
-        Button("Sync offline saves") {
-          Task { await model.syncPendingImports() }
-        }
-        .buttonStyle(.bordered)
-        .disabled(model.isWorking || model.activeBoardId.isEmpty)
-
-        Spacer()
 
         Button {
           Task { await model.refreshBoards() }
         } label: {
           Image(systemName: "arrow.clockwise")
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.bordered)
+        .help("Refresh boards")
         .disabled(model.isWorking)
       }
+
+      HStack(spacing: 9) {
+        Button {
+          model.openSafariExtensionSettings()
+        } label: {
+          Label("Enable in Safari", systemImage: "safari")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(HomeboardMacPalette.accent)
+        .foregroundStyle(Color.black)
+
+        Button {
+          Task { await model.syncPendingImports() }
+        } label: {
+          Label("Sync offline saves", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .buttonStyle(.bordered)
+        .disabled(model.isWorking || model.activeBoardId.isEmpty)
+
+        if model.isWorking {
+          ProgressView()
+            .controlSize(.small)
+            .tint(.white)
+        }
+      }
+    }
+    .padding(16)
+    .background(
+      HomeboardMacPalette.surface.opacity(0.72),
+      in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+    )
+  }
+}
+
+private struct HomeboardMacWindowSizer: NSViewRepresentable {
+  let isConnected: Bool
+
+  final class Coordinator {
+    var lastConnectedState: Bool?
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  func makeNSView(context: Context) -> NSView {
+    NSView(frame: .zero)
+  }
+
+  func updateNSView(_ view: NSView, context: Context) {
+    guard context.coordinator.lastConnectedState != isConnected else { return }
+    DispatchQueue.main.async {
+      guard let window = view.window else { return }
+      let size = isConnected
+        ? NSSize(width: 580, height: 430)
+        : NSSize(width: 620, height: 560)
+      window.setContentSize(size)
+      context.coordinator.lastConnectedState = isConnected
     }
   }
 }
