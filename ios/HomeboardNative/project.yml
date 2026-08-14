@@ -131,6 +131,7 @@ targets:
         DEVELOPMENT_TEAM: 4SSAVHCM6U
       configs:
         Debug:
+          CODE_SIGN_ENTITLEMENTS: HomeboardMac/HomeboardMacDebug.entitlements
           PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.mac.dev
     dependencies:
       - target: HomeboardMacSafariExtension

@@ -41,6 +41,20 @@ const debugEntitlements = readFileSync(
   ),
   "utf8",
 );
+const macEntitlements = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardMac/HomeboardMac.entitlements",
+  ),
+  "utf8",
+);
+const macDebugEntitlements = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardMac/HomeboardMacDebug.entitlements",
+  ),
+  "utf8",
+);
 const macAuthSource = readFileSync(
   resolve(
     process.cwd(),
@@ -105,11 +119,12 @@ test("a valid Supabase session survives a temporarily unavailable backend", () =
   assert.match(authViewSource, /Label\("Retry connection", systemImage: "arrow\.clockwise"\)/);
 });
 
-test("device sign-in uses a stable local hostname and bounded network waits", () => {
-  assert.match(nativeProjectSource, /http:\/\/Samyans-Laptop\.local:3000/);
-  assert.match(nativeProjectDefinition, /http:\/\/Samyans-Laptop\.local:3000/);
-  assert.doesNotMatch(nativeProjectSource, /192\.168\.1\.203/);
-  assert.doesNotMatch(nativeProjectDefinition, /192\.168\.1\.203/);
+test("device sign-in uses the stable HTTPS backend and bounded network waits", () => {
+  const productionOrigin = /https:\/\/real-estate-samyanmangat-6662s-projects\.vercel\.app/;
+  assert.match(nativeProjectSource, productionOrigin);
+  assert.match(nativeProjectDefinition, productionOrigin);
+  assert.doesNotMatch(nativeProjectSource, /Samyans-Laptop|192\.168\.1\.203/);
+  assert.doesNotMatch(nativeProjectDefinition, /Samyans-Laptop|192\.168\.1\.203/);
   assert.match(apiSource, /timeoutInterval: 8/);
   assert.match(apiSource, /request\.timeoutInterval = 12/);
 });
@@ -170,6 +185,12 @@ test("release account entry is Apple-only while Personal-Team Debug has an isola
   assert.match(appleAuthViewSource, /SecureField\("Password"/);
   assert.match(appModelSource, /#if DEBUG[\s\S]*func submitDevelopmentAuth/);
   assert.doesNotMatch(debugEntitlements, /com\.apple\.developer\.applesignin/);
+  assert.match(macEntitlements, /com\.apple\.developer\.applesignin/);
+  assert.doesNotMatch(macDebugEntitlements, /com\.apple\.developer\.applesignin/);
+  assert.match(
+    nativeProjectDefinition,
+    /Debug:[\s\S]*CODE_SIGN_ENTITLEMENTS: HomeboardMac\/HomeboardMacDebug\.entitlements[\s\S]*PRODUCT_BUNDLE_IDENTIFIER: com\.homeboard\.native\.mac\.dev/,
+  );
   assert.match(macAuthSource, /SignInWithAppleButton\(\.continue\)/);
   assert.doesNotMatch(macAuthSource, /SecureField|Enter your Homeboard email and password/);
   assert.match(extensionSyncSource, /static func signInWithApple/);
