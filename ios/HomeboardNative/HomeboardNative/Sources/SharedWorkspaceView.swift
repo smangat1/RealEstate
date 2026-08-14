@@ -7520,31 +7520,12 @@ private struct SharedShareSheetPreview: View {
           .fill(Color.white.opacity(0.22))
           .frame(width: 34, height: 4)
 
-        HStack(alignment: .top, spacing: 6) {
-          systemShareApp(
-            label: "AirDrop",
-            symbol: "airdrop",
-            foreground: Color.blue,
-            background: Color.white
-          )
-          systemShareApp(
-            label: "Messages",
-            symbol: "message.fill",
-            foreground: Color.white,
-            background: Color.green
-          )
-          systemShareApp(
-            label: "Mail",
-            symbol: "envelope.fill",
-            foreground: Color.white,
-            background: Color.blue
-          )
-
+        HStack(alignment: .center, spacing: 18) {
           VStack(spacing: 5) {
             ZStack(alignment: .topTrailing) {
-              SharedHomeboardAppIcon(size: 48)
+              SharedHomeboardAppIcon(size: 54)
                 .overlay {
-                  RoundedRectangle(cornerRadius: 13, style: .continuous)
+                  RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .stroke(HomeboardPalette.accent, lineWidth: 3)
                 }
 
@@ -7556,13 +7537,37 @@ private struct SharedShareSheetPreview: View {
             }
 
             Text("Homeboard")
-              .font(.system(size: 9, weight: .bold))
+              .font(.caption2.weight(.bold))
               .foregroundStyle(HomeboardPalette.primaryText)
               .lineLimit(1)
           }
-          .frame(maxWidth: .infinity)
           .accessibilityElement(children: .combine)
           .accessibilityLabel("Homeboard, choose this app")
+
+          VStack(spacing: 5) {
+            Image(systemName: "ellipsis")
+              .font(.system(size: 21, weight: .bold))
+              .foregroundStyle(Color.black.opacity(0.72))
+              .frame(width: 54, height: 54)
+              .background(Color.white)
+              .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+            Text("More")
+              .font(.caption2.weight(.medium))
+              .foregroundStyle(HomeboardPalette.secondaryText)
+          }
+
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Look for this exact icon")
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Text("Tap Homeboard when it appears in the Share sheet.")
+              .font(.caption2)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
+          Spacer(minLength: 0)
         }
 
         Text("If Homeboard is off-screen, swipe the app row left or tap More.")
@@ -7575,30 +7580,6 @@ private struct SharedShareSheetPreview: View {
       .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
     .padding(12)
-  }
-
-  private func systemShareApp(
-    label: String,
-    symbol: String,
-    foreground: Color,
-    background: Color
-  ) -> some View {
-    VStack(spacing: 5) {
-      Image(systemName: symbol)
-        .font(.system(size: 23, weight: .semibold))
-        .foregroundStyle(foreground)
-        .frame(width: 48, height: 48)
-        .background(background)
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-
-      Text(label)
-        .font(.system(size: 9, weight: .medium))
-        .foregroundStyle(HomeboardPalette.secondaryText)
-        .lineLimit(1)
-    }
-    .frame(maxWidth: .infinity)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(label)
   }
 }
 

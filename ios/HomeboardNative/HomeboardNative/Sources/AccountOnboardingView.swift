@@ -7,6 +7,11 @@ private final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocal
   @Published private(set) var suggestions: [MKLocalSearchCompletion] = []
 
   private let completer = MKLocalSearchCompleter()
+  private var regionSearch: MKLocalSearch?
+  private var pendingQuery = ""
+  private var pendingCity = ""
+  private var requestedRegionCity = ""
+  private var resolvedRegionCity = ""
 
   override init() {
     super.init()
@@ -14,22 +19,71 @@ private final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocal
     completer.resultTypes = [.address, .pointOfInterest]
   }
 
+  func updateCity(query: String) {
+    let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    pendingQuery = clean
+    pendingCity = ""
+    completer.region = MKCoordinateRegion(MKMapRect.world)
+    guard clean.count >= 2 else {
+      completer.queryFragment = ""
+      suggestions = []
+      return
+    }
+    completer.queryFragment = clean
+  }
+
   func update(query: String, city: String) {
     let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard clean.count >= 3 else {
-      clear()
+    pendingQuery = clean
+    pendingCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard clean.count >= 2 else {
+      completer.queryFragment = ""
+      suggestions = []
       return
     }
 
-    let cityHint = city.trimmingCharacters(in: .whitespacesAndNewlines)
-    completer.queryFragment = cityHint.isEmpty || clean.localizedCaseInsensitiveContains(cityHint)
-      ? clean
-      : "\(clean), \(cityHint)"
+    resolveRegionIfNeeded(for: pendingCity)
+    applyAddressQuery()
+  }
+
+  func primeRegion(city: String) {
+    resolveRegionIfNeeded(
+      for: city.trimmingCharacters(in: .whitespacesAndNewlines)
+    )
   }
 
   func clear() {
     completer.queryFragment = ""
+    pendingQuery = ""
+    pendingCity = ""
     suggestions = []
+  }
+
+  func resolvedSearchArea(for suggestion: MKLocalSearchCompletion) async -> String {
+    let request = MKLocalSearch.Request(completion: suggestion)
+    guard let item = try? await MKLocalSearch(request: request).start().mapItems.first else {
+      return Self.fallbackAddress(for: suggestion)
+    }
+
+    let placemark = item.placemark
+    let locality = placemark.locality
+      ?? placemark.subAdministrativeArea
+      ?? suggestion.title
+    let region = placemark.administrativeArea
+    let country = placemark.isoCountryCode == "US" || placemark.isoCountryCode == nil
+      ? nil
+      : placemark.country
+    let components = [locality, region, country]
+      .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    let resolved = components.reduce(into: [String]()) { result, component in
+      if !result.contains(where: { $0.caseInsensitiveCompare(component) == .orderedSame }) {
+        result.append(component)
+      }
+    }
+    return resolved.isEmpty
+      ? Self.fallbackAddress(for: suggestion)
+      : resolved.joined(separator: ", ")
   }
 
   func resolvedAddress(for suggestion: MKLocalSearchCompletion) async -> String {
@@ -65,6 +119,49 @@ private final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocal
     DispatchQueue.main.async {
       self.suggestions = []
     }
+  }
+
+  private func resolveRegionIfNeeded(for city: String) {
+    guard !city.isEmpty else { return }
+    let key = city.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    guard key != requestedRegionCity else { return }
+    requestedRegionCity = key
+    resolvedRegionCity = ""
+    regionSearch?.cancel()
+
+    let request = MKLocalSearch.Request()
+    request.naturalLanguageQuery = city
+    request.resultTypes = [.address, .pointOfInterest]
+    let search = MKLocalSearch(request: request)
+    regionSearch = search
+    search.start { [weak self] response, _ in
+      DispatchQueue.main.async {
+        guard let self, self.requestedRegionCity == key,
+              let coordinate = response?.mapItems.first?.placemark.coordinate
+        else { return }
+
+        self.completer.region = MKCoordinateRegion(
+          center: coordinate,
+          span: MKCoordinateSpan(latitudeDelta: 1.2, longitudeDelta: 1.2)
+        )
+        self.resolvedRegionCity = key
+        self.applyAddressQuery()
+      }
+    }
+  }
+
+  private func applyAddressQuery() {
+    guard pendingQuery.count >= 2 else { return }
+    let key = pendingCity.folding(
+      options: [.caseInsensitive, .diacriticInsensitive],
+      locale: .current
+    )
+    let hasResolvedRegion = !key.isEmpty && key == resolvedRegionCity
+    completer.queryFragment = hasResolvedRegion
+      || pendingCity.isEmpty
+      || pendingQuery.localizedCaseInsensitiveContains(pendingCity)
+      ? pendingQuery
+      : "\(pendingQuery), \(pendingCity)"
   }
 
   private static func fallbackAddress(for suggestion: MKLocalSearchCompletion) -> String {
@@ -753,17 +850,7 @@ struct OnboardingView: View {
       )
 
     case .city:
-      directField(
-        title: "City or metro area",
-        prompt: "Type where you want to search",
-        text: Binding(
-          get: { appModel.profile.city },
-          set: { value in
-            appModel.profile.city = value
-            appModel.syncBoardFromProfile()
-          }
-        )
-      )
+      citySearchAnswer
 
     case .neighborhoods, .priorities, .mustHaves, .dealbreakers:
       multiChoiceGrid(options: options)
@@ -779,6 +866,97 @@ struct OnboardingView: View {
 
     default:
       singleChoiceGrid(options: options)
+    }
+  }
+
+  private var citySearchAnswer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("CITY OR METRO AREA")
+        .font(.caption2.weight(.bold))
+        .tracking(1.2)
+        .foregroundStyle(HomeboardPalette.accent)
+
+      TextField(
+        "",
+        text: citySearchBinding,
+        prompt: Text("Start typing a city or metro").foregroundStyle(HomeboardPalette.tertiaryText)
+      )
+      .textContentType(.addressCity)
+      .textInputAutocapitalization(.words)
+      .autocorrectionDisabled()
+      .focused($customFieldFocused)
+      .font(.body.weight(.medium))
+      .foregroundStyle(HomeboardPalette.primaryText)
+      .padding(.horizontal, 15)
+      .frame(height: 54)
+      .homeboardInsetSurface(cornerRadius: 16)
+
+      if !addressSearch.suggestions.isEmpty && customFieldFocused {
+        VStack(spacing: 0) {
+          ForEach(Array(addressSearch.suggestions.enumerated()), id: \.offset) { index, suggestion in
+            Button {
+              selectCitySuggestion(suggestion)
+            } label: {
+              HStack(spacing: 11) {
+                Image(systemName: "building.2.crop.circle.fill")
+                  .foregroundStyle(HomeboardPalette.accent)
+
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(suggestion.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(HomeboardPalette.primaryText)
+                    .lineLimit(1)
+                  if !suggestion.subtitle.isEmpty {
+                    Text(suggestion.subtitle)
+                      .font(.caption)
+                      .foregroundStyle(HomeboardPalette.secondaryText)
+                      .lineLimit(1)
+                  }
+                }
+
+                Spacer(minLength: 4)
+              }
+              .padding(.horizontal, 12)
+              .frame(height: 54)
+            }
+            .buttonStyle(.plain)
+
+            if index < addressSearch.suggestions.count - 1 {
+              Rectangle()
+                .fill(HomeboardPalette.border)
+                .frame(height: 1)
+                .padding(.leading, 44)
+            }
+          }
+        }
+        .homeboardInsetSurface(cornerRadius: 16)
+      }
+
+      Label("Optional autocomplete from Apple Maps", systemImage: "location.fill")
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+    }
+  }
+
+  private var citySearchBinding: Binding<String> {
+    Binding(
+      get: { appModel.profile.city },
+      set: { value in
+        appModel.profile.city = value
+        addressSearch.updateCity(query: value)
+        appModel.syncBoardFromProfile()
+      }
+    )
+  }
+
+  private func selectCitySuggestion(_ suggestion: MKLocalSearchCompletion) {
+    customFieldFocused = false
+    addressSearch.clear()
+    Task {
+      let resolved = await addressSearch.resolvedSearchArea(for: suggestion)
+      appModel.profile.city = resolved
+      addressSearch.primeRegion(city: resolved)
+      appModel.syncBoardFromProfile()
     }
   }
 

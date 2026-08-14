@@ -245,8 +245,11 @@ test("entry uses solid fixed cards that track reversible vertical swipes", () =>
 });
 
 test("onboarding accepts solo renters and captures routable commute access", () => {
-  assert.match(authViewSource, /case \.city:[\s\S]*directField\([\s\S]*title: "City or metro area"/);
-  assert.match(authViewSource, /prompt: "Type where you want to search"/);
+  assert.match(authViewSource, /case \.city:[\s\S]*citySearchAnswer/);
+  assert.match(authViewSource, /Start typing a city or metro/);
+  assert.match(authViewSource, /Optional autocomplete from Apple Maps/);
+  assert.match(authViewSource, /addressSearch\.updateCity\(query: value\)/);
+  assert.match(authViewSource, /resolvedSearchArea\(for suggestion:/);
   assert.match(authViewSource, /case \.city:\s*return \[\]/);
   assert.doesNotMatch(
     authViewSource,
@@ -256,6 +259,9 @@ test("onboarding accepts solo renters and captures routable commute access", () 
   assert.match(authViewSource, /case \.groupSize:[\s\S]*renterCount\(for: option\)/);
   assert.match(authViewSource, /OnboardingAddressSearch/);
   assert.match(authViewSource, /MKLocalSearchCompleter/);
+  assert.match(authViewSource, /completer\.region = MKCoordinateRegion/);
+  assert.match(authViewSource, /latitudeDelta: 1\.2, longitudeDelta: 1\.2/);
+  assert.match(authViewSource, /resolveRegionIfNeeded\(for: pendingCity\)/);
   assert.match(authViewSource, /Start typing an address or place/);
   assert.match(authViewSource, /Suggestions from Apple Maps/);
   assert.match(authViewSource, /Car or consistent ride/);
@@ -290,6 +296,7 @@ test("onboarding keeps only core setup steps and teaches the first listing share
   assert.match(workspaceSource, /square\.and\.arrow\.up/);
   assert.match(workspaceSource, /CFBundleIcons/);
   assert.match(workspaceSource, /If Homeboard is off-screen, swipe the app row left or tap More/);
+  assert.doesNotMatch(workspaceSource, /label: "AirDrop"|label: "Messages"|label: "Mail"/);
   assert.match(workspaceSource, /Review what Homeboard found/);
   assert.match(workspaceSource, /The \+ button is only a manual backup/);
 });
