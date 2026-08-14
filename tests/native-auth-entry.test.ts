@@ -284,9 +284,12 @@ test("onboarding keeps only core setup steps and teaches the first listing share
   );
   assert.match(appModelSource, /homeboard\.guide\.first-listing\.pending/);
   assert.match(workspaceSource, /SharedListingShareWorkflowGuide/);
-  assert.match(workspaceSource, /Save listings from wherever you find them/);
+  assert.match(workspaceSource, /Share a listing to Homeboard/);
   assert.match(workspaceSource, /Zillow, StreetEasy, Apartments\.com, Realtor/);
-  assert.match(workspaceSource, /Tap that app’s normal Share button/);
-  assert.match(workspaceSource, /Choose Homeboard/);
+  assert.match(workspaceSource, /Tap Share, then tap Homeboard/);
+  assert.match(workspaceSource, /square\.and\.arrow\.up/);
+  assert.match(workspaceSource, /CFBundleIcons/);
+  assert.match(workspaceSource, /If Homeboard is off-screen, swipe the app row left or tap More/);
+  assert.match(workspaceSource, /Review what Homeboard found/);
   assert.match(workspaceSource, /The \+ button is only a manual backup/);
 });

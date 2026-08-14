@@ -3272,32 +3272,7 @@ private struct SharedSafariSaveGuideSheet: View {
             )
 
             VStack(alignment: .leading, spacing: 0) {
-              HStack(spacing: 14) {
-                ZStack {
-                  RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(HomeboardPalette.accent.opacity(0.12))
-                  Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(HomeboardPalette.accent)
-                }
-                .frame(width: 58, height: 58)
-
-                VStack(alignment: .leading, spacing: 4) {
-                  Text("Share to Homeboard")
-                    .font(.headline)
-                    .foregroundStyle(HomeboardPalette.primaryText)
-                  Text("Included in your iPhone Share sheet")
-                    .font(.subheadline)
-                    .foregroundStyle(HomeboardPalette.secondaryText)
-                }
-
-                Spacer()
-
-                Image(systemName: "checkmark.seal.fill")
-                  .font(.title3)
-                  .foregroundStyle(HomeboardPalette.success)
-              }
-              .padding(16)
+              SharedShareSheetPreview()
 
               ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                 SharedDivider()
@@ -7405,15 +7380,23 @@ private struct SharedListingShareWorkflowGuide: View {
 
       VStack(alignment: .leading, spacing: 16) {
         HStack(alignment: .top, spacing: 12) {
-          Image(systemName: "square.and.arrow.up.fill")
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.buttonText)
-            .frame(width: 44, height: 44)
-            .background(HomeboardPalette.accent)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+          ZStack(alignment: .bottomTrailing) {
+            SharedHomeboardAppIcon(size: 46)
+
+            Image(systemName: "square.and.arrow.up")
+              .font(.system(size: 10, weight: .bold))
+              .foregroundStyle(Color.white)
+              .frame(width: 20, height: 20)
+              .background(Color.blue)
+              .clipShape(Circle())
+              .overlay {
+                Circle().stroke(HomeboardPalette.surface, lineWidth: 2)
+              }
+              .offset(x: 3, y: 3)
+          }
 
           VStack(alignment: .leading, spacing: 4) {
-            Text("Save listings from wherever you find them")
+            Text("Share a listing to Homeboard")
               .font(.title3.weight(.bold))
               .foregroundStyle(HomeboardPalette.primaryText)
               .fixedSize(horizontal: false, vertical: true)
@@ -7432,16 +7415,12 @@ private struct SharedListingShareWorkflowGuide: View {
             detail: "Use the individual home or unit page—not search results or a nearby-listings card."
           )
           SharedDivider()
-          workflowStep(
-            number: 2,
-            title: "Tap that app’s normal Share button",
-            detail: "In Safari, use the square-with-up-arrow. In a rental app, use Share so it sends the listing link."
-          )
+          SharedShareSheetPreview()
           SharedDivider()
           workflowStep(
             number: 3,
-            title: "Choose Homeboard",
-            detail: "Homeboard scans the shared listing, then asks you to confirm the address, rent, bedrooms, and bathrooms before saving."
+            title: "Review what Homeboard found",
+            detail: "Confirm the full address, rent, bedrooms, and bathrooms. Correct anything missing, then save it to the board."
           )
         }
         .homeboardInsetSurface(cornerRadius: 18)
@@ -7503,6 +7482,174 @@ private struct SharedListingShareWorkflowGuide: View {
     }
     .padding(12)
   }
+}
+
+private struct SharedShareSheetPreview: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 12) {
+        Text("2")
+          .font(.caption.weight(.heavy))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .frame(width: 28, height: 28)
+          .background(HomeboardPalette.accent)
+          .clipShape(Circle())
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text("Tap Share, then tap Homeboard")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text("Safari uses this square-and-up-arrow. Rental apps may simply label it Share.")
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Spacer(minLength: 4)
+
+        Image(systemName: "square.and.arrow.up")
+          .font(.system(size: 25, weight: .semibold))
+          .foregroundStyle(Color.blue)
+          .frame(width: 44, height: 44)
+          .background(Color.white.opacity(0.96))
+          .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+      }
+
+      VStack(spacing: 10) {
+        Capsule()
+          .fill(Color.white.opacity(0.22))
+          .frame(width: 34, height: 4)
+
+        HStack(alignment: .top, spacing: 6) {
+          systemShareApp(
+            label: "AirDrop",
+            symbol: "airdrop",
+            foreground: Color.blue,
+            background: Color.white
+          )
+          systemShareApp(
+            label: "Messages",
+            symbol: "message.fill",
+            foreground: Color.white,
+            background: Color.green
+          )
+          systemShareApp(
+            label: "Mail",
+            symbol: "envelope.fill",
+            foreground: Color.white,
+            background: Color.blue
+          )
+
+          VStack(spacing: 5) {
+            ZStack(alignment: .topTrailing) {
+              SharedHomeboardAppIcon(size: 48)
+                .overlay {
+                  RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(HomeboardPalette.accent, lineWidth: 3)
+                }
+
+              Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(HomeboardPalette.accent)
+                .background(HomeboardPalette.surface, in: Circle())
+                .offset(x: 4, y: -4)
+            }
+
+            Text("Homeboard")
+              .font(.system(size: 9, weight: .bold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .lineLimit(1)
+          }
+          .frame(maxWidth: .infinity)
+          .accessibilityElement(children: .combine)
+          .accessibilityLabel("Homeboard, choose this app")
+        }
+
+        Text("If Homeboard is off-screen, swipe the app row left or tap More.")
+          .font(.caption2.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(12)
+      .background(Color.black.opacity(0.22))
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+    .padding(12)
+  }
+
+  private func systemShareApp(
+    label: String,
+    symbol: String,
+    foreground: Color,
+    background: Color
+  ) -> some View {
+    VStack(spacing: 5) {
+      Image(systemName: symbol)
+        .font(.system(size: 23, weight: .semibold))
+        .foregroundStyle(foreground)
+        .frame(width: 48, height: 48)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+      Text(label)
+        .font(.system(size: 9, weight: .medium))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+        .lineLimit(1)
+    }
+    .frame(maxWidth: .infinity)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(label)
+  }
+}
+
+private struct SharedHomeboardAppIcon: View {
+  let size: CGFloat
+
+  var body: some View {
+    Group {
+      if let image = Self.installedAppIcon {
+        Image(uiImage: image)
+          .resizable()
+          .scaledToFill()
+      } else {
+        ZStack {
+          HomeboardPalette.backgroundSecondary
+          Image(systemName: "building.2.fill")
+            .font(.system(size: size * 0.38, weight: .bold))
+            .foregroundStyle(HomeboardPalette.accent)
+        }
+      }
+    }
+    .frame(width: size, height: size)
+    .clipShape(RoundedRectangle(cornerRadius: size * 0.27, style: .continuous))
+    .accessibilityHidden(true)
+  }
+
+  private static let installedAppIcon: UIImage? = {
+    let iconDictionaries = [
+      Bundle.main.infoDictionary?["CFBundleIcons"],
+      Bundle.main.infoDictionary?["CFBundleIcons~ipad"]
+    ]
+
+    for case let iconDictionary as [String: Any] in iconDictionaries {
+      guard
+        let primaryIcon = iconDictionary["CFBundlePrimaryIcon"] as? [String: Any],
+        let files = primaryIcon["CFBundleIconFiles"] as? [String]
+      else { continue }
+
+      for filename in files.reversed() {
+        if let image = UIImage(named: filename) {
+          return image
+        }
+        if let path = Bundle.main.path(forResource: filename, ofType: "png"),
+           let image = UIImage(contentsOfFile: path) {
+          return image
+        }
+      }
+    }
+
+    return nil
+  }()
 }
 
 private struct SharedCoachmarkAnchorKey: PreferenceKey {
