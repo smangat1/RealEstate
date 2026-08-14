@@ -24,6 +24,7 @@ const workspace = read(
   "ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift",
 );
 const infoPlist = read("ios/HomeboardNative/HomeboardNative/Info.plist");
+const packageManifest = read("package.json");
 
 test("device pairing persists only hashed short-lived challenge secrets", () => {
   assert.match(schema, /enum DevicePairingStatus/);
@@ -36,6 +37,11 @@ test("device pairing persists only hashed short-lived challenge secrets", () => 
   assert.match(pairingLibrary, /3 \* 60 \* 1000/);
   assert.match(pairingLibrary, /timingSafeEqual/);
   assert.match(pairingLibrary, /DEVICE_PAIRING_MAX_APPROVAL_ATTEMPTS = 5/);
+});
+
+test("deployments regenerate Prisma after schema changes", () => {
+  assert.match(packageManifest, /"prebuild": "prisma generate"/);
+  assert.match(packageManifest, /"postinstall": "prisma generate"/);
 });
 
 test("the QR never contains the Mac polling secret or an existing phone session", () => {
