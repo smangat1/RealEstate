@@ -14,6 +14,44 @@ struct NativeAuthSession: Hashable, Codable {
   var displayName: String
 }
 
+struct MacDevicePairingRequest: Identifiable, Hashable {
+  var id: String
+  var approvalCode: String
+  var deviceName: String
+
+  init?(url: URL) {
+    guard url.scheme?.lowercased() == "homeboard",
+          url.host?.lowercased() == "connect-mac",
+          let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    else { return nil }
+    let values = Dictionary(
+      uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") }
+    )
+    guard let id = values["id"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !id.isEmpty,
+          let code = values["code"],
+          code.range(of: #"^\d{6}$"#, options: .regularExpression) != nil
+    else { return nil }
+    self.id = id
+    self.approvalCode = code
+    let name = values["device"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    self.deviceName = name.isEmpty ? "Mac" : String(name.prefix(100))
+  }
+
+  init?(payload: String) {
+    guard let url = URL(string: payload.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+      return nil
+    }
+    self.init(url: url)
+  }
+
+  var formattedCode: String {
+    guard approvalCode.count == 6 else { return approvalCode }
+    let middle = approvalCode.index(approvalCode.startIndex, offsetBy: 3)
+    return "\(approvalCode[..<middle]) \(approvalCode[middle...])"
+  }
+}
+
 struct MobileBoardSummary: Identifiable, Hashable, Codable {
   var id: String
   var title: String

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Save to Homeboard",
   "description": "Collect the rental open in Safari and send it to your shared Homeboard.",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "action": {
     "default_title": "Save to Homeboard",
     "default_icon": "toolbar-icon.svg"

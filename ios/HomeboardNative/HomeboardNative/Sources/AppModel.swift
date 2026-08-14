@@ -99,6 +99,7 @@ final class AppModel {
   var isListingInventoryLoading = false
   var listingInventoryError: String?
   var pendingSharedListingImport: HomeboardSharedImportStore.PendingImport?
+  var pendingMacPairingRequest: MacDevicePairingRequest?
   var isDevelopmentAccount: Bool {
     #if DEBUG
     authSession?.email.caseInsensitiveCompare("demoaccount@homeboard.local") == .orderedSame
@@ -2114,6 +2115,11 @@ final class AppModel {
     }
     #endif
 
+    if let pairing = MacDevicePairingRequest(url: url) {
+      pendingMacPairingRequest = pairing
+      return
+    }
+
     if url.scheme == "homeboard", url.host == "share" {
       let sourceURL = URLComponents(
         url: url,
@@ -2143,6 +2149,18 @@ final class AppModel {
     }
     guard let code, !code.isEmpty else { return }
     Task { await startInviteJoin(code: code) }
+  }
+
+  func approveMacPairing(_ pairing: MacDevicePairingRequest) async throws -> String {
+    guard let session = authSession else {
+      throw HomeboardAPIError.missingSession
+    }
+    let response = try await api.approveMacDevicePairing(
+      accessToken: session.accessToken,
+      request: pairing
+    )
+    pendingMacPairingRequest = nil
+    return response.deviceName
   }
 
   func consumeSharedListingImport() {
@@ -2431,6 +2449,7 @@ final class AppModel {
       longitude: shared.longitude
     )
     pendingSharedListingImport = nil
+    pendingMacPairingRequest = nil
     return boardError == nil
   }
 

@@ -3,7 +3,7 @@ import Foundation
 enum HomeboardConfig {
   static var appVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-      ?? "0.0.11"
+      ?? "0.0.13"
   }
 
   static let supabaseURL = URL(string: "https://zlhniurrhhstivtmixuh.supabase.co")!

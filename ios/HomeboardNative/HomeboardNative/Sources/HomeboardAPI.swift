@@ -367,6 +367,15 @@ private struct MobileInvitationRevokeRequest: Encodable {
   var invitationId: String
 }
 
+private struct MacDevicePairingApprovalRequest: Encodable {
+  var approvalCode: String
+}
+
+struct MacDevicePairingApprovalResponse: Decodable {
+  var ok: Bool
+  var deviceName: String
+}
+
 private struct SaveBoardProfileRequest: Encodable {
   var profile: RemoteRentalProfileRequest
 }
@@ -1072,6 +1081,18 @@ final class HomeboardAPI {
       method: "DELETE",
       accessToken: accessToken,
       body: EmptyRequestBody()
+    )
+  }
+
+  func approveMacDevicePairing(
+    accessToken: String,
+    request pairing: MacDevicePairingRequest
+  ) async throws -> MacDevicePairingApprovalResponse {
+    try await requestBackend(
+      path: "/api/mobile/device-pairings/\(pairing.id)/approve",
+      method: "POST",
+      accessToken: accessToken,
+      body: MacDevicePairingApprovalRequest(approvalCode: pairing.approvalCode)
     )
   }
 

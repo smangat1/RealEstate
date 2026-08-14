@@ -2951,6 +2951,7 @@ struct SharedSetupView: View {
   @State private var showsBriefEditor = false
   @State private var showsAddListing = false
   @State private var showsSafariGuide = false
+  @State private var showsMacPairing = false
   @State private var showsJoinBoard = false
   @State private var showsGroup = false
   @State private var titleDraft = ""
@@ -2998,6 +2999,12 @@ struct SharedSetupView: View {
 
             SharedSettingsRow(icon: "square.and.arrow.up", title: "Sharing from Safari", subtitle: "Use the familiar Share button to scan a rental page") {
               showsSafariGuide = true
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "laptopcomputer.and.iphone", title: "Connect a Mac", subtitle: "Scan the secure QR code shown by the Mac app") {
+              showsMacPairing = true
             }
 
             SharedDivider()
@@ -3154,6 +3161,12 @@ struct SharedSetupView: View {
     }
     .sheet(isPresented: $showsSafariGuide) {
       SharedSafariSaveGuideSheet()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsMacPairing) {
+      MacDevicePairingFlowView()
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)

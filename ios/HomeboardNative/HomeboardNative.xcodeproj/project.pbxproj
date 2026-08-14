@@ -28,6 +28,7 @@
 		6A91FA585D28736B4E8E78AE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1F1A64964C190A30B424C5 /* RootView.swift */; };
 		6D62F6F14B1B1CC20F987A43 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		72AC6E1E462E68DB7EC54788 /* MacDevicePairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */; };
 		74B4031207603405891BB068 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */; };
 		790524246BBBD9B8761420CE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		792161098507BD52B60029E8 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
@@ -128,6 +129,7 @@
 		033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardBackgroundView.swift; sourceTree = "<group>"; };
 		091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeApp.swift; sourceTree = "<group>"; };
 		2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeTests.swift; sourceTree = "<group>"; };
+		3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDevicePairingView.swift; sourceTree = "<group>"; };
 		3C193B56530767CD0B8E7D7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountOnboardingView.swift; sourceTree = "<group>"; };
 		498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardPalette.swift; sourceTree = "<group>"; };
@@ -249,6 +251,7 @@
 				091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */,
 				498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */,
 				B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */,
+				3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */,
 				EA1F1A64964C190A30B424C5 /* RootView.swift */,
 				CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */,
 				95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */,
@@ -603,6 +606,7 @@
 				08DEA609F65BC5294136823A /* HomeboardPalette.swift in Sources */,
 				585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */,
 				259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */,
+				72AC6E1E462E68DB7EC54788 /* MacDevicePairingView.swift in Sources */,
 				6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */,
 				DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */,
 				13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */,
@@ -653,7 +657,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -664,7 +668,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				OTHER_LDFLAGS = "-framework SafariServices";
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.safari;
 				PRODUCT_MODULE_NAME = HomeboardSafariExtension;
@@ -679,7 +683,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -690,7 +694,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.share;
 				PRODUCT_MODULE_NAME = HomeboardShareExtension;
 				PRODUCT_NAME = HomeboardShareExtension;
@@ -727,7 +731,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -738,7 +742,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				OTHER_LDFLAGS = "-framework SafariServices";
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac.safari;
 				PRODUCT_MODULE_NAME = HomeboardMacSafariExtension;
@@ -752,7 +756,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -763,7 +767,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.share;
 				PRODUCT_MODULE_NAME = HomeboardShareExtension;
 				PRODUCT_NAME = HomeboardShareExtension;
@@ -834,7 +838,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNative.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -845,7 +849,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native;
 				PRODUCT_NAME = HomeboardNative;
 				SDKROOT = iphoneos;
@@ -881,7 +885,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -892,7 +896,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				OTHER_LDFLAGS = "-framework SafariServices";
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.safari;
 				PRODUCT_MODULE_NAME = HomeboardSafariExtension;
@@ -993,7 +997,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNativeDebug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1004,7 +1008,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native;
 				PRODUCT_NAME = HomeboardNative;
 				SDKROOT = iphoneos;
@@ -1020,7 +1024,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1030,7 +1034,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac;
 				PRODUCT_NAME = HomeboardSafariSetup;
 				SDKROOT = macosx;
@@ -1066,7 +1070,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMacDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1076,7 +1080,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac.dev;
 				PRODUCT_NAME = HomeboardSafariSetup;
 				SDKROOT = macosx;
@@ -1089,7 +1093,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1100,7 +1104,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.0.12;
+				MARKETING_VERSION = 0.0.13;
 				OTHER_LDFLAGS = "-framework SafariServices";
 				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.mac.dev.safari;
 				PRODUCT_MODULE_NAME = HomeboardMacSafariExtension;

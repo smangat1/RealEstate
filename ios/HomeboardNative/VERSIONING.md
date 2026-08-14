@@ -6,7 +6,7 @@ Homeboard uses `MAJOR.PRODUCT.UPDATE`.
 - Increment `PRODUCT` for substantial product pivots or major interface redesigns.
 - Increment `UPDATE` for focused features, fixes, and incremental improvements.
 
-The current version is `0.0.12`.
+The current version is `0.0.13`.
 
 Keep these values synchronized:
 

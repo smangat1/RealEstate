@@ -156,6 +156,15 @@ enum InvitationStatus {
   revoked
 }
 
+enum DevicePairingStatus {
+  pending
+  approving
+  approved
+  completed
+  expired
+  cancelled
+}
+
 model User {
   id                        String                     @id @default(cuid())
   authUserId                String?                    @unique
@@ -170,9 +179,31 @@ model User {
   memberships               BoardMember[]
   invitationsSent           BoardInvitation[]          @relation("InvitationsSent")
   pushDevices               PushDevice[]
+  devicePairings            DevicePairing[]
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
   catalogSourcesVerified    CatalogListingSource[]     @relation("CatalogSourceVerifiedBy")
+}
+
+model DevicePairing {
+  id                 String              @id @default(cuid())
+  userId             String?
+  deviceName         String
+  clientSecretHash   String              @unique
+  approvalCodeHash   String
+  requestFingerprint String?
+  status             DevicePairingStatus @default(pending)
+  approvalAttempts   Int                 @default(0)
+  tokenHash          String?
+  createdAt          DateTime            @default(now())
+  expiresAt          DateTime
+  approvedAt         DateTime?
+  completedAt        DateTime?
+  user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([userId, createdAt])
+  @@index([requestFingerprint, createdAt])
 }
 
 model SearchBoard {

@@ -45,6 +45,18 @@ struct RootView: View {
     .onOpenURL { url in
       appModel.handleIncomingURL(url)
     }
+    .sheet(
+      item: Binding(
+        get: { appModel.pendingMacPairingRequest },
+        set: { appModel.pendingMacPairingRequest = $0 }
+      )
+    ) { pairing in
+      MacDevicePairingFlowView(initialRequest: pairing)
+        .environment(appModel)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
     .onReceive(NotificationCenter.default.publisher(for: .homeboardPushToken)) { notification in
       if let token = notification.object as? String {
         appModel.registerPushToken(token)

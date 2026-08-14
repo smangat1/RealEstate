@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Security
 
@@ -13,6 +14,23 @@ struct HomeboardSharedBoard: Codable, Identifiable, Sendable, Equatable {
   var id: String
   var title: String
   var city: String
+}
+
+struct HomeboardDevicePairingChallenge: Sendable, Equatable {
+  var id: String
+  var deviceName: String
+  var approvalCode: String
+  var expiresAt: String
+  var deepLink: URL
+  var clientSecret: String
+}
+
+struct HomeboardDevicePairingStatus: Decodable, Sendable, Equatable {
+  var status: String
+  var deviceName: String?
+  var tokenHash: String?
+  var verificationType: String?
+  var expiresAt: String
 }
 
 enum HomeboardSharedAuthStore {
@@ -143,6 +161,101 @@ enum HomeboardExtensionSyncClient {
   )!
   private static let supabasePublishableKey =
     "sb_publishable_eNgMkBhv8l___GC0IjgIBQ_4jqCepCK"
+
+  static func createDevicePairing(
+    deviceName: String
+  ) async throws -> HomeboardDevicePairingChallenge {
+    let clientSecret = try securePairingSecret()
+    var request = try backendRequest(
+      path: "api/mobile/device-pairings",
+      method: "POST"
+    )
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try JSONEncoder().encode(
+      CreateDevicePairingRequest(
+        deviceName: deviceName,
+        clientSecretHash: sha256Hex(clientSecret)
+      )
+    )
+    let response: CreateDevicePairingResponse = try await decodedResponse(for: request)
+    guard let deepLink = URL(string: response.deepLink) else {
+      throw HomeboardExtensionSyncError.server("Homeboard received an invalid pairing code.")
+    }
+    return HomeboardDevicePairingChallenge(
+      id: response.id,
+      deviceName: response.deviceName,
+      approvalCode: response.approvalCode,
+      expiresAt: response.expiresAt,
+      deepLink: deepLink,
+      clientSecret: clientSecret
+    )
+  }
+
+  static func devicePairingStatus(
+    _ challenge: HomeboardDevicePairingChallenge
+  ) async throws -> HomeboardDevicePairingStatus {
+    var request = try backendRequest(
+      path: "api/mobile/device-pairings/\(challenge.id)",
+      method: "GET"
+    )
+    request.setValue(
+      challenge.clientSecret,
+      forHTTPHeaderField: "X-Homeboard-Pairing-Secret"
+    )
+    return try await decodedResponse(for: request)
+  }
+
+  static func redeemDevicePairing(
+    tokenHash: String
+  ) async throws -> HomeboardSharedAuthContext {
+    let url = supabaseURL.appending(path: "auth/v1/verify")
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.setValue(supabasePublishableKey, forHTTPHeaderField: "apikey")
+    request.httpBody = try JSONEncoder().encode(
+      VerifyDevicePairingTokenRequest(token_hash: tokenHash)
+    )
+    let response: SupabaseAuthResponse = try await decodedResponse(for: request)
+    let context = try sharedContext(from: response, fallback: nil)
+    guard HomeboardSharedAuthStore.save(context) else {
+      throw HomeboardExtensionSyncError.credentialStorage
+    }
+    return context
+  }
+
+  static func completeDevicePairing(
+    _ challenge: HomeboardDevicePairingChallenge,
+    accessToken: String
+  ) async throws {
+    var request = try backendRequest(
+      path: "api/mobile/device-pairings/\(challenge.id)/complete",
+      method: "POST",
+      accessToken: accessToken
+    )
+    request.setValue(
+      challenge.clientSecret,
+      forHTTPHeaderField: "X-Homeboard-Pairing-Secret"
+    )
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = Data("{}".utf8)
+    let _: DevicePairingCompletionResponse = try await decodedResponse(for: request)
+  }
+
+  static func cancelDevicePairing(
+    _ challenge: HomeboardDevicePairingChallenge
+  ) async {
+    guard var request = try? backendRequest(
+      path: "api/mobile/device-pairings/\(challenge.id)",
+      method: "DELETE"
+    ) else { return }
+    request.setValue(
+      challenge.clientSecret,
+      forHTTPHeaderField: "X-Homeboard-Pairing-Secret"
+    )
+    let _: DevicePairingCompletionResponse? = try? await decodedResponse(for: request)
+  }
 
   static func signIn(
     email: String,
@@ -434,6 +547,38 @@ enum HomeboardExtensionSyncClient {
     return request
   }
 
+  private static func backendRequest(
+    path: String,
+    method: String
+  ) throws -> URLRequest {
+    let baseURL = try backendBaseURL()
+    let url = path.split(separator: "/").reduce(baseURL) {
+      $0.appending(path: String($1))
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = method
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.timeoutInterval = 12
+    return request
+  }
+
+  private static func securePairingSecret() throws -> String {
+    var bytes = [UInt8](repeating: 0, count: 32)
+    guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+      throw HomeboardExtensionSyncError.server("Homeboard could not create a secure pairing code.")
+    }
+    return Data(bytes).base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+
+  private static func sha256Hex(_ value: String) -> String {
+    SHA256.hash(data: Data(value.utf8))
+      .map { String(format: "%02x", $0) }
+      .joined()
+  }
+
   private static func backendBaseURL() throws -> URL {
     if
       let configured = Bundle.main.object(
@@ -501,6 +646,28 @@ private struct AppleIDTokenRequest: Encodable {
   var provider = "apple"
   var id_token: String
   var nonce: String
+}
+
+private struct CreateDevicePairingRequest: Encodable {
+  var deviceName: String
+  var clientSecretHash: String
+}
+
+private struct CreateDevicePairingResponse: Decodable {
+  var id: String
+  var deviceName: String
+  var approvalCode: String
+  var expiresAt: String
+  var deepLink: String
+}
+
+private struct VerifyDevicePairingTokenRequest: Encodable {
+  var token_hash: String
+  var type = "magiclink"
+}
+
+private struct DevicePairingCompletionResponse: Decodable {
+  var ok: Bool
 }
 
 private struct UserMetadataUpdateRequest: Encodable {
