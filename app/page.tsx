@@ -5,29 +5,29 @@ import type { ReactNode } from "react";
 import styles from "./marketing.module.css";
 
 export const metadata: Metadata = {
-  title: "Homeboard — Find a place without losing the group chat",
+  title: "Homeboard — Your next home search just got an upgrade",
   description:
     "Homeboard keeps rental listings, commutes, preferences, and group tradeoffs in one shared place.",
 };
 
 const roadmap = [
   {
-    stage: "Beta",
+    stage: "Available in beta",
     title: "A calmer shared search",
     copy: "Private boards, listing imports, a group shortlist, updates, and commute-aware comparison on iPhone.",
   },
   {
-    stage: "Next",
+    stage: "Next improvement",
     title: "Sharper route intelligence",
     copy: "More reliable car, rail, bus, and walking choices with clearer explanations for every score.",
   },
   {
-    stage: "Planned",
+    stage: "Planned upgrade",
     title: "Broader listing support",
     copy: "More rental apps and websites, stronger listing verification, and smoother iPhone-to-Mac handoff.",
   },
   {
-    stage: "Exploring",
+    stage: "On the wishlist",
     title: "Insight beyond the link",
     copy: "Group-fit summaries, neighborhood context, price-and-space tradeoffs, and decisions that stay explainable.",
   },
@@ -89,22 +89,27 @@ export default function HomePage() {
           <span>HOMEBOARD</span>
         </a>
         <nav aria-label="Main navigation">
-          <a href="#how-it-works">How it works</a>
-          <a href="#inside">Inside the app</a>
-          <a href="#roadmap">What’s next</a>
+          <a href="#how-it-works">Tour</a>
+          <a href="#inside">Amenities</a>
+          <a href="#roadmap">Improvements</a>
         </nav>
         <a className={styles.navCta} href="#install">Get the app</a>
       </header>
 
-      <div className={styles.cardStack}>
+      <div className={styles.listingPage}>
         <section className={`${styles.pageCard} ${styles.heroCard}`} id="top">
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}><span /> Shared rental search, without the chaos</div>
-            <h1>Finding a place with friends doesn’t have to end your friendship.</h1>
+            <div className={styles.eyebrow}><span /> Now listing: a better way to find a place together</div>
+            <h1>Your next home search just got an upgrade.</h1>
             <div className={styles.titleRule} />
             <p>
-              Keep listings, commutes, preferences, and tradeoffs in one shared place—before the group chat becomes the problem.
+              Homeboard is the shared workspace for rental listings, commutes, preferences, and every tradeoff your group needs to settle.
             </p>
+            <div className={styles.listingFacts} aria-label="Homeboard listing details">
+              <span><b>1</b> shared search</span>
+              <span><b>∞</b> opinions welcome</span>
+              <span><b>0</b> lost links</span>
+            </div>
             <div className={styles.heroActions}>
               <a className={styles.primaryCta} href="#install">Get Homeboard <span>↓</span></a>
               <a className={styles.textCta} href="#how-it-works">See how it works <span>→</span></a>
@@ -121,56 +126,56 @@ export default function HomePage() {
 
         <section className={`${styles.pageCard} ${styles.workflowCardPage}`} id="how-it-works">
           <div className={styles.sectionHeading}>
-            <span className={styles.kicker}>THE MAIN WORKFLOW</span>
-            <h2>Search where you already search.</h2>
-            <p>Homeboard fits between the rental sites you know and the decision your group needs to make.</p>
+            <span className={styles.kicker}>TOUR INSTRUCTIONS</span>
+            <h2>See a listing you like? Bring it home.</h2>
+            <p>Keep browsing the rental sites you already use. Homeboard starts working when something is worth sharing.</p>
           </div>
           <div className={styles.workflowGrid}>
             <article className={styles.workflowItem}>
               <span className={styles.stepNumber}>01</span>
               <FeatureIcon><span className={styles.browserGlyph}>⌕</span></FeatureIcon>
-              <h3>Open the exact listing</h3>
+              <h3>Browse the neighborhood</h3>
               <p>Browse Zillow, StreetEasy, Apartments.com, Safari, or another rental source as usual.</p>
             </article>
             <article className={styles.workflowItem}>
               <span className={styles.stepNumber}>02</span>
               <FeatureIcon><ShareSymbol /></FeatureIcon>
-              <h3>Share it to Homeboard</h3>
+              <h3>Send the address over</h3>
               <p>Use the familiar Share button, choose Homeboard, and let it collect the listing details.</p>
             </article>
             <article className={styles.workflowItem}>
               <span className={styles.stepNumber}>03</span>
               <FeatureIcon><span className={styles.checkGlyph}>✓</span></FeatureIcon>
-              <h3>Review, then compare</h3>
+              <h3>Take the group tour</h3>
               <p>Confirm anything missing and save it to the same shortlist, map, and discussion as everyone else.</p>
             </article>
           </div>
-          <div className={styles.cardAdvance}>Keep scrolling <span>↓</span></div>
+          <div className={styles.cardAdvance}>More listing details below <span>↓</span></div>
         </section>
 
         <section className={`${styles.pageCard} ${styles.insideCard}`} id="inside">
           <div className={styles.insideLead}>
-            <span className={styles.kicker}>INSIDE HOMEBOARD</span>
-            <h2>A decision workspace—not another pile of links.</h2>
-            <p>Every surface answers one question: which place actually works for this group, and why?</p>
+            <span className={styles.kicker}>AMENITIES</span>
+            <h2>Smarter search. Shared boards. Easier comparison.</h2>
+            <p>Everything included is designed to answer one question: which place actually works for this group, and why?</p>
             <div className={styles.insightCallout}>
               <span>84</span>
               <div><strong>Scores stay explainable</strong><p>See the commute, price, space, and preference tradeoffs behind a recommendation.</p></div>
             </div>
           </div>
           <div className={styles.featureList}>
-            <article><span>01</span><div><h3>One shared brief</h3><p>Budget, move timing, neighborhoods, work locations, must-haves, and dealbreakers stay visible to everyone.</p></div></article>
-            <article><span>02</span><div><h3>Commute-aware comparison</h3><p>Compare routes from every listing to work and weigh practicality—not just straight-line distance.</p></div></article>
-            <article><span>03</span><div><h3>A shortlist with context</h3><p>Keep source links, listing facts, notes, reactions, questions, and decisions attached to the actual place.</p></div></article>
-            <article><span>04</span><div><h3>Updates without archaeology</h3><p>See what changed, who responded, and what the group still needs to settle without rereading the chat.</p></div></article>
+            <article><span>01</span><div><h3>Open-plan decision making</h3><p>Budget, move timing, neighborhoods, work locations, must-haves, and dealbreakers stay visible to everyone.</p></div></article>
+            <article><span>02</span><div><h3>Commute included</h3><p>Compare routes from every listing to work and weigh practicality—not just straight-line distance.</p></div></article>
+            <article><span>03</span><div><h3>Storage for the useful context</h3><p>Keep source links, listing facts, notes, reactions, questions, and decisions attached to the actual place.</p></div></article>
+            <article><span>04</span><div><h3>Group-chat resistant</h3><p>See what changed, who responded, and what the group still needs to settle without rereading the chat.</p></div></article>
           </div>
         </section>
 
         <section className={`${styles.pageCard} ${styles.roadmapCardPage}`} id="roadmap">
           <div className={styles.sectionHeading}>
-            <span className={styles.kicker}>THE ROAD AHEAD</span>
-            <h2>Small beta. Clear direction.</h2>
-            <p>Plans are labeled as plans. The beta comes first; the roadmap follows what real groups need.</p>
+            <span className={styles.kicker}>PLANNED IMPROVEMENTS</span>
+            <h2>The place is still getting better.</h2>
+            <p>Like any honest listing, future upgrades are labeled clearly. The beta comes first; the roadmap follows what real groups need.</p>
           </div>
           <div className={styles.roadmapGrid}>
             {roadmap.map((item, index) => (
@@ -185,8 +190,8 @@ export default function HomePage() {
 
         <section className={`${styles.pageCard} ${styles.installCard}`} id="install">
           <div className={styles.installCopy}>
-            <span className={styles.kicker}>COMING TO IPHONE</span>
-            <h2>Your group’s next search belongs in one place.</h2>
+            <span className={styles.kicker}>AVAILABILITY</span>
+            <h2>Move-in date: public beta.</h2>
             <p>The public beta link is not live yet. This is where TestFlight or App Store installation will begin when the build is ready.</p>
             <div className={styles.installActions}>
               <button type="button" disabled aria-disabled="true">
@@ -198,8 +203,8 @@ export default function HomePage() {
           </div>
           <aside className={styles.privacyPanel} id="privacy">
             <div className={styles.privacyMark}>⌾</div>
-            <span className={styles.kicker}>PRIVACY BEFORE BETA</span>
-            <h3>A real policy for the product that actually exists.</h3>
+            <span className={styles.kicker}>HOUSE RULES</span>
+            <h3>Privacy terms written for the product that actually exists.</h3>
             <p>Before public testing, Homeboard will publish its data collection, storage, sharing, retention, deletion, and contact details in plain language.</p>
           </aside>
         </section>
