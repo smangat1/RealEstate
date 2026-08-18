@@ -57,24 +57,23 @@ function FeatureIcon({ children }: { children: ReactNode }) {
   return <span className={styles.featureIcon}>{children}</span>;
 }
 
-function AppScreenshot() {
+function ListingGallery() {
   return (
-    <figure className={styles.captureFigure}>
-      <div className={styles.captureChrome} aria-label="Homeboard comparison map running on iPhone">
-        <div className={styles.captureCrop}>
-          <Image
-            src="/images/homeboard-comparison-map.png"
-            alt="The real Homeboard comparison map showing three scored listings, a work node, and color-matched commute routes"
-            width={1179}
-            height={2556}
-            priority
-            sizes="(max-width: 760px) 88vw, (max-width: 1100px) 54vw, 430px"
-          />
-        </div>
+    <figure className={styles.listingGallery}>
+      <div className={styles.galleryViewport} aria-label="Homeboard comparison map running on iPhone">
+        <Image
+          src="/images/homeboard-comparison-map.png"
+          alt="The real Homeboard comparison map showing three scored listings, a work node, and color-matched commute routes"
+          width={1179}
+          height={2556}
+          priority
+          sizes="(max-width: 760px) 100vw, 58vw"
+        />
+        <span className={styles.photoBadge}>LIVE APP VIEW</span>
       </div>
       <figcaption>
-        <span><i /> Live app capture</span>
-        <p>Every route matches its listing node. Work stays visible. Scores remain explainable.</p>
+        <span><i /> Comparison map</span>
+        <span>1 of 1</span>
       </figcaption>
     </figure>
   );
@@ -98,35 +97,34 @@ export default function HomePage() {
 
       <div className={styles.listingPage}>
         <section className={`${styles.pageCard} ${styles.heroCard}`} id="top">
+          <ListingGallery />
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}><span /> Now listing: a better way to find a place together</div>
+            <div className={styles.listingStatus}><span>FOR SHARED SEARCHES</span><b>BETA SOON</b></div>
             <h1>Your next home search just got an upgrade.</h1>
-            <div className={styles.titleRule} />
-            <p>
-              Homeboard is the shared workspace for rental listings, commutes, preferences, and every tradeoff your group needs to settle.
-            </p>
+            <p className={styles.listingLocation}>Homeboard · iPhone + Mac · Built for groups</p>
             <div className={styles.listingFacts} aria-label="Homeboard listing details">
-              <span><b>1</b> shared search</span>
-              <span><b>∞</b> opinions welcome</span>
-              <span><b>0</b> lost links</span>
+              <span><b>1</b><small>shared board</small></span>
+              <span><b>∞</b><small>listings welcome</small></span>
+              <span><b>0</b><small>lost links</small></span>
+            </div>
+            <div className={styles.listingDescription}>
+              <span className={styles.kicker}>OVERVIEW</span>
+              <p>Keep listings, commutes, preferences, and every group tradeoff in one place—before the chat becomes the problem.</p>
             </div>
             <div className={styles.heroActions}>
-              <a className={styles.primaryCta} href="#install">Get Homeboard <span>↓</span></a>
-              <a className={styles.textCta} href="#how-it-works">See how it works <span>→</span></a>
+              <a className={styles.primaryCta} href="#install">Check availability <span>→</span></a>
+              <a className={styles.textCta} href="#how-it-works">Take the tour</a>
             </div>
-            <div className={styles.groupProof}>
-              <div className={styles.avatarStack} aria-hidden="true">
-                <span>S</span><span>M</span><span>J</span>
-              </div>
-              <div><strong>Built for the group</strong><span>One search. Every tradeoff visible.</span></div>
+            <div className={styles.listedBy}>
+              <HouseMark compact />
+              <div><small>LISTED BY</small><strong>Homeboard</strong><span>One search. Every tradeoff visible.</span></div>
             </div>
           </div>
-          <AppScreenshot />
         </section>
 
         <section className={`${styles.pageCard} ${styles.workflowCardPage}`} id="how-it-works">
           <div className={styles.sectionHeading}>
-            <span className={styles.kicker}>TOUR INSTRUCTIONS</span>
+            <span className={styles.kicker}>HOW TO TOUR</span>
             <h2>See a listing you like? Bring it home.</h2>
             <p>Keep browsing the rental sites you already use. Homeboard starts working when something is worth sharing.</p>
           </div>
@@ -155,7 +153,7 @@ export default function HomePage() {
 
         <section className={`${styles.pageCard} ${styles.insideCard}`} id="inside">
           <div className={styles.insideLead}>
-            <span className={styles.kicker}>AMENITIES</span>
+            <span className={styles.kicker}>AMENITIES INCLUDED</span>
             <h2>Smarter search. Shared boards. Easier comparison.</h2>
             <p>Everything included is designed to answer one question: which place actually works for this group, and why?</p>
             <div className={styles.insightCallout}>
@@ -173,7 +171,7 @@ export default function HomePage() {
 
         <section className={`${styles.pageCard} ${styles.roadmapCardPage}`} id="roadmap">
           <div className={styles.sectionHeading}>
-            <span className={styles.kicker}>PLANNED IMPROVEMENTS</span>
+            <span className={styles.kicker}>PROPERTY HISTORY + PLANNED IMPROVEMENTS</span>
             <h2>The place is still getting better.</h2>
             <p>Like any honest listing, future upgrades are labeled clearly. The beta comes first; the roadmap follows what real groups need.</p>
           </div>
@@ -208,6 +206,11 @@ export default function HomePage() {
             <p>Before public testing, Homeboard will publish its data collection, storage, sharing, retention, deletion, and contact details in plain language.</p>
           </aside>
         </section>
+      </div>
+
+      <div className={styles.mobileActionBar}>
+        <div><small>Beta availability</small><strong>Coming soon</strong></div>
+        <a href="#install">Get Homeboard</a>
       </div>
 
       <footer className={styles.footer}>
