@@ -1,6 +1,6 @@
 # Homeboard beta roadmap
 
-Last audited: August 2, 2026
+Last audited: August 18, 2026
 
 ## Beta definition
 
@@ -103,6 +103,7 @@ Exit condition: at least 50 varied real-world imports achieve 95% successful sav
 ### 7. Complete privacy, safety, and data lifecycle work
 
 - [ ] Publish a privacy policy, terms of use, support page, and support email on a stable public URL.
+- [ ] Identify the public operator and privacy contact, list every enabled data processor, and choose written retention periods for accounts, logs, analytics, and backups.
 - [ ] Match App Store privacy answers to `PrivacyInfo.xcprivacy` and actual server collection.
 - [ ] Verify account deletion removes or anonymizes boards, membership, invitations, push tokens, analytics, and user content according to a written retention rule.
 - [ ] Audit every mobile API route for board membership and ownership checks.

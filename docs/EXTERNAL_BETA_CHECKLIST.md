@@ -22,6 +22,15 @@ The application code can be built and tested locally without these items. The fo
 - Enable the Apple provider in Supabase Auth and list each native App ID in Client IDs. The live project currently reports the Apple provider as disabled.
 - Test first-time Apple account creation, returning sign-in, hidden-email relay, account deletion, and an expired invite with non-owner accounts.
 
+## Privacy policy and public support
+
+- Publish a real privacy policy at a stable public URL before inviting external testers; the Vercel URL is acceptable until Homeboard has a custom domain.
+- Choose and publish the operator name, privacy contact, and support email users can actually reach.
+- Describe the data Homeboard stores: account identity, search and work addresses, listing links and extracted facts, preferences, board messages and reactions, invitations, push tokens, device-pairing records, and product analytics.
+- Name every enabled processor or external service, including Vercel, Supabase, Apple/MapKit, and any active RentCast, Brave Search, OpenRouteService, or notification provider.
+- Define retention periods for active accounts, deleted accounts, application logs, analytics, and provider backups; verify that account deletion matches those promises.
+- Link the policy inside the iPhone and Mac apps and in App Store Connect, then make the App Store privacy answers match the shipped build.
+
 ## iPhone distribution
 
 - Set `HOMEBOARD_API_BASE_URL` and `HOMEBOARD_PUBLIC_WEB_URL` to the deployed HTTPS origin in the Release build settings.
@@ -41,3 +50,4 @@ The application code can be built and tested locally without these items. The fo
 - Add a listing with a photo and exact address, then verify map placement, filters, commute routes, reactions, comments, ratings, rejection, and shortlist behavior.
 - Exercise poor-network, expired-session, denied-notification, and missing-location cases.
 - Confirm every destructive action has the expected confirmation and that deleted-account data is no longer accessible.
+- Open the privacy-policy link from the shipped app and verify the live policy, support contact, provider list, and deletion instructions are current.
