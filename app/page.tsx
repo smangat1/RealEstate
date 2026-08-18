@@ -122,6 +122,15 @@ export default function HomePage() {
           </div>
         </section>
 
+        <nav className={styles.listingSubnav} aria-label="Listing sections">
+          <a href="#top">Overview</a>
+          <a href="#how-it-works">Tour</a>
+          <a href="#inside">Amenities</a>
+          <a href="#roadmap">Improvements</a>
+        </nav>
+
+        <div className={styles.listingContent}>
+          <div className={styles.listingMainColumn}>
         <section className={`${styles.pageCard} ${styles.workflowCardPage}`} id="how-it-works">
           <div className={styles.sectionHeading}>
             <span className={styles.kicker}>HOW TO TOUR</span>
@@ -206,6 +215,21 @@ export default function HomePage() {
             <p>Before public testing, Homeboard will publish its data collection, storage, sharing, retention, deletion, and contact details in plain language.</p>
           </aside>
         </section>
+          </div>
+
+          <aside className={styles.listingSidebar} aria-label="Homeboard availability">
+            <span className={styles.sidebarStatus}><i /> Beta availability</span>
+            <h2>Coming soon</h2>
+            <p>Homeboard’s public beta will open through TestFlight when the build is ready.</p>
+            <a href="#install">Check availability</a>
+            <dl>
+              <div><dt>Platform</dt><dd>iPhone + Mac</dd></div>
+              <div><dt>Best for</dt><dd>Friends searching together</dd></div>
+              <div><dt>Listing ID</dt><dd>HB-BETA-01</dd></div>
+            </dl>
+            <small>No fake signup or email collection.</small>
+          </aside>
+        </div>
       </div>
 
       <div className={styles.mobileActionBar}>

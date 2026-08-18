@@ -8,7 +8,7 @@
   --ink: #243129;
   --mint: #9ed3ab;
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
   scroll-behavior: smooth;
   color: var(--cream);
   background: var(--bg);
@@ -53,24 +53,28 @@
   --mint: #82aa90;
   width: min(1280px, calc(100% - 32px));
   margin: 18px auto 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--cream);
-  background: #f4e8dc;
+  background: #e9e2da;
   border-radius: 34px 34px 0 0;
   box-shadow: 0 24px 70px rgba(18, 29, 24, 0.28);
 }
 
 .pageCard {
-  width: min(1160px, calc(100% - 64px));
-  min-height: 760px;
-  margin: 0 auto;
-  padding: 80px 0;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 40px;
   position: relative;
   scroll-margin-top: 90px;
+  border: 1px solid rgba(39, 53, 47, 0.13);
+  border-radius: 22px;
+  background: #fbf4ed;
+  box-shadow: 0 6px 20px rgba(39, 53, 47, 0.06);
 }
-.pageCard::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--line); }
+.pageCard::after { display: none; }
 
-.heroCard { width: 100%; min-height: 0; padding: 34px; display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(360px, 0.82fr); align-items: stretch; gap: clamp(34px, 5vw, 70px); background: #fbf4ed; }
+.heroCard { width: 100%; min-height: 0; padding: 34px; display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(360px, 0.82fr); align-items: stretch; gap: clamp(34px, 5vw, 70px); overflow: hidden; border: 0; border-radius: 34px 34px 0 0; background: #fbf4ed; box-shadow: none; }
 .listingGallery { min-width: 0; margin: 0; position: relative; overflow: hidden; border-radius: 26px; background: #263831; box-shadow: 0 24px 52px rgba(28, 39, 34, 0.23); }
 .galleryViewport { height: min(72vh, 690px); min-height: 570px; position: relative; overflow: hidden; }
 .galleryViewport img { width: 100%; height: auto; position: absolute; top: 0; left: 0; display: block; transform: translateY(-6.25%); }
@@ -104,6 +108,24 @@
 .listedBy small { color: var(--muted); font-size: 7px; font-weight: 850; letter-spacing: 0.15em; }
 .listedBy strong { font-size: 12px; }
 .listedBy div span { color: var(--muted); font-size: 9px; }
+
+.listingSubnav { position: sticky; top: 90px; z-index: 14; padding: 0 max(32px, calc((100% - 1160px) / 2)); display: flex; align-items: center; gap: 30px; border-top: 1px solid rgba(39, 53, 47, 0.12); border-bottom: 1px solid rgba(39, 53, 47, 0.14); background: rgba(251, 244, 237, 0.94); backdrop-filter: blur(15px); }
+.listingSubnav a { padding: 18px 0 15px; position: relative; color: #65716c; font-size: 11px; font-weight: 780; }
+.listingSubnav a:first-child { color: #2c3b34; }
+.listingSubnav a:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: #42594f; }
+.listingContent { width: min(1160px, calc(100% - 64px)); margin: 0 auto; padding: 28px 0 70px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 24px; }
+.listingMainColumn { min-width: 0; display: grid; gap: 18px; }
+.listingSidebar { position: sticky; top: 164px; padding: 26px; border: 1px solid rgba(39, 53, 47, 0.15); border-radius: 20px; background: #fbf4ed; box-shadow: 0 9px 26px rgba(39, 53, 47, 0.1); }
+.sidebarStatus { display: flex; align-items: center; gap: 8px; color: #596760; font-size: 9px; font-weight: 850; letter-spacing: 0.11em; text-transform: uppercase; }
+.sidebarStatus i { width: 8px; height: 8px; border-radius: 50%; background: #74a184; box-shadow: 0 0 0 5px rgba(116, 161, 132, 0.12); }
+.listingSidebar h2 { margin: 17px 0 9px; font-family: var(--font-display), Georgia, serif; font-size: 36px; letter-spacing: -0.03em; }
+.listingSidebar > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.listingSidebar > a { margin-top: 20px; padding: 14px 16px; display: block; border-radius: 12px; color: #fff3e5; background: #344a41; text-align: center; font-size: 11px; font-weight: 850; }
+.listingSidebar dl { margin: 24px 0 0; border-top: 1px solid var(--line); }
+.listingSidebar dl div { padding: 13px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; border-bottom: 1px solid var(--line); }
+.listingSidebar dt { color: var(--muted); font-size: 9px; }
+.listingSidebar dd { margin: 0; max-width: 155px; text-align: right; font-size: 9px; font-weight: 750; }
+.listingSidebar > small { margin-top: 16px; display: block; color: var(--muted); font-size: 8px; line-height: 1.45; }
 
 .sectionHeading { max-width: 760px; }
 .sectionHeading h2, .insideLead h2, .installCopy h2 { margin-top: 12px; font-size: clamp(39px, 4.6vw, 58px); line-height: 1; }
@@ -159,6 +181,11 @@
 .footer > p { color: var(--muted); font-size: 11px; }
 .footer > div { display: flex; justify-content: flex-end; gap: 17px; color: var(--muted); font-size: 10px; }
 
+@media (max-width: 1100px) {
+  .listingContent { grid-template-columns: 1fr; }
+  .listingSidebar { display: none; }
+}
+
 @media (max-width: 980px) {
   .nav nav { display: none; }
   .heroCard { grid-template-columns: minmax(0, 1fr) minmax(330px, 0.82fr); gap: 34px; }
@@ -171,8 +198,8 @@
   .nav { top: 8px; width: calc(100% - 16px); min-height: 58px; margin-top: 8px; border-radius: 18px; }
   .navCta { display: none; }
   .listingPage { width: 100%; margin-top: 8px; border-radius: 26px 26px 0 0; }
-  .pageCard { width: calc(100% - 40px); min-height: 0; padding: 62px 0; scroll-margin-top: 74px; }
-  .heroCard { width: 100%; padding: 0 0 42px; display: flex; flex-direction: column; gap: 0; }
+  .pageCard { width: 100%; min-height: 0; padding: 25px 20px; scroll-margin-top: 126px; border-radius: 18px; }
+  .heroCard { width: 100%; padding: 0 0 42px; display: flex; flex-direction: column; gap: 0; border-radius: 26px 26px 0 0; }
   .listingGallery { width: 100%; border-radius: 26px 26px 0 0; box-shadow: none; }
   .galleryViewport { height: 440px; min-height: 0; }
   .heroCopy { padding: 27px 20px 0; }
@@ -184,6 +211,11 @@
   .listingFacts small { font-size: 8px; }
   .heroActions { display: none; }
   .listedBy { margin-top: 23px; }
+  .listingSubnav { top: 74px; padding: 0 20px; gap: 24px; overflow-x: auto; scrollbar-width: none; }
+  .listingSubnav::-webkit-scrollbar { display: none; }
+  .listingSubnav a { padding: 15px 0 13px; flex: 0 0 auto; font-size: 10px; }
+  .listingContent { width: 100%; padding: 12px 12px 50px; display: block; }
+  .listingMainColumn { gap: 12px; }
   .sectionHeading h2, .insideLead h2, .installCopy h2 { font-size: clamp(37px, 10.5vw, 47px); }
   .workflowGrid { grid-template-columns: 1fr; }
   .workflowItem, .workflowItem + .workflowItem { min-height: 0; padding: 25px 0; border-right: 0; border-bottom: 1px solid var(--line); }
