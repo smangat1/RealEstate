@@ -236,7 +236,7 @@
 .revealHeading p { max-width: 630px; margin: 40px 0 0 auto; padding-left: 25px; border-left: 1px solid rgba(39,54,47,.33); color: var(--muted); font-size: clamp(15px, 1.3vw, 19px); line-height: 1.64; }
 .productStage { width: min(1180px, 94vw); margin-left: auto; position: relative; }
 .productFrame { width: min(850px, 72vw); height: min(86vh, 880px); margin: 0 0 0 auto; overflow: hidden; background: #31453d; box-shadow: 0 38px 90px rgba(39,54,47,.2); }
-.productFrame img { width: 100%; height: auto; display: block; transform: translateY(-3.5%); }
+.productFrame img { width: 100%; height: auto; display: block; }
 .annotation { position: absolute; z-index: 4; max-width: 230px; padding: 8px 10px; color: #526159; background: rgba(251,245,237,.93); font-size: 9px; font-weight: 850; letter-spacing: .09em; line-height: 1.5; text-transform: uppercase; }
 .annotationA { left: 1%; top: 18%; }
 .annotationB { right: 5%; top: 39%; }
@@ -415,9 +415,12 @@
   .rhythm > div,
   .future,
   .install {
-    height: 100svh;
-    min-height: 100svh;
-    max-height: 100svh;
+    height: 100vh;
+    min-height: 100vh;
+    max-height: 100vh;
+    height: 100lvh;
+    min-height: 100lvh;
+    max-height: 100lvh;
     overflow: hidden;
     scroll-snap-align: start;
     scroll-snap-stop: normal;

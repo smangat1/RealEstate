@@ -51,10 +51,10 @@ export function InstallExperience() {
             <figure className={styles.installScreenshot}>
               <figcaption>A look inside Homeboard</figcaption>
               <Image
-                src="/images/homeboard-comparison-map.png"
+                src="/images/homeboard-comparison-map-cropped.png"
                 alt="Homeboard comparison map showing rental scores, a work destination, and matching commute routes"
                 width={1179}
-                height={2556}
+                height={2386}
                 sizes="(max-width: 720px) 88vw, 520px"
               />
             </figure>

@@ -128,10 +128,10 @@ export default function HomePage() {
         <div className={styles.productStage} id="product">
           <figure className={styles.productFrame}>
             <Image
-              src="/images/homeboard-comparison-map.png"
+              src="/images/homeboard-comparison-map-cropped.png"
               alt="Homeboard comparison map showing scored rental listings, a work destination, and color-matched commute routes"
               width={1179}
-              height={2556}
+              height={2386}
               sizes="(max-width: 720px) 120vw, 76vw"
               priority={false}
             />
