@@ -1,81 +1,27 @@
 import Image from "next/image";
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 
 import styles from "./marketing.module.css";
 
 export const metadata: Metadata = {
-  title: "Homeboard — Your next home search just got an upgrade",
+  title: "Homeboard — Pick your next home on vibes",
   description:
-    "Homeboard keeps rental listings, commutes, preferences, and group tradeoffs in one shared place.",
+    "Save the places you fall for. Homeboard handles the commute math, comparisons, and group tradeoffs.",
 };
 
-const roadmap = [
-  {
-    stage: "Available in beta",
-    title: "A calmer shared search",
-    copy: "Private boards, listing imports, a group shortlist, updates, and commute-aware comparison on iPhone.",
-  },
-  {
-    stage: "Next improvement",
-    title: "Sharper route intelligence",
-    copy: "More reliable car, rail, bus, and walking choices with clearer explanations for every score.",
-  },
-  {
-    stage: "Planned upgrade",
-    title: "Broader listing support",
-    copy: "More rental apps and websites, stronger listing verification, and smoother iPhone-to-Mac handoff.",
-  },
-  {
-    stage: "On the wishlist",
-    title: "Insight beyond the link",
-    copy: "Group-fit summaries, neighborhood context, price-and-space tradeoffs, and decisions that stay explainable.",
-  },
+const futurePlans = [
+  ["01", "Better routes", "Clearer car, rail, bus, and walking choices for every listing."],
+  ["02", "More places", "Stronger importing across more rental websites and apps."],
+  ["03", "More context", "Neighborhood fit, group preferences, and tradeoffs beyond the listing facts."],
+  ["04", "Plain privacy", "A real policy covering collection, storage, sharing, retention, and deletion before beta."],
 ];
 
-function HouseMark({ compact = false }: { compact?: boolean }) {
+function RouteNode({ className, label }: { className: string; label: string }) {
   return (
-    <span className={`${styles.houseMark} ${compact ? styles.houseMarkCompact : ""}`} aria-hidden="true">
-      <svg viewBox="0 0 44 44" role="img">
-        <path d="M8 21.5 22 10l14 11.5v13a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2Z" />
-        <path d="M17 36V25h10v11M31 14V8h5v10" />
-      </svg>
+    <span className={`${styles.routeNode} ${className}`}>
+      <i aria-hidden="true" />
+      {label}
     </span>
-  );
-}
-
-function ShareSymbol() {
-  return (
-    <svg className={styles.shareSymbol} viewBox="0 0 48 48" aria-hidden="true">
-      <path d="M24 30V6m0 0-8 8m8-8 8 8" />
-      <path d="M16 18h-4a4 4 0 0 0-4 4v16a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4V22a4 4 0 0 0-4-4h-4" />
-    </svg>
-  );
-}
-
-function FeatureIcon({ children }: { children: ReactNode }) {
-  return <span className={styles.featureIcon}>{children}</span>;
-}
-
-function ListingGallery() {
-  return (
-    <figure className={styles.listingGallery}>
-      <div className={styles.galleryViewport} aria-label="Homeboard comparison map running on iPhone">
-        <Image
-          src="/images/homeboard-comparison-map.png"
-          alt="The real Homeboard comparison map showing three scored listings, a work node, and color-matched commute routes"
-          width={1179}
-          height={2556}
-          priority
-          sizes="(max-width: 760px) 100vw, 58vw"
-        />
-        <span className={styles.photoBadge}>LIVE APP VIEW</span>
-      </div>
-      <figcaption>
-        <span><i /> Comparison map</span>
-        <span>1 of 1</span>
-      </figcaption>
-    </figure>
   );
 }
 
@@ -83,164 +29,170 @@ export default function HomePage() {
   return (
     <main className={styles.site}>
       <header className={styles.nav}>
-        <a className={styles.brand} href="#top" aria-label="Homeboard home">
-          <HouseMark compact />
-          <span>HOMEBOARD</span>
+        <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
+          HOMEBOARD
         </a>
-        <nav aria-label="Main navigation">
-          <a href="#how-it-works">Tour</a>
-          <a href="#inside">Amenities</a>
-          <a href="#roadmap">Improvements</a>
-        </nav>
-        <a className={styles.navCta} href="#install">Get the app</a>
+        <a className={styles.installCorner} href="#install">
+          Install Homeboard <span aria-hidden="true">↗</span>
+        </a>
       </header>
 
-      <div className={styles.listingPage}>
-        <section className={`${styles.pageCard} ${styles.heroCard}`} id="top">
-          <ListingGallery />
-          <div className={styles.heroCopy}>
-            <div className={styles.listingStatus}><span>FOR SHARED SEARCHES</span><b>BETA SOON</b></div>
-            <h1>Your next home search just got an upgrade.</h1>
-            <p className={styles.listingLocation}>Homeboard · iPhone + Mac · Built for groups</p>
-            <div className={styles.listingFacts} aria-label="Homeboard listing details">
-              <span><b>1</b><small>shared board</small></span>
-              <span><b>∞</b><small>listings welcome</small></span>
-              <span><b>0</b><small>lost links</small></span>
-            </div>
-            <div className={styles.listingDescription}>
-              <span className={styles.kicker}>OVERVIEW</span>
-              <p>Keep listings, commutes, preferences, and every group tradeoff in one place—before the chat becomes the problem.</p>
-            </div>
-            <div className={styles.heroActions}>
-              <a className={styles.primaryCta} href="#install">Check availability <span>→</span></a>
-              <a className={styles.textCta} href="#how-it-works">Take the tour</a>
-            </div>
-            <div className={styles.listedBy}>
-              <HouseMark compact />
-              <div><small>LISTED BY</small><strong>Homeboard</strong><span>One search. Every tradeoff visible.</span></div>
-            </div>
-          </div>
-        </section>
-
-        <nav className={styles.listingSubnav} aria-label="Listing sections">
-          <a href="#top">Overview</a>
-          <a href="#how-it-works">Tour</a>
-          <a href="#inside">Amenities</a>
-          <a href="#roadmap">Improvements</a>
-        </nav>
-
-        <div className={styles.listingContent}>
-          <div className={styles.listingMainColumn}>
-        <section className={`${styles.pageCard} ${styles.workflowCardPage}`} id="how-it-works">
-          <div className={styles.sectionHeading}>
-            <span className={styles.kicker}>HOW TO TOUR</span>
-            <h2>See a listing you like? Bring it home.</h2>
-            <p>Keep browsing the rental sites you already use. Homeboard starts working when something is worth sharing.</p>
-          </div>
-          <div className={styles.workflowGrid}>
-            <article className={styles.workflowItem}>
-              <span className={styles.stepNumber}>01</span>
-              <FeatureIcon><span className={styles.browserGlyph}>⌕</span></FeatureIcon>
-              <h3>Browse the neighborhood</h3>
-              <p>Browse Zillow, StreetEasy, Apartments.com, Safari, or another rental source as usual.</p>
-            </article>
-            <article className={styles.workflowItem}>
-              <span className={styles.stepNumber}>02</span>
-              <FeatureIcon><ShareSymbol /></FeatureIcon>
-              <h3>Send the address over</h3>
-              <p>Use the familiar Share button, choose Homeboard, and let it collect the listing details.</p>
-            </article>
-            <article className={styles.workflowItem}>
-              <span className={styles.stepNumber}>03</span>
-              <FeatureIcon><span className={styles.checkGlyph}>✓</span></FeatureIcon>
-              <h3>Take the group tour</h3>
-              <p>Confirm anything missing and save it to the same shortlist, map, and discussion as everyone else.</p>
-            </article>
-          </div>
-          <div className={styles.cardAdvance}>More listing details below <span>↓</span></div>
-        </section>
-
-        <section className={`${styles.pageCard} ${styles.insideCard}`} id="inside">
-          <div className={styles.insideLead}>
-            <span className={styles.kicker}>AMENITIES INCLUDED</span>
-            <h2>Smarter search. Shared boards. Easier comparison.</h2>
-            <p>Everything included is designed to answer one question: which place actually works for this group, and why?</p>
-            <div className={styles.insightCallout}>
-              <span>84</span>
-              <div><strong>Scores stay explainable</strong><p>See the commute, price, space, and preference tradeoffs behind a recommendation.</p></div>
-            </div>
-          </div>
-          <div className={styles.featureList}>
-            <article><span>01</span><div><h3>Open-plan decision making</h3><p>Budget, move timing, neighborhoods, work locations, must-haves, and dealbreakers stay visible to everyone.</p></div></article>
-            <article><span>02</span><div><h3>Commute included</h3><p>Compare routes from every listing to work and weigh practicality—not just straight-line distance.</p></div></article>
-            <article><span>03</span><div><h3>Storage for the useful context</h3><p>Keep source links, listing facts, notes, reactions, questions, and decisions attached to the actual place.</p></div></article>
-            <article><span>04</span><div><h3>Group-chat resistant</h3><p>See what changed, who responded, and what the group still needs to settle without rereading the chat.</p></div></article>
-          </div>
-        </section>
-
-        <section className={`${styles.pageCard} ${styles.roadmapCardPage}`} id="roadmap">
-          <div className={styles.sectionHeading}>
-            <span className={styles.kicker}>PROPERTY HISTORY + PLANNED IMPROVEMENTS</span>
-            <h2>The place is still getting better.</h2>
-            <p>Like any honest listing, future upgrades are labeled clearly. The beta comes first; the roadmap follows what real groups need.</p>
-          </div>
-          <div className={styles.roadmapGrid}>
-            {roadmap.map((item, index) => (
-              <article className={styles.roadmapItem} key={item.stage}>
-                <div><span>{item.stage}</span><small>0{index + 1}</small></div>
-                <h3>{item.title}</h3>
-                <p>{item.copy}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className={`${styles.pageCard} ${styles.installCard}`} id="install">
-          <div className={styles.installCopy}>
-            <span className={styles.kicker}>AVAILABILITY</span>
-            <h2>Move-in date: public beta.</h2>
-            <p>The public beta link is not live yet. This is where TestFlight or App Store installation will begin when the build is ready.</p>
-            <div className={styles.installActions}>
-              <button type="button" disabled aria-disabled="true">
-                <span className={styles.appleGlyph}>●</span>
-                <span><small>Beta access</small>Coming soon</span>
-              </button>
-              <span>No fake signup. No email collected here yet.</span>
-            </div>
-          </div>
-          <aside className={styles.privacyPanel} id="privacy">
-            <div className={styles.privacyMark}>⌾</div>
-            <span className={styles.kicker}>HOUSE RULES</span>
-            <h3>Privacy terms written for the product that actually exists.</h3>
-            <p>Before public testing, Homeboard will publish its data collection, storage, sharing, retention, deletion, and contact details in plain language.</p>
-          </aside>
-        </section>
-          </div>
-
-          <aside className={styles.listingSidebar} aria-label="Homeboard availability">
-            <span className={styles.sidebarStatus}><i /> Beta availability</span>
-            <h2>Coming soon</h2>
-            <p>Homeboard’s public beta will open through TestFlight when the build is ready.</p>
-            <a href="#install">Check availability</a>
-            <dl>
-              <div><dt>Platform</dt><dd>iPhone + Mac</dd></div>
-              <div><dt>Best for</dt><dd>Friends searching together</dd></div>
-              <div><dt>Listing ID</dt><dd>HB-BETA-01</dd></div>
-            </dl>
-            <small>No fake signup or email collection.</small>
-          </aside>
+      <section className={styles.cover} id="top">
+        <div className={styles.coverCopy}>
+          <p className={styles.issue}>A manifesto for the group chat · Issue 01</p>
+          <h1>
+            Pick your next home
+            <br />
+            on vibes.
+            <br />
+            <em>We’ll do the thinking.</em>
+          </h1>
+          <p className={styles.dek}>
+            Fall for the weird kitchen. Obsess over the neighborhood. Save 27 places at 1 a.m.
+          </p>
         </div>
-      </div>
 
-      <div className={styles.mobileActionBar}>
-        <div><small>Beta availability</small><strong>Coming soon</strong></div>
-        <a href="#install">Get Homeboard</a>
-      </div>
+        <div className={styles.coverDiagram} aria-hidden="true">
+          <span className={`${styles.metric} ${styles.metricRent}`}>$2,325</span>
+          <span className={`${styles.metric} ${styles.metricTime}`}>42 min</span>
+          <span className={`${styles.metric} ${styles.metricStops}`}>2 transfers</span>
+          <span className={`${styles.metric} ${styles.metricMiles}`}>8.4 mi</span>
+          <RouteNode className={styles.dotHome} label="home?" />
+          <RouteNode className={styles.dotWork} label="work" />
+          <RouteNode className={styles.dotGym} label="gym" />
+          <span className={styles.lineOne} />
+          <span className={styles.lineTwo} />
+          <span className={styles.lineThree} />
+        </div>
 
-      <footer className={styles.footer}>
-        <a className={styles.brand} href="#top"><HouseMark compact /><span>HOMEBOARD</span></a>
-        <p>Make the rental decision together.</p>
-        <div><a href="#privacy">Privacy</a><a href="#roadmap">Roadmap</a><span>© 2026 Homeboard</span></div>
+        <p className={styles.scrollPrompt}>Scroll for the practical part <span aria-hidden="true">↓</span></p>
+      </section>
+
+      <section className={`${styles.statement} ${styles.mapsStatement}`}>
+        <p className={styles.marginNote}>The first problem</p>
+        <h2>
+          You shouldn’t have to open Maps every time you find somewhere <em>cute.</em>
+        </h2>
+        <div className={styles.noiseField} aria-hidden="true">
+          <span className={styles.noiseA}>31 min</span>
+          <span className={styles.noiseB}>+$225</span>
+          <span className={styles.noiseC}>3 stops</span>
+          <span className={styles.noiseD}>walk?</span>
+          <span className={styles.noiseE}>???</span>
+          <span className={styles.noiseF}>1.7 mi</span>
+          <span className={styles.noiseG}>partner</span>
+        </div>
+      </section>
+
+      <section className={styles.routeEssay} aria-labelledby="route-heading">
+        <div className={styles.routeCopy}>
+          <span className={styles.eyebrow}>The commute-math spiral</span>
+          <h2 id="route-heading">One cute place. Seven tabs. No actual answer.</h2>
+          <p>
+            Rent is one number. A life is not. Work, friends, the gym, the train, and who has a car all pull in different directions.
+          </p>
+        </div>
+        <div className={styles.transitSketch} aria-hidden="true">
+          <span className={`${styles.track} ${styles.trackA}`} />
+          <span className={`${styles.track} ${styles.trackB}`} />
+          <span className={`${styles.track} ${styles.trackC}`} />
+          <RouteNode className={styles.sketchHome} label="HOME?" />
+          <RouteNode className={styles.sketchWork} label="WORK · 42m" />
+          <RouteNode className={styles.sketchFriend} label="FRIENDS · 28m" />
+          <RouteNode className={styles.sketchTrain} label="TRAIN · 9m" />
+          <span className={styles.sketchPrice}>$2,180</span>
+          <span className={styles.sketchTransfer}>2 transfers</span>
+        </div>
+      </section>
+
+      <section className={`${styles.statement} ${styles.memoryStatement}`}>
+        <p className={styles.marginNote}>The second problem</p>
+        <h2>You shouldn’t have to remember whether the last one was actually better.</h2>
+        <p className={styles.sideCopy}>
+          Was it cheaper? Closer? Bigger? Or did it just have better photos?
+        </p>
+      </section>
+
+      <section className={styles.thesis}>
+        <div className={styles.thesisRule}><span>27 saved</span><i /><span>1 shared board</span></div>
+        <h2>
+          Doomscroll first.
+          <br />
+          <em>Optimize later.</em>
+        </h2>
+        <p>Homeboard turns saved places into a decision.</p>
+      </section>
+
+      <section className={styles.reveal} aria-labelledby="reveal-heading">
+        <div className={styles.revealHeading}>
+          <span className={styles.eyebrow}>The useful part</span>
+          <h2 id="reveal-heading">Eventually, you do have to choose.</h2>
+          <p>That’s when the chaos becomes a board, the dots become routes, and the saved links become an actual decision.</p>
+        </div>
+
+        <div className={styles.productStage}>
+          <figure className={styles.productFrame}>
+            <Image
+              src="/images/homeboard-comparison-map.png"
+              alt="Homeboard comparison map showing scored rental listings, a work destination, and color-matched commute routes"
+              width={1179}
+              height={2556}
+              sizes="(max-width: 720px) 120vw, 76vw"
+              priority={false}
+            />
+          </figure>
+          <span className={`${styles.annotation} ${styles.annotationA}`}>← your shortlist, without the spreadsheet</span>
+          <span className={`${styles.annotation} ${styles.annotationB}`}>commute accounted for ↓</span>
+          <span className={`${styles.annotation} ${styles.annotationC}`}>actual logic lives here ↗</span>
+        </div>
+      </section>
+
+      <section className={styles.betweenSection}>
+        <p>
+          Homeboard is for the part of apartment hunting between
+        </p>
+        <h2>“wait, this one is kinda perfect”</h2>
+        <span>and</span>
+        <h2>“okay, but does this actually work?”</h2>
+      </section>
+
+      <section className={styles.rhythm} aria-label="How Homeboard fits the search">
+        <div><span>01</span><h2>Save first.</h2><p>Keep whatever catches your eye.</p></div>
+        <div><span>02</span><h2>Compare later.</h2><p>Price, space, commute, and group fit stay attached.</p></div>
+        <div><span>03</span><h2>Think less.</h2><p>The boring math happens in the background.</p></div>
+        <div><span>04</span><h2>Keep scrolling.</h2><p>You’ll know when something is worth stopping for.</p></div>
+      </section>
+
+      <section className={styles.future} aria-labelledby="future-heading">
+        <div className={styles.futureLead}>
+          <span className={styles.eyebrow}>Still being improved</span>
+          <h2 id="future-heading">The beta comes first. The useful parts keep getting better.</h2>
+        </div>
+        <div className={styles.futureList}>
+          {futurePlans.map(([number, title, copy]) => (
+            <article key={number}>
+              <span>{number}</span>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.install} id="install">
+        <p className={styles.marginNote}>Homeboard · iPhone + Mac · Built for groups</p>
+        <h2>Keep scrolling.<br /><em>Just not alone.</em></h2>
+        <p className={styles.installCopy}>Public beta access will open here when the build is ready.</p>
+        <button type="button" disabled aria-disabled="true">
+          Install Homeboard <span aria-hidden="true">↗</span>
+          <small>Coming soon</small>
+        </button>
+      </section>
+
+      <footer className={styles.footer} id="privacy">
+        <strong>HOMEBOARD</strong>
+        <p>Save on impulse. Decide with context.</p>
+        <div><span>Privacy policy before beta</span><span>© 2026</span></div>
       </footer>
     </main>
   );
