@@ -384,8 +384,8 @@
     overscroll-behavior: none;
   }
   .nav {
-    min-height: 64px;
-    padding: 11px 16px;
+    min-height: 72px;
+    padding: 12px clamp(12px, 4vw, 18px);
     color: #27362f;
     background: rgba(244,234,222,.96);
     border-bottom: 1px solid rgba(39,54,47,.18);
@@ -393,16 +393,48 @@
     backdrop-filter: blur(16px);
     transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   }
-  .wordmark { font-size: 9px; }
+  .wordmark {
+    min-height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    font-size: clamp(10.5px, 2.8vw, 12px);
+    letter-spacing: .145em;
+  }
   .desktopNav { display: none; }
   .mobileMenu { display: block; margin-left: auto; position: relative; pointer-events: auto; }
-  .mobileMenu summary { padding: 9px 8px; list-style: none; cursor: pointer; font-size: 7px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+  .mobileMenu summary {
+    min-height: 44px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    list-style: none;
+    cursor: pointer;
+    font-size: clamp(9px, 2.25vw, 10px);
+    font-weight: 850;
+    letter-spacing: .11em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
   .mobileMenu summary::-webkit-details-marker { display: none; }
   .mobileMenu[open] summary { color: #68766f; }
-  .mobileMenu nav { width: 154px; padding: 8px; position: absolute; top: 43px; right: -100px; display: grid; border: 1px solid rgba(39,54,47,.2); background: #f4eade; box-shadow: 0 16px 35px rgba(39,54,47,.16); }
-  .mobileMenu nav a { padding: 12px 10px; border-bottom: 1px solid rgba(39,54,47,.13); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+  .mobileMenu nav { width: 166px; padding: 8px; position: fixed; top: 72px; right: 14px; display: grid; border: 1px solid rgba(39,54,47,.2); background: #f4eade; box-shadow: 0 16px 35px rgba(39,54,47,.16); }
+  .mobileMenu nav a { padding: 13px 11px; border-bottom: 1px solid rgba(39,54,47,.13); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
   .mobileMenu nav a:last-child { border-bottom: 0; }
-  .installCorner { margin-left: 5px; padding: 9px 10px; font-size: 6px; background: #f4eade; box-shadow: none; }
+  .installCorner {
+    min-height: 44px;
+    margin-left: 4px;
+    padding: 0 13px;
+    display: flex;
+    align-items: center;
+    font-size: clamp(8.5px, 2.25vw, 9.5px);
+    letter-spacing: .12em;
+    line-height: 1;
+    white-space: nowrap;
+    background: #f4eade;
+    box-shadow: none;
+  }
+  .installCorner span { margin-left: 6px; font-size: 12px; }
   .navCollapsed { justify-content: flex-end; background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none; }
   .navCollapsed .wordmark,
   .navCollapsed .mobileMenu { width: 0; margin: 0; padding: 0; overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; }

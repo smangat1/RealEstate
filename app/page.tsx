@@ -126,10 +126,10 @@ export default function HomePage() {
         <div className={styles.productStage} id="product" data-mobile-page-item>
           <figure className={styles.productFrame}>
             <Image
-              src="/images/homeboard-comparison-map-cropped.png"
+              src="/images/homeboard-comparison-map-clean.png"
               alt="Homeboard comparison map showing scored rental listings, a work destination, and color-matched commute routes"
               width={1179}
-              height={2386}
+              height={2360}
               sizes="(max-width: 720px) 120vw, 76vw"
               priority={false}
             />
