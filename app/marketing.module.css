@@ -338,85 +338,119 @@
 }
 
 @media (max-width: 720px) {
-  .nav { padding: 14px 16px; }
-  .wordmark { font-size: 10px; }
-  .installCorner { padding: 10px 12px; font-size: 8px; background: rgba(244,234,222,.92); }
-  .cover { min-height: 100svh; padding: 104px 18px 70px; align-items: flex-start; }
+  .site {
+    height: 100svh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    scroll-snap-type: y mandatory;
+    scrollbar-width: none;
+  }
+  .site::-webkit-scrollbar { display: none; }
+  .nav {
+    min-height: 64px;
+    padding: 11px 16px;
+    color: #27362f;
+    background: rgba(244,234,222,.96);
+    border-bottom: 1px solid rgba(39,54,47,.18);
+    box-shadow: 0 8px 24px rgba(39,54,47,.07);
+    backdrop-filter: blur(16px);
+  }
+  .wordmark { font-size: 9px; }
+  .installCorner { padding: 9px 11px; font-size: 7px; background: #f4eade; box-shadow: none; }
+  .cover,
+  .statement,
+  .routeEssay,
+  .thesis,
+  .revealHeading,
+  .productStage,
+  .betweenSection,
+  .rhythm > div,
+  .future,
+  .install {
+    height: 100svh;
+    min-height: 100svh;
+    max-height: 100svh;
+    overflow: hidden;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+  .cover { padding: 88px 18px 28px; align-items: flex-start; }
   .coverCopy { width: 100%; }
-  .issue { margin-bottom: 42px; font-size: 8px; }
-  .cover h1 { font-size: clamp(52px, 15vw, 68px); line-height: .83; }
-  .dek { max-width: 300px; margin-top: 42px; font-size: 15px; line-height: 1.48; }
+  .issue { margin-bottom: 32px; font-size: 7px; }
+  .cover h1 { max-width: 350px; font-size: clamp(46px, 13.6vw, 56px); line-height: .87; }
+  .dek { max-width: 330px; margin-top: 28px; font-size: 14px; line-height: 1.45; }
+  .coverDiagram { inset: auto 0 34px; height: 23%; }
   .metric { font-size: 7px; }
-  .metricTime { top: 62%; right: 16%; }
-  .metricRent { top: 70%; right: 56%; }
-  .metricStops { bottom: 12%; right: 8%; }
+  .metricTime { top: 2%; right: 12%; }
+  .metricRent { top: 50%; right: 68%; }
+  .metricStops { right: 4%; bottom: 0; }
   .metricMiles { display: none; }
-  .dotHome { top: 66%; right: 31%; }
-  .dotWork { top: 78%; right: 8%; }
+  .dotHome { top: 27%; right: 38%; }
+  .dotWork { top: 69%; right: 5%; }
   .dotGym { display: none; }
-  .lineOne { width: 34%; right: 8%; top: 74%; }
-  .lineTwo { width: 22%; right: 29%; top: 71%; }
+  .lineOne { width: 33%; right: 7%; top: 57%; }
+  .lineTwo { width: 20%; right: 33%; top: 46%; }
   .lineThree { display: none; }
-  .scrollPrompt { right: 18px; bottom: 20px; max-width: 130px; font-size: 7px; line-height: 1.5; text-align: right; }
-  .statement { min-height: 92svh; padding: 110px 18px 80px; }
-  .statement .marginNote { left: 18px; top: 34px; font-size: 8px; }
-  .statement h2 { font-size: clamp(51px, 14vw, 68px); line-height: .89; }
+  .scrollPrompt { right: 18px; bottom: 12px; max-width: 160px; font-size: 6px; line-height: 1.4; text-align: right; }
+  .statement { padding: 90px 18px 44px; justify-content: center; }
+  .statement .marginNote { left: 18px; top: 82px; font-size: 7px; }
+  .statement h2 { font-size: clamp(45px, 12.8vw, 53px); line-height: .92; }
   .noiseField span { font-size: 7px; }
-  .noiseA { right: 5%; top: 14%; }
-  .noiseF { left: 6%; top: 23%; }
-  .noiseD { left: 52%; top: 29%; }
-  .noiseE { right: 3%; top: 64%; }
-  .noiseG { left: 12%; bottom: 8%; }
-  .routeEssay { min-height: 100svh; padding: 92px 18px 70px; }
-  .routeCopy h2 { font-size: 49px; }
-  .routeCopy p { margin-top: 25px; font-size: 14px; }
-  .transitSketch { min-height: 420px; margin: 0 -18px; overflow: hidden; }
-  .trackA { width: 69%; left: 2%; top: 43%; }
-  .trackB { width: 58%; left: 35%; top: 50%; }
-  .trackC { width: 54%; left: 8%; top: 72%; }
-  .sketchHome { left: 31%; top: 39%; }
-  .sketchWork { right: 0; top: 14%; }
-  .sketchFriend { left: 0; bottom: 15%; }
-  .sketchTrain { right: 6%; bottom: 9%; }
-  .sketchPrice { right: 3%; top: 59%; font-size: 38px; }
-  .sketchTransfer { left: 5%; top: 16%; font-size: 18px; }
-  .memoryStatement { min-height: 100svh; }
-  .sideCopy { width: 78%; margin-top: 50px; font-size: 14px; }
-  .thesis { min-height: 100svh; padding: 100px 18px 80px; }
-  .thesisRule { margin-bottom: 70px; gap: 10px; font-size: 7px; }
-  .thesis h2 { font-size: clamp(64px, 17.2vw, 82px); line-height: .81; }
-  .thesis > p { margin-top: 54px; font-size: 16px; }
-  .reveal { padding: 110px 0 90px; }
-  .revealHeading { width: calc(100% - 36px); margin-bottom: 75px; }
-  .revealHeading h2 { margin-top: 22px; font-size: 58px; line-height: .86; }
-  .revealHeading p { margin-top: 32px; padding-left: 18px; font-size: 14px; }
-  .productStage { width: 100%; }
-  .productFrame { width: 116vw; height: 72svh; margin-left: -8vw; box-shadow: 0 25px 50px rgba(39,54,47,.18); }
-  .productFrame img { transform: translateY(-2.8%); }
-  .annotation { max-width: 155px; padding: 6px 8px; font-size: 7px; }
-  .annotationA { left: 4%; top: 13%; }
-  .annotationB { right: 3%; top: 44%; }
-  .annotationC { left: 5%; bottom: 8%; }
-  .betweenSection { padding: 125px 18px; }
-  .betweenSection > p { margin-bottom: 42px; font-size: 9px; line-height: 1.5; }
-  .betweenSection h2 { font-size: 52px; line-height: .91; }
-  .betweenSection span { margin: 31px 0; font-size: 28px; }
-  .rhythm > div { min-height: 72svh; padding: 95px 18px 70px; grid-template-columns: 32px 1fr; grid-template-rows: auto auto; gap: 20px 10px; }
-  .rhythm h2 { font-size: clamp(63px, 17vw, 80px); line-height: .82; }
-  .rhythm p { grid-column: 2; padding-left: 15px; font-size: 13px; }
-  .future { padding: 100px 18px 85px; gap: 65px; }
-  .futureLead h2 { font-size: 49px; }
-  .futureList article { padding: 25px 0; grid-template-columns: 30px 1fr; gap: 12px; }
-  .futureList h3 { font-size: 25px; }
-  .futureList p { grid-column: 2; font-size: 12px; }
-  .install { min-height: 100svh; padding: 100px 18px 60px; }
-  .install .marginNote { top: 32px; left: 18px; font-size: 7px; }
-  .install h2 { font-size: clamp(71px, 19vw, 88px); line-height: .79; }
-  .installCopy { margin-top: 50px; font-size: 15px; }
-  .install button { margin-top: 27px; }
-  .footer { padding: 36px 18px; grid-template-columns: 1fr; }
-  .footer p { margin: 0; }
-  .footer div { justify-content: flex-start; }
+  .noiseB, .noiseD, .noiseF, .noiseG { display: none; }
+  .noiseA { right: 5%; top: 17%; }
+  .noiseC { right: 6%; bottom: 8%; }
+  .noiseE { right: 3%; top: 69%; }
+  .routeEssay { padding: 84px 18px 18px; grid-template-rows: auto 1fr; gap: 8px; }
+  .routeCopy .eyebrow { font-size: 7px; }
+  .routeCopy h2 { margin-top: 13px; font-size: clamp(40px, 11.7vw, 48px); line-height: .91; }
+  .routeCopy p { margin-top: 18px; font-size: 12px; line-height: 1.45; }
+  .transitSketch { min-height: 0; height: 100%; margin: 0 -18px; overflow: hidden; }
+  .transitSketch .routeNode { padding: 5px 7px; font-size: 7px; }
+  .trackA { width: 66%; left: 2%; top: 47%; }
+  .trackB { width: 55%; left: 36%; top: 53%; }
+  .trackC { width: 52%; left: 8%; top: 72%; }
+  .sketchHome { left: 31%; top: 43%; }
+  .sketchWork { right: 0; top: 18%; }
+  .sketchFriend { left: 0; bottom: 10%; }
+  .sketchTrain { right: 5%; bottom: 6%; }
+  .sketchPrice { right: 3%; top: 61%; font-size: 32px; }
+  .sketchTransfer { left: 5%; top: 20%; font-size: 15px; }
+  .sideCopy { width: 78%; margin-top: 36px; font-size: 13px; }
+  .thesis { padding: 88px 18px 42px; }
+  .thesisRule { margin-bottom: 56px; gap: 10px; font-size: 6px; }
+  .thesis h2 { font-size: clamp(57px, 16vw, 68px); line-height: .83; }
+  .thesis > p { margin-top: 38px; font-size: 14px; }
+  .reveal { padding: 0; }
+  .revealHeading { width: 100%; margin: 0; padding: 90px 18px 42px; display: flex; flex-direction: column; justify-content: center; }
+  .revealHeading h2 { margin-top: 18px; font-size: clamp(49px, 13.7vw, 57px); line-height: .89; }
+  .revealHeading p { margin-top: 28px; padding-left: 16px; font-size: 13px; line-height: 1.5; }
+  .productStage { width: 100%; margin: 0; display: grid; place-items: center; background: #31453d; }
+  .productFrame { width: 100%; height: 100%; margin: 0; box-shadow: none; }
+  .productFrame img { width: 100%; height: 100%; object-fit: cover; object-position: top center; transform: none; }
+  .annotation { max-width: 145px; padding: 6px 8px; font-size: 6px; }
+  .annotationA { left: 3%; top: 17%; }
+  .annotationB { right: 3%; top: 45%; }
+  .annotationC { left: 4%; bottom: 7%; }
+  .betweenSection { padding: 90px 18px 38px; display: flex; flex-direction: column; justify-content: center; }
+  .betweenSection > p { margin-bottom: 33px; font-size: 8px; line-height: 1.5; }
+  .betweenSection h2 { font-size: clamp(43px, 12vw, 50px); line-height: .93; }
+  .betweenSection span { margin: 24px 0; font-size: 24px; }
+  .rhythm > div { padding: 88px 18px 42px; grid-template-columns: 28px 1fr; grid-template-rows: auto auto; align-content: center; gap: 19px 9px; }
+  .rhythm h2 { font-size: clamp(55px, 15.5vw, 66px); line-height: .85; }
+  .rhythm p { grid-column: 2; padding-left: 14px; font-size: 12px; line-height: 1.5; }
+  .future { padding: 86px 18px 22px; display: flex; flex-direction: column; gap: 24px; }
+  .futureLead .eyebrow { font-size: 7px; }
+  .futureLead h2 { margin-top: 14px; font-size: clamp(35px, 10.5vw, 43px); line-height: .94; }
+  .futureList article { padding: 11px 0; grid-template-columns: 24px 88px 1fr; gap: 8px; }
+  .futureList h3 { font-size: 18px; }
+  .futureList p { font-size: 10px; line-height: 1.38; }
+  .install { padding: 88px 18px 44px; }
+  .install .marginNote { top: 82px; left: 18px; font-size: 6px; }
+  .install h2 { font-size: clamp(62px, 17.4vw, 74px); line-height: .82; }
+  .installCopy { margin-top: 38px; font-size: 14px; }
+  .install button { margin-top: 24px; }
+  .footer { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
