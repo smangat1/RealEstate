@@ -1,42 +1,54 @@
 "use client";
 
 import Image from "next/image";
-import { useRef } from "react";
 
 import styles from "./marketing.module.css";
 
-export function InstallExperience() {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+const INSTALL_DIALOG_ID = "homeboard-install";
 
+export function InstallTrigger({
+  className,
+  detail,
+}: {
+  className?: string;
+  detail?: string;
+}) {
   return (
-    <>
-      <button
-        className={styles.mobileInstallButton}
-        type="button"
-        onClick={() => dialogRef.current?.showModal()}
-      >
-        <span>Install Homeboard</span>
-        <span aria-hidden="true">↗</span>
-        <small>Private beta details</small>
-      </button>
+    <button
+      className={className}
+      type="button"
+      onClick={() => {
+        const dialog = document.getElementById(INSTALL_DIALOG_ID) as HTMLDialogElement | null;
+        if (dialog && !dialog.open) dialog.showModal();
+      }}
+    >
+      <span>Install Homeboard</span>
+      <span aria-hidden="true">↗</span>
+      {detail ? <small>{detail}</small> : null}
+    </button>
+  );
+}
 
-      <dialog
-        className={styles.installDialog}
-        ref={dialogRef}
-        aria-labelledby="install-dialog-title"
-        onClick={(event) => {
-          if (event.target === event.currentTarget) event.currentTarget.close();
-        }}
-      >
-        <div className={styles.installDialogPanel}>
-          <header>
-            <span>Homeboard · Private beta</span>
-            <form method="dialog">
-              <button type="submit" aria-label="Close install information">×</button>
-            </form>
-          </header>
+export function InstallExperience() {
+  return (
+    <dialog
+      className={styles.installDialog}
+      id={INSTALL_DIALOG_ID}
+      aria-labelledby="install-dialog-title"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) event.currentTarget.close();
+      }}
+    >
+      <div className={styles.installDialogPanel}>
+        <header>
+          <span>Homeboard · Private beta</span>
+          <form method="dialog">
+            <button type="submit" aria-label="Close install information">×</button>
+          </form>
+        </header>
 
-          <div className={styles.installDialogBody}>
+        <div className={styles.installDialogBody}>
+          <div className={styles.installDialogCopy}>
             <h2 id="install-dialog-title">The install is coming next.</h2>
             <p>
               Homeboard is not in the App Store yet. When the beta opens, this button will take you to the official TestFlight install for iPhone and the paired Mac download.
@@ -47,20 +59,24 @@ export function InstallExperience() {
               <article><b>03</b><p><strong>Share a listing</strong>Send places from rental sites straight into your shared board.</p></article>
             </div>
             <p className={styles.installStatus}>No download is available yet · Beta access coming soon</p>
-
-            <figure className={styles.installScreenshot}>
-              <figcaption>A look inside Homeboard</figcaption>
-              <Image
-                src="/images/homeboard-comparison-map-clean.png"
-                alt="Homeboard comparison map showing rental scores, a work destination, and matching commute routes"
-                width={1179}
-                height={2360}
-                sizes="(max-width: 720px) 88vw, 520px"
-              />
-            </figure>
+            <p className={styles.installRoadmap}>
+              <strong>Planned next</strong>
+              Better routes, more rental sources, richer neighborhood context, and a plain-language privacy policy before beta.
+            </p>
           </div>
+
+          <figure className={styles.installScreenshot}>
+            <figcaption>A look inside Homeboard</figcaption>
+            <Image
+              src="/images/homeboard-comparison-map-clean.png"
+              alt="Homeboard comparison map showing rental scores, a work destination, and matching commute routes"
+              width={1179}
+              height={2360}
+              sizes="(max-width: 720px) 88vw, 360px"
+            />
+          </figure>
         </div>
-      </dialog>
-    </>
+      </div>
+    </dialog>
   );
 }

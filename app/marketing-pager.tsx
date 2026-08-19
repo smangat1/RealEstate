@@ -6,10 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketingHeader } from "./marketing-header";
 import styles from "./marketing.module.css";
 
-const MOBILE_QUERY = "(max-width: 720px)";
-const PAGE_SELECTOR = "[data-mobile-page-item]";
-const LAST_PAGE = 3;
+const PAGE_SELECTOR = "[data-page-item]";
 const PAGE_HASHES = ["#top", "#problem", "#thinking", "#product"];
+const PAGE_LABELS = ["Vibes", "The problem", "Doomscroll", "What Homeboard does"];
+const LAST_PAGE = PAGE_HASHES.length - 1;
 
 function insideOpenDialog(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("dialog[open]"));
@@ -32,7 +32,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     const root = rootRef.current;
     if (!root || draggingRef.current) return;
     const visibleHeight = window.visualViewport?.height ?? window.innerHeight;
-    root.style.setProperty("--mobile-viewport-height", `${visibleHeight}px`);
+    root.style.setProperty("--marketing-viewport-height", `${visibleHeight}px`);
   }, []);
 
   const positionPages = useCallback((page: number, drag = 0, animate = true) => {
@@ -40,7 +40,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     if (!root) return;
 
     const items = pageItems();
-    root.dataset.mobilePage = String(page);
+    root.dataset.page = String(page);
     root.classList.toggle(styles.pagerDragging, !animate);
 
     if (animate) void root.offsetHeight;
@@ -58,7 +58,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     activePageRef.current = nextPage;
     setActivePage(nextPage);
     positionPages(nextPage, 0, true);
-    if (window.matchMedia(MOBILE_QUERY).matches && window.location.hash !== PAGE_HASHES[nextPage]) {
+    if (window.location.hash !== PAGE_HASHES[nextPage]) {
       window.history.replaceState(null, "", PAGE_HASHES[nextPage]);
     }
   }, [positionPages]);
@@ -67,33 +67,18 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     const root = rootRef.current;
     if (!root) return;
 
-    const mobile = window.matchMedia(MOBILE_QUERY);
-
     const configure = () => {
-      if (mobile.matches) {
-        updateViewportHeight();
-        const hashIndex = PAGE_HASHES.indexOf(window.location.hash);
-        const hashPage = hashIndex >= 0 ? hashIndex : activePageRef.current;
-        activePageRef.current = hashPage;
-        setActivePage(hashPage);
-        positionPages(hashPage, 0, false);
-        requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
-      } else {
-        activePageRef.current = 0;
-        setActivePage(0);
-        root.removeAttribute("data-mobile-page");
-        root.style.removeProperty("--mobile-viewport-height");
-        root.classList.remove(styles.pagerDragging);
-        pageItems().forEach((item) => {
-          item.style.removeProperty("transform");
-          item.inert = false;
-          item.removeAttribute("aria-hidden");
-        });
-      }
+      updateViewportHeight();
+      const hashIndex = PAGE_HASHES.indexOf(window.location.hash);
+      const hashPage = hashIndex >= 0 ? hashIndex : activePageRef.current;
+      activePageRef.current = hashPage;
+      setActivePage(hashPage);
+      positionPages(hashPage, 0, false);
+      requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
     };
 
     const onTouchStart = (event: TouchEvent) => {
-      if (!mobile.matches || insideOpenDialog(event.target)) return;
+      if (insideOpenDialog(event.target)) return;
       const touch = event.touches[0];
       draggingRef.current = true;
       touchStartRef.current = touch.clientY;
@@ -101,7 +86,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (!mobile.matches || touchStartRef.current === null || insideOpenDialog(event.target)) return;
+      if (touchStartRef.current === null || insideOpenDialog(event.target)) return;
       const currentY = event.touches[0].clientY;
       touchCurrentRef.current = currentY;
       let drag = currentY - touchStartRef.current;
@@ -115,7 +100,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     };
 
     const finishTouch = () => {
-      if (!mobile.matches || touchStartRef.current === null || touchCurrentRef.current === null) return;
+      if (touchStartRef.current === null || touchCurrentRef.current === null) return;
       const distance = touchCurrentRef.current - touchStartRef.current;
       touchStartRef.current = null;
       touchCurrentRef.current = null;
@@ -128,7 +113,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (!mobile.matches || insideOpenDialog(event.target)) return;
+      if (insideOpenDialog(event.target) || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault();
       const now = Date.now();
       if (Math.abs(event.deltaY) < 8) return;
@@ -141,7 +126,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!mobile.matches || insideOpenDialog(event.target)) return;
+      if (insideOpenDialog(event.target)) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
 
@@ -161,7 +146,6 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     };
 
     const onHashChange = () => {
-      if (!mobile.matches) return;
       const hashPage = PAGE_HASHES.indexOf(window.location.hash);
       if (hashPage >= 0) goToPage(hashPage);
     };
@@ -176,7 +160,6 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     window.addEventListener("hashchange", onHashChange);
     window.addEventListener("resize", updateViewportHeight);
     window.visualViewport?.addEventListener("resize", updateViewportHeight);
-    mobile.addEventListener("change", configure);
 
     return () => {
       root.removeEventListener("touchstart", onTouchStart);
@@ -188,17 +171,19 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("resize", updateViewportHeight);
       window.visualViewport?.removeEventListener("resize", updateViewportHeight);
-      mobile.removeEventListener("change", configure);
     };
   }, [goToPage, pageItems, positionPages, updateViewportHeight]);
 
   return (
     <main
       className={`${styles.site} homeboard-marketing`}
-      data-mobile-page="0"
+      data-page="0"
       ref={rootRef}
     >
       <MarketingHeader mobilePage={activePage} />
+      <p className={styles.pageStatus} aria-live="polite" aria-atomic="true">
+        Page {activePage + 1} of {PAGE_HASHES.length}: {PAGE_LABELS[activePage]}
+      </p>
       {children}
     </main>
   );
