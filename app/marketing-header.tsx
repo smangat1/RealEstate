@@ -6,16 +6,26 @@ import styles from "./marketing.module.css";
 
 export function MarketingHeader() {
   const [collapsed, setCollapsed] = useState(false);
+  const [atProduct, setAtProduct] = useState(false);
 
   useEffect(() => {
-    const update = () => setCollapsed(window.scrollY > window.innerHeight * 0.35);
+    const update = () => {
+      setCollapsed(window.scrollY > window.innerHeight * 0.35);
+      const product = document.getElementById("product");
+      const bounds = product?.getBoundingClientRect();
+      setAtProduct(Boolean(bounds && bounds.top <= window.innerHeight * 0.4 && bounds.bottom > 0));
+    };
     update();
     window.addEventListener("scroll", update, { passive: true });
-    return () => window.removeEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
   return (
-    <header className={`${styles.nav} ${collapsed ? styles.navCollapsed : ""}`}>
+    <header className={`${styles.nav} ${collapsed ? styles.navCollapsed : ""} ${atProduct ? styles.navAtProduct : ""}`}>
       <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
         HOMEBOARD
       </a>

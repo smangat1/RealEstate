@@ -1,6 +1,7 @@
 import Image from "next/image";
 import type { Metadata } from "next";
 
+import { InstallExperience } from "./install-experience";
 import { MarketingHeader } from "./marketing-header";
 import styles from "./marketing.module.css";
 
@@ -146,7 +147,7 @@ export default function HomePage() {
               <article><b>02</b><p><strong>Checks the real commute</strong>Drive, train, bus, and walking routes are compared for every saved place.</p></article>
               <article><b>03</b><p><strong>Explains the tradeoff</strong>Your group sees why a place fits—not just a mystery score.</p></article>
             </div>
-            <p className={styles.betaNote}>iPhone + Mac beta · Coming soon</p>
+            <InstallExperience />
           </div>
         </div>
       </section>

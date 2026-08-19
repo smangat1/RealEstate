@@ -45,6 +45,7 @@
   background: rgba(244,234,222,.78);
   backdrop-filter: blur(14px);
   box-shadow: 0 8px 28px rgba(39,54,47,.08);
+  transition: opacity 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 .installCorner span { margin-left: 7px; }
 
@@ -241,6 +242,37 @@
 .annotationB { right: 5%; top: 39%; }
 .annotationC { left: 10%; bottom: 13%; }
 .mobilePayoff { display: none; }
+.mobileInstallButton { display: none; }
+
+.installDialog {
+  width: min(680px, calc(100% - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  color: #27362f;
+  background: transparent;
+  overflow: visible;
+}
+.installDialog::backdrop { background: rgba(25,35,31,.72); backdrop-filter: blur(8px); }
+.installDialogPanel { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; background: #f4eade; box-shadow: 0 30px 90px rgba(21,31,27,.4); }
+.installDialogPanel > header { min-height: 58px; padding: 12px 15px; position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(39,54,47,.18); background: rgba(244,234,222,.96); backdrop-filter: blur(14px); }
+.installDialogPanel > header > span { font-size: 8px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+.installDialogPanel form { margin: 0; }
+.installDialogPanel form button { width: 34px; height: 34px; border: 1px solid rgba(39,54,47,.25); border-radius: 50%; color: #27362f; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; }
+.installDialogBody { padding: 28px; }
+.installDialogBody > h2 { max-width: 540px; margin: 0; font-family: var(--font-display), Georgia, serif; font-size: clamp(46px, 7vw, 72px); font-weight: 600; letter-spacing: -.05em; line-height: .88; }
+.installDialogBody > p { max-width: 540px; margin: 24px 0 0; color: #5a6a62; font-size: 13px; line-height: 1.6; }
+.installSteps { margin-top: 28px; border-top: 1px solid rgba(39,54,47,.24); }
+.installSteps article { padding: 14px 0; display: grid; grid-template-columns: 30px 1fr; gap: 8px; border-bottom: 1px solid rgba(39,54,47,.24); }
+.installSteps b { padding-top: 3px; color: #63756b; font-size: 8px; }
+.installSteps p { margin: 0; color: #53635b; font-size: 11px; line-height: 1.4; }
+.installSteps strong { display: block; color: #27362f; font-family: var(--font-display), Georgia, serif; font-size: 18px; line-height: 1.1; }
+.installDialogBody .installStatus { padding: 14px; color: #f6e9dc; background: #30433a; font-size: 8px; font-weight: 800; letter-spacing: .1em; line-height: 1.5; text-transform: uppercase; }
+.installScreenshot { margin: 34px 0 0; }
+.installScreenshot figcaption { margin-bottom: 12px; color: #607168; font-size: 8px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+.installScreenshot img { width: 100%; height: auto; display: block; background: #30443c; }
 
 .betweenSection { padding: clamp(120px, 20vh, 230px) clamp(24px, 7vw, 110px); text-align: center; background: var(--paper); }
 .betweenSection > p { margin: 0 0 50px; color: var(--muted); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; }
@@ -372,6 +404,7 @@
   .navCollapsed .wordmark,
   .navCollapsed .mobileMenu { width: 0; margin: 0; padding: 0; overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; }
   .navCollapsed .installCorner { box-shadow: 0 10px 28px rgba(39,54,47,.18); }
+  .navAtProduct .installCorner { opacity: 0; visibility: hidden; transform: translateY(-10px); pointer-events: none; }
   .cover,
   .statement,
   .routeEssay,
@@ -458,6 +491,10 @@
   .mobilePayoff article p { margin: 0; color: #3f5149; font-size: 11px; line-height: 1.35; }
   .mobilePayoff article strong { margin-bottom: 2px; display: block; color: #27362f; font-family: var(--font-display), Georgia, serif; font-size: 18px; line-height: 1; }
   .betaNote { margin: auto 0 0; color: #486057; font-size: 7px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+  .mobileInstallButton { width: 100%; margin-top: auto; padding: 14px 15px; display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; border: 1px solid rgba(39,54,47,.42); color: #f7eadc; background: #2e4038; text-align: left; font: inherit; font-size: 13px; font-weight: 850; cursor: pointer; }
+  .mobileInstallButton small { grid-column: 1 / -1; color: #c4d2ca; font-size: 7px; letter-spacing: .12em; text-transform: uppercase; }
+  .installDialogBody { padding: 24px 18px 28px; }
+  .installDialogBody > h2 { font-size: 48px; }
   .annotationA { left: 3%; top: 17%; }
   .annotationB { right: 3%; top: 45%; }
   .annotationC { left: 4%; bottom: 7%; }
