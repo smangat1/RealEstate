@@ -66,6 +66,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+@media (max-width: 720px) {
+  html:has(.homeboard-marketing) {
+    scroll-behavior: smooth;
+    scroll-snap-type: y mandatory;
+  }
+
+  body:has(.homeboard-marketing) {
+    overflow-x: hidden;
+  }
+}
+
 html {
   font-size: 10.4px;
 }

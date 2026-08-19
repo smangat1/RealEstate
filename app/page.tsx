@@ -1,6 +1,7 @@
 import Image from "next/image";
 import type { Metadata } from "next";
 
+import { MarketingHeader } from "./marketing-header";
 import styles from "./marketing.module.css";
 
 export const metadata: Metadata = {
@@ -27,15 +28,8 @@ function RouteNode({ className, label }: { className: string; label: string }) {
 
 export default function HomePage() {
   return (
-    <main className={styles.site}>
-      <header className={styles.nav}>
-        <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
-          HOMEBOARD
-        </a>
-        <a className={styles.installCorner} href="#product">
-          Install Homeboard <span aria-hidden="true">↗</span>
-        </a>
-      </header>
+    <main className={`${styles.site} homeboard-marketing`}>
+      <MarketingHeader />
 
       <section className={styles.cover} id="top">
         <div className={styles.coverCopy}>
@@ -65,7 +59,7 @@ export default function HomePage() {
           <span className={styles.lineThree} />
         </div>
 
-        <p className={styles.scrollPrompt}>Scroll for the practical part <span aria-hidden="true">↓</span></p>
+        <p className={styles.scrollPrompt} aria-label="Continue down">↓</p>
       </section>
 
       <section className={`${styles.statement} ${styles.mapsStatement}`}>
@@ -144,6 +138,16 @@ export default function HomePage() {
           <span className={`${styles.annotation} ${styles.annotationA}`}>← your shortlist, without the spreadsheet</span>
           <span className={`${styles.annotation} ${styles.annotationB}`}>commute accounted for ↓</span>
           <span className={`${styles.annotation} ${styles.annotationC}`}>actual logic lives here ↗</span>
+          <div className={styles.mobilePayoff}>
+            <span className={styles.eyebrow}>What Homeboard actually does</span>
+            <h2>Save what catches your eye. See what actually works.</h2>
+            <div>
+              <article><b>01</b><p><strong>Collects the listing</strong>Address, rent, bedrooms, bathrooms, and the source stay together.</p></article>
+              <article><b>02</b><p><strong>Checks the real commute</strong>Drive, train, bus, and walking routes are compared for every saved place.</p></article>
+              <article><b>03</b><p><strong>Explains the tradeoff</strong>Your group sees why a place fits—not just a mystery score.</p></article>
+            </div>
+            <p className={styles.betaNote}>iPhone + Mac beta · Coming soon</p>
+          </div>
         </div>
       </section>
 
