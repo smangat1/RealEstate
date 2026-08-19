@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import styles from "./marketing.module.css";
 
-export function MarketingHeader() {
+export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
   const [collapsed, setCollapsed] = useState(false);
   const [atProduct, setAtProduct] = useState(false);
 
@@ -24,8 +24,11 @@ export function MarketingHeader() {
     };
   }, []);
 
+  const headerCollapsed = collapsed || mobilePage > 0;
+  const headerAtProduct = atProduct || mobilePage === 3;
+
   return (
-    <header className={`${styles.nav} ${collapsed ? styles.navCollapsed : ""} ${atProduct ? styles.navAtProduct : ""}`}>
+    <header className={`${styles.nav} ${headerCollapsed ? styles.navCollapsed : ""} ${headerAtProduct ? styles.navAtProduct : ""}`}>
       <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
         HOMEBOARD
       </a>

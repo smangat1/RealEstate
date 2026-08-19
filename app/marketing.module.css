@@ -247,7 +247,7 @@
 .installDialog {
   width: min(680px, calc(100% - 24px));
   max-width: none;
-  max-height: calc(100dvh - 24px);
+  max-height: calc(var(--mobile-viewport-height, 100dvh) - 24px);
   margin: auto;
   padding: 0;
   border: 0;
@@ -256,7 +256,7 @@
   overflow: visible;
 }
 .installDialog::backdrop { background: rgba(25,35,31,.72); backdrop-filter: blur(8px); }
-.installDialogPanel { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; background: #f4eade; box-shadow: 0 30px 90px rgba(21,31,27,.4); }
+.installDialogPanel { max-height: calc(var(--mobile-viewport-height, 100dvh) - 24px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; background: #f4eade; box-shadow: 0 30px 90px rgba(21,31,27,.4); }
 .installDialogPanel > header { min-height: 58px; padding: 12px 15px; position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(39,54,47,.18); background: rgba(244,234,222,.96); backdrop-filter: blur(14px); }
 .installDialogPanel > header > span { font-size: 8px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
 .installDialogPanel form { margin: 0; }
@@ -374,11 +374,14 @@
 
 @media (max-width: 720px) {
   .site {
-    height: auto;
-    min-height: 100svh;
-    overflow: visible;
-    scroll-behavior: auto;
-    scroll-snap-type: none;
+    width: 100%;
+    height: 100vh;
+    min-height: 0;
+    height: var(--mobile-viewport-height, 100dvh);
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
   .nav {
     min-height: 64px;
@@ -415,17 +418,38 @@
   .rhythm > div,
   .future,
   .install {
-    height: 100vh;
-    min-height: 100vh;
-    max-height: 100vh;
-    height: 100lvh;
-    min-height: 100lvh;
-    max-height: 100lvh;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100%;
+    position: absolute;
+    inset: 0;
     overflow: hidden;
-    scroll-snap-align: start;
-    scroll-snap-stop: normal;
+    will-change: transform;
+    transition: transform 520ms cubic-bezier(.22,.76,.24,1);
   }
-  .cover { padding: 88px 18px 28px; align-items: flex-start; }
+  .pagerDragging [data-mobile-page-item] { transition: none; }
+  .cover { transform: translate3d(0,0,0); }
+  .mapsStatement { transform: translate3d(0,100%,0); }
+  .thesis { transform: translate3d(0,200%,0); }
+  .productStage { transform: translate3d(0,300%,0); }
+  .site[data-mobile-page="0"] .cover,
+  .site[data-mobile-page="1"] .mapsStatement,
+  .site[data-mobile-page="2"] .thesis,
+  .site[data-mobile-page="3"] .productStage { pointer-events: auto; }
+  .site[data-mobile-page="0"] .mapsStatement,
+  .site[data-mobile-page="0"] .thesis,
+  .site[data-mobile-page="0"] .productStage,
+  .site[data-mobile-page="1"] .cover,
+  .site[data-mobile-page="1"] .thesis,
+  .site[data-mobile-page="1"] .productStage,
+  .site[data-mobile-page="2"] .cover,
+  .site[data-mobile-page="2"] .mapsStatement,
+  .site[data-mobile-page="2"] .productStage,
+  .site[data-mobile-page="3"] .cover,
+  .site[data-mobile-page="3"] .mapsStatement,
+  .site[data-mobile-page="3"] .thesis { pointer-events: none; }
+  .cover { padding: 88px 18px calc(20px + env(safe-area-inset-bottom)); align-items: flex-start; }
   .coverCopy { width: 100%; }
   .issue { margin-bottom: 32px; font-size: 7px; }
   .cover h1 { max-width: 350px; font-size: clamp(46px, 13.6vw, 56px); line-height: .87; }
@@ -474,7 +498,7 @@
   .sketchPrice { right: 3%; top: 61%; font-size: 32px; }
   .sketchTransfer { left: 5%; top: 20%; font-size: 15px; }
   .sideCopy { width: 78%; margin-top: 36px; font-size: 13px; }
-  .thesis { padding: 88px 18px 42px; }
+  .thesis { padding: 88px 18px calc(30px + env(safe-area-inset-bottom)); }
   .thesisRule { margin-bottom: 56px; gap: 10px; font-size: 6px; }
   .thesis h2 { font-size: clamp(57px, 16vw, 68px); line-height: .83; }
   .thesis > p { margin-top: 38px; font-size: 14px; }
@@ -482,7 +506,7 @@
   .revealHeading { width: 100%; margin: 0; padding: 90px 18px 42px; display: flex; flex-direction: column; justify-content: center; }
   .revealHeading h2 { margin-top: 18px; font-size: clamp(49px, 13.7vw, 57px); line-height: .89; }
   .revealHeading p { margin-top: 28px; padding-left: 16px; font-size: 13px; line-height: 1.5; }
-  .productStage { width: 100%; margin: 0; padding: 88px 18px 32px; display: block; background: #a8cdb0; }
+  .productStage { width: 100%; margin: 0; padding: 88px 18px calc(20px + env(safe-area-inset-bottom)); display: block; background: #a8cdb0; }
   .productFrame { display: none; }
   .annotation { display: none; }
   .mobilePayoff { height: 100%; display: flex; flex-direction: column; color: #27362f; }
@@ -532,4 +556,5 @@
 @media (prefers-reduced-motion: reduce) {
   .metric,
   .noiseField span { animation: none; }
+  .site [data-mobile-page-item] { transition-duration: 1ms !important; }
 }

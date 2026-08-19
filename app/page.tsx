@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { Metadata } from "next";
 
 import { InstallExperience } from "./install-experience";
-import { MarketingHeader } from "./marketing-header";
+import { MarketingPager } from "./marketing-pager";
 import styles from "./marketing.module.css";
 
 export const metadata: Metadata = {
@@ -29,10 +29,8 @@ function RouteNode({ className, label }: { className: string; label: string }) {
 
 export default function HomePage() {
   return (
-    <main className={`${styles.site} homeboard-marketing`}>
-      <MarketingHeader />
-
-      <section className={styles.cover} id="top">
+    <MarketingPager>
+      <section className={styles.cover} id="top" data-mobile-page-item>
         <div className={styles.coverCopy}>
           <p className={styles.issue}>A manifesto for the group chat · Issue 01</p>
           <h1>
@@ -60,10 +58,10 @@ export default function HomePage() {
           <span className={styles.lineThree} />
         </div>
 
-        <p className={styles.scrollPrompt} aria-label="Continue down">↓</p>
+        <a className={styles.scrollPrompt} href="#problem" aria-label="Continue to the next page">↓</a>
       </section>
 
-      <section className={`${styles.statement} ${styles.mapsStatement}`}>
+      <section className={`${styles.statement} ${styles.mapsStatement}`} id="problem" data-mobile-page-item>
         <p className={styles.marginNote}>The first problem</p>
         <h2>
           You shouldn’t have to open Maps every time you find somewhere <em>that matches your aesthetic.</em>
@@ -108,7 +106,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      <section className={styles.thesis}>
+      <section className={styles.thesis} id="thinking" data-mobile-page-item>
         <div className={styles.thesisRule}><span>27 saved</span><i /><span>1 shared board</span></div>
         <h2>
           Doomscroll first.
@@ -125,7 +123,7 @@ export default function HomePage() {
           <p>That’s when the chaos becomes a board, the dots become routes, and the saved links become an actual decision.</p>
         </div>
 
-        <div className={styles.productStage} id="product">
+        <div className={styles.productStage} id="product" data-mobile-page-item>
           <figure className={styles.productFrame}>
             <Image
               src="/images/homeboard-comparison-map-cropped.png"
@@ -199,6 +197,6 @@ export default function HomePage() {
         <p>Save on impulse. Decide with context.</p>
         <div><span>Privacy policy before beta</span><span>© 2026</span></div>
       </footer>
-    </main>
+    </MarketingPager>
   );
 }
