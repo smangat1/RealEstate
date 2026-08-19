@@ -65,7 +65,7 @@ export default function HomePage() {
       <section className={`${styles.statement} ${styles.mapsStatement}`}>
         <p className={styles.marginNote}>The first problem</p>
         <h2>
-          You shouldn’t have to open Maps every time you find somewhere <em>cute.</em>
+          You shouldn’t have to open Maps every time you find somewhere <em>that matches your aesthetic.</em>
         </h2>
         <div className={styles.noiseField} aria-hidden="true">
           <span className={styles.noiseA}>31 min</span>
@@ -81,7 +81,7 @@ export default function HomePage() {
       <section className={styles.routeEssay} aria-labelledby="route-heading">
         <div className={styles.routeCopy}>
           <span className={styles.eyebrow}>The commute-math spiral</span>
-          <h2 id="route-heading">One cute place. Seven tabs. No actual answer.</h2>
+          <h2 id="route-heading">One place that matches your aesthetic. Seven tabs. No actual answer.</h2>
           <p>
             Rent is one number. A life is not. Work, friends, the gym, the train, and who has a car all pull in different directions.
           </p>
