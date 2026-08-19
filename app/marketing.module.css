@@ -401,6 +401,13 @@
   .noiseA { right: 5%; top: 17%; }
   .noiseC { right: 6%; bottom: 8%; }
   .noiseE { right: 3%; top: 69%; }
+  .routeEssay,
+  .memoryStatement,
+  .revealHeading,
+  .betweenSection,
+  .rhythm,
+  .future,
+  .install { display: none; }
   .routeEssay { padding: 84px 18px 18px; grid-template-rows: auto 1fr; gap: 8px; }
   .routeCopy .eyebrow { font-size: 7px; }
   .routeCopy h2 { margin-top: 13px; font-size: clamp(40px, 11.7vw, 48px); line-height: .91; }
@@ -451,6 +458,13 @@
   .installCopy { margin-top: 38px; font-size: 14px; }
   .install button { margin-top: 24px; }
   .footer { display: none; }
+  .routeEssay,
+  .memoryStatement,
+  .revealHeading,
+  .betweenSection,
+  .rhythm,
+  .future,
+  .install { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

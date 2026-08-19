@@ -32,7 +32,7 @@ export default function HomePage() {
         <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
           HOMEBOARD
         </a>
-        <a className={styles.installCorner} href="#install">
+        <a className={styles.installCorner} href="#product">
           Install Homeboard <span aria-hidden="true">↗</span>
         </a>
       </header>
@@ -130,7 +130,7 @@ export default function HomePage() {
           <p>That’s when the chaos becomes a board, the dots become routes, and the saved links become an actual decision.</p>
         </div>
 
-        <div className={styles.productStage}>
+        <div className={styles.productStage} id="product">
           <figure className={styles.productFrame}>
             <Image
               src="/images/homeboard-comparison-map.png"
@@ -179,7 +179,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className={styles.install} id="install">
+      <section className={styles.install} id="availability">
         <p className={styles.marginNote}>Homeboard · iPhone + Mac · Built for groups</p>
         <h2>Keep scrolling.<br /><em>Just not alone.</em></h2>
         <p className={styles.installCopy}>Public beta access will open here when the build is ready.</p>
