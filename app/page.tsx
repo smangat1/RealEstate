@@ -13,15 +13,6 @@ export const metadata: Metadata = {
     "Save the places you fall for. Homeboard handles the commute math, comparisons, and group tradeoffs.",
 };
 
-function RouteNode({ className, label }: { className: string; label: string }) {
-  return (
-    <span className={`${styles.routeNode} ${className}`}>
-      <i aria-hidden="true" />
-      {label}
-    </span>
-  );
-}
-
 export default function HomePage() {
   return (
     <MarketingPager>
@@ -29,28 +20,13 @@ export default function HomePage() {
         <div className={styles.coverCopy}>
           <p className={styles.issue}>A manifesto for the group chat · Issue 01</p>
           <h1 id="cover-heading">
-            Pick your next home
-            <br />
-            on vibes.
-            <br />
+            <span>Pick your next home</span>
+            <span>on vibes.</span>
             <em>We’ll do the thinking.</em>
           </h1>
           <p className={styles.dek}>
             Fall for the weird kitchen. Obsess over the neighborhood. Save 27 places at 1 a.m.
           </p>
-        </div>
-
-        <div className={styles.coverDiagram} aria-hidden="true">
-          <span className={`${styles.metric} ${styles.metricRent}`}>$2,325</span>
-          <span className={`${styles.metric} ${styles.metricTime}`}>42 min</span>
-          <span className={`${styles.metric} ${styles.metricStops}`}>2 transfers</span>
-          <span className={`${styles.metric} ${styles.metricMiles}`}>8.4 mi</span>
-          <RouteNode className={styles.dotHome} label="home?" />
-          <RouteNode className={styles.dotWork} label="work" />
-          <RouteNode className={styles.dotGym} label="gym" />
-          <span className={styles.lineOne} />
-          <span className={styles.lineTwo} />
-          <span className={styles.lineThree} />
         </div>
 
         <a className={styles.scrollPrompt} href="#problem" aria-label="Continue to the next page">↓</a>
@@ -67,15 +43,6 @@ export default function HomePage() {
           <em>No actual answer.</em>
           <p>Rent is one number. A life is not.</p>
         </aside>
-        <div className={styles.noiseField} aria-hidden="true">
-          <span className={styles.noiseA}>31 min</span>
-          <span className={styles.noiseB}>+$225</span>
-          <span className={styles.noiseC}>3 stops</span>
-          <span className={styles.noiseD}>walk?</span>
-          <span className={styles.noiseE}>???</span>
-          <span className={styles.noiseF}>1.7 mi</span>
-          <span className={styles.noiseG}>partner</span>
-        </div>
       </section>
 
       <section className={styles.thesis} id="thinking" data-page-item aria-labelledby="thinking-heading">

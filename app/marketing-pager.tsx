@@ -20,6 +20,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
   const activePageRef = useRef(0);
   const touchStartRef = useRef<number | null>(null);
   const touchCurrentRef = useRef<number | null>(null);
+  const touchStartedAtRef = useRef(0);
   const draggingRef = useRef(false);
   const wheelLockedUntilRef = useRef(0);
   const [activePage, setActivePage] = useState(0);
@@ -83,6 +84,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       draggingRef.current = true;
       touchStartRef.current = touch.clientY;
       touchCurrentRef.current = touch.clientY;
+      touchStartedAtRef.current = performance.now();
     };
 
     const onTouchMove = (event: TouchEvent) => {
@@ -99,29 +101,34 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       positionPages(activePageRef.current, drag, false);
     };
 
-    const finishTouch = () => {
+    const finishTouch = (cancelled = false) => {
       if (touchStartRef.current === null || touchCurrentRef.current === null) return;
       const distance = touchCurrentRef.current - touchStartRef.current;
+      const duration = performance.now() - touchStartedAtRef.current;
       touchStartRef.current = null;
       touchCurrentRef.current = null;
       draggingRef.current = false;
 
-      if (distance <= -28) goToPage(activePageRef.current + 1);
-      else if (distance >= 28) goToPage(activePageRef.current - 1);
+      const travelThreshold = Math.min(30, Math.max(22, window.innerHeight * 0.035));
+      const fastFlick = duration < 300 && Math.abs(distance) >= 13;
+
+      if (cancelled) positionPages(activePageRef.current, 0, true);
+      else if (distance <= -travelThreshold || (fastFlick && distance < 0)) goToPage(activePageRef.current + 1);
+      else if (distance >= travelThreshold || (fastFlick && distance > 0)) goToPage(activePageRef.current - 1);
       else positionPages(activePageRef.current, 0, true);
       updateViewportHeight();
     };
+
+    const onTouchEnd = () => finishTouch(false);
+    const onTouchCancel = () => finishTouch(true);
 
     const onWheel = (event: WheelEvent) => {
       if (insideOpenDialog(event.target) || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault();
       const now = Date.now();
-      if (Math.abs(event.deltaY) < 8) return;
-      if (now < wheelLockedUntilRef.current) {
-        wheelLockedUntilRef.current = now + 220;
-        return;
-      }
-      wheelLockedUntilRef.current = now + 620;
+      if (Math.abs(event.deltaY) < 4) return;
+      if (now < wheelLockedUntilRef.current) return;
+      wheelLockedUntilRef.current = now + 430;
       goToPage(activePageRef.current + (event.deltaY > 0 ? 1 : -1));
     };
 
@@ -153,8 +160,8 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     configure();
     root.addEventListener("touchstart", onTouchStart, { passive: true });
     root.addEventListener("touchmove", onTouchMove, { passive: false });
-    root.addEventListener("touchend", finishTouch, { passive: true });
-    root.addEventListener("touchcancel", finishTouch, { passive: true });
+    root.addEventListener("touchend", onTouchEnd, { passive: true });
+    root.addEventListener("touchcancel", onTouchCancel, { passive: true });
     root.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("hashchange", onHashChange);
@@ -164,8 +171,8 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     return () => {
       root.removeEventListener("touchstart", onTouchStart);
       root.removeEventListener("touchmove", onTouchMove);
-      root.removeEventListener("touchend", finishTouch);
-      root.removeEventListener("touchcancel", finishTouch);
+      root.removeEventListener("touchend", onTouchEnd);
+      root.removeEventListener("touchcancel", onTouchCancel);
       root.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("hashchange", onHashChange);

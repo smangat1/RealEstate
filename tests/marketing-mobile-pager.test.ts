@@ -19,13 +19,20 @@ test("marketing uses the same four fixed visible-viewport pages on phone and lap
   assert.match(pager, /window\.visualViewport\?\.height \?\? window\.innerHeight/);
   assert.match(pager, /touchmove[\s\S]*passive: false/);
   assert.match(pager, /positionPages\(activePageRef\.current, drag, false\)/);
+  assert.match(pager, /const onTouchCancel = \(\) => finishTouch\(true\)/);
+  assert.match(pager, /wheelLockedUntilRef\.current = now \+ 430/);
+  assert.doesNotMatch(pager, /wheelLockedUntilRef\.current = now \+ 220/);
   assert.match(pager, /event\.ctrlKey/);
   assert.doesNotMatch(pager, /MOBILE_QUERY|matchMedia/);
   assert.match(styles, /height: var\(--marketing-viewport-height, 100dvh\)/);
   assert.match(styles, /\.site \[data-page-item\][^{]*\{[^}]*position: absolute/);
+  assert.match(styles, /touch-action: none/);
+  assert.match(styles, /transition: transform 360ms/);
   assert.match(globals, /body:has\(\.homeboard-marketing\)[\s\S]*overflow: hidden/);
   assert.doesNotMatch(globals, /scroll-snap-type: y mandatory/);
   assert.doesNotMatch(page, /routeEssay|memoryStatement|betweenSection|futureList/);
+  assert.doesNotMatch(page, /coverDiagram|noiseField|RouteNode/);
+  assert.doesNotMatch(styles, /\.coverDiagram|\.noiseField|looseFloat/);
 });
 
 test("the final install dialog keeps independent scrolling while pager gestures are suspended", () => {
