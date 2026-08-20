@@ -9,6 +9,7 @@ import styles from "./marketing.module.css";
 const PAGE_SELECTOR = "[data-page-item]";
 const PAGE_HASHES = ["#top", "#problem", "#thinking", "#product"];
 const PAGE_LABELS = ["Vibes", "The problem", "Doomscroll", "What Homeboard does"];
+const PAGE_SHORT_LABELS = ["Vibes", "Problem", "Thinking", "Homeboard"];
 const LAST_PAGE = PAGE_HASHES.length - 1;
 const MOBILE_QUERY = "(max-width: 720px)";
 
@@ -97,6 +98,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       root.dataset.page = String(hashPage);
 
       if (mobileRef.current) {
+        root.style.removeProperty("--marketing-scroll-progress");
         root.scrollTop = 0;
         positionPages(hashPage, 0, false);
         requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
@@ -180,6 +182,9 @@ export function MarketingPager({ children }: { children: ReactNode }) {
           if (root.scrollTop < minimumScroll) root.scrollTop = minimumScroll;
           else if (root.scrollTop > maximumScroll) root.scrollTop = maximumScroll;
         }
+        const maximumScroll = Math.max(1, root.scrollHeight - root.clientHeight);
+        const scrollProgress = Math.max(0, Math.min(1, root.scrollTop / maximumScroll));
+        root.style.setProperty("--marketing-scroll-progress", String(scrollProgress));
         const items = pageItems();
         const center = root.scrollTop + root.clientHeight / 2;
         let nearestPage = 0;
@@ -274,6 +279,25 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       ref={rootRef}
     >
       <MarketingHeader mobilePage={activePage} />
+      <aside className={styles.scrollRoute} aria-hidden="true">
+        <span className={styles.scrollRouteCount}>
+          <b>{String(activePage + 1).padStart(2, "0")}</b>
+          <small>/04</small>
+        </span>
+        <span className={styles.scrollRouteTrack}>
+          <i className={styles.scrollRouteFill} />
+          <b className={styles.scrollRouteThumb} />
+          {PAGE_SHORT_LABELS.map((label, index) => (
+            <i
+              className={`${styles.scrollRouteStop} ${index <= activePage ? styles.scrollRouteStopPassed : ""}`}
+              key={label}
+              style={{ top: `${(index / LAST_PAGE) * 100}%` }}
+            />
+          ))}
+        </span>
+        <span className={styles.scrollRouteName}>{PAGE_SHORT_LABELS[activePage]}</span>
+        <span className={styles.scrollRouteHint}>Scroll</span>
+      </aside>
       <p className={styles.pageStatus} aria-live="polite" aria-atomic="true">
         Page {activePage + 1} of {PAGE_HASHES.length}: {PAGE_LABELS[activePage]}
       </p>
