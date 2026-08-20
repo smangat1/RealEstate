@@ -10,6 +10,7 @@ const PAGE_SELECTOR = "[data-page-item]";
 const PAGE_HASHES = ["#top", "#problem", "#thinking", "#product"];
 const PAGE_LABELS = ["Vibes", "The problem", "Doomscroll", "What Homeboard does"];
 const LAST_PAGE = PAGE_HASHES.length - 1;
+const MOBILE_QUERY = "(max-width: 720px)";
 
 function insideOpenDialog(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("dialog[open]"));
@@ -22,6 +23,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
   const touchCurrentRef = useRef<number | null>(null);
   const touchStartedAtRef = useRef(0);
   const draggingRef = useRef(false);
+  const mobileRef = useRef(true);
   const [activePage, setActivePage] = useState(0);
 
   const pageItems = useCallback(() => {
@@ -53,32 +55,65 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     });
   }, [pageItems]);
 
-  const goToPage = useCallback((requestedPage: number) => {
+  const publishPage = useCallback((requestedPage: number) => {
     const nextPage = Math.max(0, Math.min(LAST_PAGE, requestedPage));
     activePageRef.current = nextPage;
     setActivePage(nextPage);
-    positionPages(nextPage, 0, true);
+    const root = rootRef.current;
+    if (root) root.dataset.page = String(nextPage);
     if (window.location.hash !== PAGE_HASHES[nextPage]) {
       window.history.replaceState(null, "", PAGE_HASHES[nextPage]);
     }
-  }, [positionPages]);
+    return nextPage;
+  }, []);
+
+  const goToPage = useCallback((requestedPage: number, behavior: ScrollBehavior = "smooth") => {
+    const nextPage = publishPage(requestedPage);
+    if (mobileRef.current) {
+      positionPages(nextPage, 0, true);
+      return;
+    }
+
+    const root = rootRef.current;
+    const item = pageItems()[nextPage];
+    if (root && item) root.scrollTo({ top: item.offsetTop, behavior });
+  }, [pageItems, positionPages, publishPage]);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    const mediaQuery = window.matchMedia(MOBILE_QUERY);
+    let scrollFrame = 0;
+    let desktopWheelStartPage: number | null = null;
+    let desktopWheelTimer: number | undefined;
 
     const configure = () => {
       updateViewportHeight();
+      mobileRef.current = mediaQuery.matches;
       const hashIndex = PAGE_HASHES.indexOf(window.location.hash);
       const hashPage = hashIndex >= 0 ? hashIndex : activePageRef.current;
       activePageRef.current = hashPage;
       setActivePage(hashPage);
-      positionPages(hashPage, 0, false);
-      requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
+      root.dataset.page = String(hashPage);
+
+      if (mobileRef.current) {
+        root.scrollTop = 0;
+        positionPages(hashPage, 0, false);
+        requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
+      } else {
+        root.classList.remove(styles.pagerDragging);
+        const items = pageItems();
+        items.forEach((item) => {
+          item.style.removeProperty("transform");
+          item.inert = false;
+          item.removeAttribute("aria-hidden");
+        });
+        requestAnimationFrame(() => root.scrollTo({ top: items[hashPage]?.offsetTop ?? 0, behavior: "auto" }));
+      }
     };
 
     const onTouchStart = (event: TouchEvent) => {
-      if (insideOpenDialog(event.target)) return;
+      if (!mobileRef.current || insideOpenDialog(event.target)) return;
       const touch = event.touches[0];
       draggingRef.current = true;
       touchStartRef.current = touch.clientY;
@@ -121,59 +156,66 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     const onTouchEnd = () => finishTouch(false);
     const onTouchCancel = () => finishTouch(true);
 
-    let wheelDistance = 0;
-    let wheelGestureLocked = false;
-    let wheelResetTimer: number | undefined;
-
-    const finishWheelGestureAfterPause = () => {
-      if (wheelResetTimer !== undefined) window.clearTimeout(wheelResetTimer);
-      wheelResetTimer = window.setTimeout(() => {
-        if (!wheelGestureLocked && wheelDistance !== 0) {
-          positionPages(activePageRef.current, 0, true);
-        }
-        wheelDistance = 0;
-        wheelGestureLocked = false;
-        wheelResetTimer = undefined;
-      }, 180);
+    const onDesktopWheel = (event: WheelEvent) => {
+      if (mobileRef.current || insideOpenDialog(event.target) || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      if (desktopWheelStartPage === null) {
+        desktopWheelStartPage = Math.max(0, Math.min(LAST_PAGE, Math.round(root.scrollTop / root.clientHeight)));
+      }
+      if (desktopWheelTimer !== undefined) window.clearTimeout(desktopWheelTimer);
+      desktopWheelTimer = window.setTimeout(() => {
+        desktopWheelStartPage = null;
+        desktopWheelTimer = undefined;
+      }, 500);
     };
 
-    const onWheel = (event: WheelEvent) => {
-      if (insideOpenDialog(event.target) || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-      event.preventDefault();
-
-      const deltaMultiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
-      const delta = event.deltaY * deltaMultiplier;
-      if (Math.abs(delta) < 0.5) return;
-
-      if (wheelGestureLocked) {
-        finishWheelGestureAfterPause();
-        return;
-      }
-
-      if (wheelDistance !== 0 && Math.sign(delta) !== Math.sign(wheelDistance)) wheelDistance = 0;
-      wheelDistance += delta;
-
-      const threshold = Math.min(120, Math.max(80, window.innerHeight * 0.11));
-      if (Math.abs(wheelDistance) >= threshold) {
-        const direction = wheelDistance > 0 ? 1 : -1;
-        wheelDistance = 0;
-        wheelGestureLocked = true;
-        goToPage(activePageRef.current + direction);
-      } else {
-        let drag = -wheelDistance * 0.7;
-        if ((activePageRef.current === 0 && drag > 0) || (activePageRef.current === LAST_PAGE && drag < 0)) {
-          drag *= 0.2;
+    const onDesktopScroll = () => {
+      if (mobileRef.current || scrollFrame) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = 0;
+        if (desktopWheelStartPage !== null) {
+          const minimumPage = Math.max(0, desktopWheelStartPage - 1);
+          const maximumPage = Math.min(LAST_PAGE, desktopWheelStartPage + 1);
+          const minimumScroll = minimumPage * root.clientHeight;
+          const maximumScroll = maximumPage * root.clientHeight;
+          if (root.scrollTop < minimumScroll) root.scrollTop = minimumScroll;
+          else if (root.scrollTop > maximumScroll) root.scrollTop = maximumScroll;
         }
-        positionPages(activePageRef.current, drag, false);
-      }
-
-      finishWheelGestureAfterPause();
+        const items = pageItems();
+        const center = root.scrollTop + root.clientHeight / 2;
+        let nearestPage = 0;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        items.forEach((item, index) => {
+          const distance = Math.abs(item.offsetTop + item.offsetHeight / 2 - center);
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestPage = index;
+          }
+        });
+        if (nearestPage !== activePageRef.current) publishPage(nearestPage);
+      });
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (insideOpenDialog(event.target)) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+
+      if (!mobileRef.current) {
+        if (["ArrowDown", "PageDown", " "].includes(event.key)) {
+          event.preventDefault();
+          root.scrollBy({ top: event.key === "ArrowDown" ? 96 : root.clientHeight * 0.82, behavior: "smooth" });
+        } else if (["ArrowUp", "PageUp"].includes(event.key)) {
+          event.preventDefault();
+          root.scrollBy({ top: event.key === "ArrowUp" ? -96 : root.clientHeight * -0.82, behavior: "smooth" });
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          goToPage(0);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          goToPage(LAST_PAGE);
+        }
+        return;
+      }
 
       if (["ArrowDown", "PageDown", " "].includes(event.key)) {
         event.preventDefault();
@@ -200,25 +242,30 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     root.addEventListener("touchmove", onTouchMove, { passive: false });
     root.addEventListener("touchend", onTouchEnd, { passive: true });
     root.addEventListener("touchcancel", onTouchCancel, { passive: true });
-    root.addEventListener("wheel", onWheel, { passive: false });
+    root.addEventListener("wheel", onDesktopWheel, { passive: true });
+    root.addEventListener("scroll", onDesktopScroll, { passive: true });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("hashchange", onHashChange);
     window.addEventListener("resize", updateViewportHeight);
     window.visualViewport?.addEventListener("resize", updateViewportHeight);
+    mediaQuery.addEventListener("change", configure);
 
     return () => {
       root.removeEventListener("touchstart", onTouchStart);
       root.removeEventListener("touchmove", onTouchMove);
       root.removeEventListener("touchend", onTouchEnd);
       root.removeEventListener("touchcancel", onTouchCancel);
-      root.removeEventListener("wheel", onWheel);
+      root.removeEventListener("wheel", onDesktopWheel);
+      root.removeEventListener("scroll", onDesktopScroll);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("resize", updateViewportHeight);
       window.visualViewport?.removeEventListener("resize", updateViewportHeight);
-      if (wheelResetTimer !== undefined) window.clearTimeout(wheelResetTimer);
+      mediaQuery.removeEventListener("change", configure);
+      if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
+      if (desktopWheelTimer !== undefined) window.clearTimeout(desktopWheelTimer);
     };
-  }, [goToPage, pageItems, positionPages, updateViewportHeight]);
+  }, [goToPage, pageItems, positionPages, publishPage, updateViewportHeight]);
 
   return (
     <main

@@ -281,6 +281,30 @@
 .installScreenshot figcaption { margin-bottom: 12px; color: #607168; font-size: 8px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
 .installScreenshot img { width: 100%; height: min(690px, calc(var(--marketing-viewport-height, 100dvh) - 130px)); display: block; object-fit: contain; object-position: top; background: #30443c; }
 
+@media (min-width: 721px) {
+  .site {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+    scroll-behavior: smooth;
+    scroll-snap-type: y proximity;
+  }
+  .site [data-page-item] {
+    height: 100%;
+    min-height: 100%;
+    max-height: none;
+    position: relative;
+    inset: auto;
+    transform: none !important;
+    transition: none;
+    will-change: auto;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    pointer-events: auto !important;
+  }
+}
+
 @media (min-width: 721px) and (max-width: 1000px) {
   .productStage { padding-inline: 34px; grid-template-columns: minmax(390px, 1fr) minmax(240px, .6fr); gap: 28px; }
   .productCopy h2 { font-size: clamp(43px, 5.8vw, 56px); }
@@ -388,4 +412,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .site [data-page-item] { transition-duration: 1ms !important; }
+  .site { scroll-behavior: auto; }
 }
