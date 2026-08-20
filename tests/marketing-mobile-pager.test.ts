@@ -20,8 +20,11 @@ test("marketing uses the same four fixed visible-viewport pages on phone and lap
   assert.match(pager, /touchmove[\s\S]*passive: false/);
   assert.match(pager, /positionPages\(activePageRef\.current, drag, false\)/);
   assert.match(pager, /const onTouchCancel = \(\) => finishTouch\(true\)/);
-  assert.match(pager, /wheelLockedUntilRef\.current = now \+ 430/);
-  assert.doesNotMatch(pager, /wheelLockedUntilRef\.current = now \+ 220/);
+  assert.match(pager, /let wheelDistance = 0/);
+  assert.match(pager, /wheelGestureLocked = true/);
+  assert.match(pager, /window\.innerHeight \* 0\.11/);
+  assert.match(pager, /finishWheelGestureAfterPause/);
+  assert.doesNotMatch(pager, /wheelLockedUntilRef/);
   assert.match(pager, /event\.ctrlKey/);
   assert.doesNotMatch(pager, /MOBILE_QUERY|matchMedia/);
   assert.match(styles, /height: var\(--marketing-viewport-height, 100dvh\)/);

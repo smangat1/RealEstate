@@ -22,7 +22,6 @@ export function MarketingPager({ children }: { children: ReactNode }) {
   const touchCurrentRef = useRef<number | null>(null);
   const touchStartedAtRef = useRef(0);
   const draggingRef = useRef(false);
-  const wheelLockedUntilRef = useRef(0);
   const [activePage, setActivePage] = useState(0);
 
   const pageItems = useCallback(() => {
@@ -122,14 +121,53 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     const onTouchEnd = () => finishTouch(false);
     const onTouchCancel = () => finishTouch(true);
 
+    let wheelDistance = 0;
+    let wheelGestureLocked = false;
+    let wheelResetTimer: number | undefined;
+
+    const finishWheelGestureAfterPause = () => {
+      if (wheelResetTimer !== undefined) window.clearTimeout(wheelResetTimer);
+      wheelResetTimer = window.setTimeout(() => {
+        if (!wheelGestureLocked && wheelDistance !== 0) {
+          positionPages(activePageRef.current, 0, true);
+        }
+        wheelDistance = 0;
+        wheelGestureLocked = false;
+        wheelResetTimer = undefined;
+      }, 180);
+    };
+
     const onWheel = (event: WheelEvent) => {
       if (insideOpenDialog(event.target) || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault();
-      const now = Date.now();
-      if (Math.abs(event.deltaY) < 4) return;
-      if (now < wheelLockedUntilRef.current) return;
-      wheelLockedUntilRef.current = now + 430;
-      goToPage(activePageRef.current + (event.deltaY > 0 ? 1 : -1));
+
+      const deltaMultiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+      const delta = event.deltaY * deltaMultiplier;
+      if (Math.abs(delta) < 0.5) return;
+
+      if (wheelGestureLocked) {
+        finishWheelGestureAfterPause();
+        return;
+      }
+
+      if (wheelDistance !== 0 && Math.sign(delta) !== Math.sign(wheelDistance)) wheelDistance = 0;
+      wheelDistance += delta;
+
+      const threshold = Math.min(120, Math.max(80, window.innerHeight * 0.11));
+      if (Math.abs(wheelDistance) >= threshold) {
+        const direction = wheelDistance > 0 ? 1 : -1;
+        wheelDistance = 0;
+        wheelGestureLocked = true;
+        goToPage(activePageRef.current + direction);
+      } else {
+        let drag = -wheelDistance * 0.7;
+        if ((activePageRef.current === 0 && drag > 0) || (activePageRef.current === LAST_PAGE && drag < 0)) {
+          drag *= 0.2;
+        }
+        positionPages(activePageRef.current, drag, false);
+      }
+
+      finishWheelGestureAfterPause();
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -178,6 +216,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("resize", updateViewportHeight);
       window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+      if (wheelResetTimer !== undefined) window.clearTimeout(wheelResetTimer);
     };
   }, [goToPage, pageItems, positionPages, updateViewportHeight]);
 
