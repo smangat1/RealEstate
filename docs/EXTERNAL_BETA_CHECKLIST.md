@@ -31,6 +31,16 @@ The application code can be built and tested locally without these items. The fo
 - Define retention periods for active accounts, deleted accounts, application logs, analytics, and provider backups; verify that account deletion matches those promises.
 - Link the policy inside the iPhone and Mac apps and in App Store Connect, then make the App Store privacy answers match the shipped build.
 
+## Public website polish
+
+- Verify the homepage, Privacy, Contact, and 404 pages at 320 px, 390 px, tablet, and laptop widths with no horizontal overflow.
+- Click every public navigation, footer, logo, install, and email link after each production deployment.
+- Keep the mobile menu, favicon, Apple touch icon, route-specific titles, descriptions, and current copyright year covered by the launch-readiness tests.
+- Replace `NEXT_PUBLIC_SUPPORT_EMAIL` only with a monitored inbox; never publish a guessed or inactive address.
+- Keep the install button connected to honest beta details until a real TestFlight destination is available, then replace the beta message with the official Apple link.
+- Check visible copy for debug output, stale success/error banners, fabricated contact details, and accidental placeholder text.
+- Deliver large visible imagery through the compressed WebP/JPEG assets and review image weight when screenshots change.
+
 ## iPhone distribution
 
 - Set `HOMEBOARD_API_BASE_URL` and `HOMEBOARD_PUBLIC_WEB_URL` to the deployed HTTPS origin in the Release build settings.

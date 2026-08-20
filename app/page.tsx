@@ -6,7 +6,9 @@ import { MarketingPager } from "./marketing-pager";
 import styles from "./marketing.module.css";
 
 export const metadata: Metadata = {
-  title: "Homeboard — Pick your next home on vibes",
+  title: {
+    absolute: "Homeboard — Pick your next home on vibes",
+  },
   description:
     "Save the places you fall for. Homeboard handles the commute math, comparisons, and group tradeoffs.",
 };
@@ -103,13 +105,13 @@ export default function HomePage() {
           <nav className={styles.productLinks} aria-label="Homeboard information">
             <a href="/privacy">Privacy</a>
             <a href="/contact">Contact</a>
-            <span>© 2026 Homeboard</span>
+            <span>© {new Date().getFullYear()} Homeboard</span>
           </nav>
         </div>
 
         <figure className={styles.productFrame}>
           <Image
-            src="/images/homeboard-comparison-map-clean.png"
+            src="/images/homeboard-comparison-map-clean.webp"
             alt="Homeboard comparison map showing scored rental listings, a work destination, and color-matched commute routes"
             width={1179}
             height={2360}

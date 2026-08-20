@@ -46,9 +46,12 @@ html[data-theme="light"] {
 
 html,
 body {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   min-height: 100%;
+  overflow-x: clip;
   background:
     radial-gradient(circle at top left, rgba(122, 212, 255, 0.18), transparent 24%),
     radial-gradient(circle at bottom right, rgba(118, 227, 187, 0.16), transparent 22%),
@@ -81,6 +84,12 @@ html {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
 }
 
 body::before {

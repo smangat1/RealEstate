@@ -1,19 +1,17 @@
 import type { Metadata } from "next";
 
+import { InfoFooter, InfoHeader } from "../info-shell";
 import styles from "../info.module.css";
 
 export const metadata: Metadata = {
-  title: "Privacy — Homeboard",
+  title: "Privacy",
   description: "Homeboard's pre-beta privacy notice and policy commitments.",
 };
 
 export default function PrivacyPage() {
   return (
     <main className={styles.page}>
-      <header className={styles.nav}>
-        <a href="/">Homeboard</a>
-        <div><a href="/contact">Contact</a><a href="/">Back home</a></div>
-      </header>
+      <InfoHeader />
       <div className={styles.main}>
         <span className={styles.kicker}>Pre-beta privacy notice</span>
         <h1>Privacy should be understandable before you join.</h1>
@@ -26,6 +24,7 @@ export default function PrivacyPage() {
         </div>
         <p className={styles.notice}>This page is an honest pre-beta notice, not Homeboard’s final legal privacy policy.</p>
       </div>
+      <InfoFooter />
     </main>
   );
 }

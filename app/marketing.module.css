@@ -438,9 +438,10 @@
   .productFeatures article > b { font-size: 7px; }
   .productFeatures article p { font-size: 11px; }
   .productFeatures article strong { font-size: 18px; }
-  .productRoadmap,
-  .productLinks { display: none; }
+  .productRoadmap { display: none; }
   .installTrigger { width: 100%; margin-top: auto; padding: 14px 15px; }
+  .productLinks { margin-top: 10px; display: flex; align-items: center; gap: 12px; font-size: 7px; }
+  .productLinks span { margin-left: auto; }
   .installDialog { width: min(680px, calc(100% - 24px)); }
   .installDialogBody { padding: 24px 18px 28px; display: block; }
   .installDialogCopy > h2 { font-size: 48px; }

@@ -68,7 +68,7 @@ export function InstallExperience() {
           <figure className={styles.installScreenshot}>
             <figcaption>A look inside Homeboard</figcaption>
             <Image
-              src="/images/homeboard-comparison-map-clean.png"
+              src="/images/homeboard-comparison-map-clean.webp"
               alt="Homeboard comparison map showing rental scores, a work destination, and matching commute routes"
               width={1179}
               height={2360}

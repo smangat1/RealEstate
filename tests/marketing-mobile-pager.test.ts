@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -10,7 +10,8 @@ const page = read("app/page.tsx");
 const installExperience = read("app/install-experience.tsx");
 const styles = read("app/marketing.module.css");
 const globals = read("app/globals.css");
-const cleanImage = readFileSync(resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.png"));
+const cleanSourceImage = readFileSync(resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.png"));
+const compressedImage = resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.webp");
 
 test("marketing uses the same four fixed visible-viewport pages on phone and laptop", () => {
   assert.equal((page.match(/data-page-item/g) ?? []).length, 4);
@@ -39,11 +40,12 @@ test("the final install dialog keeps independent scrolling while pager gestures 
 });
 
 test("marketing uses the clean product crop and comfortably sized header controls", () => {
-  assert.match(page, /homeboard-comparison-map-clean\.png/);
-  assert.match(installExperience, /homeboard-comparison-map-clean\.png/);
+  assert.match(page, /homeboard-comparison-map-clean\.webp/);
+  assert.match(installExperience, /homeboard-comparison-map-clean\.webp/);
   assert.doesNotMatch(`${page}\n${installExperience}`, /homeboard-comparison-map-cropped\.png/);
-  assert.equal(cleanImage.readUInt32BE(16), 1179);
-  assert.equal(cleanImage.readUInt32BE(20), 2360);
+  assert.equal(cleanSourceImage.readUInt32BE(16), 1179);
+  assert.equal(cleanSourceImage.readUInt32BE(20), 2360);
+  assert.ok(statSync(compressedImage).size < 400_000);
   assert.match(styles, /\.nav \{[^}]*min-height: 72px/);
   assert.match(styles, /\.installCorner \{[^}]*min-height: 46px/);
   assert.match(styles, /\.desktopNav \{[^}]*font-size: 11px/);
