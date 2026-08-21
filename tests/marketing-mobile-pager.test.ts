@@ -22,9 +22,12 @@ test("marketing keeps fixed touch paging on phones and native snap scrolling on 
   assert.match(pager, /const onTouchCancel = \(\) => finishTouch\(true\)/);
   assert.match(pager, /const MOBILE_QUERY = "\(max-width: 720px\)"/);
   assert.match(pager, /window\.matchMedia\(MOBILE_QUERY\)/);
-  assert.match(pager, /root\.addEventListener\("wheel", onDesktopWheel, \{ passive: true \}\)/);
+  assert.match(pager, /root\.addEventListener\("wheel", onDesktopWheel, \{ passive: false \}\)/);
   assert.match(pager, /root\.addEventListener\("scroll", onDesktopScroll/);
   assert.match(pager, /desktopWheelStartPage \+ 1/);
+  assert.match(pager, /desktopWheelBoundaryTarget/);
+  assert.match(pager, /event\.preventDefault\(\)/);
+  assert.doesNotMatch(pager, /root\.scrollTop = minimumScroll|root\.scrollTop = maximumScroll/);
   assert.match(pager, /--marketing-scroll-progress/);
   assert.match(pager, /className=\{styles\.scrollRoute\}/);
   assert.doesNotMatch(pager, /wheelDistance|wheelGestureLocked/);
@@ -38,6 +41,7 @@ test("marketing keeps fixed touch paging on phones and native snap scrolling on 
   assert.match(styles, /pointer-events: auto !important/);
   assert.match(styles, /\.scrollRouteThumb/);
   assert.match(styles, /height: calc\(var\(--marketing-scroll-progress\) \* 100%\)/);
+  assert.doesNotMatch(styles, /transition: (?:height|top) 80ms linear/);
   assert.match(globals, /body:has\(\.homeboard-marketing\)[\s\S]*overflow: hidden/);
   assert.doesNotMatch(globals, /scroll-snap-type: y mandatory/);
   assert.doesNotMatch(page, /routeEssay|memoryStatement|betweenSection|futureList/);

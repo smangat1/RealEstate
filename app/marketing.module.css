@@ -328,7 +328,7 @@
   .scrollRouteCount { display: flex; align-items: baseline; gap: 2px; font-variant-numeric: tabular-nums; }
   .scrollRouteCount b { font-family: var(--font-display), Georgia, serif; font-size: 18px; font-weight: 600; line-height: 1; }
   .scrollRouteCount small { color: #68766f; font-size: 6px; font-weight: 850; letter-spacing: .06em; }
-  .scrollRouteTrack { width: 18px; height: clamp(116px, 18vh, 164px); margin: 13px 0 12px; position: relative; display: block; }
+  .scrollRouteTrack { width: 18px; height: clamp(116px, 18vh, 164px); margin: 13px 0 12px; position: relative; display: block; contain: layout paint; }
   .scrollRouteTrack::before,
   .scrollRouteFill { width: 2px; position: absolute; left: 50%; top: 0; display: block; transform: translateX(-50%); }
   .scrollRouteTrack::before { content: ""; height: 100%; background: rgba(39,54,47,.2); }
@@ -336,7 +336,6 @@
     z-index: 1;
     height: calc(var(--marketing-scroll-progress) * 100%);
     background: #446256;
-    transition: height 80ms linear;
   }
   .scrollRouteThumb {
     width: 12px;
@@ -351,7 +350,6 @@
     background: #f4eade;
     box-shadow: 0 0 0 4px rgba(168,205,176,.28);
     transform: translate(-50%,-50%);
-    transition: top 80ms linear;
   }
   .scrollRouteStop {
     width: 6px;
@@ -489,6 +487,4 @@
 @media (prefers-reduced-motion: reduce) {
   .site [data-page-item] { transition-duration: 1ms !important; }
   .site { scroll-behavior: auto; }
-  .scrollRouteFill,
-  .scrollRouteThumb { transition: none; }
 }

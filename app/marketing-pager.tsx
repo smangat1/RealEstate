@@ -86,7 +86,17 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     const mediaQuery = window.matchMedia(MOBILE_QUERY);
     let scrollFrame = 0;
     let desktopWheelStartPage: number | null = null;
+    let desktopWheelBoundaryTarget: number | null = null;
     let desktopWheelTimer: number | undefined;
+
+    const resetDesktopWheelGesture = () => {
+      desktopWheelStartPage = null;
+      desktopWheelBoundaryTarget = null;
+      if (desktopWheelTimer !== undefined) {
+        window.clearTimeout(desktopWheelTimer);
+        desktopWheelTimer = undefined;
+      }
+    };
 
     const configure = () => {
       updateViewportHeight();
@@ -164,24 +174,39 @@ export function MarketingPager({ children }: { children: ReactNode }) {
         desktopWheelStartPage = Math.max(0, Math.min(LAST_PAGE, Math.round(root.scrollTop / root.clientHeight)));
       }
       if (desktopWheelTimer !== undefined) window.clearTimeout(desktopWheelTimer);
-      desktopWheelTimer = window.setTimeout(() => {
-        desktopWheelStartPage = null;
-        desktopWheelTimer = undefined;
-      }, 500);
+      desktopWheelTimer = window.setTimeout(resetDesktopWheelGesture, 550);
+
+      const deltaMultiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? root.clientHeight
+          : 1;
+      const delta = event.deltaY * deltaMultiplier;
+      const minimumScroll = Math.max(0, desktopWheelStartPage - 1) * root.clientHeight;
+      const maximumScroll = Math.min(LAST_PAGE, desktopWheelStartPage + 1) * root.clientHeight;
+      const predictedScroll = root.scrollTop + delta;
+      const boundary = predictedScroll < minimumScroll
+        ? minimumScroll
+        : predictedScroll > maximumScroll
+          ? maximumScroll
+          : null;
+
+      if (boundary === null) {
+        desktopWheelBoundaryTarget = null;
+        return;
+      }
+
+      event.preventDefault();
+      if (desktopWheelBoundaryTarget !== boundary) {
+        desktopWheelBoundaryTarget = boundary;
+        root.scrollTo({ top: boundary, behavior: "smooth" });
+      }
     };
 
     const onDesktopScroll = () => {
       if (mobileRef.current || scrollFrame) return;
       scrollFrame = window.requestAnimationFrame(() => {
         scrollFrame = 0;
-        if (desktopWheelStartPage !== null) {
-          const minimumPage = Math.max(0, desktopWheelStartPage - 1);
-          const maximumPage = Math.min(LAST_PAGE, desktopWheelStartPage + 1);
-          const minimumScroll = minimumPage * root.clientHeight;
-          const maximumScroll = maximumPage * root.clientHeight;
-          if (root.scrollTop < minimumScroll) root.scrollTop = minimumScroll;
-          else if (root.scrollTop > maximumScroll) root.scrollTop = maximumScroll;
-        }
         const maximumScroll = Math.max(1, root.scrollHeight - root.clientHeight);
         const scrollProgress = Math.max(0, Math.min(1, root.scrollTop / maximumScroll));
         root.style.setProperty("--marketing-scroll-progress", String(scrollProgress));
@@ -247,7 +272,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     root.addEventListener("touchmove", onTouchMove, { passive: false });
     root.addEventListener("touchend", onTouchEnd, { passive: true });
     root.addEventListener("touchcancel", onTouchCancel, { passive: true });
-    root.addEventListener("wheel", onDesktopWheel, { passive: true });
+    root.addEventListener("wheel", onDesktopWheel, { passive: false });
     root.addEventListener("scroll", onDesktopScroll, { passive: true });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("hashchange", onHashChange);
@@ -268,7 +293,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       window.visualViewport?.removeEventListener("resize", updateViewportHeight);
       mediaQuery.removeEventListener("change", configure);
       if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
-      if (desktopWheelTimer !== undefined) window.clearTimeout(desktopWheelTimer);
+      resetDesktopWheelGesture();
     };
   }, [goToPage, pageItems, positionPages, publishPage, updateViewportHeight]);
 
