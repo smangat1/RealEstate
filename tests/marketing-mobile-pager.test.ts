@@ -13,7 +13,7 @@ const globals = read("app/globals.css");
 const cleanSourceImage = readFileSync(resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.png"));
 const compressedImage = resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.webp");
 
-test("marketing keeps fixed touch paging on phones and normal revealed scrolling on laptops", () => {
+test("marketing keeps fixed touch paging on phones and progress-linked scrolling on laptops", () => {
   assert.equal((page.match(/data-page-item/g) ?? []).length, 4);
   assert.doesNotMatch(page, /data-mobile-page-item/);
   assert.match(pager, /window\.visualViewport\?\.height \?\? window\.innerHeight/);
@@ -24,11 +24,11 @@ test("marketing keeps fixed touch paging on phones and normal revealed scrolling
   assert.match(pager, /window\.matchMedia\(MOBILE_QUERY\)/);
   assert.doesNotMatch(pager, /onDesktopWheel|addEventListener\("wheel"/);
   assert.match(pager, /root\.addEventListener\("scroll", onDesktopScroll/);
-  assert.match(pager, /new IntersectionObserver/);
-  assert.match(pager, /entry\.intersectionRatio >= 0\.2/);
-  assert.match(pager, /item\.dataset\.pageRevealed = "true"/);
-  assert.match(pager, /else delete item\.dataset\.pageRevealed/);
-  assert.match(pager, /threshold: 0\.2/);
+  assert.doesNotMatch(pager, /IntersectionObserver|pageRevealed/);
+  assert.match(pager, /const progress = Math\.max\(0, Math\.min\(1, visiblePixels \/ itemHeight\)\)/);
+  assert.match(pager, /--marketing-page-opacity/);
+  assert.match(pager, /hiddenProgress \* 7/);
+  assert.match(pager, /hiddenProgress \* 68/);
   assert.doesNotMatch(pager, /--marketing-scroll-progress|scrollRoute/);
   assert.doesNotMatch(pager, /wheelDistance|wheelGestureLocked/);
   assert.match(styles, /height: var\(--marketing-viewport-height, 100dvh\)/);
@@ -37,11 +37,10 @@ test("marketing keeps fixed touch paging on phones and normal revealed scrolling
   assert.match(styles, /transition: transform 360ms/);
   assert.match(styles, /@media \(min-width: 721px\)[\s\S]*overflow-y: auto/);
   assert.doesNotMatch(styles, /scroll-snap-type|scroll-snap-align|scroll-snap-stop/);
-  assert.match(styles, /data-page-revealed="true"/);
-  assert.match(styles, /filter: blur\(7px\)/);
-  assert.match(styles, /translateY\(68px\) scale\(\.985\)/);
-  assert.match(styles, /opacity 720ms ease/);
-  assert.match(styles, /:nth-child\(3\) \{ transition-delay: 150ms/);
+  assert.doesNotMatch(styles, /data-page-revealed|transition-delay: 150ms|opacity 720ms ease/);
+  assert.match(styles, /opacity: var\(--marketing-page-opacity, 0\)/);
+  assert.match(styles, /filter: blur\(var\(--marketing-page-blur, 7px\)\)/);
+  assert.match(styles, /translateY\(var\(--marketing-page-shift, 68px\)\)/);
   assert.match(styles, /pointer-events: auto !important/);
   assert.doesNotMatch(styles, /--marketing-scroll-progress|\.scrollRoute/);
   assert.match(globals, /body:has\(\.homeboard-marketing\)[\s\S]*overflow: hidden/);

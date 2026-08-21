@@ -84,11 +84,36 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     if (!root) return;
     const mediaQuery = window.matchMedia(MOBILE_QUERY);
     let scrollFrame = 0;
-    let revealObserver: IntersectionObserver | null = null;
+
+    const clearDesktopPageProgress = (item: HTMLElement) => {
+      item.style.removeProperty("--marketing-page-opacity");
+      item.style.removeProperty("--marketing-page-blur");
+      item.style.removeProperty("--marketing-page-shift");
+      item.style.removeProperty("--marketing-page-scale");
+    };
+
+    const updateDesktopPageProgress = (items = pageItems()) => {
+      const viewportTop = root.scrollTop;
+      const viewportBottom = viewportTop + root.clientHeight;
+
+      items.forEach((item) => {
+        const itemTop = item.offsetTop;
+        const itemHeight = Math.max(1, item.offsetHeight);
+        const visiblePixels = Math.max(
+          0,
+          Math.min(viewportBottom, itemTop + itemHeight) - Math.max(viewportTop, itemTop),
+        );
+        const progress = Math.max(0, Math.min(1, visiblePixels / itemHeight));
+        const hiddenProgress = 1 - progress;
+
+        item.style.setProperty("--marketing-page-opacity", progress.toFixed(4));
+        item.style.setProperty("--marketing-page-blur", `${(hiddenProgress * 7).toFixed(2)}px`);
+        item.style.setProperty("--marketing-page-shift", `${(hiddenProgress * 68).toFixed(2)}px`);
+        item.style.setProperty("--marketing-page-scale", (0.985 + progress * 0.015).toFixed(4));
+      });
+    };
 
     const configure = () => {
-      revealObserver?.disconnect();
-      revealObserver = null;
       updateViewportHeight();
       mobileRef.current = mediaQuery.matches;
       const hashIndex = PAGE_HASHES.indexOf(window.location.hash);
@@ -100,7 +125,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       if (mobileRef.current) {
         delete root.dataset.revealReady;
         root.scrollTop = 0;
-        pageItems().forEach((item) => delete item.dataset.pageRevealed);
+        pageItems().forEach(clearDesktopPageProgress);
         positionPages(hashPage, 0, false);
         requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
       } else {
@@ -110,23 +135,12 @@ export function MarketingPager({ children }: { children: ReactNode }) {
           item.style.removeProperty("transform");
           item.inert = false;
           item.removeAttribute("aria-hidden");
-          if (item.id === PAGE_HASHES[hashPage].slice(1)) item.dataset.pageRevealed = "true";
-          else delete item.dataset.pageRevealed;
         });
         root.dataset.revealReady = "true";
-        revealObserver = new IntersectionObserver((entries) => {
-          entries.forEach((entry) => {
-            const item = entry.target as HTMLElement;
-            if (entry.intersectionRatio >= 0.2) item.dataset.pageRevealed = "true";
-            else delete item.dataset.pageRevealed;
-          });
-        }, {
-          root,
-          rootMargin: "-6% 0px -6% 0px",
-          threshold: 0.2,
+        requestAnimationFrame(() => {
+          root.scrollTo({ top: items[hashPage]?.offsetTop ?? 0, behavior: "auto" });
+          updateDesktopPageProgress(items);
         });
-        items.forEach((item) => revealObserver?.observe(item));
-        requestAnimationFrame(() => root.scrollTo({ top: items[hashPage]?.offsetTop ?? 0, behavior: "auto" }));
       }
     };
 
@@ -179,6 +193,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       scrollFrame = window.requestAnimationFrame(() => {
         scrollFrame = 0;
         const items = pageItems();
+        updateDesktopPageProgress(items);
         const center = root.scrollTop + root.clientHeight / 2;
         let nearestPage = 0;
         let nearestDistance = Number.POSITIVE_INFINITY;
@@ -235,6 +250,11 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       if (hashPage >= 0) goToPage(hashPage);
     };
 
+    const onResize = () => {
+      updateViewportHeight();
+      if (!mobileRef.current) updateDesktopPageProgress();
+    };
+
     configure();
     root.addEventListener("touchstart", onTouchStart, { passive: true });
     root.addEventListener("touchmove", onTouchMove, { passive: false });
@@ -243,8 +263,8 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     root.addEventListener("scroll", onDesktopScroll, { passive: true });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("hashchange", onHashChange);
-    window.addEventListener("resize", updateViewportHeight);
-    window.visualViewport?.addEventListener("resize", updateViewportHeight);
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
     mediaQuery.addEventListener("change", configure);
 
     return () => {
@@ -255,11 +275,10 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       root.removeEventListener("scroll", onDesktopScroll);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("hashchange", onHashChange);
-      window.removeEventListener("resize", updateViewportHeight);
-      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
       mediaQuery.removeEventListener("change", configure);
       if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
-      revealObserver?.disconnect();
     };
   }, [goToPage, pageItems, positionPages, publishPage, updateViewportHeight]);
 
