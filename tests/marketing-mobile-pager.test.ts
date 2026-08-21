@@ -25,10 +25,11 @@ test("marketing keeps fixed touch paging on phones and normal revealed scrolling
   assert.doesNotMatch(pager, /onDesktopWheel|addEventListener\("wheel"/);
   assert.match(pager, /root\.addEventListener\("scroll", onDesktopScroll/);
   assert.match(pager, /new IntersectionObserver/);
-  assert.match(pager, /dataset\.pageRevealed = "true"/);
+  assert.match(pager, /entry\.intersectionRatio >= 0\.2/);
+  assert.match(pager, /item\.dataset\.pageRevealed = "true"/);
+  assert.match(pager, /else delete item\.dataset\.pageRevealed/);
   assert.match(pager, /threshold: 0\.2/);
-  assert.match(pager, /--marketing-scroll-progress/);
-  assert.match(pager, /className=\{styles\.scrollRoute\}/);
+  assert.doesNotMatch(pager, /--marketing-scroll-progress|scrollRoute/);
   assert.doesNotMatch(pager, /wheelDistance|wheelGestureLocked/);
   assert.match(styles, /height: var\(--marketing-viewport-height, 100dvh\)/);
   assert.match(styles, /\.site \[data-page-item\][^{]*\{[^}]*position: absolute/);
@@ -42,9 +43,7 @@ test("marketing keeps fixed touch paging on phones and normal revealed scrolling
   assert.match(styles, /opacity 720ms ease/);
   assert.match(styles, /:nth-child\(3\) \{ transition-delay: 150ms/);
   assert.match(styles, /pointer-events: auto !important/);
-  assert.match(styles, /\.scrollRouteThumb/);
-  assert.match(styles, /height: calc\(var\(--marketing-scroll-progress\) \* 100%\)/);
-  assert.doesNotMatch(styles, /transition: (?:height|top) 80ms linear/);
+  assert.doesNotMatch(styles, /--marketing-scroll-progress|\.scrollRoute/);
   assert.match(globals, /body:has\(\.homeboard-marketing\)[\s\S]*overflow: hidden/);
   assert.doesNotMatch(globals, /scroll-snap-type: y mandatory/);
   assert.doesNotMatch(page, /routeEssay|memoryStatement|betweenSection|futureList/);
