@@ -13,7 +13,7 @@ const globals = read("app/globals.css");
 const cleanSourceImage = readFileSync(resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.png"));
 const compressedImage = resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.webp");
 
-test("marketing keeps fixed touch paging on phones and native snap scrolling on laptops", () => {
+test("marketing keeps fixed touch paging on phones and normal revealed scrolling on laptops", () => {
   assert.equal((page.match(/data-page-item/g) ?? []).length, 4);
   assert.doesNotMatch(page, /data-mobile-page-item/);
   assert.match(pager, /window\.visualViewport\?\.height \?\? window\.innerHeight/);
@@ -22,12 +22,10 @@ test("marketing keeps fixed touch paging on phones and native snap scrolling on 
   assert.match(pager, /const onTouchCancel = \(\) => finishTouch\(true\)/);
   assert.match(pager, /const MOBILE_QUERY = "\(max-width: 720px\)"/);
   assert.match(pager, /window\.matchMedia\(MOBILE_QUERY\)/);
-  assert.match(pager, /root\.addEventListener\("wheel", onDesktopWheel, \{ passive: false \}\)/);
+  assert.doesNotMatch(pager, /onDesktopWheel|addEventListener\("wheel"/);
   assert.match(pager, /root\.addEventListener\("scroll", onDesktopScroll/);
-  assert.match(pager, /desktopWheelStartPage \+ 1/);
-  assert.match(pager, /desktopWheelBoundaryTarget/);
-  assert.match(pager, /event\.preventDefault\(\)/);
-  assert.doesNotMatch(pager, /root\.scrollTop = minimumScroll|root\.scrollTop = maximumScroll/);
+  assert.match(pager, /new IntersectionObserver/);
+  assert.match(pager, /dataset\.pageRevealed = "true"/);
   assert.match(pager, /--marketing-scroll-progress/);
   assert.match(pager, /className=\{styles\.scrollRoute\}/);
   assert.doesNotMatch(pager, /wheelDistance|wheelGestureLocked/);
@@ -36,8 +34,9 @@ test("marketing keeps fixed touch paging on phones and native snap scrolling on 
   assert.match(styles, /touch-action: none/);
   assert.match(styles, /transition: transform 360ms/);
   assert.match(styles, /@media \(min-width: 721px\)[\s\S]*overflow-y: auto/);
-  assert.match(styles, /@media \(min-width: 721px\)[\s\S]*scroll-snap-type: y proximity/);
-  assert.match(styles, /scroll-snap-stop: always/);
+  assert.doesNotMatch(styles, /scroll-snap-type|scroll-snap-align|scroll-snap-stop/);
+  assert.match(styles, /data-page-revealed="true"/);
+  assert.match(styles, /transition: opacity 520ms ease, transform 620ms/);
   assert.match(styles, /pointer-events: auto !important/);
   assert.match(styles, /\.scrollRouteThumb/);
   assert.match(styles, /height: calc\(var\(--marketing-scroll-progress\) \* 100%\)/);

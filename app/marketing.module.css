@@ -290,7 +290,6 @@
     overscroll-behavior-y: contain;
     touch-action: pan-y;
     scroll-behavior: smooth;
-    scroll-snap-type: y proximity;
     scrollbar-width: none;
   }
   .site::-webkit-scrollbar { width: 0; height: 0; }
@@ -303,9 +302,16 @@
     transform: none !important;
     transition: none;
     will-change: auto;
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
     pointer-events: auto !important;
+  }
+  .site[data-reveal-ready="true"] [data-page-item] > * {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 520ms ease, transform 620ms cubic-bezier(.2,.78,.24,1);
+  }
+  .site[data-reveal-ready="true"] [data-page-item][data-page-revealed="true"] > * {
+    opacity: 1;
+    transform: translateY(0);
   }
   .scrollRoute {
     width: 56px;
@@ -487,4 +493,9 @@
 @media (prefers-reduced-motion: reduce) {
   .site [data-page-item] { transition-duration: 1ms !important; }
   .site { scroll-behavior: auto; }
+  .site[data-reveal-ready="true"] [data-page-item] > * {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }

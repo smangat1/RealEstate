@@ -85,20 +85,11 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     if (!root) return;
     const mediaQuery = window.matchMedia(MOBILE_QUERY);
     let scrollFrame = 0;
-    let desktopWheelStartPage: number | null = null;
-    let desktopWheelBoundaryTarget: number | null = null;
-    let desktopWheelTimer: number | undefined;
-
-    const resetDesktopWheelGesture = () => {
-      desktopWheelStartPage = null;
-      desktopWheelBoundaryTarget = null;
-      if (desktopWheelTimer !== undefined) {
-        window.clearTimeout(desktopWheelTimer);
-        desktopWheelTimer = undefined;
-      }
-    };
+    let revealObserver: IntersectionObserver | null = null;
 
     const configure = () => {
+      revealObserver?.disconnect();
+      revealObserver = null;
       updateViewportHeight();
       mobileRef.current = mediaQuery.matches;
       const hashIndex = PAGE_HASHES.indexOf(window.location.hash);
@@ -108,8 +99,10 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       root.dataset.page = String(hashPage);
 
       if (mobileRef.current) {
+        delete root.dataset.revealReady;
         root.style.removeProperty("--marketing-scroll-progress");
         root.scrollTop = 0;
+        pageItems().forEach((item) => delete item.dataset.pageRevealed);
         positionPages(hashPage, 0, false);
         requestAnimationFrame(() => root.classList.remove(styles.pagerDragging));
       } else {
@@ -119,7 +112,20 @@ export function MarketingPager({ children }: { children: ReactNode }) {
           item.style.removeProperty("transform");
           item.inert = false;
           item.removeAttribute("aria-hidden");
+          if (item.id === PAGE_HASHES[hashPage].slice(1)) item.dataset.pageRevealed = "true";
+          else delete item.dataset.pageRevealed;
         });
+        root.dataset.revealReady = "true";
+        revealObserver = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) (entry.target as HTMLElement).dataset.pageRevealed = "true";
+          });
+        }, {
+          root,
+          rootMargin: "-10% 0px -10% 0px",
+          threshold: 0.12,
+        });
+        items.forEach((item) => revealObserver?.observe(item));
         requestAnimationFrame(() => root.scrollTo({ top: items[hashPage]?.offsetTop ?? 0, behavior: "auto" }));
       }
     };
@@ -167,41 +173,6 @@ export function MarketingPager({ children }: { children: ReactNode }) {
 
     const onTouchEnd = () => finishTouch(false);
     const onTouchCancel = () => finishTouch(true);
-
-    const onDesktopWheel = (event: WheelEvent) => {
-      if (mobileRef.current || insideOpenDialog(event.target) || event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-      if (desktopWheelStartPage === null) {
-        desktopWheelStartPage = Math.max(0, Math.min(LAST_PAGE, Math.round(root.scrollTop / root.clientHeight)));
-      }
-      if (desktopWheelTimer !== undefined) window.clearTimeout(desktopWheelTimer);
-      desktopWheelTimer = window.setTimeout(resetDesktopWheelGesture, 550);
-
-      const deltaMultiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? 16
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? root.clientHeight
-          : 1;
-      const delta = event.deltaY * deltaMultiplier;
-      const minimumScroll = Math.max(0, desktopWheelStartPage - 1) * root.clientHeight;
-      const maximumScroll = Math.min(LAST_PAGE, desktopWheelStartPage + 1) * root.clientHeight;
-      const predictedScroll = root.scrollTop + delta;
-      const boundary = predictedScroll < minimumScroll
-        ? minimumScroll
-        : predictedScroll > maximumScroll
-          ? maximumScroll
-          : null;
-
-      if (boundary === null) {
-        desktopWheelBoundaryTarget = null;
-        return;
-      }
-
-      event.preventDefault();
-      if (desktopWheelBoundaryTarget !== boundary) {
-        desktopWheelBoundaryTarget = boundary;
-        root.scrollTo({ top: boundary, behavior: "smooth" });
-      }
-    };
 
     const onDesktopScroll = () => {
       if (mobileRef.current || scrollFrame) return;
@@ -272,7 +243,6 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     root.addEventListener("touchmove", onTouchMove, { passive: false });
     root.addEventListener("touchend", onTouchEnd, { passive: true });
     root.addEventListener("touchcancel", onTouchCancel, { passive: true });
-    root.addEventListener("wheel", onDesktopWheel, { passive: false });
     root.addEventListener("scroll", onDesktopScroll, { passive: true });
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("hashchange", onHashChange);
@@ -285,7 +255,6 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       root.removeEventListener("touchmove", onTouchMove);
       root.removeEventListener("touchend", onTouchEnd);
       root.removeEventListener("touchcancel", onTouchCancel);
-      root.removeEventListener("wheel", onDesktopWheel);
       root.removeEventListener("scroll", onDesktopScroll);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("hashchange", onHashChange);
@@ -293,7 +262,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       window.visualViewport?.removeEventListener("resize", updateViewportHeight);
       mediaQuery.removeEventListener("change", configure);
       if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
-      resetDesktopWheelGesture();
+      revealObserver?.disconnect();
     };
   }, [goToPage, pageItems, positionPages, publishPage, updateViewportHeight]);
 
