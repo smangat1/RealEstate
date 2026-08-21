@@ -85,6 +85,7 @@ export default function HomePage() {
             sizes="(max-width: 720px) 1px, (max-width: 1000px) 280px, 390px"
             priority={false}
           />
+          <span className={styles.phoneHardware} aria-hidden="true" />
         </figure>
       </section>
 

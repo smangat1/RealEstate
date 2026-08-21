@@ -59,6 +59,12 @@ test("the final install dialog keeps independent scrolling while pager gestures 
   assert.match(installExperience, /dialog\.showModal\(\)/);
   assert.match(styles, /installDialogBody[^}]*display: grid/);
   assert.match(styles, /productFrame img[^}]*object-fit: contain/);
+  assert.match(page, /className=\{styles\.phoneHardware\} aria-hidden="true"/);
+  assert.match(styles, /\.productFrame::before/);
+  assert.match(styles, /\.productFrame::after/);
+  assert.match(styles, /\.phoneHardware::before/);
+  assert.match(styles, /\.phoneHardware::after/);
+  assert.match(styles, /background: linear-gradient\(145deg, #77817c/);
 });
 
 test("marketing uses the clean product crop and comfortably sized header controls", () => {
