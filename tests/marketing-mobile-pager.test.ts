@@ -61,7 +61,7 @@ test("the final install dialog keeps independent scrolling while pager gestures 
   assert.match(styles, /productFrame img[^}]*object-fit: contain/);
   assert.match(page, /className=\{styles\.phoneHardware\} aria-hidden="true"/);
   assert.match(styles, /\.productFrame::before/);
-  assert.match(styles, /\.productFrame::after/);
+  assert.doesNotMatch(styles, /\.productFrame::after/);
   assert.match(styles, /\.phoneHardware::before/);
   assert.match(styles, /\.phoneHardware::after/);
   assert.match(styles, /background: linear-gradient\(145deg, #77817c/);
