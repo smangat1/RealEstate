@@ -122,8 +122,8 @@ export function MarketingPager({ children }: { children: ReactNode }) {
           });
         }, {
           root,
-          rootMargin: "-10% 0px -10% 0px",
-          threshold: 0.12,
+          rootMargin: "-6% 0px -6% 0px",
+          threshold: 0.2,
         });
         items.forEach((item) => revealObserver?.observe(item));
         requestAnimationFrame(() => root.scrollTo({ top: items[hashPage]?.offsetTop ?? 0, behavior: "auto" }));

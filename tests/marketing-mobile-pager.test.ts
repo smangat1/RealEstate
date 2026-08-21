@@ -26,6 +26,7 @@ test("marketing keeps fixed touch paging on phones and normal revealed scrolling
   assert.match(pager, /root\.addEventListener\("scroll", onDesktopScroll/);
   assert.match(pager, /new IntersectionObserver/);
   assert.match(pager, /dataset\.pageRevealed = "true"/);
+  assert.match(pager, /threshold: 0\.2/);
   assert.match(pager, /--marketing-scroll-progress/);
   assert.match(pager, /className=\{styles\.scrollRoute\}/);
   assert.doesNotMatch(pager, /wheelDistance|wheelGestureLocked/);
@@ -36,7 +37,10 @@ test("marketing keeps fixed touch paging on phones and normal revealed scrolling
   assert.match(styles, /@media \(min-width: 721px\)[\s\S]*overflow-y: auto/);
   assert.doesNotMatch(styles, /scroll-snap-type|scroll-snap-align|scroll-snap-stop/);
   assert.match(styles, /data-page-revealed="true"/);
-  assert.match(styles, /transition: opacity 520ms ease, transform 620ms/);
+  assert.match(styles, /filter: blur\(7px\)/);
+  assert.match(styles, /translateY\(68px\) scale\(\.985\)/);
+  assert.match(styles, /opacity 720ms ease/);
+  assert.match(styles, /:nth-child\(3\) \{ transition-delay: 150ms/);
   assert.match(styles, /pointer-events: auto !important/);
   assert.match(styles, /\.scrollRouteThumb/);
   assert.match(styles, /height: calc\(var\(--marketing-scroll-progress\) \* 100%\)/);
