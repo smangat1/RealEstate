@@ -312,7 +312,7 @@ final class ShareViewController: UIViewController {
     }
     sharedTitle = itemText
       .map(cleanedTitle)
-      .first(where: { !$0.isEmpty })p
+      .first(where: { !$0.isEmpty })
     sharedURL = itemText.compactMap(firstWebURL).first
 
     guard !providers.isEmpty else {
