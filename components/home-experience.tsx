@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { deleteBoardAction } from "@/app/actions";
+import { BrandMark } from "@/components/brand-mark";
 import type { AuthUserRecord, ChatMessage, ProfileCompletion, SearchProfileData } from "@/lib/types";
 
 type HomeExperienceProps = {
@@ -308,7 +309,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
         </div>
 
         <div className="sidebar-brand">
-          <span className="brand-dot" />
+          <BrandMark className="brand-mark" />
           {!isSidebarCollapsed ? (
             <div>
               <strong>{currentUser.displayName}</strong>

@@ -12,6 +12,7 @@ import {
   deleteBoardAction,
   sendChatAction,
 } from "@/app/actions";
+import { BrandMark } from "@/components/brand-mark";
 import { BoardInvitePanel } from "@/components/board-invite-panel";
 import type {
   AuthUserRecord,
@@ -645,7 +646,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
         </div>
 
         <div className="sidebar-brand sidebar-account">
-          <span className="brand-dot" />
+          <BrandMark className="brand-mark" />
           {!isSidebarCollapsed ? (
             <div className="sidebar-account-copy">
               <strong>{currentUser?.displayName ?? "Homeboard"}</strong>

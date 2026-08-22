@@ -9,6 +9,9 @@ const pager = read("app/marketing-pager.tsx");
 const page = read("app/page.tsx");
 const installExperience = read("app/install-experience.tsx");
 const styles = read("app/marketing.module.css");
+const layout = read("app/layout.tsx");
+const ogRoute = read("app/api/og/route.tsx");
+const slides = read("lib/marketing-slides.ts");
 const globals = read("app/globals.css");
 const cleanSourceImage = readFileSync(resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.png"));
 const compressedImage = resolve(process.cwd(), "public/images/homeboard-comparison-map-clean.webp");
@@ -48,6 +51,20 @@ test("marketing keeps fixed touch paging on phones and progress-linked scrolling
   assert.doesNotMatch(page, /routeEssay|memoryStatement|betweenSection|futureList/);
   assert.doesNotMatch(page, /coverDiagram|noiseField|RouteNode/);
   assert.doesNotMatch(styles, /\.coverDiagram|\.noiseField|looseFloat/);
+});
+
+test("each marketing slide has a server-visible share URL and branded rich preview", () => {
+  assert.match(pager, /searchParams\.set\("slide", nextSlide\.key\)/);
+  assert.match(pager, /new URLSearchParams\(window\.location\.search\)\.get\("slide"\)/);
+  assert.match(page, /generateMetadata/);
+  assert.match(page, /summary_large_image/);
+  assert.match(page, /\/api\/og\?slide=/);
+  assert.match(ogRoute, /new ImageResponse/);
+  assert.match(ogRoute, /apple-icon\.png/);
+  assert.equal((slides.match(/key: "/g) ?? []).length, 4);
+  assert.match(layout, /favicon\.ico/);
+  assert.match(styles, /\.navCollapsed \.wordmark \{ width: 44px/);
+  assert.match(styles, /\.navCollapsed \.wordmark span \{ display: none/);
 });
 
 test("the final install dialog keeps independent scrolling while pager gestures are suspended", () => {

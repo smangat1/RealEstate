@@ -16,6 +16,7 @@ test("the public site has branded metadata and installable icons", () => {
   assert.match(layout, /shared shortlist/);
   assert.match(manifest, /theme_color: "#3D504A"/);
   assert.ok(existsSync(resolve(root, "app/icon.svg")));
+  assert.ok(existsSync(resolve(root, "app/favicon.ico")));
   assert.ok(existsSync(resolve(root, "app/apple-icon.png")));
 });
 

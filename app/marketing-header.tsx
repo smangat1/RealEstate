@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { BrandMark } from "@/components/brand-mark";
 import { InstallTrigger } from "./install-experience";
 import styles from "./marketing.module.css";
 
@@ -17,17 +18,18 @@ export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
   return (
     <header className={`${styles.nav} ${headerCollapsed ? styles.navCollapsed : ""} ${headerAtProduct ? styles.navAtProduct : ""}`}>
       <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
-        HOMEBOARD
+        <BrandMark className={styles.wordmarkIcon} />
+        <span>HOMEBOARD</span>
       </a>
       <nav className={styles.desktopNav} aria-label="Site navigation">
-        <a href="#product">Product</a>
+        <a href="/?slide=product#product">Product</a>
         <a href="/privacy">Privacy</a>
         <a href="/contact">Contact</a>
       </nav>
       <details className={styles.mobileMenu} ref={mobileMenuRef}>
         <summary>Menu</summary>
         <nav aria-label="Mobile site navigation">
-          <a href="#product">Product</a>
+          <a href="/?slide=product#product">Product</a>
           <a href="/privacy">Privacy</a>
           <a href="/contact">Contact</a>
         </nav>

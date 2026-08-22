@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 
 import { shouldNoIndexSite } from "@/lib/site-visibility";
+import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const inter = Inter({
@@ -17,6 +18,7 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
+  metadataBase: getSiteUrl(),
   applicationName: "Homeboard",
   title: {
     default: "Homeboard — Pick your next home on vibes",
@@ -25,6 +27,13 @@ export const metadata: Metadata = {
   description: "Save rental listings together, compare real commutes, and understand the tradeoffs before your group chooses a home.",
   keywords: ["rental search", "roommates", "apartment comparison", "commute comparison", "shared shortlist"],
   category: "real estate",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   openGraph: {
     type: "website",
     siteName: "Homeboard",

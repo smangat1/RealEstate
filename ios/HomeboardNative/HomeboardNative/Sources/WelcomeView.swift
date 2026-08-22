@@ -98,14 +98,7 @@ struct WelcomeView: View {
 
   private var heroContent: some View {
     VStack(alignment: .leading, spacing: 24) {
-      HStack(spacing: 11) {
-        Image(systemName: "house.and.flag.fill")
-          .font(.system(size: 15, weight: .bold))
-          .foregroundStyle(HomeboardPalette.buttonText)
-          .frame(width: 36, height: 36)
-          .background(HomeboardPalette.accent)
-          .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-
+      HStack {
         Text("HOMEBOARD")
           .font(.caption.weight(.bold))
           .tracking(3.4)

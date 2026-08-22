@@ -1,0 +1,311 @@
+.srOnly {
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  position: absolute;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shell {
+  width: 100%;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+.bone {
+  min-width: 8px;
+  min-height: 8px;
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--skeleton-base);
+}
+
+.bone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 12%, var(--skeleton-shine) 48%, transparent 84%);
+  transform: translateX(-110%);
+  animation: skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.marketingShell {
+  --skeleton-base: rgba(39, 54, 47, 0.12);
+  --skeleton-shine: rgba(255, 255, 255, 0.62);
+  color: #27362f;
+  background: #f4eade;
+}
+
+.marketingNav {
+  min-height: 72px;
+  padding: 12px clamp(20px, 3.2vw, 54px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(39, 54, 47, 0.14);
+}
+
+.brandPlaceholder,
+.navPlaceholder,
+.workspaceToolbar,
+.workspaceIdentity,
+.workspaceHeader,
+.summaryPlaceholder {
+  display: flex;
+  align-items: center;
+}
+
+.brandPlaceholder { gap: 10px; }
+.navPlaceholder { gap: 24px; }
+
+.markPlaceholder {
+  width: 32px;
+  height: 33px;
+  border-radius: 10px;
+}
+
+.navButtonPlaceholder {
+  width: 136px;
+  height: 42px;
+  border-radius: 999px;
+}
+
+.marketingHero {
+  min-height: calc(100svh - 72px);
+  padding: clamp(76px, 12vh, 132px) clamp(24px, 7vw, 110px) 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.heroTitlePlaceholder {
+  width: min(1050px, 94%);
+  margin-top: clamp(32px, 6vh, 68px);
+  display: grid;
+  gap: clamp(14px, 2vw, 25px);
+}
+
+.heroTitlePlaceholder .bone {
+  height: clamp(48px, 7vw, 102px);
+  border-radius: 18px;
+}
+
+.copyPlaceholder {
+  width: min(560px, 90%);
+  margin-top: clamp(34px, 6vh, 72px);
+  display: grid;
+  gap: 12px;
+}
+
+.copyPlaceholder .bone { height: 13px; }
+
+.heroRulePlaceholder {
+  width: 54px;
+  height: 3px;
+  margin-top: 38px;
+}
+
+.workspaceShell {
+  --skeleton-base: rgba(255, 255, 255, 0.08);
+  --skeleton-shine: rgba(255, 255, 255, 0.11);
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  color: #f5f7fb;
+  background: linear-gradient(160deg, #232527, #16161b);
+}
+
+.workspaceSidebar {
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(18, 22, 28, 0.84);
+}
+
+.workspaceToolbar { gap: 8px; }
+
+.roundPlaceholder {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.workspaceIdentity {
+  min-height: 74px;
+  padding: 14px;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+}
+
+.workspaceIdentity > div,
+.workspaceHeader > div,
+.summaryPlaceholder > div,
+.listingCopyPlaceholder {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebarRows { display: grid; gap: 9px; }
+.sidebarRows .bone { width: 100%; height: 42px; border-radius: 13px; }
+
+.workspaceMain {
+  min-width: 0;
+  padding: 22px clamp(18px, 3vw, 38px) 40px;
+}
+
+.workspaceHeader { justify-content: space-between; }
+
+.summaryPlaceholder {
+  min-height: 116px;
+  margin-top: 30px;
+  padding: 20px;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.summaryMetricPlaceholder {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+}
+
+.workspaceTabs {
+  margin-top: 22px;
+  display: flex;
+  gap: 9px;
+}
+
+.workspaceTabs .bone { width: 92px; height: 36px; }
+
+.cardGridPlaceholder {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.listingPlaceholder {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.imagePlaceholder {
+  width: 100%;
+  height: 148px;
+  border-radius: 14px;
+}
+
+.listingCopyPlaceholder { padding: 14px 4px 4px; }
+
+.accountShell {
+  --skeleton-base: rgba(255, 255, 255, 0.09);
+  --skeleton-shine: rgba(255, 255, 255, 0.13);
+  padding: 32px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #2d3935, #14181a);
+}
+
+.accountCardPlaceholder {
+  width: min(1080px, 100%);
+  min-height: min(720px, calc(100svh - 64px));
+  padding: 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 34px;
+  background: rgba(25, 31, 35, 0.86);
+}
+
+.accountIntroPlaceholder { padding: 22px 10px; }
+
+.accountTitlePlaceholder {
+  margin-top: 74px;
+  display: grid;
+  gap: 14px;
+}
+
+.accountTitlePlaceholder .bone {
+  height: clamp(44px, 5vw, 72px);
+  border-radius: 15px;
+}
+
+.accountFormPlaceholder {
+  padding: 28px;
+  align-self: center;
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.fieldStackPlaceholder {
+  margin-top: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.fieldStackPlaceholder .bone {
+  width: 100%;
+  height: 52px;
+  border-radius: 16px;
+}
+
+.submitPlaceholder {
+  width: 100%;
+  height: 50px;
+  margin-top: 10px;
+  border-radius: 16px;
+}
+
+@keyframes skeleton-shimmer {
+  to { transform: translateX(110%); }
+}
+
+@media (max-width: 900px) {
+  .cardGridPlaceholder { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .navPlaceholder .bone:not(.navButtonPlaceholder) { display: none; }
+  .navButtonPlaceholder { width: 112px; }
+  .marketingHero { justify-content: flex-start; padding-top: 110px; }
+  .heroTitlePlaceholder { width: 100%; }
+  .heroTitlePlaceholder .bone { height: clamp(42px, 12vw, 74px); }
+
+  .workspaceShell { grid-template-columns: 1fr; }
+  .workspaceSidebar { display: none; }
+  .workspaceMain { padding: 18px 14px 34px; }
+  .workspaceHeader > div:first-child .bone:last-child { width: 210px !important; }
+  .cardGridPlaceholder { grid-template-columns: 1fr; }
+  .listingPlaceholder:nth-child(n + 4) { display: none; }
+
+  .accountShell { padding: 14px; }
+  .accountCardPlaceholder {
+    min-height: calc(100svh - 28px);
+    padding: 22px;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .accountTitlePlaceholder { margin-top: 38px; }
+  .accountFormPlaceholder { padding: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bone::after { animation: none; }
+}

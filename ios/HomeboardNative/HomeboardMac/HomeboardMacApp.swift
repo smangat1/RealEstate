@@ -306,11 +306,11 @@ private struct HomeboardMacConnectionView: View {
 
       VStack(alignment: .leading, spacing: model.isConnected ? 18 : 22) {
         HStack(spacing: 12) {
-          Image(systemName: "house.and.flag.fill")
-            .font(.system(size: 23, weight: .bold))
-            .foregroundStyle(HomeboardMacPalette.accent)
+          Image("homeboard-mark")
+            .resizable()
+            .scaledToFit()
             .frame(width: 46, height: 46)
-            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+            .background(HomeboardMacPalette.accent, in: RoundedRectangle(cornerRadius: 14))
           VStack(alignment: .leading, spacing: 3) {
             Text("HOMEBOARD")
               .font(.system(size: 12, weight: .heavy))

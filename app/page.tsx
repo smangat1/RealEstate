@@ -1,17 +1,45 @@
 import Image from "next/image";
 import type { Metadata } from "next";
 
+import { getMarketingSlide } from "@/lib/marketing-slides";
+import { getSiteUrl } from "@/lib/site-url";
 import { InstallExperience, InstallTrigger } from "./install-experience";
 import { MarketingPager } from "./marketing-pager";
 import styles from "./marketing.module.css";
 
-export const metadata: Metadata = {
-  title: {
-    absolute: "Homeboard — Pick your next home on vibes",
-  },
-  description:
-    "Save the places you fall for. Homeboard handles the commute math, comparisons, and group tradeoffs.",
+type HomePageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const requestedSlide = Array.isArray(params.slide) ? params.slide[0] : params.slide;
+  const slide = getMarketingSlide(requestedSlide);
+  const siteUrl = getSiteUrl();
+  const shareUrl = new URL(slide.key === "vibes" ? "/" : `/?slide=${slide.key}`, siteUrl);
+  const previewImage = new URL(`/api/og?slide=${slide.key}`, siteUrl);
+  const title = slide.key === "vibes" ? "Homeboard — Pick your next home on vibes" : `${slide.title} · Homeboard`;
+
+  return {
+    title: { absolute: title },
+    description: slide.description,
+    alternates: { canonical: shareUrl },
+    openGraph: {
+      type: "website",
+      siteName: "Homeboard",
+      url: shareUrl,
+      title,
+      description: slide.description,
+      images: [{ url: previewImage, width: 1200, height: 630, alt: `Homeboard: ${slide.title}` }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: slide.description,
+      images: [previewImage],
+    },
+  };
+}
 
 export default function HomePage() {
   return (
@@ -29,7 +57,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <a className={styles.scrollPrompt} href="#problem" aria-label="Continue to the next page">↓</a>
+        <a className={styles.scrollPrompt} href="/?slide=problem#problem" aria-label="Continue to the next page">↓</a>
       </section>
 
       <section className={`${styles.statement} ${styles.mapsStatement}`} id="problem" data-page-item aria-labelledby="problem-heading">

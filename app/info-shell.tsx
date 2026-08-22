@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { BrandMark } from "@/components/brand-mark";
 import styles from "./info.module.css";
 
 const currentYear = new Date().getFullYear();
@@ -8,7 +9,8 @@ export function InfoHeader() {
   return (
     <header className={styles.nav}>
       <Link className={styles.logo} href="/" aria-label="Homeboard home">
-        Homeboard
+        <BrandMark className={styles.logoMark} />
+        <span>Homeboard</span>
       </Link>
 
       <nav className={styles.desktopLinks} aria-label="Information pages">
@@ -33,7 +35,8 @@ export function InfoFooter() {
   return (
     <footer className={styles.footer}>
       <Link className={styles.footerLogo} href="/" aria-label="Homeboard home">
-        Homeboard
+        <BrandMark className={styles.footerLogoMark} />
+        <span>Homeboard</span>
       </Link>
       <nav aria-label="Footer">
         <Link href="/privacy">Privacy</Link>

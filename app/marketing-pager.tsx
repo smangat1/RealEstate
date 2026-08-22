@@ -3,12 +3,13 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { getMarketingSlideIndex, MARKETING_SLIDES } from "@/lib/marketing-slides";
 import { MarketingHeader } from "./marketing-header";
 import styles from "./marketing.module.css";
 
 const PAGE_SELECTOR = "[data-page-item]";
-const PAGE_HASHES = ["#top", "#problem", "#thinking", "#product"];
-const PAGE_LABELS = ["Vibes", "The problem", "Doomscroll", "What Homeboard does"];
+const PAGE_HASHES = MARKETING_SLIDES.map((slide) => slide.hash);
+const PAGE_LABELS = MARKETING_SLIDES.map((slide) => slide.label);
 const LAST_PAGE = PAGE_HASHES.length - 1;
 const MOBILE_QUERY = "(max-width: 720px)";
 
@@ -61,9 +62,12 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     setActivePage(nextPage);
     const root = rootRef.current;
     if (root) root.dataset.page = String(nextPage);
-    if (window.location.hash !== PAGE_HASHES[nextPage]) {
-      window.history.replaceState(null, "", PAGE_HASHES[nextPage]);
-    }
+    const nextSlide = MARKETING_SLIDES[nextPage];
+    const nextUrl = new URL(window.location.href);
+    if (nextPage === 0) nextUrl.searchParams.delete("slide");
+    else nextUrl.searchParams.set("slide", nextSlide.key);
+    nextUrl.hash = nextSlide.hash;
+    window.history.replaceState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
     return nextPage;
   }, []);
 
@@ -116,8 +120,10 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     const configure = () => {
       updateViewportHeight();
       mobileRef.current = mediaQuery.matches;
-      const hashIndex = PAGE_HASHES.indexOf(window.location.hash);
-      const hashPage = hashIndex >= 0 ? hashIndex : activePageRef.current;
+      const querySlide = new URLSearchParams(window.location.search).get("slide");
+      const queryPage = querySlide ? getMarketingSlideIndex(querySlide) : -1;
+      const hashIndex = PAGE_HASHES.indexOf(window.location.hash as (typeof PAGE_HASHES)[number]);
+      const hashPage = queryPage >= 0 ? queryPage : hashIndex >= 0 ? hashIndex : activePageRef.current;
       activePageRef.current = hashPage;
       setActivePage(hashPage);
       root.dataset.page = String(hashPage);
@@ -246,7 +252,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     };
 
     const onHashChange = () => {
-      const hashPage = PAGE_HASHES.indexOf(window.location.hash);
+      const hashPage = PAGE_HASHES.indexOf(window.location.hash as (typeof PAGE_HASHES)[number]);
       if (hashPage >= 0) goToPage(hashPage);
     };
 

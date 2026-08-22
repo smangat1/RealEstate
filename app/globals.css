@@ -285,12 +285,15 @@ html[data-theme="light"] .mac-sidebar {
   white-space: nowrap;
 }
 
-.brand-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, var(--accent), var(--success));
-  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 35%, transparent);
+.brand-mark {
+  width: 34px;
+  height: 35px;
+  padding: 5px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #f4eade;
+  filter: drop-shadow(0 7px 12px color-mix(in srgb, var(--accent) 18%, transparent));
 }
 
 .sidebar-brand p,

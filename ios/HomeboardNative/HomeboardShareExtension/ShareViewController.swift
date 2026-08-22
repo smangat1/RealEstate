@@ -132,6 +132,17 @@ final class ShareViewController: UIViewController {
   }
 
   private func makeHeader() -> UIView {
+    let brandIcon = UIImageView(image: UIImage(named: "homeboard-mark"))
+    brandIcon.contentMode = .scaleAspectFit
+    brandIcon.backgroundColor = accentColor
+    brandIcon.layer.cornerRadius = 7
+    brandIcon.clipsToBounds = true
+    brandIcon.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      brandIcon.widthAnchor.constraint(equalToConstant: 22),
+      brandIcon.heightAnchor.constraint(equalToConstant: 22)
+    ])
+
     let brand = UILabel()
     brand.text = "HOMEBOARD"
     brand.textColor = accentColor
@@ -155,7 +166,12 @@ final class ShareViewController: UIViewController {
       closeButton.heightAnchor.constraint(equalToConstant: 32)
     ])
 
-    let labels = UIStackView(arrangedSubviews: [brand, providerLabel])
+    let brandRow = UIStackView(arrangedSubviews: [brandIcon, brand])
+    brandRow.axis = .horizontal
+    brandRow.alignment = .center
+    brandRow.spacing = 7
+
+    let labels = UIStackView(arrangedSubviews: [brandRow, providerLabel])
     labels.axis = .vertical
     labels.spacing = 2
 
@@ -296,7 +312,7 @@ final class ShareViewController: UIViewController {
     }
     sharedTitle = itemText
       .map(cleanedTitle)
-      .first(where: { !$0.isEmpty })
+      .first(where: { !$0.isEmpty })p
     sharedURL = itemText.compactMap(firstWebURL).first
 
     guard !providers.isEmpty else {
@@ -2104,6 +2120,17 @@ final class ShareViewController: UIViewController {
     view.backgroundColor = backgroundColor
     preferredContentSize = CGSize(width: 0, height: 260)
 
+    let brandIcon = UIImageView(image: UIImage(named: "homeboard-mark"))
+    brandIcon.contentMode = .scaleAspectFit
+    brandIcon.backgroundColor = accentColor
+    brandIcon.layer.cornerRadius = 8
+    brandIcon.clipsToBounds = true
+    brandIcon.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      brandIcon.widthAnchor.constraint(equalToConstant: 26),
+      brandIcon.heightAnchor.constraint(equalToConstant: 27)
+    ])
+
     let brand = UILabel()
     brand.text = "HOMEBOARD"
     brand.textColor = accentColor
@@ -2130,7 +2157,12 @@ final class ShareViewController: UIViewController {
     closeButton.configuration?.baseForegroundColor = backgroundColor
     closeButton.addTarget(self, action: #selector(cancel), for: .touchUpInside)
 
-    let stack = UIStackView(arrangedSubviews: [brand, title, explanation, closeButton])
+    let brandRow = UIStackView(arrangedSubviews: [brandIcon, brand])
+    brandRow.axis = .horizontal
+    brandRow.alignment = .center
+    brandRow.spacing = 8
+
+    let stack = UIStackView(arrangedSubviews: [brandRow, title, explanation, closeButton])
     stack.axis = .vertical
     stack.spacing = 12
     stack.translatesAutoresizingMaskIntoConstraints = false

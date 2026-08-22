@@ -952,15 +952,22 @@ private struct BoardMobileTopBar: View {
 
   var body: some View {
     HStack(spacing: 12) {
-      VStack(alignment: .leading, spacing: 3) {
-        Text("HOMEBOARD")
-          .font(.caption2.weight(.bold))
-          .tracking(2.6)
-          .foregroundStyle(HomeboardPalette.accent)
+      HStack(spacing: 9) {
+        Image("HomeboardMark")
+          .resizable()
+          .scaledToFit()
+          .frame(width: 30, height: 31)
 
-        Text("Shared rental workspace")
-          .font(.footnote.weight(.medium))
-          .foregroundStyle(HomeboardPalette.secondaryText)
+        VStack(alignment: .leading, spacing: 3) {
+          Text("HOMEBOARD")
+            .font(.caption2.weight(.bold))
+            .tracking(2.6)
+            .foregroundStyle(HomeboardPalette.accent)
+
+          Text("Shared rental workspace")
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        }
       }
 
       Spacer()
