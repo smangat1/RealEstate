@@ -159,6 +159,12 @@ test("launch intro overlaps bootstrap and hands off immediately to a restored bo
     /let canShowRestoredBoard = currentScreen == \.board && board\.id != nil/,
   );
   assert.match(bootstrapFlow, /isBootstrapping = !canShowRestoredBoard/);
+  assert.match(bootstrapFlow, /isRestoredBoardRefreshing = canShowRestoredBoard/);
+  assert.match(bootstrapFlow, /isRestoredBoardRefreshing = false/);
+  assert.match(
+    workspaceSource,
+    /if appModel\.isListingInventoryLoading \|\| appModel\.isRestoredBoardRefreshing/,
+  );
   assert.match(rootSource, /\.task \{[\s\S]*await appModel\.bootstrap\(\)[\s\S]*\.task \{/);
   assert.match(rootSource, /Task\.sleep\(for: \.seconds\(1\.45\)\)/);
 });

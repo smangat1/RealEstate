@@ -952,9 +952,10 @@ struct SharedSearchMapView: View {
           .transition(.move(edge: .top).combined(with: .opacity))
         }
 
-        if appModel.isListingInventoryLoading {
+        if appModel.isListingInventoryLoading || appModel.isRestoredBoardRefreshing {
           HomeboardSkeletonBlock(width: 92, height: 9, cornerRadius: 5)
             .frame(maxWidth: .infinity, alignment: .trailing)
+            .accessibilityLabel("Refreshing map data")
         }
       }
       .padding(.horizontal, 14)

@@ -84,6 +84,7 @@ final class AppModel {
   var isAuthLoading = false
   var isOnboardingLoading = false
   var isBoardLoading = false
+  var isRestoredBoardRefreshing = false
   var isPostingBoardUpdate = false
   var authError: String?
   var authFeedback: String?
@@ -148,8 +149,10 @@ final class AppModel {
     // to useful content while the network refresh finishes in the background.
     let canShowRestoredBoard = currentScreen == .board && board.id != nil
     isBootstrapping = !canShowRestoredBoard
+    isRestoredBoardRefreshing = canShowRestoredBoard
     defer {
       isBootstrapping = false
+      isRestoredBoardRefreshing = false
       persist()
     }
 
