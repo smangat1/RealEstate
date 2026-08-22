@@ -2,8 +2,6 @@ import { ImageResponse } from "next/og";
 
 import { getMarketingSlide } from "@/lib/marketing-slides";
 
-export const runtime = "edge";
-
 export function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const slide = getMarketingSlide(requestUrl.searchParams.get("slide"));
