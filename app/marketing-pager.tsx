@@ -17,6 +17,41 @@ function insideOpenDialog(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest("dialog[open]"));
 }
 
+function setMetaContent(selector: string, content: string) {
+  document.querySelectorAll<HTMLMetaElement>(selector).forEach((element) => {
+    element.content = content;
+  });
+}
+
+function syncShareMetadata(page: number) {
+  const slide = MARKETING_SLIDES[page];
+  const pageUrl = new URL(window.location.href);
+  if (page === 0) pageUrl.searchParams.delete("slide");
+  else pageUrl.searchParams.set("slide", slide.key);
+  pageUrl.hash = slide.hash;
+  window.history.replaceState(null, "", `${pageUrl.pathname}${pageUrl.search}${pageUrl.hash}`);
+
+  const canonicalUrl = new URL(pageUrl.pathname, pageUrl.origin);
+  if (page > 0) canonicalUrl.searchParams.set("slide", slide.key);
+  const previewImage = new URL("/api/og", pageUrl.origin);
+  previewImage.searchParams.set("slide", slide.key);
+  const title = page === 0 ? "Homeboard — Pick your next home on vibes" : `${slide.title} · Homeboard`;
+
+  document.title = title;
+  document.querySelectorAll<HTMLLinkElement>('link[rel="canonical"]').forEach((element) => {
+    element.href = canonicalUrl.toString();
+  });
+  setMetaContent('meta[name="description"]', slide.description);
+  setMetaContent('meta[property="og:title"]', title);
+  setMetaContent('meta[property="og:description"]', slide.description);
+  setMetaContent('meta[property="og:url"]', canonicalUrl.toString());
+  setMetaContent('meta[property="og:image"]', previewImage.toString());
+  setMetaContent('meta[property="og:image:alt"]', `Homeboard: ${slide.title}`);
+  setMetaContent('meta[name="twitter:title"]', title);
+  setMetaContent('meta[name="twitter:description"]', slide.description);
+  setMetaContent('meta[name="twitter:image"]', previewImage.toString());
+}
+
 export function MarketingPager({ children }: { children: ReactNode }) {
   const rootRef = useRef<HTMLElement>(null);
   const activePageRef = useRef(0);
@@ -62,12 +97,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
     setActivePage(nextPage);
     const root = rootRef.current;
     if (root) root.dataset.page = String(nextPage);
-    const nextSlide = MARKETING_SLIDES[nextPage];
-    const nextUrl = new URL(window.location.href);
-    if (nextPage === 0) nextUrl.searchParams.delete("slide");
-    else nextUrl.searchParams.set("slide", nextSlide.key);
-    nextUrl.hash = nextSlide.hash;
-    window.history.replaceState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+    syncShareMetadata(nextPage);
     return nextPage;
   }, []);
 
@@ -127,6 +157,7 @@ export function MarketingPager({ children }: { children: ReactNode }) {
       activePageRef.current = hashPage;
       setActivePage(hashPage);
       root.dataset.page = String(hashPage);
+      syncShareMetadata(hashPage);
 
       if (mobileRef.current) {
         delete root.dataset.revealReady;

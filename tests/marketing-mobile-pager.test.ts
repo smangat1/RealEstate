@@ -54,8 +54,13 @@ test("marketing keeps fixed touch paging on phones and progress-linked scrolling
 });
 
 test("each marketing slide has a server-visible share URL and branded rich preview", () => {
-  assert.match(pager, /searchParams\.set\("slide", nextSlide\.key\)/);
+  assert.match(pager, /searchParams\.set\("slide", slide\.key\)/);
   assert.match(pager, /new URLSearchParams\(window\.location\.search\)\.get\("slide"\)/);
+  assert.match(pager, /function syncShareMetadata\(page: number\)/);
+  assert.match(pager, /document\.title = title/);
+  assert.match(pager, /link\[rel="canonical"\]/);
+  assert.match(pager, /meta\[property="og:image"\]/);
+  assert.match(pager, /syncShareMetadata\(hashPage\)/);
   assert.match(page, /generateMetadata/);
   assert.match(page, /summary_large_image/);
   assert.match(page, /\/api\/og\?slide=/);
