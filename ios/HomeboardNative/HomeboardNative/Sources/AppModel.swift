@@ -143,7 +143,11 @@ final class AppModel {
     didBootstrap = true
     guard let session = authSession else { return }
 
-    isBootstrapping = true
+    // RootView starts this refresh underneath the launch intro. When a board was
+    // restored from disk, keep it available so the intro can hand off directly
+    // to useful content while the network refresh finishes in the background.
+    let canShowRestoredBoard = currentScreen == .board && board.id != nil
+    isBootstrapping = !canShowRestoredBoard
     defer {
       isBootstrapping = false
       persist()

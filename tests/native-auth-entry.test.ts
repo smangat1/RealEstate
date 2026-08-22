@@ -148,6 +148,21 @@ test("board loading avoids read-time maintenance writes and shows cached data im
   assert.match(continueFlow, /Task \{[\s\S]*try await loadBoard\(id: firstBoard\.id\)/);
 });
 
+test("launch intro overlaps bootstrap and hands off immediately to a restored board", () => {
+  const bootstrapFlow = appModelSource.slice(
+    appModelSource.indexOf("func bootstrap"),
+    appModelSource.indexOf("func openAuth"),
+  );
+
+  assert.match(
+    bootstrapFlow,
+    /let canShowRestoredBoard = currentScreen == \.board && board\.id != nil/,
+  );
+  assert.match(bootstrapFlow, /isBootstrapping = !canShowRestoredBoard/);
+  assert.match(rootSource, /\.task \{[\s\S]*await appModel\.bootstrap\(\)[\s\S]*\.task \{/);
+  assert.match(rootSource, /Task\.sleep\(for: \.seconds\(1\.45\)\)/);
+});
+
 test("the post-auth board chooser is compact, immediate, and does not reset tab navigation", () => {
   assert.match(appleAuthViewSource, /if appModel\.showsPostAuthInvitePrompt/);
   assert.doesNotMatch(appleAuthViewSource, /\.sheet\(isPresented: postAuthInviteBinding\)/);
