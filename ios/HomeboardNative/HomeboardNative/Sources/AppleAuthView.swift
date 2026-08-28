@@ -82,7 +82,7 @@ struct AppleAuthView: View {
               finishAppleAuthorization(result)
             }
             .signInWithAppleButtonStyle(.white)
-            .frame(height: 56)
+            .frame(height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .disabled(appModel.isAuthLoading)
             .opacity(appModel.isAuthLoading ? 0.58 : 1)
@@ -94,7 +94,7 @@ struct AppleAuthView: View {
                 .tint(.white)
             }
           }
-          .frame(height: 56)
+          .frame(height: 50)
 
           Label(
             "Homeboard receives an Apple identity token—not your Apple password.",

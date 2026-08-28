@@ -204,6 +204,7 @@ test("release account entry is Apple-only while Personal-Team Debug has an isola
   assert.match(appleAuthViewSource, /#if DEBUG[\s\S]*developmentLogin/);
   assert.match(appleAuthViewSource, /#if !DEBUG[\s\S]*SignInWithAppleButton/);
   assert.match(appleAuthViewSource, /SecureField\("Password"/);
+  assert.match(appleAuthViewSource, /SignInWithAppleButton[\s\S]*\.frame\(height: 50\)/);
   assert.match(appModelSource, /#if DEBUG[\s\S]*func submitDevelopmentAuth/);
   assert.doesNotMatch(debugEntitlements, /com\.apple\.developer\.applesignin/);
   assert.match(macEntitlements, /com\.apple\.developer\.applesignin/);
