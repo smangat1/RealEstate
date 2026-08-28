@@ -95,7 +95,7 @@ xcodebuild -quiet \
 
 ## Remaining external integrations
 
-- Enable Sign in with Apple for the iPhone and Mac App IDs, group them under one primary App ID, and add every native App ID to Supabase Auth's Apple provider Client IDs.
+- Add the provisioned iPhone and Mac App IDs to Supabase Auth's Apple provider Client IDs, then verify the related App IDs are grouped under one primary App ID before distribution.
 - Deploy the Next.js backend and set the two native URL build settings.
 - Supply a Supabase pooler connection string if the direct database hostname is not reachable over IPv4.
 - Set `HOMEBOARD_ADMIN_EMAILS` for server-only source verification.

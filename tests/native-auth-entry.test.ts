@@ -189,7 +189,7 @@ test("the post-auth board chooser is compact, immediate, and does not reset tab 
   assert.doesNotMatch(boardLoad, /boardTab = \.board/);
 });
 
-test("release account entry is Apple-only while Personal-Team Debug has an isolated demo login", () => {
+test("every native build configuration uses Apple-only account entry", () => {
   assert.match(rootSource, /case \.auth:[\s\S]*AppleAuthView\(\)/);
   assert.match(appleAuthViewSource, /SignInWithAppleButton\(\.continue\)/);
   assert.match(appleAuthViewSource, /HomeboardAppleSignIn\.prepare\(request\)/);
@@ -201,14 +201,15 @@ test("release account entry is Apple-only while Personal-Team Debug has an isola
   assert.match(appModelSource, /func submitAppleAuth/);
   assert.match(entitlements, /com\.apple\.developer\.applesignin/);
   assert.match(welcomeSource, /Continue with Apple/);
-  assert.match(appleAuthViewSource, /#if DEBUG[\s\S]*developmentLogin/);
-  assert.match(appleAuthViewSource, /#if !DEBUG[\s\S]*SignInWithAppleButton/);
-  assert.match(appleAuthViewSource, /SecureField\("Password"/);
+  assert.doesNotMatch(appleAuthViewSource, /developmentLogin|DEVELOPMENT ACCOUNT|Personal Team/);
+  assert.doesNotMatch(appleAuthViewSource, /SecureField\("Password"/);
   assert.match(appleAuthViewSource, /SignInWithAppleButton[\s\S]*\.frame\(height: 50\)/);
-  assert.match(appModelSource, /#if DEBUG[\s\S]*func submitDevelopmentAuth/);
-  assert.doesNotMatch(debugEntitlements, /com\.apple\.developer\.applesignin/);
+  assert.doesNotMatch(appModelSource, /func submitDevelopmentAuth/);
+  assert.match(debugEntitlements, /com\.apple\.developer\.applesignin/);
+  assert.match(debugEntitlements, /<key>aps-environment<\/key>[\s\S]*<string>development<\/string>/);
+  assert.match(entitlements, /<key>aps-environment<\/key>[\s\S]*<string>production<\/string>/);
   assert.match(macEntitlements, /com\.apple\.developer\.applesignin/);
-  assert.doesNotMatch(macDebugEntitlements, /com\.apple\.developer\.applesignin/);
+  assert.match(macDebugEntitlements, /com\.apple\.developer\.applesignin/);
   assert.match(
     nativeProjectDefinition,
     /Debug:[\s\S]*CODE_SIGN_ENTITLEMENTS: HomeboardMac\/HomeboardMacDebug\.entitlements[\s\S]*PRODUCT_BUNDLE_IDENTIFIER: com\.homeboard\.native\.mac\.dev/,

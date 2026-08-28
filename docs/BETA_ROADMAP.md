@@ -1,6 +1,6 @@
 # Homeboard beta roadmap
 
-Last audited: August 18, 2026
+Last audited: August 28, 2026
 
 ## Beta definition
 
@@ -16,10 +16,10 @@ Public listing discovery, licensed listing photos, a Zillow-sized inventory feed
 
 ## Current build status
 
-- The Debug app signs successfully for the connected iPhone using the Personal Team profile.
-- Debug has a temporary development account because Personal Teams cannot provision Sign in with Apple.
-- Release still uses Sign in with Apple and compiles without signing.
-- The web production build, TypeScript checks, Prisma validation, and 53 automated tests pass.
+- The paid Apple Developer Program team signs the iPhone and Mac apps with Xcode-managed profiles.
+- Every iPhone and Mac build configuration now uses Sign in with Apple; the temporary Debug password fallback has been removed.
+- The signed iPhone Debug profile includes Sign in with Apple, development APNs, App Groups, and shared Keychain access. Release declares production APNs.
+- TypeScript checks and all 90 automated tests pass.
 - The native iOS test bundle compiles for a generic physical device, but the full native suite has not been run as a signed device test suite.
 - Listing mutation journaling, URL-and-unit deduplication, deletion retry, richer SLM evidence, and comparison-map evidence scoring are implemented.
 
@@ -62,10 +62,10 @@ Exit condition: a phone on cellular data can sign in, create a board, save a lin
 
 ### 4. Finish production authentication and signing
 
-Current issue: the Apple provider is disabled in the live Supabase project, and the current Apple team is a Personal Team that cannot sign a Release app with the Sign in with Apple capability.
+Current issue: Apple signing and native entitlements are unlocked, but the Apple provider is still disabled in the live Supabase project and end-to-end sign-in has not been exercised.
 
-- [ ] Enroll in or select an eligible Apple Developer Program team.
-- [ ] Register the iOS and Mac App IDs and enable Sign in with Apple.
+- [x] Enroll in and select the paid Apple Developer Program team.
+- [x] Register the iOS and Mac App IDs and enable Sign in with Apple.
 - [ ] Group related identifiers under the correct primary App ID.
 - [ ] Enable the Apple provider in Supabase and configure the native client IDs.
 - [ ] Test first-time creation, returning sign-in, hidden-email relay, canceled authorization, revoked authorization, expired sessions, and account deletion.

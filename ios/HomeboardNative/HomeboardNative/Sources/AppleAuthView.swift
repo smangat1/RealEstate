@@ -4,10 +4,6 @@ import SwiftUI
 struct AppleAuthView: View {
   @Environment(AppModel.self) private var appModel
   @State private var appleNonce: String?
-  #if DEBUG
-  @State private var developmentUsername = "demoaccount"
-  @State private var developmentPassword = ""
-  #endif
 
   var body: some View {
     ZStack {
@@ -34,11 +30,7 @@ struct AppleAuthView: View {
               .fixedSize(horizontal: false, vertical: true)
           }
 
-          #if DEBUG
-          developmentLogin
-          #else
           appleBenefits
-          #endif
 
           if let error = appModel.authError, !error.isEmpty {
             Label(error, systemImage: "exclamationmark.circle.fill")
@@ -68,7 +60,6 @@ struct AppleAuthView: View {
             .disabled(appModel.isAuthLoading)
           }
 
-          #if !DEBUG
           ZStack {
             SignInWithAppleButton(.continue) { request in
               do {
@@ -103,7 +94,6 @@ struct AppleAuthView: View {
           .font(.caption.weight(.medium))
           .foregroundStyle(HomeboardPalette.tertiaryText)
           .fixedSize(horizontal: false, vertical: true)
-          #endif
 
           Spacer(minLength: 8)
         }
@@ -148,13 +138,8 @@ struct AppleAuthView: View {
       Spacer()
 
       HStack(spacing: 6) {
-        #if DEBUG
-        Image(systemName: "hammer.fill")
-        Text("DEVELOPMENT ACCOUNT")
-        #else
         Image(systemName: "apple.logo")
         Text("APPLE ACCOUNT")
-        #endif
       }
       .font(.caption2.weight(.bold))
       .tracking(1.4)
@@ -163,66 +148,12 @@ struct AppleAuthView: View {
   }
 
   private var authTitle: String {
-    #if DEBUG
-    return "Open the test account."
-    #else
     return "One account. No password."
-    #endif
   }
 
   private var authSubtitle: String {
-    #if DEBUG
-    return "Use the temporary Homeboard credentials while this Personal Team build cannot provision Sign in with Apple."
-    #else
     return "Continue with the Apple Account already on this device. Apple securely creates your Homeboard account the first time and signs you back in after that."
-    #endif
   }
-
-  #if DEBUG
-  private var developmentLogin: some View {
-    VStack(spacing: 10) {
-      TextField("Username", text: $developmentUsername)
-        .textInputAutocapitalization(.never)
-        .autocorrectionDisabled()
-        .padding(.horizontal, 14)
-        .frame(height: 48)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-      SecureField("Password", text: $developmentPassword)
-        .textContentType(.password)
-        .padding(.horizontal, 14)
-        .frame(height: 48)
-        .background(Color.white.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-      Button {
-        Task {
-          await appModel.submitDevelopmentAuth(
-            username: developmentUsername,
-            password: developmentPassword
-          )
-        }
-      } label: {
-        ZStack {
-          Text("Sign in")
-            .font(.headline.weight(.bold))
-            .foregroundStyle(HomeboardPalette.buttonText)
-            .opacity(appModel.isAuthLoading ? 0 : 1)
-          if appModel.isAuthLoading {
-            ProgressView().tint(HomeboardPalette.buttonText)
-          }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 52)
-        .background(HomeboardPalette.accent)
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-      }
-      .buttonStyle(.plain)
-      .disabled(appModel.isAuthLoading)
-    }
-  }
-  #endif
 
   private var appleBenefits: some View {
     VStack(alignment: .leading, spacing: 11) {

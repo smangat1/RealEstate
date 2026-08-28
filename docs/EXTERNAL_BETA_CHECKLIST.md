@@ -18,7 +18,7 @@ The application code can be built and tested locally without these items. The fo
 
 ## Apple and Supabase Auth
 
-- Enable Sign in with Apple for `com.homeboard.native`, `com.homeboard.native.mac`, and the Mac debug App ID; group the related App IDs under one primary identifier.
+- Sign in with Apple is provisioned for `com.homeboard.native`, `com.homeboard.native.mac`, and the Mac debug App ID. Verify the identifiers are grouped under the intended primary identifier before TestFlight distribution.
 - Enable the Apple provider in Supabase Auth and list each native App ID in Client IDs. The live project currently reports the Apple provider as disabled.
 - Test first-time Apple account creation, returning sign-in, hidden-email relay, account deletion, and an expired invite with non-owner accounts.
 
@@ -51,7 +51,7 @@ The application code can be built and tested locally without these items. The fo
 ## External services
 
 - Add a licensed listings provider behind `ListingProvider`; Homeboard intentionally does not scrape or invent live inventory.
-- Configure Apple Push Notification credentials and deploy a notification sender. Device registration is already implemented, but no server sender exists yet.
+- The signed iPhone app now registers with APNs in development and declares the production APNs entitlement. Configure an APNs signing key and deploy a notification sender; device registration is implemented, but no server sender exists yet.
 - Keep OpenRouteService configured for server summaries if desired; the native app already uses MapKit for member-to-listing route comparisons.
 
 ## Required human QA

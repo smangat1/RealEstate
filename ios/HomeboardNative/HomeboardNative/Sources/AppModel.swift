@@ -379,50 +379,6 @@ final class AppModel {
     }
   }
 
-  #if DEBUG
-  func submitDevelopmentAuth(username: String, password: String) async {
-    authError = nil
-    authFeedback = nil
-    let normalizedUsername = username
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .lowercased()
-    guard normalizedUsername == "demoaccount" else {
-      authError = "Use the Homeboard development username."
-      return
-    }
-    guard !password.isEmpty else {
-      authError = "Enter the development password."
-      return
-    }
-
-    isAuthLoading = true
-    defer {
-      isAuthLoading = false
-      persist()
-    }
-
-    do {
-      let session = try await api.signIn(
-        email: "demoaccount@homeboard.local",
-        password: password
-      )
-      authSession = session
-      account = LocalAccount(
-        id: session.userId,
-        name: session.displayName,
-        email: session.email
-      )
-      NativeAuthSessionStore.save(session)
-      let response = try await api.fetchSession(accessToken: session.accessToken)
-      applySessionResponse(response, session: session)
-      pendingConfirmationEmail = ""
-      showsPostAuthInvitePrompt = true
-    } catch {
-      authError = readableAuthError(error, email: "the development account")
-    }
-  }
-  #endif
-
   func resendSignUpConfirmation(email: String) async {
     authError = nil
     authFeedback = nil
