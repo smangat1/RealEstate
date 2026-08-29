@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect } from "react";
 
 import styles from "./marketing.module.css";
 
@@ -30,6 +31,12 @@ export function InstallTrigger({
 }
 
 export function InstallExperience() {
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("install") !== "1") return;
+    const dialog = document.getElementById(INSTALL_DIALOG_ID) as HTMLDialogElement | null;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
   return (
     <dialog
       className={styles.installDialog}

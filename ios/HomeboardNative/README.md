@@ -8,7 +8,7 @@ The checked-in targets use the shared Vercel production deployment. For local de
 
 Generate and verify the project from the repository root with `npm run ios:generate`, `npm run ios:test`, and `npm run ios:release`. The unit suite covers profile completion and exact listing-coordinate persistence; the UI suite verifies a clean first launch on the supported simulator.
 
-The app registers the `homeboard://` URL scheme. A link such as `homeboard://invite/ABC123` stages the invite code, then continues through real authentication before joining the board.
+The app registers the `homeboard://` URL scheme. A shared web invitation opens a bridge page whose **Open in iPhone app** action stages the secure bearer token, then continues through Sign in with Apple before joining the board. The app also accepts a pasted full link or token as a fallback.
 
 The empty `UILaunchScreen` entry in `HomeboardNative/Info.plist` is intentional. Removing it causes modern simulators to render the app inside an incorrect inset compatibility canvas.
 

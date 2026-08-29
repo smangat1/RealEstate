@@ -25,6 +25,7 @@ Public listing discovery, licensed listing photos, a Zillow-sized inventory feed
 - The native iOS test bundle compiles for a generic physical device, but the full native suite has not been run as a signed device test suite.
 - Listing mutation journaling, URL-and-unit deduplication, deletion retry, richer SLM evidence, and comparison-map evidence scoring are implemented.
 - Web registration is invite-gated, a non-secret readiness endpoint exists, and the app has privacy-safe beta feedback plus honest notification status.
+- Board invitations are owner-managed, atomic, 128-bit single-use bearer links with branded previews and Apple Universal Link association; the official App Store/TestFlight fallback URL still needs to be configured.
 
 ## P0 — blockers before any external tester
 
@@ -74,6 +75,8 @@ Current state: Apple signing, native entitlements, and the live Supabase Apple p
 - [x] Enable the Apple provider in Supabase and configure the native client IDs.
 - [ ] Test first-time creation, returning sign-in, hidden-email relay, canceled authorization, revoked authorization, expired sessions, and account deletion.
 - [ ] Create the App Store Connect record and internal TestFlight group.
+- [x] Add the associated-domain entitlement, AASA response, and `/invite/*` Universal Link routing.
+- [ ] Set `NEXT_PUBLIC_IOS_INSTALL_URL` to the official App Store or TestFlight destination and test installed/uninstalled behavior on a physical iPhone.
 - [ ] Archive and upload a signed Release build; do not distribute the Debug fallback.
 
 Exit condition: two previously unused Apple accounts can independently create Homeboard accounts through TestFlight and sign back in after reinstalling.

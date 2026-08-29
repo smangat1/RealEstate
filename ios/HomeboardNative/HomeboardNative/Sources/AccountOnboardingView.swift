@@ -543,12 +543,24 @@ struct PostAuthInvitePrompt: View {
   @FocusState private var inviteFocused: Bool
 
   private var normalizedInviteCode: String {
-    String(
-      inviteCode
-        .uppercased()
-        .filter { $0.isLetter || $0.isNumber }
-        .prefix(10)
-    )
+    normalizeInviteEntry(inviteCode)
+  }
+
+  private var inviteTokenIsComplete: Bool {
+    // Keep ten-character links from earlier beta builds usable.
+    normalizedInviteCode.count == 10 || normalizedInviteCode.count == 32
+  }
+
+  private func normalizeInviteEntry(_ value: String) -> String {
+    let candidate = value.contains("/")
+      ? value.split(separator: "/").last.map(String.init) ?? value
+      : value
+    let withoutQuery = candidate
+      .split(separator: "?").first.map(String.init) ?? candidate
+    let token = withoutQuery
+      .uppercased()
+      .filter { $0.isLetter || $0.isNumber }
+    return String(token.prefix(32))
   }
 
   var body: some View {
@@ -565,7 +577,7 @@ struct PostAuthInvitePrompt: View {
             Text("Join your roommates?")
               .font(.title3.weight(.bold))
               .foregroundStyle(HomeboardPalette.primaryText)
-            Text("Enter their code, or start a new board.")
+            Text("Open their link, paste it here, or start a new board.")
               .font(.subheadline)
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
@@ -576,9 +588,9 @@ struct PostAuthInvitePrompt: View {
             "",
             text: Binding(
               get: { inviteCode },
-              set: { inviteCode = String($0.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(10)) }
+              set: { inviteCode = normalizeInviteEntry($0) }
             ),
-            prompt: Text("INVITE CODE").foregroundStyle(HomeboardPalette.tertiaryText)
+            prompt: Text("PASTE INVITE LINK").foregroundStyle(HomeboardPalette.tertiaryText)
           )
           .textInputAutocapitalization(.characters)
           .keyboardType(.asciiCapable)
@@ -586,16 +598,16 @@ struct PostAuthInvitePrompt: View {
           .focused($inviteFocused)
           .submitLabel(.join)
           .onSubmit {
-            guard normalizedInviteCode.count == 10 else { return }
+            guard inviteTokenIsComplete else { return }
             Task { await appModel.continueAfterAuthentication(inviteCode: normalizedInviteCode) }
           }
           .foregroundStyle(HomeboardPalette.primaryText)
           .font(.headline.monospaced())
 
-          Text("\(normalizedInviteCode.count)/10")
+          Text(inviteCode.isEmpty ? "LINK" : "\(normalizedInviteCode.count) CHARS")
             .font(.caption.monospacedDigit().weight(.bold))
             .foregroundStyle(
-              normalizedInviteCode.count == 10
+              inviteTokenIsComplete
                 ? HomeboardPalette.accent
                 : HomeboardPalette.tertiaryText
             )
@@ -629,8 +641,8 @@ struct PostAuthInvitePrompt: View {
           .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(AuthPressStyle())
-        .disabled(normalizedInviteCode.count != 10 || appModel.isAuthLoading)
-        .opacity(normalizedInviteCode.count == 10 ? 1 : 0.48)
+        .disabled(!inviteTokenIsComplete || appModel.isAuthLoading)
+        .opacity(inviteTokenIsComplete ? 1 : 0.48)
 
         Button {
           appModel.continueAfterAuthenticationWithoutInvite()

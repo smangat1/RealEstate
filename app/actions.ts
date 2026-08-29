@@ -103,10 +103,6 @@ export async function signUpAction(formData: FormData) {
     redirectWithMessage(registerPath, "error", "This board invite is no longer active. Ask the board owner for a new one.");
   }
 
-  if (inviteData.invitation.email && inviteData.invitation.email.toLowerCase() !== email) {
-    redirectWithMessage(registerPath, "error", `This invite is reserved for ${inviteData.invitation.email}.`);
-  }
-
   try {
     assertThrottle({
       scope: "sign-up",
@@ -141,7 +137,7 @@ export async function signUpAction(formData: FormData) {
   });
 
   await supabase.auth.signOut();
-  redirectWithMessage(`/?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`, "notice", `Account created for ${displayName}. Verify your email if required, then sign in to continue.`);
+  redirectWithMessage(`/sign-in?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`, "notice", `Account created for ${displayName}. Verify your email if required, then sign in to continue.`);
 }
 
 export async function signInAction(formData: FormData) {
@@ -151,9 +147,10 @@ export async function signInAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "").trim();
   const next = getSafeNextPath(String(formData.get("next") || "/"));
+  const signInPath = `/sign-in?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`;
 
   if (!email || !password) {
-    redirectWithMessage("/", "error", "Email and password are required.");
+    redirectWithMessage(signInPath, "error", "Email and password are required.");
   }
 
   try {
@@ -165,19 +162,19 @@ export async function signInAction(formData: FormData) {
       message: "Too many sign-in attempts for this email. Please wait a few minutes and try again.",
     });
   } catch (error) {
-    redirectWithMessage("/", "error", error instanceof Error ? error.message : "Too many sign-in attempts.");
+    redirectWithMessage(signInPath, "error", error instanceof Error ? error.message : "Too many sign-in attempts.");
   }
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error || !data.user) {
-    redirectWithMessage("/", "error", error?.message || "Unable to sign in.");
+    redirectWithMessage(signInPath, "error", error?.message || "Unable to sign in.");
   }
 
   const authUser = data.user;
   if (!authUser) {
-    redirectWithMessage("/", "error", "Unable to sign in.");
+    redirectWithMessage(signInPath, "error", "Unable to sign in.");
   }
 
   await syncAuthUserToProfile(authUser);
@@ -339,7 +336,6 @@ export async function saveSuggestedListingAction(formData: FormData) {
 export async function createBoardInvitationAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
   const boardId = String(formData.get("boardId") || "");
-  const email = String(formData.get("email") || "");
   const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
   if (!currentUser || !boardId) {
     redirectWithMessage(redirectTo, "error", "A workspace is required to create an invite.");
@@ -358,7 +354,7 @@ export async function createBoardInvitationAction(formData: FormData) {
   }
 
   try {
-    await createBoardInvitation(boardId, currentUser.id, email.trim() || null);
+    await createBoardInvitation(boardId, currentUser.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create that invite.";
     redirectWithMessage(redirectTo, "error", message);
@@ -369,9 +365,7 @@ export async function createBoardInvitationAction(formData: FormData) {
   redirectWithMessage(
     redirectTo,
     "notice",
-    email.trim()
-      ? `Invite code created for ${email.trim().toLowerCase()}. Share it yourself.`
-      : "Shareable roommate code created.",
+    "Single-use roommate link created. Share it with the person joining this board.",
   );
 }
 
@@ -382,15 +376,17 @@ export async function acceptBoardInvitationAction(formData: FormData) {
     redirect("/");
   }
 
+  let boardId: string;
   try {
-    const boardId = await acceptBoardInvitation(inviteCode, currentUser.id);
-    revalidatePath(`/boards/${boardId}`);
-    revalidatePath(`/settings?boardId=${boardId}`);
-    redirect(`/boards/${boardId}?memberSetup=1&notice=${encodeURIComponent("You joined the workspace. Add your commute and preference details so the group can use your data right away.")}`);
+    boardId = await acceptBoardInvitation(inviteCode, currentUser.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to accept this invite.";
     redirect(`/?error=${encodeURIComponent(message)}`);
   }
+
+  revalidatePath(`/boards/${boardId}`);
+  revalidatePath(`/settings?boardId=${boardId}`);
+  redirect(`/boards/${boardId}?memberSetup=1&notice=${encodeURIComponent("You joined the workspace. Add your commute and preference details so the group can use your data right away.")}`);
 }
 
 export async function completeJoinedMemberSetupAction(formData: FormData) {

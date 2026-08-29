@@ -360,7 +360,6 @@ private struct MobileOnboardingConfirmRequest: Encodable {
 
 private struct MobileInvitationCreateRequest: Encodable {
   var boardId: String
-  var email: String?
 }
 
 private struct MobileInvitationRevokeRequest: Encodable {
@@ -1034,14 +1033,13 @@ final class HomeboardAPI {
 
   func createInvitation(
     accessToken: String,
-    boardId: String,
-    email: String? = nil
+    boardId: String
   ) async throws -> MobileInvitationCreateResponse {
     try await requestBackend(
       path: "/api/mobile/invitations",
       method: "POST",
       accessToken: accessToken,
-      body: MobileInvitationCreateRequest(boardId: boardId, email: email)
+      body: MobileInvitationCreateRequest(boardId: boardId)
     )
   }
 

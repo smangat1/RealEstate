@@ -60,16 +60,17 @@ This workflow feels careful and grounded. It also has the largest real-world rel
 5. Complete the rental brief: group setup, budget, move timing, commute access, target neighborhoods, and priorities.
 6. Land on the board and follow the first-use guide to save a real listing from Safari.
 7. Review the extracted facts, correct anything uncertain, and add the listing.
-8. Invite roommates with a shareable code or an email-restricted invitation.
+8. As the board owner, invite roommates with a single-use, expiring, revocable link that works with any Sign in with Apple identity.
 9. Compare candidates, discuss them, and change their status as the search progresses.
 
 ### Invited roommate
 
 1. Open the invite link/code.
-2. Sign in with Apple in the native app, or create a web account only through the active invite flow.
-3. Accept the board invitation.
-4. Add personal budget, commute, preference, and dealbreaker information.
-5. Review the existing shortlist and add ratings, comments, reactions, and decisions.
+2. If Homeboard is installed, the Universal Link opens the app with the invitation already staged. Otherwise, a branded web invitation offers the official install destination when configured.
+3. Sign in with Apple in the native app, including with Hide My Email, or create a web account only through the active invite flow.
+4. Accept the board invitation.
+5. Add personal budget, commute, preference, and dealbreaker information.
+6. Review the existing shortlist and add ratings, comments, reactions, and decisions.
 
 ### Mac/Safari user
 
@@ -124,7 +125,11 @@ This workflow feels careful and grounded. It also has the largest real-world rel
 
 ## Changes made during this audit
 
-- Closed unrestricted web registration: account creation now requires a pending, unexpired board invite and enforces an invite’s email restriction.
+- Closed unrestricted web registration: account creation now requires a pending, unexpired board link.
+- Replaced email-locked invitations with 128-bit bearer links so Sign in with Apple and Hide My Email cannot cause an identity mismatch.
+- Added Apple Universal Link association, full-link/token parsing in the native app, a branded invitation landing page, and board-specific social preview artwork.
+- Added a smart open/install action. It opens the app first and falls back to the configured App Store or TestFlight URL; the official install URL remains an App Store Connect dependency.
+- Made link rotation and acceptance atomic, limited invite management to the board owner, and added an invite-preserving web sign-in fallback.
 - Fixed auth redirects so notices/errors append correctly to paths that already contain query parameters.
 - Removed all source and API behavior that preserved a reusable development account.
 - Added `GET /api/health`, which checks required configuration and database connectivity without returning secret names or values.

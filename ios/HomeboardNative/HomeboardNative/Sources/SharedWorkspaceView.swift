@@ -2597,6 +2597,11 @@ struct SharedGroupView: View {
     appModel.board.invitations.filter { $0.status == "pending" }
   }
 
+  private var isCurrentUserOwner: Bool {
+    guard let userId = appModel.account?.id else { return false }
+    return appModel.board.members.first(where: { $0.userId == userId })?.role == "owner"
+  }
+
   var body: some View {
     ZStack {
       WorkspaceBackgroundView()
@@ -2608,29 +2613,35 @@ struct SharedGroupView: View {
             title: "One search, seen together",
             subtitle: "Budgets, commutes, and red lines stay attached to the people who care about them."
           ) {
-            Button {
-              showsInviteMember = true
-            } label: {
-              Image(systemName: "person.badge.plus")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Color.black)
-                .frame(width: 42, height: 42)
-                .background(HomeboardPalette.accent)
-                .clipShape(Circle())
+            if isCurrentUserOwner {
+              Button {
+                showsInviteMember = true
+              } label: {
+                Image(systemName: "person.badge.plus")
+                  .font(.headline.weight(.bold))
+                  .foregroundStyle(Color.black)
+                  .frame(width: 42, height: 42)
+                  .background(HomeboardPalette.accent)
+                  .clipShape(Circle())
+              }
+              .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
           }
 
-          SharedInviteCard(
-            board: appModel.board,
-            copied: copiedInvite,
-            onCopy: {
-              UIPasteboard.general.string = appModel.board.inviteCode
-              copiedInvite = true
-            },
-            onInvite: { showsInviteMember = true },
-            onAddManually: { showsAddMember = true }
-          )
+          if isCurrentUserOwner {
+            SharedInviteCard(
+              board: appModel.board,
+              copied: copiedInvite,
+              onCopy: {
+                UIPasteboard.general.string = HomeboardConfig.publicWebBaseURL
+                  .appending(path: "invite/\(appModel.board.inviteCode)")
+                  .absoluteString
+                copiedInvite = true
+              },
+              onInvite: { showsInviteMember = true },
+              onAddManually: { showsAddMember = true }
+            )
+          }
 
           VStack(alignment: .leading, spacing: 12) {
             SharedSectionTitle(title: "People", trailing: "Tap to see preferences")
@@ -2653,17 +2664,17 @@ struct SharedGroupView: View {
             }
           }
 
-          if !pendingInvites.isEmpty {
+          if isCurrentUserOwner && !pendingInvites.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
               SharedSectionTitle(title: "Pending invites", trailing: "\(pendingInvites.count)")
 
               ForEach(pendingInvites) { invitation in
                 HStack(spacing: 12) {
-                  Image(systemName: "envelope.badge")
+                  Image(systemName: "link.badge.plus")
                     .foregroundStyle(HomeboardPalette.accent)
 
                   VStack(alignment: .leading, spacing: 3) {
-                    Text(invitation.email ?? "Anyone with the code")
+                    Text("Single-use invite link")
                       .font(.subheadline.weight(.semibold))
                       .foregroundStyle(HomeboardPalette.primaryText)
                       .lineLimit(1)
@@ -2981,7 +2992,7 @@ struct SharedSetupView: View {
           SharedBriefCard(board: appModel.board)
 
           VStack(spacing: 0) {
-            SharedSettingsRow(icon: "person.3.fill", title: "People and invitations", subtitle: "Members, preferences, invite code") {
+            SharedSettingsRow(icon: "person.3.fill", title: "People and invitations", subtitle: "Members, preferences, invite links") {
               showsGroup = true
             }
 
@@ -3011,7 +3022,7 @@ struct SharedSetupView: View {
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "person.crop.circle.badge.plus", title: "Join another board", subtitle: "Use an invite code from another group") {
+            SharedSettingsRow(icon: "person.crop.circle.badge.plus", title: "Join another board", subtitle: "Open a shared link or paste its token") {
               showsJoinBoard = true
             }
 
@@ -6762,12 +6773,6 @@ private struct SharedInviteCard: View {
     HomeboardConfig.publicWebBaseURL.appending(path: "invite/\(board.inviteCode)")
   }
 
-  private var activeInvite: BoardInvitationSummary? {
-    board.invitations.first {
-      $0.status == "pending" && $0.inviteCode == board.inviteCode
-    }
-  }
-
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       HStack(spacing: 16) {
@@ -6777,8 +6782,8 @@ private struct SharedInviteCard: View {
             .tracking(1.5)
             .foregroundStyle(Color.black.opacity(0.56))
 
-          Text(board.inviteCode.isEmpty ? "Invite a roommate" : board.inviteCode)
-            .font(board.inviteCode.isEmpty ? .title3.weight(.heavy) : .title2.weight(.heavy).monospaced())
+          Text(board.inviteCode.isEmpty ? "Invite a roommate" : "Invite link ready")
+            .font(.title3.weight(.heavy))
             .foregroundStyle(Color.black)
 
           Text(inviteDescription)
@@ -6804,7 +6809,7 @@ private struct SharedInviteCard: View {
             ShareLink(
               item: inviteURL,
               subject: Text("Join \(board.title) on Homeboard"),
-              message: Text("Join our shared rental board. Homeboard code: \(board.inviteCode)")
+              message: Text("Join our shared rental board on Homeboard.")
             ) {
               Image(systemName: "square.and.arrow.up")
                 .font(.headline.weight(.bold))
@@ -6827,8 +6832,8 @@ private struct SharedInviteCard: View {
       HStack(spacing: 16) {
         Button(
           board.inviteCode.isEmpty
-            ? "Create a shareable code"
-            : activeInvite?.email == nil ? "Invite options" : "Create an unrestricted code",
+            ? "Create invite link"
+            : "Replace active link",
           action: onInvite
         )
           .font(.caption.weight(.bold))
@@ -6848,44 +6853,28 @@ private struct SharedInviteCard: View {
 
   private var inviteDescription: String {
     guard !board.inviteCode.isEmpty else {
-      return "Create a code, then send it through Messages or any app. No email required."
+      return "Create a secure link, then send it through Messages or any app."
     }
-    if let email = activeInvite?.email {
-      return "Only \(email) can use this code. Share it yourself—the app does not send email."
-    }
-    return "Anyone you text this code or link to can join the board."
+    return "The first signed-in person to accept this expiring link joins the board."
   }
 }
 
 private struct InviteSharedMemberSheet: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
-  @State private var email = ""
-
-  private var normalizedEmail: String {
-    email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-  }
-
-  private var restrictedEmail: String? {
-    normalizedEmail.isEmpty ? nil : normalizedEmail
-  }
 
   var body: some View {
     NavigationStack {
       VStack(alignment: .leading, spacing: 18) {
         SharedPageHeader(
           eyebrow: "Roommate invite",
-          title: "Create a shareable code",
-          subtitle: "Leave email blank for a code you can text to anyone. Add one only when you want that code locked to a specific person."
+          title: "Create a shareable link",
+          subtitle: "The link works with Sign in with Apple, including Hide My Email. No email matching is required."
         )
 
-        SharedField(title: "Restrict to email (optional)", prompt: "maya@example.com", text: $email, keyboard: .emailAddress)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-
         Label(
-          "Homeboard creates the code here. Use the iPhone share button afterward to send it through Messages, Mail, or another app.",
-          systemImage: "message.fill"
+          "Creating a new link replaces any pending link. It expires in 14 days and can be revoked before it is accepted.",
+          systemImage: "link.badge.plus"
         )
         .font(.caption)
         .foregroundStyle(HomeboardPalette.secondaryText)
@@ -6898,7 +6887,7 @@ private struct InviteSharedMemberSheet: View {
 
         Button {
           Task {
-            await appModel.createInvite(email: restrictedEmail)
+            await appModel.createInvite()
             if appModel.boardError == nil {
               dismiss()
             }
@@ -6910,7 +6899,7 @@ private struct InviteSharedMemberSheet: View {
             } else {
               Image(systemName: "paperplane.fill")
             }
-            Text(appModel.isBoardLoading ? "Preparing code" : "Create code")
+            Text(appModel.isBoardLoading ? "Preparing link" : "Create invite link")
           }
           .font(.headline.weight(.bold))
           .foregroundStyle(Color.black)
@@ -7375,12 +7364,12 @@ private struct SharedJoinBoardSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       SharedPageHeader(
-        eyebrow: "Invite code",
+        eyebrow: "Invite link",
         title: "Join another search",
         subtitle: "Your account can belong to more than one shared board."
       )
 
-      SharedField(title: "Code", prompt: "NYC-SAM", text: $inviteCode)
+      SharedField(title: "Link or token", prompt: "Paste the invitation", text: $inviteCode)
 
       Button {
         Task {

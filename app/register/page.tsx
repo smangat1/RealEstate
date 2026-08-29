@@ -58,8 +58,6 @@ export default async function RegisterPage({
     );
   }
 
-  const invitedEmail = inviteData.invitation.email || email;
-
   return (
     <main className="account-shell">
       <section className="account-card mac-window-card">
@@ -70,9 +68,7 @@ export default async function RegisterPage({
               Create the account that should join this shared workspace.
             </h1>
             <p>
-              {inviteData.invitation.email
-                ? "This invite is tied to a specific email address. Create that account here, then come straight back to accept the workspace invite."
-                : "Create your account here, then come straight back to accept the shared workspace invite."}
+              Create your account here, then come straight back to accept the shared workspace invite. The link—not your email address—carries the invitation.
             </p>
 
             {error ? <div className="account-message account-message-error">{error}</div> : null}
@@ -100,8 +96,7 @@ export default async function RegisterPage({
                   type="email"
                   placeholder="ava@homeboard.app"
                   autoComplete="email"
-                  defaultValue={invitedEmail}
-                  readOnly={Boolean(inviteData.invitation.email)}
+                  defaultValue={email}
                 />
               </label>
               <label className="field-stack">
@@ -110,7 +105,7 @@ export default async function RegisterPage({
               </label>
 
               <div className="register-actions">
-                <Link href="/" className="secondary-button">
+                <Link href={`/sign-in?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`} className="secondary-button">
                   Back to sign in
                 </Link>
                 <button type="submit" className="account-primary-button">

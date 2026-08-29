@@ -430,7 +430,7 @@ struct WelcomeView: View {
         .tracking(1.5)
         .foregroundStyle(HomeboardPalette.accent)
 
-      Text("Code \(appModel.pendingInviteCode) will be checked after you continue with Apple.")
+      Text("Your invite link will be checked after you continue with Apple.")
         .font(.footnote)
         .foregroundStyle(HomeboardPalette.primaryText)
         .fixedSize(horizontal: false, vertical: true)
@@ -446,7 +446,7 @@ struct WelcomeView: View {
         TextField(
           "",
           text: inviteCodeBinding,
-          prompt: Text("10-character invite code").foregroundStyle(HomeboardPalette.tertiaryText)
+          prompt: Text("Paste invite link or token").foregroundStyle(HomeboardPalette.tertiaryText)
         )
         .textInputAutocapitalization(.characters)
         .keyboardType(.asciiCapable)
@@ -468,10 +468,10 @@ struct WelcomeView: View {
         }
         .foregroundStyle(HomeboardPalette.primaryText)
 
-        Text("\(joinCode.count)/10")
+        Text(joinCode.isEmpty ? "LINK" : "\(joinCode.count) CHARS")
           .font(.caption2.monospacedDigit().weight(.bold))
           .foregroundStyle(
-            joinCode.count == 10
+            inviteTokenIsComplete
               ? HomeboardPalette.accent
               : HomeboardPalette.tertiaryText
           )
@@ -481,13 +481,13 @@ struct WelcomeView: View {
       .frame(maxWidth: .infinity)
       .homeboardInsetSurface(cornerRadius: 14)
       .onChange(of: joinCode) { _, newValue in
-        guard newValue.count == 10, !isUnlockingInvite, !isInviteUnlocked else { return }
+        guard newValue.count == 32, !isUnlockingInvite, !isInviteUnlocked else { return }
         Task {
           await unlockInviteIfReady()
         }
       }
 
-      Text("Homeboard checks the code after you authenticate.")
+      Text("Homeboard checks the link after you authenticate.")
         .font(.caption)
         .foregroundStyle(HomeboardPalette.tertiaryText)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -646,17 +646,27 @@ struct WelcomeView: View {
       .frame(maxWidth: .infinity)
     }
     .buttonStyle(WelcomeAccessPressStyle())
-    .accessibilityHint("Turns the key and activates the shared board invite code field")
+    .accessibilityHint("Turns the key and activates the shared board invite link field")
+  }
+
+  private var inviteTokenIsComplete: Bool {
+    // Ten characters keeps links created by older beta builds usable.
+    joinCode.count == 10 || joinCode.count == 32
   }
 
   private var inviteCodeBinding: Binding<String> {
     Binding(
       get: { joinCode },
       set: { value in
-        let normalized = value
+        let candidate = value.contains("/")
+          ? value.split(separator: "/").last.map(String.init) ?? value
+          : value
+        let normalized = candidate
+          .split(separator: "?").first.map(String.init) ?? candidate
+        let token = normalized
           .uppercased()
           .filter { $0.isLetter || $0.isNumber }
-        joinCode = String(normalized.prefix(10))
+        joinCode = String(token.prefix(32))
       }
     )
   }
@@ -669,13 +679,13 @@ struct WelcomeView: View {
 
   private var keyActionDetail: String {
     if isInviteUnlocked { return "Authentication comes before board access." }
-    if showsInviteEntry { return "Enter the code your roommate sent you." }
+    if showsInviteEntry { return "Paste the link your roommate sent you." }
     return "Tap to turn the key and join an existing board."
   }
 
   @MainActor
   private func unlockInviteIfReady() async {
-    guard joinCode.count == 10, !isUnlockingInvite else {
+    guard inviteTokenIsComplete, !isUnlockingInvite else {
       inviteCodeFocused = true
       return
     }

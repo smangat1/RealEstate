@@ -45,7 +45,7 @@ export function BoardInvitePanel({
   boardId,
   invitations,
   redirectTo = `/settings?boardId=${boardId}`,
-  emptyMessage = "No pending invites yet. Create a code and send it by text, email, or any other app.",
+  emptyMessage = "No pending invite link yet. Create one and send it through Messages, Mail, or any other app.",
 }: BoardInvitePanelProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -71,7 +71,7 @@ export function BoardInvitePanel({
               <article key={invitation.id} className="invite-summary-card">
                 <div className="invite-summary-head">
                   <div>
-                    <strong>{invitation.email ?? "Anyone with the code"}</strong>
+                    <strong>Single-use board link</strong>
                     <span>{formatExpiry(invitation.expiresAt)}</span>
                   </div>
                   <button

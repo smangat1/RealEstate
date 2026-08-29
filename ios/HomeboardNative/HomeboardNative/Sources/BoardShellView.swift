@@ -1607,7 +1607,6 @@ private struct MembersView: View {
 private struct BoardSettingsView: View {
   @Environment(AppModel.self) private var appModel
   @State private var copiedInvite = false
-  @State private var inviteEmail = ""
   @State private var joinBoardCodeDraft = ""
   @State private var newBoardTitleDraft = ""
   @State private var boardTitleDraft = ""
@@ -1655,11 +1654,11 @@ private struct BoardSettingsView: View {
           VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
               VStack(alignment: .leading, spacing: 4) {
-                Text("Invite code")
+                Text("Invite link")
                   .font(.caption.weight(.semibold))
                   .foregroundStyle(HomeboardPalette.tertiaryText)
 
-                Text(board.inviteCode)
+                Text(board.inviteCode.isEmpty ? "No active link" : "Secure link ready")
                   .font(.title3.weight(.semibold))
                   .foregroundStyle(HomeboardPalette.primaryText)
               }
@@ -1670,7 +1669,7 @@ private struct BoardSettingsView: View {
                 Button {
                   Task { await appModel.createInvite() }
                 } label: {
-                  Label("Create code", systemImage: "number")
+                  Label("Create link", systemImage: "link.badge.plus")
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
@@ -1682,7 +1681,7 @@ private struct BoardSettingsView: View {
               } else {
                 ShareLink(
                   item: inviteLink,
-                  message: Text("Join our Homeboard. Code: \(board.inviteCode)")
+                  message: Text("Join our shared rental board on Homeboard.")
                 ) {
                   Label("Share link", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.semibold))
@@ -1699,32 +1698,28 @@ private struct BoardSettingsView: View {
             .padding(14)
             .homeboardInsetSurface(accent: HomeboardPalette.accentStrong)
 
-            HStack(spacing: 10) {
-              settingsField("Optional email lock", binding: $inviteEmail, prompt: "Leave blank for anyone", keyboard: .emailAddress)
-
+            if !board.inviteCode.isEmpty {
               Button {
-                let email = inviteEmail
-                inviteEmail = ""
                 Task {
-                  await appModel.createInvite(email: email)
+                  await appModel.createInvite()
                 }
               } label: {
-                VStack(spacing: 6) {
+                HStack(spacing: 10) {
                   if appModel.isBoardLoading {
                     ProgressView()
                       .tint(HomeboardPalette.buttonText)
                   } else {
-                    Image(systemName: "paperplane.fill")
+                    Image(systemName: "arrow.triangle.2.circlepath")
                       .font(.headline.weight(.bold))
                   }
 
-                  Text("Send")
-                    .font(.caption.weight(.semibold))
+                  Text(appModel.isBoardLoading ? "Replacing link" : "Replace active invite link")
+                    .font(.subheadline.weight(.semibold))
                 }
                 .foregroundStyle(HomeboardPalette.buttonText)
-                .frame(width: 84, height: 84)
+                .frame(maxWidth: .infinity, minHeight: 52)
                 .background(HomeboardPalette.accentGradient)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
               }
               .buttonStyle(.plain)
             }
@@ -1754,7 +1749,7 @@ private struct BoardSettingsView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(HomeboardPalette.tertiaryText)
 
-              Text(invite.email ?? "Anyone with the code")
+              Text("Single-use board link")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(HomeboardPalette.primaryText)
 
@@ -1776,7 +1771,7 @@ private struct BoardSettingsView: View {
               ForEach(board.invitations.prefix(4)) { invite in
                 HStack(alignment: .center, spacing: 10) {
                   VStack(alignment: .leading, spacing: 4) {
-                    Text(invite.email ?? "Anyone with the code")
+                    Text("Board invitation link")
                       .font(.footnote.weight(.semibold))
                       .foregroundStyle(HomeboardPalette.primaryText)
 
@@ -1827,7 +1822,7 @@ private struct BoardSettingsView: View {
           Divider()
             .overlay(HomeboardPalette.cardStroke.opacity(0.35))
 
-          settingsField("Join another board", binding: $joinBoardCodeDraft, prompt: "ABCD-1234")
+          settingsField("Join another board", binding: $joinBoardCodeDraft, prompt: "Paste invite link or token")
 
           Button {
             let code = joinBoardCodeDraft
@@ -1837,7 +1832,7 @@ private struct BoardSettingsView: View {
             }
           } label: {
             HStack {
-              Text("Join from invite code")
+              Text("Join from invite link")
               Spacer()
               if appModel.isBoardLoading {
                 ProgressView()
@@ -2857,7 +2852,7 @@ private struct CollaboratorsCard: View {
       }
 
       if let latestInvite = board.invitations.first {
-        Text("Latest invite: \(latestInvite.email ?? "Anyone with the code") · \(latestInvite.status.capitalized)")
+        Text("Latest invite link · \(latestInvite.status.capitalized)")
           .font(.footnote)
           .foregroundStyle(HomeboardPalette.secondaryText)
       } else {

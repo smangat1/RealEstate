@@ -22,6 +22,8 @@ The application code can be built and tested locally without these items. The fo
 - Sign in with Apple is provisioned for `com.homeboard.native`, `com.homeboard.native.mac`, and the Mac debug App ID. Verify the identifiers are grouped under the intended primary identifier before TestFlight distribution.
 - The Apple provider is enabled in Supabase Auth. Reconfirm every shipped native App ID is listed before archiving.
 - Test first-time Apple account creation, returning sign-in, hidden-email relay, account deletion, and an expired invite with non-owner accounts.
+- Enable Associated Domains for the production App ID, verify Apple can fetch `/.well-known/apple-app-site-association`, and test an `/invite/*` link from Messages.
+- Set `NEXT_PUBLIC_IOS_INSTALL_URL` to the official App Store or TestFlight URL before distributing links to anyone without the app.
 
 ## Privacy policy and public support
 
@@ -38,7 +40,7 @@ The application code can be built and tested locally without these items. The fo
 - Click every public navigation, footer, logo, install, and email link after each production deployment.
 - Keep the mobile menu, favicon, Apple touch icon, route-specific titles, descriptions, and current copyright year covered by the launch-readiness tests.
 - Replace `NEXT_PUBLIC_SUPPORT_EMAIL` only with a monitored inbox; never publish a guessed or inactive address.
-- Web registration is invite-only; confirm a missing, expired, used, or wrong-email invite cannot create an account.
+- Web registration is invite-only; confirm a missing, expired, used, revoked, or replaced link cannot create an account.
 - Keep the install button connected to honest beta details until a real TestFlight destination is available, then replace the beta message with the official Apple link.
 - Check visible copy for debug output, stale success/error banners, fabricated contact details, and accidental placeholder text.
 - Deliver large visible imagery through the compressed WebP/JPEG assets and review image weight when screenshots change.

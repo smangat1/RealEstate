@@ -122,7 +122,7 @@ function summarizeProfileChanges(previous: SearchProfileData, next: SearchProfil
 }
 
 function createInviteCode() {
-  return randomBytes(5).toString("hex").toUpperCase();
+  return randomBytes(16).toString("hex").toUpperCase();
 }
 
 function starterSeedToListingRecord(seed: ReturnType<typeof buildStarterListings>[number], index: number): ListingRecord {
@@ -2237,65 +2237,36 @@ export async function addListingToBoard(
 export async function createBoardInvitation(
   boardId: string,
   invitedByUserId: string,
-  email?: string | null,
 ) {
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
-  const normalizedEmail = email?.trim().toLowerCase() || null;
 
-  const board = await ensureBoard(boardId, invitedByUserId);
-  if (!board) throw new Error("Workspace not found.");
-
-  const existingUser = normalizedEmail
-    ? await prisma.user.findUnique({ where: { email: normalizedEmail } })
-    : null;
-  if (existingUser) {
-    const existingMember = await prisma.boardMember.findUnique({
-      where: { boardId_userId: { boardId, userId: existingUser.id } },
-    });
-    if (existingMember) {
-      throw new Error("That person is already in this workspace.");
-    }
-  }
-
-  const existingInvite = await prisma.boardInvitation.findFirst({
-    where: { boardId, email: normalizedEmail, status: "pending" },
+  const board = await prisma.searchBoard.findFirst({
+    where: { id: boardId, userId: invitedByUserId },
   });
+  if (!board) throw new Error("Only the workspace owner can create invite links.");
 
-  if (existingInvite) {
-    const refreshedInvite = await prisma.boardInvitation.update({
-      where: { id: existingInvite.id },
+  const invitation = await prisma.$transaction(async (transaction) => {
+    // Updating the parent row takes a board-level write lock. Concurrent link
+    // rotations therefore serialize: the later one revokes the earlier one's
+    // pending link before creating its replacement.
+    await transaction.searchBoard.update({
+      where: { id: boardId },
+      data: { updatedAt: new Date() },
+    });
+    await transaction.boardInvitation.updateMany({
+      where: { boardId, status: "pending" },
+      data: { status: "revoked" },
+    });
+
+    return transaction.boardInvitation.create({
       data: {
+        boardId,
+        invitedByUserId,
+        email: null,
+        inviteCode: createInviteCode(),
         expiresAt,
       },
     });
-
-    await addBoardEvent(
-      boardId,
-      "system",
-      "System",
-      "invitation_refreshed",
-      normalizedEmail
-        ? `Invitation refreshed for ${normalizedEmail}.`
-        : "Shareable roommate invitation refreshed.",
-    );
-    await trackEvent("invite_refreshed", {
-      boardId,
-      invitedByUserId,
-      email: normalizedEmail,
-      invitationId: existingInvite.id,
-    });
-    await touchBoard(boardId);
-    return mapInvitationRow(refreshedInvite);
-  }
-
-  const invitation = await prisma.boardInvitation.create({
-    data: {
-      boardId,
-      invitedByUserId,
-      email: normalizedEmail,
-      inviteCode: createInviteCode(),
-      expiresAt,
-    },
   });
 
   await addBoardEvent(
@@ -2303,14 +2274,11 @@ export async function createBoardInvitation(
     "system",
     "System",
     "invitation_created",
-    normalizedEmail
-      ? `Invitation created for ${normalizedEmail}.`
-      : "Shareable roommate invitation created.",
+    "A new single-use roommate invitation link was created.",
   );
   await trackEvent("invite_created", {
     boardId,
     invitedByUserId,
-    email: normalizedEmail,
     invitationId: invitation.id,
   });
   await touchBoard(boardId);
@@ -2345,14 +2313,11 @@ export async function revokeBoardInvitation(invitationId: string, actingUserId: 
     "system",
     "System",
     "invitation_revoked",
-    invitation.email
-      ? `Invitation revoked for ${invitation.email}.`
-      : "Shareable roommate invitation revoked.",
+    "Shareable roommate invitation revoked.",
   );
   await trackEvent("invite_revoked", {
     boardId: invitation.boardId,
     invitationId: invitation.id,
-    email: invitation.email,
     actingUserId,
   });
   await touchBoard(invitation.boardId);
@@ -2491,7 +2456,20 @@ export async function getInvitationByCode(inviteCode: string) {
 
 export async function acceptBoardInvitation(inviteCode: string, userId: string) {
   const invitation = await prisma.boardInvitation.findUnique({ where: { inviteCode } });
-  if (!invitation || invitation.status !== "pending") {
+  if (!invitation) {
+    throw new Error("This invite is no longer available.");
+  }
+
+  const existingMembership = await prisma.boardMember.findUnique({
+    where: { boardId_userId: { boardId: invitation.boardId, userId } },
+  });
+  if (existingMembership) return invitation.boardId;
+
+  if (invitation.status === "accepted") {
+    throw new Error("This invite has already been used.");
+  }
+
+  if (invitation.status !== "pending") {
     throw new Error("This invite is no longer available.");
   }
   if (invitationIsExpired(invitation)) {
@@ -2504,60 +2482,68 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("Account not found.");
-  if (!user.email) throw new Error("Your account is missing an email address.");
 
-  if (invitation.email && user.email.toLowerCase() !== invitation.email.toLowerCase()) {
-    throw new Error(`This invite is for ${invitation.email}, but you are signed in as ${user.email}.`);
-  }
+  const acceptedAt = new Date();
+  await prisma.$transaction(async (transaction) => {
+    // Atomically claim the bearer link before adding membership. PostgreSQL
+    // rechecks this predicate after a concurrent update, so exactly one user
+    // can move a pending link to accepted.
+    const claim = await transaction.boardInvitation.updateMany({
+      where: {
+        id: invitation.id,
+        status: "pending",
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: acceptedAt } },
+        ],
+      },
+      data: { status: "accepted", acceptedAt },
+    });
+    if (claim.count !== 1) {
+      throw new Error("This invite has already been used.");
+    }
 
-  await prisma.boardMember.upsert({
-    where: { boardId_userId: { boardId: invitation.boardId, userId } },
-    update: { joinedAt: new Date() },
-    create: {
-      boardId: invitation.boardId,
-      userId,
-      role: "member",
-    },
-  });
-
-  const existingRoommate = await prisma.roommateProfile.findFirst({
-    where: { boardId: invitation.boardId, linkedUserId: userId },
-  });
-
-  if (!existingRoommate) {
-    await prisma.roommateProfile.create({
+    await transaction.boardMember.create({
       data: {
         boardId: invitation.boardId,
-        linkedUserId: userId,
-        name: user.displayName,
-        roleLabel: "roommate",
-        budgetMin: null,
-        budgetMax: null,
-        stretchBudget: null,
-        commuteDestination: null,
-        maxCommuteMinutes: null,
-        commutePriority: "medium",
-        neighborhoodPriority: "medium",
-        spacePriority: "medium",
-        privacyPriority: "medium",
-        preferredNeighborhoods: json([]),
-        mustHaves: json([]),
-        dealbreakers: json([]),
-        notes: null,
+        userId,
+        role: "member",
       },
     });
-  }
 
-  await prisma.boardInvitation.update({
-    where: { id: invitation.id },
-    data: { status: "accepted", acceptedAt: new Date() },
+    const existingRoommate = await transaction.roommateProfile.findFirst({
+      where: { boardId: invitation.boardId, linkedUserId: userId },
+    });
+
+    if (!existingRoommate) {
+      await transaction.roommateProfile.create({
+        data: {
+          boardId: invitation.boardId,
+          linkedUserId: userId,
+          name: user.displayName,
+          roleLabel: "roommate",
+          budgetMin: null,
+          budgetMax: null,
+          stretchBudget: null,
+          commuteDestination: null,
+          maxCommuteMinutes: null,
+          commutePriority: "medium",
+          neighborhoodPriority: "medium",
+          spacePriority: "medium",
+          privacyPriority: "medium",
+          preferredNeighborhoods: json([]),
+          mustHaves: json([]),
+          dealbreakers: json([]),
+          notes: null,
+        },
+      });
+    }
   });
 
   await addBoardEvent(invitation.boardId, "system", "System", "invitation_accepted", `${user.displayName} joined the workspace.`);
   await trackEvent("invite_accepted", {
     boardId: invitation.boardId,
     invitationId: invitation.id,
-    email: invitation.email,
     userId,
   });
   await touchBoard(invitation.boardId);

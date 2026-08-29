@@ -20,15 +20,15 @@ Run each case with a non-developer Apple account.
 Use two real accounts on two physical devices. Repeat the entire loop 10 times; make run 5 an offline/reconnect run and run 8 a simultaneous-edit run.
 
 1. Account A creates a board and finishes its brief.
-2. A creates an email-restricted invite for B and shares it.
-3. B accepts and completes personal constraints.
-4. A saves a real listing from Safari; B sees it after the documented refresh action.
-5. B rates/comments; A sees the same content.
-6. A shortlists; B rejects or restores a different listing.
-7. Both edit the same allowed field; record the winning value and whether the rule is understandable.
-8. Delete one listing while the other device is offline; reconnect and verify it does not resurrect.
-9. Sign B out and confirm A’s board is not visible after another account signs in.
-10. Relaunch both apps and verify counts, facts, decisions, and activity agree.
+2. A, as the board owner, creates a new invite link for B and shares it; verify replacing the link invalidates the previous one and a non-owner cannot rotate it.
+3. Open the link from Messages. With Homeboard installed it must open the app; without it, it must show the branded preview and official install action.
+4. B accepts and completes personal constraints. Repeat once with Hide My Email.
+5. A saves a real listing from Safari; B sees it after the documented refresh action.
+6. B rates/comments; A sees the same content.
+7. A shortlists; B rejects or restores a different listing.
+8. Both edit the same allowed field; record the winning value and whether the rule is understandable.
+9. Delete one listing while the other device is offline; reconnect and verify it does not resurrect.
+10. Sign B out, relaunch both apps, and confirm counts agree and A’s board is not exposed to another account.
 
 Pass only if all 10 runs have no duplicate, resurrected listing, cross-account cache exposure, or unexplained lost update.
 

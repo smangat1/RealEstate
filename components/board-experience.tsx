@@ -506,7 +506,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       })),
       ...data.invitations.map((invitation) => ({
         key: `invite:${invitation.id}`,
-        label: invitation.email ?? "Anyone with the code",
+        label: "Shared invite link",
         state: "Invited, not joined",
         detail: `Invite created ${formatTimestamp(invitation.createdAt)}.`,
       })),
@@ -1100,25 +1100,23 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 </button>
               </section>
 
-              <section id="quick-invite-card" className="rail-card board-home-section">
-                <div className="rail-card-header">
-                  <h2>Invite Collaborators</h2>
-                  <span>{data.invitations.length} pending</span>
-                </div>
-                <p>
-                  Create a code and send it by text or any app. Email-locking is optional; Homeboard does not send the message for you.
-                </p>
-                <form action={createBoardInvitationAction} className="account-form">
-                  <input type="hidden" name="boardId" value={data.board.id} />
-                  <input type="hidden" name="redirectTo" value={`/boards/${data.board.id}`} />
-                  <label className="field-stack">
-                    <span>Restrict to email (optional)</span>
-                    <input name="email" type="email" placeholder="Leave blank for anyone" />
-                  </label>
-                  <button type="submit" className="account-primary-button">Create shareable code</button>
-                </form>
-                <BoardInvitePanel boardId={data.board.id} invitations={data.invitations} redirectTo={`/boards/${data.board.id}`} />
-              </section>
+              {currentUser?.id === data.board.userId ? (
+                <section id="quick-invite-card" className="rail-card board-home-section">
+                  <div className="rail-card-header">
+                    <h2>Invite Collaborators</h2>
+                    <span>{data.invitations.length} pending</span>
+                  </div>
+                  <p>
+                    Create a single-use link and send it through Messages or any app. It works with Sign in with Apple and Hide My Email.
+                  </p>
+                  <form action={createBoardInvitationAction} className="account-form">
+                    <input type="hidden" name="boardId" value={data.board.id} />
+                    <input type="hidden" name="redirectTo" value={`/boards/${data.board.id}`} />
+                    <button type="submit" className="account-primary-button">Create new invite link</button>
+                  </form>
+                  <BoardInvitePanel boardId={data.board.id} invitations={data.invitations} redirectTo={`/boards/${data.board.id}`} />
+                </section>
+              ) : null}
 
               <section id="member-preferences-section" className="rail-card board-home-section">
                 <div className="rail-card-header">

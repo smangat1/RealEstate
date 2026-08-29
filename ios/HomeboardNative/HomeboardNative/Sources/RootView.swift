@@ -58,6 +58,19 @@ struct RootView: View {
     .onOpenURL { url in
       appModel.handleIncomingURL(url)
     }
+    .alert(
+      "Couldn’t open invitation",
+      isPresented: Binding(
+        get: { appModel.incomingLinkError != nil },
+        set: { if !$0 { appModel.incomingLinkError = nil } }
+      )
+    ) {
+      Button("OK", role: .cancel) {
+        appModel.incomingLinkError = nil
+      }
+    } message: {
+      Text(appModel.incomingLinkError ?? "This invitation is no longer available.")
+    }
     .sheet(
       item: Binding(
         get: { appModel.pendingMacPairingRequest },

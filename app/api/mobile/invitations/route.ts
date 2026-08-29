@@ -6,7 +6,6 @@ import { requireMobileAppUser } from "@/lib/mobile-auth";
 
 const createInvitationSchema = z.object({
   boardId: z.string().min(1).max(120),
-  email: z.string().email().max(320).optional().nullable(),
 });
 
 const revokeInvitationSchema = z.object({ invitationId: z.string().min(1).max(120) });
@@ -21,11 +20,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid invite payload." }, { status: 400 });
     }
 
-    const invitation = await createBoardInvitation(
-      parsed.data.boardId,
-      user.id,
-      parsed.data.email,
-    );
+    const invitation = await createBoardInvitation(parsed.data.boardId, user.id);
 
     return NextResponse.json({
       invitation,

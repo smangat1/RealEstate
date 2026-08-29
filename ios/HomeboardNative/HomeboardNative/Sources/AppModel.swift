@@ -2,6 +2,22 @@ import Foundation
 import Observation
 import Security
 
+private func normalizedInviteToken(from rawValue: String) -> String {
+  let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+  let candidate: String
+
+  if trimmed.contains("/"), let lastComponent = trimmed.split(separator: "/").last {
+    candidate = String(lastComponent).split(separator: "?").first.map(String.init) ?? String(lastComponent)
+  } else {
+    candidate = trimmed
+  }
+
+  let normalized = candidate
+    .uppercased()
+    .filter { $0.isLetter || $0.isNumber }
+  return String(normalized.prefix(128))
+}
+
 @Observable
 @MainActor
 final class AppModel {
@@ -53,6 +69,8 @@ final class AppModel {
 
   @ObservationIgnored private let api = HomeboardAPI()
   @ObservationIgnored private var didBootstrap = false
+  @ObservationIgnored private var didFinishBootstrap = false
+  @ObservationIgnored private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
   @ObservationIgnored private var activeListingInventoryRequestID: UUID?
   @ObservationIgnored private var listingUploadTask: Task<Void, Never>?
   @ObservationIgnored private var pendingListingCreatesByBoard: [String: [ListingPreview]] = [:]
@@ -92,6 +110,7 @@ final class AppModel {
   var onboardingError: String?
   var boardError: String?
   var inviteFeedback: String?
+  var incomingLinkError: String?
   var boardFeedback: String?
   var boardMessageDraft = ""
   var listingInventory: [ListingPreview] = []
@@ -130,11 +149,24 @@ final class AppModel {
     if authSession == nil, currentScreen != .welcome {
       currentScreen = .welcome
     }
+    persist()
   }
 
   func bootstrap() async {
-    guard !didBootstrap else { return }
+    if didBootstrap {
+      if !didFinishBootstrap {
+        await withCheckedContinuation { continuation in
+          bootstrapWaiters.append(continuation)
+        }
+      }
+      return
+    }
     didBootstrap = true
+    defer {
+      didFinishBootstrap = true
+      bootstrapWaiters.forEach { $0.resume() }
+      bootstrapWaiters.removeAll()
+    }
     guard let session = authSession else { return }
 
     // RootView starts this refresh underneath the launch intro. When a board was
@@ -180,8 +212,9 @@ final class AppModel {
     authError = nil
     authFeedback = nil
     authMode = mode
-    if !inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      pendingInviteCode = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let inviteToken = normalizedInviteToken(from: inviteCode)
+    if !inviteToken.isEmpty {
+      pendingInviteCode = inviteToken
     }
     currentScreen = .auth
     persist()
@@ -194,9 +227,9 @@ final class AppModel {
   }
 
   func startInviteJoin(code rawCode: String) async {
-    let inviteCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let inviteCode = normalizedInviteToken(from: rawCode)
     guard !inviteCode.isEmpty else {
-      authError = "Enter an invite code first."
+      authError = "Open an invite link or paste its token first."
       return
     }
 
@@ -204,11 +237,12 @@ final class AppModel {
     pendingInviteCode = inviteCode
 
     if authSession != nil {
+      incomingLinkError = nil
       do {
         try await acceptInvite(code: inviteCode)
         persist()
       } catch {
-        authError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        incomingLinkError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       }
       return
     }
@@ -695,22 +729,13 @@ final class AppModel {
   }
 
   @discardableResult
-  func createInvite(email: String? = nil) async -> BoardInvitationSummary? {
+  func createInvite() async -> BoardInvitationSummary? {
     boardError = nil
     inviteFeedback = nil
     boardFeedback = nil
 
-    let trimmedEmail = email?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .lowercased()
-    let restrictedEmail = trimmedEmail?.isEmpty == false ? trimmedEmail : nil
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before creating invites."
-      return nil
-    }
-
-    if let restrictedEmail, !isValidEmail(restrictedEmail) {
-      boardError = "Enter a real invite email address."
       return nil
     }
 
@@ -723,12 +748,9 @@ final class AppModel {
     do {
       let response = try await api.createInvitation(
         accessToken: session.accessToken,
-        boardId: boardId,
-        email: restrictedEmail
+        boardId: boardId
       )
-      inviteFeedback = response.invitation.email.map {
-        "Code ready for \($0). Share it—the app does not send email automatically."
-      } ?? "Shareable roommate code ready. Send it by text or any app."
+      inviteFeedback = "Single-use roommate link ready. Share it with the person joining this board."
       try await loadBoard(id: boardId)
       return response.invitation
     } catch {
@@ -743,8 +765,7 @@ final class AppModel {
       do {
         try await api.revokeInvitation(accessToken: session.accessToken, invitationId: invitation.id)
         if let boardId = board.id { try await loadBoard(id: boardId) }
-        inviteFeedback = invitation.email.map { "Invite for \($0) canceled." }
-          ?? "Shareable invite canceled."
+        inviteFeedback = "Shareable invite canceled."
       } catch {
         boardError = readable(error)
       }
@@ -767,7 +788,7 @@ final class AppModel {
   }
 
   func acceptInvite(code rawCode: String) async throws {
-    let inviteCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let inviteCode = normalizedInviteToken(from: rawCode)
     guard let session = authSession else {
       throw HomeboardAPIError.missingSession
     }
@@ -790,9 +811,9 @@ final class AppModel {
   }
 
   func joinBoardFromWorkspace(code rawCode: String) async {
-    let inviteCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let inviteCode = normalizedInviteToken(from: rawCode)
     guard !inviteCode.isEmpty else {
-      boardError = "Enter an invite code first."
+      boardError = "Open an invite link or paste its token first."
       return
     }
 
@@ -2078,8 +2099,20 @@ final class AppModel {
     } else {
       code = queryCode
     }
-    guard let code, !code.isEmpty else { return }
-    Task { await startInviteJoin(code: code) }
+    guard let code else { return }
+    let inviteCode = normalizedInviteToken(from: code)
+    guard !inviteCode.isEmpty else { return }
+
+    // Preserve the newest incoming link immediately, then serialize its board
+    // acceptance after session bootstrap so a cold launch cannot load the
+    // account's first board over the invited board.
+    pendingInviteCode = inviteCode
+    persist()
+    Task {
+      await bootstrap()
+      guard pendingInviteCode == inviteCode else { return }
+      await startInviteJoin(code: inviteCode)
+    }
   }
 
   func approveMacPairing(_ pairing: MacDevicePairingRequest) async throws -> String {
@@ -3188,7 +3221,9 @@ final class AppModel {
       board: board,
       account: account,
       availableBoards: availableBoards,
-      pendingInviteCode: pendingInviteCode,
+      // Invite links are bearer credentials. Keep the pending token in memory
+      // for the current auth flow instead of writing it to UserDefaults.
+      pendingInviteCode: "",
       pendingConfirmationEmail: pendingConfirmationEmail,
       profile: profile,
       onboardingMessages: onboardingMessages,
@@ -3223,7 +3258,7 @@ final class AppModel {
     board = snapshot.board
     account = snapshot.account
     availableBoards = snapshot.availableBoards
-    pendingInviteCode = snapshot.pendingInviteCode
+    pendingInviteCode = ""
     pendingConfirmationEmail = snapshot.pendingConfirmationEmail ?? ""
     profile = snapshot.profile
     onboardingMessages = snapshot.onboardingMessages

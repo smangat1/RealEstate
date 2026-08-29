@@ -546,26 +546,26 @@ export default async function SettingsPage({
                   </>
                 ) : null}
 
-                <div className="settings-divider" />
+                {currentUser.id === boardData.board.userId ? (
+                  <>
+                    <div className="settings-divider" />
 
-                <div className="settings-subsection">
-                  <h3>Workspace invites</h3>
-                  <p className="settings-help-copy">
-                    Create a code and send it by text or any app. Optionally lock it to one email. Once they accept, they become a real
-                    workspace member and can add their own commute and preference layer.
-                  </p>
-                  <form action={createBoardInvitationAction} className="account-form">
-                    <input type="hidden" name="boardId" value={boardData.board.id} />
-                    <input type="hidden" name="redirectTo" value={`/settings?boardId=${boardData.board.id}`} />
-                    <label className="field-stack">
-                      <span>Restrict to email (optional)</span>
-                      <input name="email" type="email" placeholder="Leave blank for anyone" />
-                    </label>
-                    <button type="submit" className="account-primary-button">Create shareable code</button>
-                  </form>
+                    <div className="settings-subsection">
+                      <h3>Workspace invites</h3>
+                      <p className="settings-help-copy">
+                        Create a single-use link and send it through Messages or any app. It works with Sign in with Apple—including Hide My Email.
+                        Creating another link replaces the currently pending one.
+                      </p>
+                      <form action={createBoardInvitationAction} className="account-form">
+                        <input type="hidden" name="boardId" value={boardData.board.id} />
+                        <input type="hidden" name="redirectTo" value={`/settings?boardId=${boardData.board.id}`} />
+                        <button type="submit" className="account-primary-button">Create new invite link</button>
+                      </form>
 
-                  <BoardInvitePanel boardId={boardData.board.id} invitations={boardData.invitations} />
-                </div>
+                      <BoardInvitePanel boardId={boardData.board.id} invitations={boardData.invitations} />
+                    </div>
+                  </>
+                ) : null}
               </>
             ) : null}
           </section>
