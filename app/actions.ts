@@ -14,6 +14,7 @@ import {
   createBoardAndReturnId,
   createBoardInvitation,
   deleteBoardForUser,
+  getInvitationByCode,
   leaveBoard,
   getUserById,
   revokeBoardInvitation,
@@ -34,13 +35,24 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 function redirectWithMessage(path: string, key: "error" | "notice", message: string): never {
   const search = new URLSearchParams();
   search.set(key, message);
-  redirect(`${path}?${search.toString()}`);
+  redirect(`${path}${path.includes("?") ? "&" : "?"}${search.toString()}`);
 }
 
 function getSafeNextPath(nextValue: string) {
   if (!nextValue.startsWith("/")) return "/";
   if (nextValue.startsWith("//")) return "/";
   return nextValue;
+}
+
+function getInviteCodeFromNextPath(nextPath: string) {
+  const match = /^\/invite\/([^/?#]+)$/.exec(nextPath);
+  if (!match) return null;
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 function parseOptionalNumber(value: FormDataEntryValue | null) {
@@ -67,6 +79,10 @@ function parseOptionalBoolean(value: FormDataEntryValue | null) {
 }
 
 export async function signUpAction(formData: FormData) {
+  if (!isAppEnabled()) {
+    redirectWithMessage("/", "notice", "Homeboard is currently disabled.");
+  }
+
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "").trim();
   const displayName = String(formData.get("displayName") || "").trim();
@@ -75,6 +91,20 @@ export async function signUpAction(formData: FormData) {
 
   if (!email || !password || !displayName) {
     redirectWithMessage(registerPath, "error", "Name, email, and password are required.");
+  }
+
+  const inviteCode = getInviteCodeFromNextPath(next);
+  if (!inviteCode) {
+    redirectWithMessage(registerPath, "error", "Homeboard beta accounts require an active board invite.");
+  }
+
+  const inviteData = await getInvitationByCode(inviteCode);
+  if (!inviteData || inviteData.wasExpired || inviteData.invitation.status !== "pending") {
+    redirectWithMessage(registerPath, "error", "This board invite is no longer active. Ask the board owner for a new one.");
+  }
+
+  if (inviteData.invitation.email && inviteData.invitation.email.toLowerCase() !== email) {
+    redirectWithMessage(registerPath, "error", `This invite is reserved for ${inviteData.invitation.email}.`);
   }
 
   try {

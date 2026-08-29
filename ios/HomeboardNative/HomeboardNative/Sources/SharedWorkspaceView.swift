@@ -2959,6 +2959,7 @@ struct SharedSetupView: View {
   @State private var showsBoardExitConfirmation = false
   @State private var showsAccountDeletionConfirmation = false
   @State private var showsReplayGuidesConfirmation = false
+  @State private var showsBetaFeedback = false
 
   private var isCurrentUserOwner: Bool {
     guard let userId = appModel.account?.id else { return false }
@@ -3022,7 +3023,13 @@ struct SharedSetupView: View {
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "bell.badge", title: "Board notifications", subtitle: "Tours, comments, votes, and member updates") {
+            SharedSettingsRow(icon: "exclamationmark.bubble", title: "Share beta feedback", subtitle: "Include optional, privacy-safe diagnostics") {
+              showsBetaFeedback = true
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "bell.badge", title: "Notification permission", subtitle: "Device registration ready · live delivery pending") {
               appModel.enableNotifications()
             }
           }
@@ -3126,7 +3133,7 @@ struct SharedSetupView: View {
             showsAccountDeletionConfirmation = true
           } label: {
             HStack {
-              Text(appModel.isDevelopmentAccount ? "Wipe account" : "Delete account and data")
+              Text("Delete account and data")
               Spacer()
               Image(systemName: "person.crop.circle.badge.xmark")
             }
@@ -3184,6 +3191,18 @@ struct SharedSetupView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
+    .sheet(isPresented: $showsBetaFeedback) {
+      SharedBetaFeedbackSheet(
+        boardLoaded: appModel.board.id != nil,
+        boardCount: appModel.availableBoards.count,
+        memberCount: appModel.board.members.count,
+        savedListingCount: appModel.board.shortlist.count,
+        currentScreen: appModel.boardTab.rawValue
+      )
+      .presentationDetents([.large])
+      .presentationDragIndicator(.visible)
+      .presentationBackground(HomeboardPalette.background)
+    }
     .confirmationDialog(
       "Replay all page guides?",
       isPresented: $showsReplayGuidesConfirmation,
@@ -3215,23 +3234,111 @@ struct SharedSetupView: View {
       Text(isCurrentUserOwner ? "This permanently removes the shared workspace and all of its board data." : "The board stays available to the remaining members.")
     }
     .confirmationDialog(
-      appModel.isDevelopmentAccount
-        ? "Wipe the development account?"
-        : "Delete your Homeboard account?",
+      "Delete your Homeboard account?",
       isPresented: $showsAccountDeletionConfirmation,
       titleVisibility: .visible
     ) {
-      Button(
-        appModel.isDevelopmentAccount ? "Wipe account data" : "Delete account permanently",
-        role: .destructive
-      ) { appModel.deleteAccount() }
+      Button("Delete account permanently", role: .destructive) { appModel.deleteAccount() }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text(
-        appModel.isDevelopmentAccount
-          ? "This resets demoaccount to empty. Boards, listings, memberships, cached imports, and onboarding answers are removed, but the login remains available. You’ll restart onboarding."
-          : "This removes your account, owned boards, memberships, saved listings, and shared profile data. This cannot be undone."
-      )
+      Text("This removes your account, owned boards, memberships, saved listings, and shared profile data. This cannot be undone.")
+    }
+  }
+}
+
+private struct SharedBetaFeedbackSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  @State private var feedback = ""
+
+  let boardLoaded: Bool
+  let boardCount: Int
+  let memberCount: Int
+  let savedListingCount: Int
+  let currentScreen: String
+
+  private let createdAt = Date()
+
+  private var trimmedFeedback: String {
+    feedback.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private var deviceKind: String {
+    switch UIDevice.current.userInterfaceIdiom {
+    case .phone: "iPhone"
+    case .pad: "iPad"
+    case .mac: "Mac"
+    default: "Apple device"
+    }
+  }
+
+  private var report: String {
+    """
+    Homeboard beta feedback
+
+    \(trimmedFeedback)
+
+    Diagnostics approved by the user:
+    App version: \(HomeboardConfig.appVersion)
+    Device: \(deviceKind)
+    OS version: \(UIDevice.current.systemVersion)
+    Current screen: \(currentScreen)
+    Board loaded: \(boardLoaded ? "yes" : "no")
+    Available boards: \(boardCount)
+    Current board members: \(memberCount)
+    Current saved listings: \(savedListingCount)
+    Created: \(ISO8601DateFormatter().string(from: createdAt))
+    """
+  }
+
+  var body: some View {
+    NavigationStack {
+      VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Tell us what happened")
+            .font(.title2.bold())
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text("Describe what you expected and what Homeboard did instead.")
+            .font(.subheadline)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+
+        TextEditor(text: $feedback)
+          .font(.body)
+          .foregroundStyle(HomeboardPalette.primaryText)
+          .scrollContentBackground(.hidden)
+          .padding(12)
+          .frame(minHeight: 210)
+          .background(Color.white.opacity(0.06))
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+        Label(
+          "The diagnostic summary includes version and counts only—never your email, listing addresses, URLs, comments, or preferences. You can review it before sharing.",
+          systemImage: "hand.raised.fill"
+        )
+        .font(.caption)
+        .foregroundStyle(HomeboardPalette.secondaryText)
+
+        ShareLink(item: report) {
+          Label("Review and share report", systemImage: "square.and.arrow.up")
+            .font(.headline)
+            .foregroundStyle(Color.black)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(HomeboardPalette.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .disabled(trimmedFeedback.isEmpty)
+        .opacity(trimmedFeedback.isEmpty ? 0.5 : 1)
+
+        Spacer(minLength: 0)
+      }
+      .padding(20)
+      .background(HomeboardPalette.background.ignoresSafeArea())
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+            .foregroundStyle(HomeboardPalette.accent)
+        }
+      }
     }
   }
 }

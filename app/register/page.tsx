@@ -3,6 +3,18 @@ import { redirect } from "next/navigation";
 
 import { signUpAction } from "@/app/actions";
 import { getCurrentAppUser } from "@/lib/auth";
+import { getInvitationByCode } from "@/lib/board-data";
+
+function getInviteCode(nextPath: string) {
+  const match = /^\/invite\/([^/?#]+)$/.exec(nextPath);
+  if (!match) return null;
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
 
 export default async function RegisterPage({
   searchParams,
@@ -18,7 +30,35 @@ export default async function RegisterPage({
   const next = typeof params.next === "string" ? params.next : "/";
   const error = typeof params.error === "string" ? params.error : null;
   const email = typeof params.email === "string" ? params.email : "";
-  const isInviteRegistration = next.startsWith("/invite/");
+  const inviteCode = getInviteCode(next);
+  const inviteData = inviteCode ? await getInvitationByCode(inviteCode) : null;
+  const isActiveInvite = Boolean(
+    inviteData && !inviteData.wasExpired && inviteData.invitation.status === "pending",
+  );
+
+  if (!isActiveInvite || !inviteData) {
+    return (
+      <main className="account-shell">
+        <section className="account-card mac-window-card">
+          <div className="account-layout single-panel-layout">
+            <div className="account-intro onboarding-intro">
+              <div className="home-badge">Invitation-only beta</div>
+              <h1>Homeboard accounts start with an active board invite.</h1>
+              <p>
+                Ask a Homeboard member to share a fresh invite link. Opening that link will bring you back here with the right workspace attached.
+              </p>
+              {error ? <div className="account-message account-message-error">{error}</div> : null}
+              <div className="register-actions">
+                <Link href="/" className="secondary-button">Back to Homeboard</Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const invitedEmail = inviteData.invitation.email || email;
 
   return (
     <main className="account-shell">
@@ -27,14 +67,12 @@ export default async function RegisterPage({
           <div className="account-intro onboarding-intro">
             <div className="home-badge">Homeboard account</div>
             <h1>
-              {isInviteRegistration
-                ? "Create the account that should join this shared workspace."
-                : "Create your account first. We will build the search brief after you get in."}
+              Create the account that should join this shared workspace.
             </h1>
             <p>
-              {isInviteRegistration
+              {inviteData.invitation.email
                 ? "This invite is tied to a specific email address. Create that account here, then come straight back to accept the workspace invite."
-                : "Homeboard sign-up should feel like real product auth, not a bloated intake form. Create your account here, verify it if your auth settings require email confirmation, then let the shared workspace onboarding build the rental profile live."}
+                : "Create your account here, then come straight back to accept the shared workspace invite."}
             </p>
 
             {error ? <div className="account-message account-message-error">{error}</div> : null}
@@ -57,7 +95,14 @@ export default async function RegisterPage({
               </label>
               <label className="field-stack">
                 <span>Email</span>
-                <input name="email" type="email" placeholder="ava@homeboard.app" autoComplete="email" defaultValue={email} />
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="ava@homeboard.app"
+                  autoComplete="email"
+                  defaultValue={invitedEmail}
+                  readOnly={Boolean(inviteData.invitation.email)}
+                />
               </label>
               <label className="field-stack">
                 <span>Password</span>

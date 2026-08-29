@@ -66,3 +66,44 @@ test("the native app already ships a complete icon set", () => {
     assert.ok(existsSync(resolve(root, `ios/HomeboardNative/HomeboardNative/Resources/Assets.xcassets/AppIcon.appiconset/${size}`)));
   }
 });
+
+test("the beta exposes a non-secret health check and invite-gates web registration", () => {
+  const health = read("app/api/health/route.ts");
+  const actions = read("app/actions.ts");
+  const registration = read("app/register/page.tsx");
+
+  assert.match(health, /SELECT 1/);
+  assert.match(health, /configuration: requiredConfigurationReady/);
+  assert.match(health, /"Cache-Control": "no-store"/);
+  assert.doesNotMatch(health, /SUPABASE_SECRET_KEY|DATABASE_URL|process\.env/);
+  assert.match(actions, /Homeboard beta accounts require an active board invite/);
+  assert.match(actions, /getInvitationByCode\(inviteCode\)/);
+  assert.match(registration, /Invitation-only beta/);
+  assert.match(registration, /inviteData\.invitation\.status === "pending"/);
+});
+
+test("the native beta offers honest notification status and privacy-safe feedback", () => {
+  const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+  const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
+
+  assert.match(workspace, /Share beta feedback/);
+  assert.match(workspace, /ShareLink\(item: report\)/);
+  assert.match(workspace, /never your email, listing addresses, URLs, comments, or preferences/);
+  assert.match(workspace, /live delivery pending/);
+  assert.match(appModel, /Live board alerts will begin after the beta sender is connected/);
+});
+
+test("release verification scans tracked secrets and attaches correlation IDs", () => {
+  const packageJson = read("package.json");
+  const secretCheck = read("scripts/check-tracked-secrets.ts");
+  const proxy = read("proxy.ts");
+  const workflow = read(".github/workflows/verify.yml");
+
+  assert.match(packageJson, /"verify": "npm run secrets:check/);
+  assert.match(secretCheck, /values intentionally hidden/);
+  assert.match(secretCheck, /git", \["ls-files", "-z"\]/);
+  assert.match(proxy, /crypto\.randomUUID\(\)/);
+  assert.match(proxy, /x-homeboard-request-id/);
+  assert.match(workflow, /npm run verify/);
+  assert.match(workflow, /npm run prisma:validate/);
+});

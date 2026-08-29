@@ -1,0 +1,35 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: https://ci.invalid
+      SUPABASE_PUBLISHABLE_KEY: ci-publishable-placeholder
+      SUPABASE_SECRET_KEY: ci-secret-placeholder
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.invalid
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-publishable-placeholder
+      DATABASE_URL: postgresql://ci@localhost:5432/homeboard
+      ENABLE_APP: "false"
+      DEMO_MODE: "false"
+      HOMEBOARD_NOINDEX: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run prisma:validate

@@ -101,13 +101,6 @@ final class AppModel {
   var listingInventoryError: String?
   var pendingSharedListingImport: HomeboardSharedImportStore.PendingImport?
   var pendingMacPairingRequest: MacDevicePairingRequest?
-  var isDevelopmentAccount: Bool {
-    #if DEBUG
-    authSession?.email.caseInsensitiveCompare("demoaccount@homeboard.local") == .orderedSame
-    #else
-    false
-    #endif
-  }
   var pendingSharedListingURL: String? {
     get {
       pendingSharedListingImport?.canonicalURL ?? pendingSharedListingImport?.url
@@ -760,37 +753,12 @@ final class AppModel {
   }
 
   func deleteAccount() {
-    if isDevelopmentAccount {
-      wipeDevelopmentAccount()
-      return
-    }
     guard let session = authSession else { return }
     Task {
       do {
         try await api.deleteAccount(accessToken: session.accessToken)
         clearSessionState()
         boardFeedback = "Your account and Homeboard data were deleted."
-      } catch {
-        boardError = readable(error)
-      }
-      persist()
-    }
-  }
-
-  private func wipeDevelopmentAccount() {
-    guard let session = authSession else { return }
-    Task {
-      do {
-        try await api.wipeDevelopmentAccount(accessToken: session.accessToken)
-        let response = try await api.fetchSession(accessToken: session.accessToken)
-        clearSessionState()
-        HomeboardSharedImportStore.reset()
-        applySessionResponse(response, session: session)
-        profile = RentalProfile()
-        profile.name = response.user.displayName
-        seedOnboardingMessagesIfNeeded()
-        currentScreen = .onboarding
-        boardFeedback = "Development account wiped. Start onboarding again."
       } catch {
         boardError = readable(error)
       }
@@ -2046,7 +2014,7 @@ final class AppModel {
     Task {
       do {
         try await NativePushService.requestAuthorization()
-        boardFeedback = "Notifications are enabled on this device."
+        boardFeedback = "Notification permission is ready. Live board alerts will begin after the beta sender is connected."
       } catch {
         boardError = readable(error)
       }

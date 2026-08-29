@@ -220,22 +220,13 @@ test("every native build configuration uses Apple-only account entry", () => {
   assert.match(extensionSyncSource, /grant_type", value: "id_token"/);
 });
 
-test("the development login wipes its data without deleting its reusable auth account", () => {
-  assert.match(appModelSource, /var isDevelopmentAccount: Bool/);
-  assert.match(appModelSource, /api\.wipeDevelopmentAccount/);
-  assert.match(appModelSource, /currentScreen = \.onboarding/);
-  assert.match(workspaceSource, /"Wipe account"/);
-  assert.match(workspaceSource, /"Wipe account data"/);
-  assert.match(accountRouteSource, /mode === "wipe"/);
-  assert.match(accountRouteSource, /demoaccount@homeboard\.local/);
-  assert.match(accountRouteSource, /roommateProfile\.deleteMany/);
-  assert.match(accountRouteSource, /user\.delete/);
-  assert.match(accountRouteSource, /wiped: true/);
-  const wipeFlow = accountRouteSource.slice(
-    accountRouteSource.indexOf('if (mode === "wipe")'),
-    accountRouteSource.indexOf("// Cascades remove owned boards"),
-  );
-  assert.doesNotMatch(wipeFlow, /deleteUser/);
+test("native account deletion has no reusable development-account bypass", () => {
+  assert.match(appModelSource, /func deleteAccount/);
+  assert.match(workspaceSource, /"Delete account permanently"/);
+  assert.match(accountRouteSource, /supabaseAdmin\.auth\.admin\.deleteUser/);
+  assert.doesNotMatch(appModelSource, /isDevelopmentAccount|wipeDevelopmentAccount|demoaccount/);
+  assert.doesNotMatch(workspaceSource, /Wipe account|demoaccount/);
+  assert.doesNotMatch(accountRouteSource, /mode === "wipe"|demoaccount|wiped: true/);
 });
 
 test("entry uses solid fixed cards that track reversible vertical swipes", () => {

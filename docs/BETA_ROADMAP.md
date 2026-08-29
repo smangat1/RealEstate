@@ -19,16 +19,19 @@ Public listing discovery, licensed listing photos, a Zillow-sized inventory feed
 - The paid Apple Developer Program team signs the iPhone and Mac apps with Xcode-managed profiles.
 - Every iPhone and Mac build configuration now uses Sign in with Apple; the temporary Debug password fallback has been removed.
 - The signed iPhone Debug profile includes Sign in with Apple, development APNs, App Groups, and shared Keychain access. Release declares production APNs.
-- TypeScript checks and all 90 automated tests pass.
+- The Apple provider is enabled in the live Supabase project; end-to-end real-account device testing remains open.
+- Native targets use the stable HTTPS Vercel deployment, production migrations/RLS are applied, and public Supabase REST reads are blocked.
+- TypeScript checks and all 93 automated tests pass; tracked-secret scanning and web CI are part of verification.
 - The native iOS test bundle compiles for a generic physical device, but the full native suite has not been run as a signed device test suite.
 - Listing mutation journaling, URL-and-unit deduplication, deletion retry, richer SLM evidence, and comparison-map evidence scoring are implemented.
+- Web registration is invite-gated, a non-secret readiness endpoint exists, and the app has privacy-safe beta feedback plus honest notification status.
 
 ## P0 — blockers before any external tester
 
 ### 1. Put the source tree in a recoverable state
 
 - [ ] Create a clean beta branch and commit the actual native app, mobile API, migrations, tests, and documentation.
-- [ ] Resolve the stale `.git/index.lock`. It dates to July 22 and no active Git process currently owns it.
+- [x] Resolve the stale `.git/index.lock`; no lock remains and Git operations are healthy.
 - [ ] Remove or archive the `.icloud-placeholder-*` copies and `node_modules.dataless-old` after verifying the active files.
 - [ ] Move the working repository out of an iCloud-offloaded folder or guarantee that every source file stays downloaded.
 - [ ] Tag the exact commit used for each TestFlight build.
@@ -40,34 +43,35 @@ Exit condition: a fresh clone on another Mac can install dependencies, generate 
 - [ ] Rotate the Supabase secret/service key, database password, routing key, and any other credential exposed during development.
 - [ ] Confirm that only the Supabase publishable key exists in client code.
 - [ ] Delete the `demoaccount` Supabase user before external distribution.
-- [ ] Verify that Debug-only password login is not compiled into Release.
-- [ ] Add secret scanning to the release checklist or CI.
+- [x] Remove reusable development-account behavior from native code and the account API.
+- [x] Verify that Debug-only password login is not compiled into Release.
+- [x] Add tracked-secret scanning to required verification and web CI.
 
 Exit condition: no beta-distributed binary, repository commit, build log, or documentation contains a server credential or shared test password.
 
 ### 3. Deploy a real backend
 
-Current issue: all native targets point to LAN or loopback HTTP addresses. The iPhone Release target currently uses `http://192.168.1.203:3000`, and no production web origin is configured.
+Current state: native targets use the stable Vercel HTTPS origin. Production database access, migrations, and RLS are active. Backups and a restore rehearsal remain operator work.
 
-- [ ] Choose and deploy one stable HTTPS Next.js origin.
-- [ ] Provision the production PostgreSQL/Supabase connection using a deploy-safe pooler URL.
-- [ ] Configure every required server environment variable.
-- [ ] Set the Release `HOMEBOARD_API_BASE_URL` and `HOMEBOARD_PUBLIC_WEB_URL` to the HTTPS origin.
-- [ ] Apply every Supabase migration and audit the resulting schema and RLS policies.
-- [ ] Add a production health check that verifies auth, database access, and required configuration without exposing secrets.
+- [x] Choose and deploy one stable HTTPS Next.js origin.
+- [x] Provision the production PostgreSQL/Supabase connection.
+- [x] Configure the required production runtime variables.
+- [x] Set Release `HOMEBOARD_API_BASE_URL` and `HOMEBOARD_PUBLIC_WEB_URL` to the HTTPS origin.
+- [x] Apply Supabase migrations and verify anonymous public-table access is rejected.
+- [x] Add a production health check for required configuration and database access without exposing secrets.
 - [ ] Configure backups and perform one restore rehearsal.
-- [ ] Decide whether the web board ships in this beta. If it does not, disable public registration and legacy password surfaces.
+- [x] Gate legacy web account creation behind a pending, unexpired board invite.
 
 Exit condition: a phone on cellular data can sign in, create a board, save a link, relaunch, and retrieve the same board without a development Mac running.
 
 ### 4. Finish production authentication and signing
 
-Current issue: Apple signing and native entitlements are unlocked, but the Apple provider is still disabled in the live Supabase project and end-to-end sign-in has not been exercised.
+Current state: Apple signing, native entitlements, and the live Supabase Apple provider are enabled. End-to-end sign-in has not been exercised across the full real-account matrix.
 
 - [x] Enroll in and select the paid Apple Developer Program team.
 - [x] Register the iOS and Mac App IDs and enable Sign in with Apple.
 - [ ] Group related identifiers under the correct primary App ID.
-- [ ] Enable the Apple provider in Supabase and configure the native client IDs.
+- [x] Enable the Apple provider in Supabase and configure the native client IDs.
 - [ ] Test first-time creation, returning sign-in, hidden-email relay, canceled authorization, revoked authorization, expired sessions, and account deletion.
 - [ ] Create the App Store Connect record and internal TestFlight group.
 - [ ] Archive and upload a signed Release build; do not distribute the Debug fallback.
@@ -117,10 +121,10 @@ Exit condition: there are no unresolved high-severity security findings, account
 ### 8. Add production observability
 
 - [ ] Add native crash reporting with dSYM upload.
-- [ ] Add structured server error reporting and request correlation IDs.
+- [ ] Add structured server error reporting; unique request correlation IDs are now attached.
 - [ ] Record import success/failure, sync retries, auth failures, route failures, and comparison load time without storing sensitive listing text in logs.
 - [ ] Create alerts for backend unavailability, elevated 5xx responses, database saturation, and repeated auth failure.
-- [ ] Add an in-app beta feedback/report action that includes app version and a user-approved diagnostic summary.
+- [x] Add an in-app beta feedback action with app version and a user-approved, privacy-safe diagnostic summary.
 
 Exit condition: a forced test crash and forced server error are visible to the team with enough context to diagnose them.
 
@@ -145,7 +149,7 @@ Exit condition: no P0/P1 crash or data-loss bug remains, and the signed TestFlig
 - [ ] Show which comparison facts are hard data, roommate input, route data, or model evidence.
 - [ ] Add a side-by-side comparison sheet for two or three listings.
 - [ ] Make work destinations and commute limits easy to edit directly from comparison.
-- [ ] Hide or clearly label controls whose backend is not enabled, especially notifications.
+- [x] Clearly label notification permission/device registration while the server sender is not enabled.
 
 ### Comparison quality
 
@@ -223,3 +227,4 @@ Do not open the external beta until all of these are true:
 - Broad public signup before invitation-only collaboration is stable.
 
 The shorter operational checklist remains in [EXTERNAL_BETA_CHECKLIST.md](EXTERNAL_BETA_CHECKLIST.md).
+The current product/UX assessment is in [CURRENT_APP_STATE.md](CURRENT_APP_STATE.md), and manual release scripts are in [BETA_QA_RUNBOOK.md](BETA_QA_RUNBOOK.md).

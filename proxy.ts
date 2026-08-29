@@ -1,11 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  return NextResponse.next({
+  const requestId = crypto.randomUUID();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-homeboard-request-id", requestId);
+
+  const response = NextResponse.next({
     request: {
-      headers: request.headers,
+      headers: requestHeaders,
     },
   });
+  response.headers.set("x-homeboard-request-id", requestId);
+  return response;
 }
 
 export const config = {

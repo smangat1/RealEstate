@@ -1075,15 +1075,6 @@ final class HomeboardAPI {
     )
   }
 
-  func wipeDevelopmentAccount(accessToken: String) async throws {
-    let _: EmptyResponse = try await requestBackend(
-      path: "/api/mobile/account?mode=wipe",
-      method: "DELETE",
-      accessToken: accessToken,
-      body: EmptyRequestBody()
-    )
-  }
-
   func approveMacDevicePairing(
     accessToken: String,
     request pairing: MacDevicePairingRequest

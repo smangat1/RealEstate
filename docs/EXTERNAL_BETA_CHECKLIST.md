@@ -10,16 +10,17 @@ The application code can be built and tested locally without these items. The fo
 
 ## Backend and database
 
-- Deploy the Next.js backend to a stable HTTPS origin.
-- Configure all variables from `.env.example`; use a Supabase pooler connection for `DATABASE_URL` when the direct hostname is unavailable over IPv4.
-- Link the Supabase CLI and run `npx --yes supabase@latest db push` so RLS, push-device, rating, and listing-coordinate migrations are applied.
+- The Next.js backend is deployed to the stable Vercel HTTPS origin and native targets use it.
+- Production variables, database access, migrations, and RLS are configured; anonymous REST table access has been verified blocked.
+- After each deploy, verify `/api/health` returns 200 with configuration and database checks marked `ok`.
 - Set `ENABLE_APP=true`, `DEMO_MODE=false`, and `HOMEBOARD_NOINDEX=false` for the public beta.
 - Run `npm run verify` against the production configuration before opening access.
+- Configure automated backups and complete one restore rehearsal.
 
 ## Apple and Supabase Auth
 
 - Sign in with Apple is provisioned for `com.homeboard.native`, `com.homeboard.native.mac`, and the Mac debug App ID. Verify the identifiers are grouped under the intended primary identifier before TestFlight distribution.
-- Enable the Apple provider in Supabase Auth and list each native App ID in Client IDs. The live project currently reports the Apple provider as disabled.
+- The Apple provider is enabled in Supabase Auth. Reconfirm every shipped native App ID is listed before archiving.
 - Test first-time Apple account creation, returning sign-in, hidden-email relay, account deletion, and an expired invite with non-owner accounts.
 
 ## Privacy policy and public support
@@ -37,6 +38,7 @@ The application code can be built and tested locally without these items. The fo
 - Click every public navigation, footer, logo, install, and email link after each production deployment.
 - Keep the mobile menu, favicon, Apple touch icon, route-specific titles, descriptions, and current copyright year covered by the launch-readiness tests.
 - Replace `NEXT_PUBLIC_SUPPORT_EMAIL` only with a monitored inbox; never publish a guessed or inactive address.
+- Web registration is invite-only; confirm a missing, expired, used, or wrong-email invite cannot create an account.
 - Keep the install button connected to honest beta details until a real TestFlight destination is available, then replace the beta message with the official Apple link.
 - Check visible copy for debug output, stale success/error banners, fabricated contact details, and accidental placeholder text.
 - Deliver large visible imagery through the compressed WebP/JPEG assets and review image weight when screenshots change.
@@ -55,6 +57,8 @@ The application code can be built and tested locally without these items. The fo
 - Keep OpenRouteService configured for server summaries if desired; the native app already uses MapKit for member-to-listing route comparisons.
 
 ## Required human QA
+
+Run and retain the evidence from [BETA_QA_RUNBOOK.md](BETA_QA_RUNBOOK.md).
 
 - Use two real accounts on separate devices to create a board, invite a roommate, accept the invite, and verify both see the same changes.
 - Add a listing with a photo and exact address, then verify map placement, filters, commute routes, reactions, comments, ratings, rejection, and shortlist behavior.
