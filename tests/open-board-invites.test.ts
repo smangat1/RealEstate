@@ -19,6 +19,7 @@ const welcome = read("ios/HomeboardNative/HomeboardNative/Sources/WelcomeView.sw
 const releaseEntitlements = read("ios/HomeboardNative/HomeboardNative/HomeboardNative.entitlements");
 const debugEntitlements = read("ios/HomeboardNative/HomeboardNative/HomeboardNativeDebug.entitlements");
 const association = read("lib/apple-app-site-association.ts");
+const siteURL = read("lib/site-url.ts");
 const invitePage = read("app/invite/[token]/page.tsx");
 const inviteActions = read("app/invite/[token]/invite-actions.tsx");
 const inviteStyles = read("app/invite/[token]/invite.module.css");
@@ -50,6 +51,8 @@ test("native invite UI shares a link that works with hidden Apple email", () => 
 test("shared web links open the installed app and otherwise retain an install path", () => {
   assert.match(association, /4SSAVHCM6U\.com\.homeboard\.native/);
   assert.match(association, /paths: \["\/invite\/\*"\]/);
+  assert.doesNotMatch(siteURL, /VERCEL_PROJECT_PRODUCTION_URL|VERCEL_URL/);
+  assert.match(siteURL, /real-estate-samyanmangat-6662s-projects\.vercel\.app/);
   assert.match(releaseEntitlements, /com\.apple\.developer\.associated-domains/);
   assert.match(releaseEntitlements, /applinks:real-estate-samyanmangat-6662s-projects\.vercel\.app/);
   assert.match(debugEntitlements, /com\.apple\.developer\.associated-domains/);
