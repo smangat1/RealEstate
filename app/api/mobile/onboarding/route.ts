@@ -58,7 +58,10 @@ export async function POST(request: Request) {
         profileSeed: confirmed,
         initialAssistantMessage: "The shared brief is ready. Invite your group and start adding real listings.",
       });
-      const data = await getBoardPageData(boardId, user.id);
+      const data = await getBoardPageData(boardId, user.id, {
+        includeSuggestedListings: false,
+        includeCommutes: false,
+      });
       if (!data) return NextResponse.json({ error: "Unable to open the new board." }, { status: 500 });
       return NextResponse.json({ boardId, board: buildMobileBoardPayload(data), profile: data.profile, missingFields: data.missingFields });
     }

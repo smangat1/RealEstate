@@ -1311,7 +1311,10 @@ function buildDeckListings(listings: SuggestedListingRecord[], requests: Listing
 export async function getBoardPageData(
   boardId: string,
   viewerUserId: string,
-  options: { includeSuggestedListings?: boolean } = { includeSuggestedListings: false },
+  options: { includeSuggestedListings?: boolean; includeCommutes?: boolean } = {
+    includeSuggestedListings: false,
+    includeCommutes: true,
+  },
 ): Promise<BoardPageData | null> {
   const demoMode = isDemoModeEnabled();
   if (demoMode && options.includeSuggestedListings === true) {
@@ -1594,7 +1597,7 @@ export async function getBoardPageData(
         )
       : [];
   const commuteAnchors = getCommuteAnchors(roommates);
-  const savedListingCommutesRaw = isDemoModeEnabled()
+  const savedListingCommutesRaw = isDemoModeEnabled() || options.includeCommutes === false
     ? boardListings.map((entry) => ({
         listingId: entry.id,
         bestDurationMinutes: null,
@@ -1706,7 +1709,6 @@ export async function createBoardAndReturnId(input: {
   profileSeed?: Partial<SearchProfileData>;
   initialAssistantMessage?: string;
 }) {
-  await ensureStarterCatalog();
   const title = input.title?.trim() || "New workspace";
   const blankProfile = createBlankProfile("temp");
   const seededProfile = finalizeProfileState({ ...blankProfile, ...(input.profileSeed ?? {}) });

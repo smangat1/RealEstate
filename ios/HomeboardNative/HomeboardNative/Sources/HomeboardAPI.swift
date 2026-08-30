@@ -26,6 +26,7 @@ enum HomeboardAPIError: LocalizedError {
 struct MobileSessionResponse: Decodable {
   var user: RemoteUserPayload
   var boards: [MobileBoardSummary]
+  var activeBoard: MobileBoardLoadResponse?
 }
 
 enum NativeSignUpOutcome {
@@ -434,6 +435,7 @@ final class HomeboardAPI {
   private let session: URLSession
   private let decoder: JSONDecoder
   private let encoder: JSONEncoder
+  private let backendRequestTimeout: TimeInterval = 12
 
   init(session: URLSession = .shared) {
     self.session = session
@@ -548,6 +550,14 @@ final class HomeboardAPI {
       path: "/api/mobile/session",
       accessToken: accessToken,
       timeoutInterval: 8
+    )
+  }
+
+  func fetchBootstrapSession(accessToken: String) async throws -> MobileSessionResponse {
+    try await requestBackend(
+      path: "/api/mobile/session?includeBoard=1",
+      accessToken: accessToken,
+      timeoutInterval: 12
     )
   }
 
@@ -1151,6 +1161,7 @@ final class HomeboardAPI {
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
     request.httpBody = try encoder.encode(body)
+    request.timeoutInterval = backendRequestTimeout
 
     return try await perform(request)
   }
@@ -1168,9 +1179,7 @@ final class HomeboardAPI {
     request.httpMethod = "GET"
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-    if let timeoutInterval {
-      request.timeoutInterval = timeoutInterval
-    }
+    request.timeoutInterval = timeoutInterval ?? backendRequestTimeout
 
     return try await perform(request)
   }

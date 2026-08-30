@@ -89,6 +89,14 @@ const boardDataSource = readFileSync(
   resolve(process.cwd(), "lib/board-data.ts"),
   "utf8",
 );
+const commuteServiceSource = readFileSync(
+  resolve(process.cwd(), "lib/commute-service.ts"),
+  "utf8",
+);
+const mobileSessionRouteSource = readFileSync(
+  resolve(process.cwd(), "app/api/mobile/session/route.ts"),
+  "utf8",
+);
 test("native signup distinguishes email confirmation from a failed account", () => {
   assert.match(apiSource, /enum NativeSignUpOutcome/);
   assert.match(apiSource, /case confirmationRequired\(email: String\)/);
@@ -126,7 +134,52 @@ test("device sign-in uses the stable HTTPS backend and bounded network waits", (
   assert.doesNotMatch(nativeProjectSource, /Samyans-Laptop|192\.168\.1\.203/);
   assert.doesNotMatch(nativeProjectDefinition, /Samyans-Laptop|192\.168\.1\.203/);
   assert.match(apiSource, /timeoutInterval: 8/);
+  assert.match(apiSource, /private let backendRequestTimeout: TimeInterval = 12/);
   assert.match(apiSource, /request\.timeoutInterval = 12/);
+  assert.match(apiSource, /request\.timeoutInterval = backendRequestTimeout/);
+  assert.match(apiSource, /request\.timeoutInterval = timeoutInterval \?\? backendRequestTimeout/);
+});
+
+test("startup returns the first board in one authenticated backend request", () => {
+  assert.match(apiSource, /func fetchBootstrapSession/);
+  assert.match(apiSource, /\/api\/mobile\/session\?includeBoard=1/);
+  assert.match(appModelSource, /api\.fetchBootstrapSession/);
+  assert.match(appModelSource, /response\.activeBoard/);
+  assert.match(appModelSource, /applyBoardLoadResponse\(activeBoard, id: firstBoard\.id\)/);
+  assert.match(mobileSessionRouteSource, /includeBoard/);
+  assert.match(mobileSessionRouteSource, /activeBoard: activeBoardData/);
+  assert.match(mobileSessionRouteSource, /buildMobileBoardPayload\(activeBoardData\)/);
+  assert.match(mobileSessionRouteSource, /includeCommutes: false/);
+});
+
+test("startup refreshes auth only for an unauthorized response", () => {
+  const bootstrapFlow = appModelSource.slice(
+    appModelSource.indexOf("func bootstrap"),
+    appModelSource.indexOf("func openAuth"),
+  );
+
+  assert.match(bootstrapFlow, /catch HomeboardAPIError\.unauthorized/);
+  assert.match(bootstrapFlow, /catch \{[\s\S]*boardError = readable\(error\)/);
+  assert.match(bootstrapFlow, /A slow board or temporary backend failure is not an expired login/);
+});
+
+test("board creation never seeds the catalog or waits indefinitely on commute enrichment", () => {
+  const createBoardFlow = boardDataSource.slice(
+    boardDataSource.indexOf("export async function createBoardAndReturnId"),
+    boardDataSource.indexOf("async function addBoardEvent"),
+  );
+  const commuteFlow = commuteServiceSource.slice(
+    commuteServiceSource.indexOf("export async function estimateCommutes"),
+  );
+
+  assert.doesNotMatch(createBoardFlow, /ensureStarterCatalog/);
+  assert.match(boardDataSource, /isDemoModeEnabled\(\) \|\| options\.includeCommutes === false/);
+  assert.match(commuteServiceSource, /COMMUTE_REQUEST_TIMEOUT_MS = 2_500/);
+  assert.ok(
+    commuteFlow.indexOf("input.listings.length === 0")
+      < commuteFlow.indexOf("uniqueAnchors.map(async (anchor)"),
+  );
+  assert.ok((commuteServiceSource.match(/AbortSignal\.timeout\(COMMUTE_REQUEST_TIMEOUT_MS\)/g) ?? []).length >= 2);
 });
 
 test("board loading avoids read-time maintenance writes and shows cached data immediately", () => {

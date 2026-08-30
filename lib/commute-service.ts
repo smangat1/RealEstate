@@ -23,6 +23,22 @@ type Anchor = {
 };
 
 const geocodeCache = new Map<string, Coordinates | null>();
+const COMMUTE_REQUEST_TIMEOUT_MS = 2_500;
+
+function emptyEstimate(listingId: string, anchorLabels: string[] = []): CommuteEstimate {
+  return {
+    listingId,
+    bestDurationMinutes: null,
+    bestDistanceMiles: null,
+    bestOriginLabel: null,
+    evaluatedAnchors: anchorLabels,
+    routes: anchorLabels.map((originLabel) => ({
+      originLabel,
+      durationMinutes: null,
+      distanceMiles: null,
+    })),
+  };
+}
 
 function getOpenRouteServiceApiKey() {
   return process.env.OPENROUTESERVICE_API_KEY?.trim() || null;
@@ -49,13 +65,19 @@ async function geocode(query: string): Promise<Coordinates | null> {
   url.searchParams.set("size", "1");
   url.searchParams.set("text", query);
 
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "homeboard-mvp/0.1",
-    },
-    next: { revalidate: 60 * 60 * 24 },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "homeboard-mvp/0.1",
+      },
+      next: { revalidate: 60 * 60 * 24 },
+      signal: AbortSignal.timeout(COMMUTE_REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return null;
+  }
 
   if (!response.ok) {
     geocodeCache.set(normalized, null);
@@ -82,40 +104,39 @@ async function matrixDurations(
 ): Promise<CommuteEstimate[]> {
   const apiKey = getOpenRouteServiceApiKey();
   if (!apiKey || anchors.length === 0 || destinations.length === 0) {
-    return destinations.map((destination) => ({
-      listingId: destination.listingId,
-      bestDurationMinutes: null,
-      bestDistanceMiles: null,
-      bestOriginLabel: null,
-      evaluatedAnchors: anchors.map((anchor) => anchor.label),
-      routes: anchors.map((anchor) => ({
-        originLabel: anchor.label,
-        durationMinutes: null,
-        distanceMiles: null,
-      })),
-    }));
+    return destinations.map((destination) =>
+      emptyEstimate(destination.listingId, anchors.map((anchor) => anchor.label)),
+    );
   }
 
   const locations = [...anchors.map((anchor) => anchor.coords), ...destinations.map((destination) => destination.coords)];
   const sources = anchors.map((_, index) => index);
   const destinationsIndexes = destinations.map((_, index) => anchors.length + index);
 
-  const response = await fetch("https://api.openrouteservice.org/v2/matrix/driving-car", {
-    method: "POST",
-    headers: {
-      Authorization: apiKey,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      locations,
-      sources,
-      destinations: destinationsIndexes,
-      metrics: ["distance", "duration"],
-      units: "mi",
-    }),
-    next: { revalidate: 60 * 10 },
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.openrouteservice.org/v2/matrix/driving-car", {
+      method: "POST",
+      headers: {
+        Authorization: apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        locations,
+        sources,
+        destinations: destinationsIndexes,
+        metrics: ["distance", "duration"],
+        units: "mi",
+      }),
+      next: { revalidate: 60 * 10 },
+      signal: AbortSignal.timeout(COMMUTE_REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return destinations.map((destination) =>
+      emptyEstimate(destination.listingId, anchors.map((anchor) => anchor.label)),
+    );
+  }
 
   if (!response.ok) {
     return destinations.map((destination) => ({
@@ -185,6 +206,15 @@ export async function estimateCommutes(input: {
   const uniqueAnchors = Array.from(
     new Map(input.anchors.map((anchor) => [anchor.query.trim().toLowerCase(), anchor])).values(),
   ).slice(0, 3);
+
+  // Board creation and startup should never wait on an external commute
+  // provider when there is no route to calculate. Previously, a brand-new
+  // board still geocoded its commute anchor even though it had zero listings.
+  if (input.listings.length === 0 || uniqueAnchors.length === 0) {
+    return input.listings.map((listing) =>
+      emptyEstimate(listing.listingId, uniqueAnchors.map((anchor) => anchor.label)),
+    );
+  }
 
   const resolvedAnchors = (
     await Promise.all(

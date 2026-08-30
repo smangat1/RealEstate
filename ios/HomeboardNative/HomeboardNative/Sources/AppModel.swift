@@ -182,29 +182,47 @@ final class AppModel {
     }
 
     do {
-      let response = try await api.fetchSession(accessToken: session.accessToken)
+      let response = try await api.fetchBootstrapSession(accessToken: session.accessToken)
       applySessionResponse(response, session: session)
       if let firstBoard = response.boards.first {
-        try await loadBoard(id: firstBoard.id)
+        if let activeBoard = response.activeBoard,
+           activeBoard.board.id == firstBoard.id {
+          applyBoardLoadResponse(activeBoard, id: firstBoard.id)
+        } else {
+          try await loadBoard(id: firstBoard.id)
+        }
       } else {
         seedOnboardingMessagesIfNeeded()
         currentScreen = .onboarding
       }
-    } catch {
+    } catch HomeboardAPIError.unauthorized {
       do {
         let refreshed = try await api.refreshSession(refreshToken: session.refreshToken)
         authSession = refreshed
-        let response = try await api.fetchSession(accessToken: refreshed.accessToken)
+        NativeAuthSessionStore.save(refreshed)
+        let response = try await api.fetchBootstrapSession(accessToken: refreshed.accessToken)
         applySessionResponse(response, session: refreshed)
         if let firstBoard = response.boards.first {
-          try await loadBoard(id: firstBoard.id)
+          if let activeBoard = response.activeBoard,
+             activeBoard.board.id == firstBoard.id {
+            applyBoardLoadResponse(activeBoard, id: firstBoard.id)
+          } else {
+            try await loadBoard(id: firstBoard.id)
+          }
         } else {
           seedOnboardingMessagesIfNeeded()
           currentScreen = .onboarding
         }
-      } catch {
+      } catch HomeboardAPIError.unauthorized {
         clearSessionState()
+      } catch {
+        boardError = readable(error)
       }
+    } catch {
+      // A slow board or temporary backend failure is not an expired login.
+      // Keep the restored board/session visible and let the user retry instead
+      // of refreshing auth and replaying the same long request.
+      boardError = readable(error)
     }
   }
 
@@ -1050,8 +1068,12 @@ final class AppModel {
       throw HomeboardAPIError.missingSession
     }
 
-    let previousBoardID = board.id
     let response = try await api.fetchBoard(accessToken: session.accessToken, boardId: id)
+    applyBoardLoadResponse(response, id: id)
+  }
+
+  private func applyBoardLoadResponse(_ response: MobileBoardLoadResponse, id: String) {
+    let previousBoardID = board.id
     board = boardByApplyingRemovalTombstones(response.board, storageKey: id)
     HomeboardSharedImportStore.setActiveBoard(response.board.id ?? id)
     if previousBoardID != id {

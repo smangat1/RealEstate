@@ -60,7 +60,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const user = await requireMobileAppUser(request);
     const { id } = await context.params;
-    const boardData = await getBoardPageData(id, user.id, { includeSuggestedListings: false });
+    const boardData = await getBoardPageData(id, user.id, {
+      includeSuggestedListings: false,
+      includeCommutes: false,
+    });
 
     if (!boardData) {
       return NextResponse.json({ error: "Board not found." }, { status: 404 });
@@ -102,7 +105,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     };
 
     await saveBoardProfile(id, user.id, profile);
-    const boardData = await getBoardPageData(id, user.id, { includeSuggestedListings: false });
+    const boardData = await getBoardPageData(id, user.id, {
+      includeSuggestedListings: false,
+      includeCommutes: false,
+    });
 
     if (!boardData) {
       return NextResponse.json({ error: "Board not found." }, { status: 404 });
@@ -124,12 +130,18 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   try {
     const user = await requireMobileAppUser(request);
     const { id } = await context.params;
-    const current = await getBoardPageData(id, user.id, { includeSuggestedListings: false });
+    const current = await getBoardPageData(id, user.id, {
+      includeSuggestedListings: false,
+      includeCommutes: false,
+    });
     if (!current) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     const parsed = boardTitleSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid board title." }, { status: 400 });
     await renameBoard(id, user.id, parsed.data.title);
-    const next = await getBoardPageData(id, user.id, { includeSuggestedListings: false });
+    const next = await getBoardPageData(id, user.id, {
+      includeSuggestedListings: false,
+      includeCommutes: false,
+    });
     if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     return NextResponse.json({ board: buildMobileBoardPayload(next), profile: next.profile, missingFields: next.missingFields });
   } catch (error) {
