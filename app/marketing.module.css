@@ -332,6 +332,9 @@
 .installSteps b { padding-top: 3px; color: #63756b; font-size: 8px; }
 .installSteps p { margin: 0; color: #53635b; font-size: 11px; line-height: 1.4; }
 .installSteps strong { display: block; color: #27362f; font-family: var(--font-display), Georgia, serif; font-size: 18px; line-height: 1.1; }
+.installActions { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.installActions a,.installActions button { min-height: 46px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #30433a; color: #30433a; background: transparent; font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.installActions a { color: #f9e2cd; background: #30433a; }
 .installDialogCopy .installStatus { padding: 14px; color: #f6e9dc; background: #30433a; font-size: 8px; font-weight: 800; letter-spacing: .1em; line-height: 1.5; text-transform: uppercase; }
 .installDialogCopy .installRoadmap { margin-top: 16px; font-size: 10px; line-height: 1.45; }
 .installRoadmap strong { margin-bottom: 4px; display: block; color: #31463d; font-size: 8px; letter-spacing: .11em; text-transform: uppercase; }
@@ -470,6 +473,7 @@
   .installDialog { width: min(680px, calc(100% - 24px)); }
   .installDialogBody { padding: 24px 18px 28px; display: block; }
   .installDialogCopy > h2 { font-size: 48px; }
+  .installActions { grid-template-columns: 1fr; }
   .installScreenshot { margin-top: 34px; }
   .installScreenshot img { width: 100%; height: auto; object-fit: contain; }
 }

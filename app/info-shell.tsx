@@ -14,6 +14,7 @@ export function InfoHeader() {
       </Link>
 
       <nav className={styles.desktopLinks} aria-label="Information pages">
+        <Link href="/safari">Safari for Mac</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/contact">Contact</Link>
         <Link href="/">Home</Link>
@@ -22,6 +23,7 @@ export function InfoHeader() {
       <details className={styles.mobileMenu}>
         <summary>Menu</summary>
         <nav aria-label="Mobile information pages">
+          <Link href="/safari">Safari for Mac</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/contact">Contact</Link>
           <Link href="/">Home</Link>
@@ -39,6 +41,7 @@ export function InfoFooter() {
         <span>Homeboard</span>
       </Link>
       <nav aria-label="Footer">
+        <Link href="/safari">Safari for Mac</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/contact">Contact</Link>
       </nav>

@@ -9,6 +9,9 @@ struct MacDevicePairingFlowView: View {
   @State private var isApproving = false
   @State private var connectedDeviceName: String?
   @State private var errorMessage: String?
+  private let macSetupURL = URL(
+    string: "https://real-estate-samyanmangat-6662s-projects.vercel.app/safari"
+  )!
 
   init(initialRequest: MacDevicePairingRequest? = nil) {
     _pairing = State(initialValue: initialRequest)
@@ -52,6 +55,22 @@ struct MacDevicePairingFlowView: View {
           .foregroundStyle(HomeboardPalette.secondaryText)
           .multilineTextAlignment(.center)
       }
+
+      ShareLink(
+        item: macSetupURL,
+        subject: Text("Homeboard for Safari"),
+        message: Text("Open this on your Mac to install and connect Homeboard for Safari.")
+      ) {
+        Label("Send Mac setup link", systemImage: "square.and.arrow.up")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+          .frame(maxWidth: .infinity)
+          .frame(height: 46)
+          .background(HomeboardPalette.surface)
+          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+      }
+      .buttonStyle(.plain)
+      .accessibilityHint("Opens the share sheet so you can AirDrop or message the Safari setup page to your Mac")
 
       if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
         ZStack {

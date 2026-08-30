@@ -37,7 +37,7 @@ test("the in-page scan advances sentence ranges and reveals review afterward", (
   assert.match(contentSource, /function readableSentenceRanges/);
   assert.match(contentSource, /sentence-highlight/);
   assert.match(contentSource, /Reading \$\{index \+ 1\} of \$\{ranges\.length\}/);
-  assert.match(contentSource, /Review details/);
+  assert.match(contentSource, /Review and save/);
   assert.match(contentSource, /homeboard\.analyzeListing/);
   assert.match(contentSource, /homeboard\.saveListing/);
   assert.match(contentSource, /You can keep browsing while Homeboard finishes the save/);
@@ -51,4 +51,13 @@ test("the Mac share overlay matches the neutral Homeboard palette", () => {
     contentSource,
     /#(?:8addff|4a8ff5|76c8f5|0c1017|08111f)|74,\s*143,\s*245|138,\s*221,\s*255|12,\s*16,\s*23/i,
   );
+});
+
+test("the Mac review card has branded, keyboard-accessible review states", () => {
+  assert.match(contentSource, /Listing ready/);
+  assert.match(contentSource, /REVIEW BEFORE SAVING/);
+  assert.match(contentSource, /role="dialog" aria-modal="true"/);
+  assert.match(contentSource, /event\.metaKey \|\| event\.ctrlKey/);
+  assert.match(contentSource, /event\.key === "Escape"/);
+  assert.match(contentSource, /function listingSource/);
 });

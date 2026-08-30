@@ -218,9 +218,10 @@ test("Mac Safari shows grounded details before deeper SLM insights finish", () =
 
 test("the connected Mac setup uses a compact self-contained panel", () => {
   assert.match(macAppSource, /HomeboardMacWindowSizer/);
-  assert.match(macAppSource, /NSSize\(width: 580, height: 430\)/);
+  assert.match(macAppSource, /NSSize\(width: 620, height: 535\)/);
   assert.match(macAppSource, /HomeboardMacPalette\.surface\.opacity\(0\.72\)/);
-  assert.match(macAppSource, /Label\("Enable in Safari", systemImage: "safari"\)/);
+  assert.match(macAppSource, /Open Safari Settings/);
+  assert.match(macAppSource, /getStateOfSafariExtension/);
 });
 
 test("Mac Debug and installed Release builds cannot register the same Safari extension identity", () => {

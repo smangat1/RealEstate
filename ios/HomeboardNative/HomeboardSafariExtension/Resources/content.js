@@ -806,6 +806,25 @@
           backdrop-filter: blur(20px);
           pointer-events: auto;
         }
+        :host(.compact) .complete-card {
+          right: 20px;
+          bottom: 20px;
+          left: auto;
+          width: min(470px, calc(100vw - 40px));
+          margin: 0;
+        }
+        .complete-source {
+          margin-bottom: 4px;
+          display: block;
+          overflow: hidden;
+          color: rgba(249, 226, 205, 0.58);
+          font-size: 8px;
+          font-weight: 850;
+          letter-spacing: 0.11em;
+          text-overflow: ellipsis;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
         .complete-copy {
           min-width: 0;
         }
@@ -877,6 +896,14 @@
           pointer-events: auto;
           -webkit-overflow-scrolling: touch;
         }
+        :host(.compact) .review-panel {
+          right: 20px;
+          bottom: 20px;
+          left: auto;
+          width: min(500px, calc(100vw - 40px));
+          max-height: calc(100vh - 40px);
+          margin: 0;
+        }
         .panel-header {
           position: sticky;
           top: 0;
@@ -902,6 +929,7 @@
           font-size: 17px;
           font-weight: 900;
         }
+        .panel-mark svg { width: 24px; height: 25px; display: block; }
         .panel-heading {
           min-width: 0;
           flex: 1;
@@ -909,6 +937,18 @@
         .panel-heading strong {
           display: block;
           font-size: 15px;
+        }
+        .panel-heading small {
+          margin-bottom: 3px;
+          display: block;
+          overflow: hidden;
+          color: rgba(249, 226, 205, 0.58);
+          font-size: 8px;
+          font-weight: 850;
+          letter-spacing: 0.11em;
+          text-overflow: ellipsis;
+          text-transform: uppercase;
+          white-space: nowrap;
         }
         .panel-heading span {
           display: block;
@@ -1030,18 +1070,22 @@
       </div>
       <section class="complete-card hidden" id="completeCard">
         <div class="complete-copy">
-          <strong id="completeTitle">Scan complete</strong>
+          <small class="complete-source" id="completeSource">HOMEBOARD · RENTAL LISTING</small>
+          <strong id="completeTitle">Listing ready</strong>
           <span id="completeSummary">Review the details Homeboard found.</span>
         </div>
-        <button class="review-button" id="reviewButton" type="button">Review details</button>
+        <button class="review-button" id="reviewButton" type="button">Review and save</button>
         <button class="close-button" id="dismissButton" type="button" aria-label="Dismiss Homeboard">×</button>
       </section>
       <div class="backdrop hidden" id="backdrop"></div>
-      <section class="review-panel hidden" id="reviewPanel" aria-label="Review Homeboard listing details">
+      <section class="review-panel hidden" id="reviewPanel" role="dialog" aria-modal="true" aria-label="Review Homeboard listing details">
         <header class="panel-header">
-          <div class="panel-mark">H</div>
+          <div class="panel-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 49" fill="none"><path d="M3 3h12v12H3V3Zm30 0h12v12H33V3ZM3 34h12v12H3V34Zm30 0h12v12H33V34ZM18 4h12v14l-6 6-6-6V4Zm6 17 12 11h-5v14h-6v-8h-3v8h-6V32h-4l12-11Z" fill="currentColor"/></svg>
+          </div>
           <div class="panel-heading">
-            <strong>Review details</strong>
+            <small id="panelSource">HOMEBOARD · REVIEW BEFORE SAVING</small>
+            <strong>Review listing</strong>
             <span>Confirm the exact rental before saving.</span>
           </div>
           <button class="panel-close" id="panelClose" type="button" aria-label="Close review">×</button>
@@ -1096,11 +1140,13 @@
       highlightLayer: byID("highlightLayer"),
       completeCard: byID("completeCard"),
       completeTitle: byID("completeTitle"),
+      completeSource: byID("completeSource"),
       completeSummary: byID("completeSummary"),
       reviewButton: byID("reviewButton"),
       backdrop: byID("backdrop"),
       reviewPanel: byID("reviewPanel"),
       optionList: byID("optionList"),
+      panelSource: byID("panelSource"),
       panelNote: byID("panelNote"),
       saveButton: byID("saveButton"),
       fields: {
@@ -1141,6 +1187,17 @@
       Number.isFinite(value.bathrooms) ? `${formatScanNumber(value.bathrooms)} ba` : null
     ].filter(Boolean);
     return facts.join(" · ") || "Review the details Homeboard found.";
+  }
+
+  function listingSource(value) {
+    const explicit = cleanText(value?.sourceName);
+    if (explicit) return explicit;
+    try {
+      const hostname = new URL(value?.url || window.location.href).hostname;
+      return hostname.replace(/^www\./i, "");
+    } catch {
+      return "Rental listing";
+    }
   }
 
   function showSentenceHighlight(ui, range) {
@@ -1311,6 +1368,25 @@
       ui.fields.address.focus({ preventScroll: true });
     };
     ui.reviewButton.addEventListener("click", showReview);
+    ui.shadow.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        if (!ui.reviewPanel.classList.contains("hidden")) {
+          ui.hideReview();
+          ui.reviewButton.focus({ preventScroll: true });
+        } else {
+          ui.host.remove();
+        }
+      }
+      if (
+        event.key === "Enter"
+        && (event.metaKey || event.ctrlKey)
+        && !ui.reviewPanel.classList.contains("hidden")
+        && !ui.saveButton.disabled
+      ) {
+        event.preventDefault();
+        ui.saveButton.click();
+      }
+    });
 
     ui.saveButton.addEventListener("click", async () => {
       if (!selectedExactOption) {
@@ -1365,7 +1441,7 @@
       } catch (error) {
         ui.saveButton.disabled = false;
         ui.saveButton.textContent = "Try saving again";
-        ui.reviewButton.textContent = "Review details";
+        ui.reviewButton.textContent = "Review and save";
         ui.reviewButton.disabled = false;
         ui.panelNote.textContent = error instanceof Error
           ? error.message
@@ -1440,8 +1516,12 @@
     const analysis = await analysisTask;
     if (!ui.host.isConnected || pageScanSession !== session) return;
     const resolved = mergedCapture(capture, analysis);
+    const source = listingSource(resolved);
     session.running = false;
     ui.tag.classList.add("hidden");
+    ui.completeTitle.textContent = "Listing ready";
+    ui.completeSource.textContent = `HOMEBOARD · ${source}`;
+    ui.panelSource.textContent = `${source} · REVIEW BEFORE SAVING`;
     ui.completeSummary.textContent = listingSummary(resolved);
     ui.completeCard.classList.remove("hidden");
     const review = configureReview(ui, capture, analysis);

@@ -23,6 +23,7 @@ export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
       </a>
       <nav className={styles.desktopNav} aria-label="Site navigation">
         <a href="/?slide=product#product">Product</a>
+        <a href="/safari">Safari for Mac</a>
         <a href="/privacy">Privacy</a>
         <a href="/contact">Contact</a>
       </nav>
@@ -30,6 +31,7 @@ export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
         <summary>Menu</summary>
         <nav aria-label="Mobile site navigation">
           <a href="/?slide=product#product">Product</a>
+          <a href="/safari">Safari for Mac</a>
           <a href="/privacy">Privacy</a>
           <a href="/contact">Contact</a>
         </nav>

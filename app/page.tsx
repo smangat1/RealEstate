@@ -98,6 +98,7 @@ export default function HomePage() {
           </p>
           <InstallTrigger className={styles.installTrigger} detail="Private beta details" />
           <nav className={styles.productLinks} aria-label="Homeboard information">
+            <a href="/safari">Safari for Mac</a>
             <a href="/privacy">Privacy</a>
             <a href="/contact">Contact</a>
             <span>© {new Date().getFullYear()} Homeboard</span>

@@ -79,6 +79,8 @@ test("Mac and iPhone expose the complete QR pairing workflow", () => {
   assert.match(phonePairingView, /DataScannerViewController/);
   assert.match(phonePairingView, /\.barcode\(symbologies: \[\.qr\]\)/);
   assert.match(phonePairingView, /MAKE SURE THIS MATCHES THE MAC/);
+  assert.match(phonePairingView, /ShareLink/);
+  assert.match(phonePairingView, /Send Mac setup link/);
   assert.match(phonePairingView, /appModel\.approveMacPairing/);
   assert.match(appModel, /MacDevicePairingRequest\(url: url\)/);
   assert.match(workspace, /title: "Connect a Mac"/);

@@ -23,7 +23,7 @@ struct HomeboardMacApp: App {
     WindowGroup {
       HomeboardMacConnectionView()
         .environmentObject(model)
-        .frame(minWidth: 520, minHeight: model.isConnected ? 390 : 510)
+        .frame(minWidth: 520, minHeight: model.isConnected ? 495 : 510)
     }
     .windowResizability(.contentMinSize)
   }
@@ -39,6 +39,8 @@ private final class HomeboardMacConnectionModel: ObservableObject {
   @Published var pairingChallenge: HomeboardDevicePairingChallenge?
   @Published var pairingStatusText = "Creating a secure QR code…"
   @Published var isPairing = false
+  @Published var safariExtensionIsEnabled = false
+  @Published var safariExtensionStateKnown = false
   private var pairingTask: Task<Void, Never>?
 
   var isConnected: Bool {
@@ -50,6 +52,7 @@ private final class HomeboardMacConnectionModel: ObservableObject {
   }
 
   init() {
+    refreshSafariExtensionState()
     let credentialBridgeReady = HomeboardSharedAuthStore.verifyRoundTrip()
     UserDefaults(suiteName: HomeboardSharedImportStore.appGroup)?.set(
       credentialBridgeReady,
@@ -200,9 +203,34 @@ private final class HomeboardMacConnectionModel: ObservableObject {
       Task { @MainActor in
         if let error {
           self.errorMessage = error.localizedDescription
+        } else {
+          self.feedback = "Safari Settings opened. Switch Homeboard on, then return here."
         }
       }
     }
+  }
+
+  func refreshSafariExtensionState() {
+    SFSafariExtensionManager.getStateOfSafariExtension(
+      withIdentifier: safariExtensionIdentifier
+    ) { state, error in
+      Task { @MainActor in
+        self.safariExtensionStateKnown = true
+        self.safariExtensionIsEnabled = state?.isEnabled == true
+        if let error {
+          self.errorMessage = error.localizedDescription
+        } else if state?.isEnabled == true {
+          self.feedback = "Homeboard is enabled in Safari and ready to save listings."
+        }
+      }
+    }
+  }
+
+  func openSetupGuide() {
+    guard let url = URL(
+      string: "https://real-estate-samyanmangat-6662s-projects.vercel.app/safari"
+    ) else { return }
+    NSWorkspace.shared.open(url)
   }
 
   private var safariExtensionIdentifier: String {
@@ -290,6 +318,7 @@ private final class HomeboardMacConnectionModel: ObservableObject {
 
 private struct HomeboardMacConnectionView: View {
   @EnvironmentObject private var model: HomeboardMacConnectionModel
+  @Environment(\.scenePhase) private var scenePhase
   @State private var appleNonce: String?
 
   var body: some View {
@@ -351,13 +380,31 @@ private struct HomeboardMacConnectionView: View {
       .foregroundStyle(HomeboardMacPalette.primaryText)
     }
     .background(HomeboardMacWindowSizer(isConnected: model.isConnected))
+    .onAppear { model.refreshSafariExtensionState() }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active {
+        model.refreshSafariExtensionState()
+      }
+    }
   }
 
   private var signInContent: some View {
     VStack(alignment: .leading, spacing: 15) {
-      Text("Connect this Mac")
-        .font(.system(size: 17, weight: .bold))
-      Text("Scan this with the Homeboard app on your signed-in iPhone.")
+      HStack {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("STEP 1 OF 2 · CONNECT")
+            .font(.system(size: 9, weight: .heavy))
+            .tracking(1.2)
+            .foregroundStyle(HomeboardMacPalette.accent)
+          Text("Connect this Mac")
+            .font(.system(size: 17, weight: .bold))
+        }
+        Spacer()
+        Button("Setup guide") { model.openSetupGuide() }
+          .buttonStyle(.link)
+          .foregroundStyle(.white.opacity(0.66))
+      }
+      Text("Scan this with the Homeboard app on your signed-in iPhone. No password is shared with the Mac.")
         .font(.system(size: 13))
         .foregroundStyle(.white.opacity(0.62))
 
@@ -500,6 +547,36 @@ private struct HomeboardMacConnectionView: View {
 
       Divider().overlay(.white.opacity(0.1))
 
+      HStack(spacing: 11) {
+        Image(systemName: model.safariExtensionIsEnabled ? "checkmark.shield.fill" : "safari")
+          .font(.system(size: 18, weight: .semibold))
+          .foregroundStyle(
+            model.safariExtensionIsEnabled
+              ? HomeboardMacPalette.success
+              : HomeboardMacPalette.accent
+          )
+        VStack(alignment: .leading, spacing: 2) {
+          Text(model.safariExtensionIsEnabled ? "Safari extension enabled" : "Enable Homeboard in Safari")
+            .font(.system(size: 13, weight: .bold))
+          Text(
+            model.safariExtensionIsEnabled
+              ? "Ready. Use the Homeboard toolbar button on a rental listing."
+              : "Step 2 of 2 · Safari requires one approval in Settings."
+          )
+          .font(.system(size: 10))
+          .foregroundStyle(.white.opacity(0.55))
+        }
+        Spacer()
+        if !model.safariExtensionStateKnown {
+          ProgressView().controlSize(.small).tint(.white)
+        }
+      }
+      .padding(12)
+      .background(
+        HomeboardMacPalette.backgroundDeep.opacity(0.48),
+        in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+      )
+
       HStack(alignment: .bottom, spacing: 10) {
         VStack(alignment: .leading, spacing: 6) {
           Text("SAFARI SAVES TO")
@@ -533,7 +610,10 @@ private struct HomeboardMacConnectionView: View {
         Button {
           model.openSafariExtensionSettings()
         } label: {
-          Label("Enable in Safari", systemImage: "safari")
+          Label(
+            model.safariExtensionIsEnabled ? "Safari Settings" : "Open Safari Settings",
+            systemImage: "safari"
+          )
         }
         .buttonStyle(.borderedProminent)
         .tint(HomeboardMacPalette.accent)
@@ -546,6 +626,10 @@ private struct HomeboardMacConnectionView: View {
         }
         .buttonStyle(.bordered)
         .disabled(model.isWorking || model.activeBoardId.isEmpty)
+
+        Button("Guide") { model.openSetupGuide() }
+          .buttonStyle(.bordered)
+          .help("Open the Homeboard Safari setup guide")
 
         if model.isWorking {
           ProgressView()
@@ -582,7 +666,7 @@ private struct HomeboardMacWindowSizer: NSViewRepresentable {
     DispatchQueue.main.async {
       guard let window = view.window else { return }
       let size = isConnected
-        ? NSSize(width: 580, height: 430)
+        ? NSSize(width: 620, height: 535)
         : NSSize(width: 620, height: 560)
       window.setContentSize(size)
       context.coordinator.lastConnectedState = isConnected
