@@ -1,5 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
+
 import type {
   BoardActivityRecord,
   BoardListingCommuteRecord,
@@ -1706,6 +1708,7 @@ export async function createBoardAndReturnId(input: {
   title?: string;
   userId: string;
   authorName: string;
+  creationRequestId?: string;
   profileSeed?: Partial<SearchProfileData>;
   initialAssistantMessage?: string;
 }) {
@@ -1713,76 +1716,105 @@ export async function createBoardAndReturnId(input: {
   const blankProfile = createBlankProfile("temp");
   const seededProfile = finalizeProfileState({ ...blankProfile, ...(input.profileSeed ?? {}) });
 
-  const board = await prisma.searchBoard.create({
-    data: {
-      userId: input.userId,
-      title,
-      searchProfile: {
-        create: {
-          intent: seededProfile.intent,
-          propertyType: seededProfile.propertyType,
-          locations: json(seededProfile.locations),
-          budgetMin: seededProfile.budgetMin,
-          budgetMax: seededProfile.budgetMax,
-          bedroomsPreferred: seededProfile.bedroomsPreferred,
-          bedroomsFlexible: json(seededProfile.bedroomsFlexible),
-          moveInTimeframe: seededProfile.moveInTimeframe,
-          mustHaves: json(seededProfile.mustHaves),
-          niceToHaves: json(seededProfile.niceToHaves),
-          dealbreakers: json(seededProfile.dealbreakers),
-          priorities: json(seededProfile.priorities),
-          petsRequired: seededProfile.petsRequired,
-          parkingRequired: seededProfile.parkingRequired,
-          laundryRequired: seededProfile.laundryRequired,
-          commuteTarget: seededProfile.commuteTarget,
-          notes: encodeNotesPayload(seededProfile),
+  if (input.creationRequestId) {
+    const existing = await prisma.searchBoard.findUnique({
+      where: { creationRequestId: input.creationRequestId },
+      select: { id: true, userId: true },
+    });
+    if (existing) {
+      if (existing.userId !== input.userId) {
+        throw new Error("This board creation request belongs to another account.");
+      }
+      return existing.id;
+    }
+  }
+
+  let board: { id: string; title: string };
+  try {
+    board = await prisma.searchBoard.create({
+      data: {
+        userId: input.userId,
+        creationRequestId: input.creationRequestId,
+        title,
+        searchProfile: {
+          create: {
+            intent: seededProfile.intent,
+            propertyType: seededProfile.propertyType,
+            locations: json(seededProfile.locations),
+            budgetMin: seededProfile.budgetMin,
+            budgetMax: seededProfile.budgetMax,
+            bedroomsPreferred: seededProfile.bedroomsPreferred,
+            bedroomsFlexible: json(seededProfile.bedroomsFlexible),
+            moveInTimeframe: seededProfile.moveInTimeframe,
+            mustHaves: json(seededProfile.mustHaves),
+            niceToHaves: json(seededProfile.niceToHaves),
+            dealbreakers: json(seededProfile.dealbreakers),
+            priorities: json(seededProfile.priorities),
+            petsRequired: seededProfile.petsRequired,
+            parkingRequired: seededProfile.parkingRequired,
+            laundryRequired: seededProfile.laundryRequired,
+            commuteTarget: seededProfile.commuteTarget,
+            notes: encodeNotesPayload(seededProfile),
+          },
+        },
+        chatMessages: {
+          create: {
+            role: "assistant",
+            authorName: "Advisor",
+            content: input.initialAssistantMessage ?? "Tell me what kind of rental you want, and I’ll build the search profile while we talk.",
+          },
+        },
+        boardEvents: {
+          create: {
+            actorType: "system",
+            actorName: "System",
+            eventType: "board_created",
+            content: `${input.authorName} created this shared workspace.`,
+          },
+        },
+        members: {
+          create: {
+            userId: input.userId,
+            role: "owner",
+          },
+        },
+        roommates: {
+          create: {
+            linkedUserId: input.userId,
+            name: input.authorName,
+            roleLabel: "workspace owner",
+            budgetMin: seededProfile.budgetMin,
+            budgetMax: seededProfile.budgetMax,
+            stretchBudget: seededProfile.stretchBudget,
+            commuteDestination: seededProfile.commuteTarget,
+            commuteAccess: seededProfile.commuteAccess ?? null,
+            preferredCommuteMinutes: seededProfile.minCommuteMinutes,
+            maxCommuteMinutes: seededProfile.maxCommuteMinutes,
+            commutePriority: "medium",
+            neighborhoodPriority: "medium",
+            spacePriority: "medium",
+            privacyPriority: "medium",
+            preferredNeighborhoods: json([]),
+            mustHaves: json([]),
+            dealbreakers: json([]),
+            notes: null,
+          },
         },
       },
-      chatMessages: {
-        create: {
-          role: "assistant",
-          authorName: "Advisor",
-          content: input.initialAssistantMessage ?? "Tell me what kind of rental you want, and I’ll build the search profile while we talk.",
-        },
-      },
-      boardEvents: {
-        create: {
-          actorType: "system",
-          actorName: "System",
-          eventType: "board_created",
-          content: `${input.authorName} created this shared workspace.`,
-        },
-      },
-      members: {
-        create: {
-          userId: input.userId,
-          role: "owner",
-        },
-      },
-      roommates: {
-        create: {
-          linkedUserId: input.userId,
-          name: input.authorName,
-          roleLabel: "workspace owner",
-          budgetMin: seededProfile.budgetMin,
-          budgetMax: seededProfile.budgetMax,
-          stretchBudget: seededProfile.stretchBudget,
-          commuteDestination: seededProfile.commuteTarget,
-          commuteAccess: seededProfile.commuteAccess ?? null,
-          preferredCommuteMinutes: seededProfile.minCommuteMinutes,
-          maxCommuteMinutes: seededProfile.maxCommuteMinutes,
-          commutePriority: "medium",
-          neighborhoodPriority: "medium",
-          spacePriority: "medium",
-          privacyPriority: "medium",
-          preferredNeighborhoods: json([]),
-          mustHaves: json([]),
-          dealbreakers: json([]),
-          notes: null,
-        },
-      },
-    },
-  });
+      select: { id: true, title: true },
+    });
+  } catch (error) {
+    if (input.creationRequestId
+      && error instanceof Prisma.PrismaClientKnownRequestError
+      && error.code === "P2002") {
+      const existing = await prisma.searchBoard.findUnique({
+        where: { creationRequestId: input.creationRequestId },
+        select: { id: true, userId: true },
+      });
+      if (existing?.userId === input.userId) return existing.id;
+    }
+    throw error;
+  }
 
   await trackEvent("board_created", {
     boardId: board.id,

@@ -29,7 +29,12 @@ const profileSchema = z.object({
 });
 
 const messageSchema = z.object({ role: z.enum(["user", "assistant", "system"]), content: z.string().max(4000), authorName: z.string().max(160).nullable().optional() });
-const requestSchema = z.object({ profile: profileSchema, message: z.string().trim().min(1).max(4000).optional(), messages: z.array(messageSchema).max(40).optional() });
+const requestSchema = z.object({
+  profile: profileSchema,
+  message: z.string().trim().min(1).max(4000).optional(),
+  messages: z.array(messageSchema).max(40).optional(),
+  creationRequestId: z.string().uuid().optional(),
+});
 
 function normalizedProfile(input: z.infer<typeof profileSchema>, user: { displayName: string; email: string }): SearchProfileData {
   return {
@@ -55,6 +60,7 @@ export async function POST(request: Request) {
         title: confirmed.city ? `${confirmed.city} shared search` : "Shared rental search",
         userId: user.id,
         authorName: user.displayName,
+        creationRequestId: parsed.data.creationRequestId,
         profileSeed: confirmed,
         initialAssistantMessage: "The shared brief is ready. Invite your group and start adding real listings.",
       });

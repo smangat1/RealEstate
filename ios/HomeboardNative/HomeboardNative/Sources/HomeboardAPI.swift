@@ -357,6 +357,7 @@ private struct MobileOnboardingTurnRequest: Encodable {
 private struct MobileOnboardingConfirmRequest: Encodable {
   var action = "confirm"
   var profile: RemoteRentalProfileRequest
+  var creationRequestId: String
 }
 
 private struct MobileInvitationCreateRequest: Encodable {
@@ -1032,12 +1033,19 @@ final class HomeboardAPI {
     )
   }
 
-  func confirmOnboarding(accessToken: String, profile: RentalProfile) async throws -> MobileOnboardingConfirmResponse {
+  func confirmOnboarding(
+    accessToken: String,
+    profile: RentalProfile,
+    creationRequestId: String
+  ) async throws -> MobileOnboardingConfirmResponse {
     try await requestBackend(
       path: "/api/mobile/onboarding",
       method: "POST",
       accessToken: accessToken,
-      body: MobileOnboardingConfirmRequest(profile: RemoteRentalProfileRequest(profile: profile))
+      body: MobileOnboardingConfirmRequest(
+        profile: RemoteRentalProfileRequest(profile: profile),
+        creationRequestId: creationRequestId
+      )
     )
   }
 
@@ -1194,7 +1202,7 @@ final class HomeboardAPI {
       if let urlError = error as? URLError {
         switch urlError.code {
         case .cannotConnectToHost, .timedOut, .networkConnectionLost, .notConnectedToInternet:
-          throw HomeboardAPIError.server("The iPhone app could not reach Homeboard services. Make sure the web/backend server is running and Supabase config is live.")
+          throw HomeboardAPIError.server("Homeboard could not reach the server. Check your connection and try again.")
         default:
           throw HomeboardAPIError.server(urlError.localizedDescription)
         }

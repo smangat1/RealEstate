@@ -1278,8 +1278,10 @@ struct OnboardingView: View {
         RoundedRectangle(cornerRadius: 17, style: .continuous)
           .stroke(selected ? HomeboardPalette.accentStrong : HomeboardPalette.border, lineWidth: 1)
       }
+      .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
-    .buttonStyle(AuthPressStyle())
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(selected ? .isSelected : [])
   }
 
   @ViewBuilder
@@ -1415,50 +1417,76 @@ struct OnboardingView: View {
   }
 
   private var navigationBar: some View {
-    HStack(spacing: 10) {
-      if onboardingQuestions.first != question {
-        Button {
-          goBack()
-        } label: {
-          Image(systemName: "chevron.left")
-            .font(.subheadline.weight(.bold))
+    VStack(spacing: 10) {
+      if let error = appModel.onboardingError {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(HomeboardPalette.danger)
+
+          Text(error)
+            .font(.caption.weight(.medium))
             .foregroundStyle(HomeboardPalette.primaryText)
-            .frame(width: 52, height: 54)
-            .background(Color.white.opacity(0.07))
-            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay {
-              RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(HomeboardPalette.border, lineWidth: 1)
-            }
+            .fixedSize(horizontal: false, vertical: true)
+
+          Spacer(minLength: 0)
         }
-        .buttonStyle(AuthPressStyle())
-        .accessibilityLabel("Previous question")
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .homeboardInsetSurface(cornerRadius: 15, accent: HomeboardPalette.danger)
       }
 
-      Button {
-        advance()
-      } label: {
-        ZStack {
-          RoundedRectangle(cornerRadius: 17, style: .continuous)
-            .fill(HomeboardPalette.accentGradient)
-
-          if appModel.isOnboardingLoading {
-            ProgressView().tint(HomeboardPalette.buttonText)
-          } else {
-            HStack(spacing: 8) {
-              Text(question == .review ? "Create shared board" : "Continue")
-              Image(systemName: question == .review ? "person.3.fill" : "arrow.right")
-            }
-            .font(.headline.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.buttonText)
+      HStack(spacing: 10) {
+        if onboardingQuestions.first != question {
+          Button {
+            goBack()
+          } label: {
+            Image(systemName: "chevron.left")
+              .font(.subheadline.weight(.bold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .frame(width: 54, height: 56)
+              .background(Color.white.opacity(0.07))
+              .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+              .overlay {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                  .stroke(HomeboardPalette.border, lineWidth: 1)
+              }
+              .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
           }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Previous question")
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 54)
+
+        Button {
+          advance()
+        } label: {
+          ZStack {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+              .fill(HomeboardPalette.accentGradient)
+
+            if appModel.isOnboardingLoading {
+              HStack(spacing: 9) {
+                ProgressView().tint(HomeboardPalette.buttonText)
+                Text("Creating your board…")
+              }
+              .font(.headline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.buttonText)
+            } else {
+              HStack(spacing: 8) {
+                Text(onboardingButtonTitle)
+                Image(systemName: question == .review ? "person.3.fill" : "arrow.right")
+              }
+              .font(.headline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.buttonText)
+            }
+          }
+          .frame(maxWidth: .infinity)
+          .frame(height: 56)
+          .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canContinue || appModel.isOnboardingLoading)
+        .opacity(canContinue ? 1 : 0.42)
       }
-      .buttonStyle(AuthPressStyle())
-      .disabled(!canContinue || appModel.isOnboardingLoading)
-      .opacity(canContinue ? 1 : 0.42)
     }
     .padding(.horizontal, 16)
     .padding(.top, 10)
@@ -1467,6 +1495,11 @@ struct OnboardingView: View {
     .overlay(alignment: .top) {
       Rectangle().fill(HomeboardPalette.border).frame(height: 1)
     }
+  }
+
+  private var onboardingButtonTitle: String {
+    guard question == .review else { return "Continue" }
+    return appModel.onboardingError == nil ? "Create shared board" : "Try creating board again"
   }
 
   private var options: [String] {
@@ -1614,19 +1647,22 @@ struct OnboardingView: View {
   }
 
   private var canContinue: Bool {
-    if showsOther {
-      if question == .budget {
-        return !customSecondary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      }
-      return !customPrimary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    let customPrimaryIsValid = showsOther
+      && !customPrimary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    let customBudgetIsValid = showsOther
+      && !customSecondary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
     switch question {
-    case .name: return !appModel.profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    case .city: return !appModel.profile.city.isEmpty
-    case .moveIn: return !appModel.profile.moveInDate.isEmpty
-    case .groupSize: return appModel.profile.groupSize > 0
-    case .budget: return !appModel.profile.budgetMax.isEmpty
+    case .name:
+      return !appModel.profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    case .city:
+      return !appModel.profile.city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    case .moveIn:
+      return !appModel.profile.moveInDate.isEmpty || customPrimaryIsValid
+    case .groupSize:
+      return appModel.profile.groupSize > 0 || customPrimaryIsValid
+    case .budget:
+      return !appModel.profile.budgetMax.isEmpty || customBudgetIsValid
     case .commuteTarget:
       if skipsCommute { return true }
       guard !appModel.profile.commuteTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1642,11 +1678,11 @@ struct OnboardingView: View {
             let maximum = Int(appModel.profile.maxCommuteMinutes)
       else { return false }
       return minimum < maximum
-    case .neighborhoods: return !appModel.profile.neighborhoods.isEmpty
-    case .priorities: return !appModel.profile.priorities.isEmpty
-    case .mustHaves: return !appModel.profile.mustHaves.isEmpty
-    case .dealbreakers: return !appModel.profile.dealbreakers.isEmpty
-    case .readiness: return !readinessSummary.isEmpty
+    case .neighborhoods: return !appModel.profile.neighborhoods.isEmpty || customPrimaryIsValid
+    case .priorities: return !appModel.profile.priorities.isEmpty || customPrimaryIsValid
+    case .mustHaves: return !appModel.profile.mustHaves.isEmpty || customPrimaryIsValid
+    case .dealbreakers: return !appModel.profile.dealbreakers.isEmpty || customPrimaryIsValid
+    case .readiness: return !readinessSummary.isEmpty || customPrimaryIsValid
     case .review: return true
     }
   }
@@ -1675,6 +1711,7 @@ struct OnboardingView: View {
 
   private func goBack() {
     customFieldFocused = false
+    appModel.onboardingError = nil
     guard let index = onboardingQuestions.firstIndex(of: question), index > 0 else { return }
     let previous = onboardingQuestions[index - 1]
     withAnimation(.easeInOut(duration: 0.22)) {
@@ -1747,6 +1784,12 @@ struct OnboardingView: View {
     guard showsOther else { return }
     let primary = customPrimary.trimmingCharacters(in: .whitespacesAndNewlines)
     let secondary = customSecondary.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if question == .budget {
+      guard !secondary.isEmpty else { return }
+    } else {
+      guard !primary.isEmpty else { return }
+    }
 
     switch question {
     case .city:

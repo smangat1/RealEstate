@@ -51,6 +51,7 @@ final class AppModel {
     var availableBoards: [MobileBoardSummary]
     var pendingInviteCode: String
     var pendingConfirmationEmail: String?
+    var onboardingCreationRequestId: String?
     var profile: RentalProfile
     var onboardingMessages: [OnboardingChatMessage]
     var localShortlistsByBoard: [String: [ListingPreview]]
@@ -73,6 +74,7 @@ final class AppModel {
   @ObservationIgnored private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
   @ObservationIgnored private var activeListingInventoryRequestID: UUID?
   @ObservationIgnored private var listingUploadTask: Task<Void, Never>?
+  @ObservationIgnored private var onboardingPersistenceTask: Task<Void, Never>?
   @ObservationIgnored private var pendingListingCreatesByBoard: [String: [ListingPreview]] = [:]
   @ObservationIgnored private var pendingLocalListingRemovalIDs = Set<String>()
   @ObservationIgnored private var pendingServerListingRemovalIDsByBoard: [String: Set<String>] = [:]
@@ -90,6 +92,7 @@ final class AppModel {
   var availableBoards: [MobileBoardSummary] = []
   var pendingInviteCode = ""
   var pendingConfirmationEmail = ""
+  var onboardingCreationRequestId: String?
   var profile: RentalProfile = RentalProfile()
   var onboardingMessages: [OnboardingChatMessage] = []
   var localShortlistsByBoard: [String: [ListingPreview]] = [:]
@@ -859,6 +862,7 @@ final class AppModel {
   }
 
   func finishOnboarding() async {
+    guard !isOnboardingLoading else { return }
     onboardingError = nil
 
     guard let session = authSession else {
@@ -866,6 +870,10 @@ final class AppModel {
       return
     }
 
+    flushOnboardingDraft()
+    let creationRequestId = onboardingCreationRequestId ?? UUID().uuidString
+    onboardingCreationRequestId = creationRequestId
+    persist()
     isOnboardingLoading = true
     defer {
       isOnboardingLoading = false
@@ -873,28 +881,26 @@ final class AppModel {
     }
 
     do {
-      let response = try await api.confirmOnboarding(accessToken: session.accessToken, profile: profile)
-      profile = RentalProfile(remote: response.profile)
-      board = response.board
-      applyLocalBoardContributions()
-      storeCurrentBoardSnapshot()
-      if let boardId = response.board.id {
-        availableBoards = [MobileBoardSummary(
-          id: boardId,
-          title: response.board.title,
-          city: response.board.city,
-          createdAt: "",
-          updatedAt: ""
-        )]
+      let response: MobileOnboardingConfirmResponse
+      do {
+        response = try await api.confirmOnboarding(
+          accessToken: session.accessToken,
+          profile: profile,
+          creationRequestId: creationRequestId
+        )
+      } catch HomeboardAPIError.unauthorized {
+        let refreshed = try await api.refreshSession(refreshToken: session.refreshToken)
+        authSession = refreshed
+        NativeAuthSessionStore.save(refreshed)
+        response = try await api.confirmOnboarding(
+          accessToken: refreshed.accessToken,
+          profile: profile,
+          creationRequestId: creationRequestId
+        )
       }
-      UserDefaults.standard.set(
-        true,
-        forKey: "homeboard.guide.first-listing.pending"
-      )
-      currentScreen = .board
-      boardTab = .board
+      applyOnboardingConfirmation(response)
     } catch {
-      onboardingError = "We could not create the shared board yet. Check your connection and try again."
+      onboardingError = "\(readable(error)) Your answers are saved. Tap below to try again."
     }
   }
 
@@ -902,7 +908,46 @@ final class AppModel {
     board = buildBoard(from: profile)
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
+    scheduleOnboardingPersistence()
+  }
+
+  func flushOnboardingDraft() {
+    onboardingPersistenceTask?.cancel()
+    onboardingPersistenceTask = nil
     persist()
+  }
+
+  private func scheduleOnboardingPersistence() {
+    onboardingPersistenceTask?.cancel()
+    onboardingPersistenceTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: 350_000_000)
+      guard !Task.isCancelled, let self else { return }
+      self.onboardingPersistenceTask = nil
+      self.persist()
+    }
+  }
+
+  private func applyOnboardingConfirmation(_ response: MobileOnboardingConfirmResponse) {
+    profile = RentalProfile(remote: response.profile)
+    board = response.board
+    applyLocalBoardContributions()
+    storeCurrentBoardSnapshot()
+    if let boardId = response.board.id {
+      availableBoards = [MobileBoardSummary(
+        id: boardId,
+        title: response.board.title,
+        city: response.board.city,
+        createdAt: "",
+        updatedAt: ""
+      )]
+    }
+    onboardingCreationRequestId = nil
+    UserDefaults.standard.set(
+      true,
+      forKey: "homeboard.guide.first-listing.pending"
+    )
+    currentScreen = .board
+    boardTab = .board
   }
 
   func createLocalBoard(title rawTitle: String) {
@@ -1115,6 +1160,7 @@ final class AppModel {
     availableBoards = []
     pendingInviteCode = ""
     pendingConfirmationEmail = ""
+    onboardingCreationRequestId = nil
     board = .empty
     profile = RentalProfile()
     onboardingMessages = []
@@ -3247,6 +3293,7 @@ final class AppModel {
       // for the current auth flow instead of writing it to UserDefaults.
       pendingInviteCode: "",
       pendingConfirmationEmail: pendingConfirmationEmail,
+      onboardingCreationRequestId: onboardingCreationRequestId,
       profile: profile,
       onboardingMessages: onboardingMessages,
       localShortlistsByBoard: localShortlistsByBoard,
@@ -3282,6 +3329,7 @@ final class AppModel {
     availableBoards = snapshot.availableBoards
     pendingInviteCode = ""
     pendingConfirmationEmail = snapshot.pendingConfirmationEmail ?? ""
+    onboardingCreationRequestId = snapshot.onboardingCreationRequestId
     profile = snapshot.profile
     onboardingMessages = snapshot.onboardingMessages
     localShortlistsByBoard = snapshot.localShortlistsByBoard
