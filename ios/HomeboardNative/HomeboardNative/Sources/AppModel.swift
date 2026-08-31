@@ -110,6 +110,8 @@ final class AppModel {
   var authError: String?
   var authFeedback: String?
   var showsPostAuthInvitePrompt = false
+  var showsGuestPreviewWelcome = false
+  var showsGuestAuthenticationPrompt = false
   var onboardingError: String?
   var boardError: String?
   var inviteFeedback: String?
@@ -123,6 +125,9 @@ final class AppModel {
   var listingInventoryError: String?
   var pendingSharedListingImport: HomeboardSharedImportStore.PendingImport?
   var pendingMacPairingRequest: MacDevicePairingRequest?
+  var isGuestPreview: Bool {
+    authSession == nil && board.id?.hasPrefix("preview-") == true && currentScreen == .board
+  }
   var pendingSharedListingURL: String? {
     get {
       pendingSharedListingImport?.canonicalURL ?? pendingSharedListingImport?.url
@@ -239,6 +244,30 @@ final class AppModel {
     }
     currentScreen = .auth
     persist()
+  }
+
+  func openGuestPreview() {
+    openPreviewBoard()
+    showsGuestAuthenticationPrompt = false
+    showsGuestPreviewWelcome = true
+  }
+
+  func dismissGuestPreviewWelcome() {
+    showsGuestPreviewWelcome = false
+  }
+
+  func requestGuestAuthentication() {
+    guard isGuestPreview, !showsGuestPreviewWelcome else { return }
+    showsGuestAuthenticationPrompt = true
+  }
+
+  func dismissGuestAuthenticationPrompt() {
+    showsGuestAuthenticationPrompt = false
+  }
+
+  func beginGuestAuthentication(mode: AuthMode) {
+    clearGuestPreviewState()
+    openAuth(mode: mode)
   }
 
   func openBoardTab(_ tab: BoardTab) {
@@ -1049,6 +1078,9 @@ final class AppModel {
   }
 
   func resetToWelcome() {
+    if isGuestPreview {
+      clearGuestPreviewState()
+    }
     currentScreen = .welcome
     persist()
   }
@@ -1185,6 +1217,8 @@ final class AppModel {
     authError = nil
     authFeedback = nil
     showsPostAuthInvitePrompt = false
+    showsGuestPreviewWelcome = false
+    showsGuestAuthenticationPrompt = false
     onboardingError = nil
     boardFeedback = nil
     inviteFeedback = nil
@@ -3099,7 +3133,6 @@ final class AppModel {
     return "\(values.dropLast().joined(separator: ", ")), and \(values.last!)"
   }
 
-  #if DEBUG
   private func openPreviewBoard() {
     let members = [
       MemberPreferenceCard(
@@ -3215,7 +3248,7 @@ final class AppModel {
       jordan: ["value": 1, "commute": 3, "space": 4, "neighborhood": 4, "amenities": 4, "confidence": 2]
     )
 
-    account = LocalAccount(id: "preview-sam", name: "Sam", email: "preview@homeboard.local")
+    account = nil
     authSession = nil
     board = MobileBoard(
       id: "preview-workspace",
@@ -3242,11 +3275,13 @@ final class AppModel {
     )
     localShortlistsByBoard["preview-workspace"] = board.shortlist
     localMembersByBoard["preview-workspace"] = members
+    listingInventory = []
+    listingInventoryNextCursor = nil
+    listingInventoryHasMore = false
+    listingInventoryError = nil
     boardTab = .board
     currentScreen = .board
     pendingInviteCode = ""
-    UserDefaults.standard.set(false, forKey: "homeboard.guide.search.dismissed")
-    UserDefaults.standard.set(false, forKey: "homeboard.guide.shortlist.dismissed")
   }
 
   private func previewRatings(
@@ -3261,7 +3296,22 @@ final class AppModel {
       ListingDimensionRating(id: "\(listingId)-jordan", memberId: "preview-member-jordan", userId: "preview-jordan", name: "Jordan", values: jordan, updatedAt: "")
     ]
   }
-  #endif
+
+  private func clearGuestPreviewState() {
+    showsGuestPreviewWelcome = false
+    showsGuestAuthenticationPrompt = false
+    localShortlistsByBoard.removeValue(forKey: "preview-workspace")
+    localMembersByBoard.removeValue(forKey: "preview-workspace")
+    localBoardsById.removeValue(forKey: "preview-workspace")
+    localProfilesByBoard.removeValue(forKey: "preview-workspace")
+    board = .empty
+    account = nil
+    listingInventory = []
+    listingInventoryNextCursor = nil
+    listingInventoryHasMore = false
+    listingInventoryError = nil
+    boardTab = .board
+  }
 
   private func parseAmount(_ value: String) -> String {
     let lower = value.lowercased()

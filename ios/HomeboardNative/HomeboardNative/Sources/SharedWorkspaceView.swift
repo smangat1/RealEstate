@@ -1210,21 +1210,23 @@ struct SharedSearchMapView: View {
       }
     }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
-      if firstListingGuidePending {
-        SharedListingShareWorkflowGuide(
-          onDismiss: {
-            firstListingGuidePending = false
-            searchGuideDismissed = true
-          }
-        )
-      } else if !searchGuideDismissed {
-        SharedCoachmarkOverlay(
-          target: anchors["search-controls"],
-          title: "Search the way you think",
-          message: "Switch between the map and cards, apply exact filters, draw an area, or rank what matters to turn available listings into a color-coded comparison map.",
-          targetLabel: "MAP · CARDS · FILTERS · COMPARE",
-          onDismiss: { searchGuideDismissed = true }
-        )
+      if !appModel.isGuestPreview {
+        if firstListingGuidePending {
+          SharedListingShareWorkflowGuide(
+            onDismiss: {
+              firstListingGuidePending = false
+              searchGuideDismissed = true
+            }
+          )
+        } else if !searchGuideDismissed {
+          SharedCoachmarkOverlay(
+            target: anchors["search-controls"],
+            title: "Search the way you think",
+            message: "Switch between the map and cards, apply exact filters, draw an area, or rank what matters to turn available listings into a color-coded comparison map.",
+            targetLabel: "MAP · CARDS · FILTERS · COMPARE",
+            onDismiss: { searchGuideDismissed = true }
+          )
+        }
       }
     }
   }
