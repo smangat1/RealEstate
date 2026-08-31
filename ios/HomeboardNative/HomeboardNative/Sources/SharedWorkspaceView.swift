@@ -3000,7 +3000,7 @@ struct SharedSetupView: View {
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "slider.horizontal.3", title: "Edit search brief", subtitle: "Budget, timing, commute, neighborhoods") {
+            SharedSettingsRow(icon: "slider.horizontal.3", title: "Edit search brief", subtitle: "Your budget, commute, neighborhoods, and limits") {
               showsBriefEditor = true
             }
 
@@ -3038,12 +3038,6 @@ struct SharedSetupView: View {
 
             SharedSettingsRow(icon: "exclamationmark.bubble", title: "Share beta feedback", subtitle: "Include optional, privacy-safe diagnostics") {
               showsBetaFeedback = true
-            }
-
-            SharedDivider()
-
-            SharedSettingsRow(icon: "bell.badge", title: "Notification permission", subtitle: "Device registration ready · live delivery pending") {
-              appModel.enableNotifications()
             }
           }
           .sharedSurface(cornerRadius: 20)
@@ -6970,8 +6964,14 @@ private struct SharedMemberRow: View {
   }
 }
 
+private enum SharedMemberDetailPresentation {
+  case overview
+  case personalPreferences
+}
+
 private struct SharedMemberDetailSheet: View {
   let member: MemberPreferenceCard
+  var presentation: SharedMemberDetailPresentation = .overview
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
   @State private var budgetMin = ""
@@ -6995,33 +6995,53 @@ private struct SharedMemberDetailSheet: View {
     member.userId.isEmpty || member.userId == appModel.account?.id
   }
 
+  private var editsPersonalPreferences: Bool {
+    switch presentation {
+    case .overview: return false
+    case .personalPreferences: return true
+    }
+  }
+
   var body: some View {
     NavigationStack {
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
-          HStack(spacing: 14) {
-            SharedAvatar(name: member.name, size: 62)
-            VStack(alignment: .leading, spacing: 4) {
-              Text(member.name)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(HomeboardPalette.primaryText)
-              Text(member.status.capitalized)
-                .font(.subheadline)
-                .foregroundStyle(HomeboardPalette.success)
+          if editsPersonalPreferences {
+            SharedPageHeader(
+              eyebrow: "Personal preferences",
+              title: "Edit search brief",
+              subtitle: "These changes only apply to your personal preferences. Everyone else keeps their own settings."
+            )
+          } else {
+            HStack(spacing: 14) {
+              SharedAvatar(name: member.name, size: 62)
+              VStack(alignment: .leading, spacing: 4) {
+                Text(member.name)
+                  .font(.title2.weight(.bold))
+                  .foregroundStyle(HomeboardPalette.primaryText)
+                Text(member.status.capitalized)
+                  .font(.subheadline)
+                  .foregroundStyle(HomeboardPalette.success)
+              }
             }
-          }
 
-          SharedDetailSection(title: "Budget", body: member.budgetLine)
-          SharedDetailSection(title: "Commute", body: member.commuteLine)
-          SharedTokenSection(title: "Priorities", tokens: member.priorities)
-          SharedTokenSection(title: "Neighborhoods", tokens: member.neighborhoods)
-          SharedTokenSection(title: "Dealbreakers", tokens: member.dealbreakers)
+            SharedDetailSection(title: "Budget", body: member.budgetLine)
+            SharedDetailSection(title: "Commute", body: member.commuteLine)
+            SharedTokenSection(title: "Priorities", tokens: member.priorities)
+            SharedTokenSection(title: "Neighborhoods", tokens: member.neighborhoods)
+            SharedTokenSection(title: "Dealbreakers", tokens: member.dealbreakers)
+          }
 
           if canEdit {
             VStack(alignment: .leading, spacing: 14) {
-              SharedSectionTitle(title: "Your affordability", trailing: "Private to this board")
+              SharedSectionTitle(
+                title: editsPersonalPreferences ? "Budget and commute" : "Your affordability",
+                trailing: editsPersonalPreferences ? "Only yours" : "Private to this board"
+              )
 
-              Text("Set the monthly share you can personally carry. Homeboard adds everyone’s limits together and suggests splits that use the same percentage of each person’s comfortable maximum.")
+              Text(editsPersonalPreferences
+                   ? "Keep your own budget, commute, neighborhoods, priorities, and hard limits current here."
+                   : "Set the monthly share you can personally carry. Homeboard adds everyone’s limits together and suggests splits that use the same percentage of each person’s comfortable maximum.")
                 .font(.subheadline)
                 .foregroundStyle(HomeboardPalette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -7106,7 +7126,7 @@ private struct SharedMemberDetailSheet: View {
                   .foregroundStyle(HomeboardPalette.danger)
               }
 
-              Button("Save my limits") {
+              Button(editsPersonalPreferences ? "Save my preferences" : "Save my limits") {
                 save()
               }
               .font(.headline.weight(.bold))
@@ -7126,7 +7146,7 @@ private struct SharedMemberDetailSheet: View {
       .background(WorkspaceBackgroundView())
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
-          Button("Done") { dismiss() }
+          Button(editsPersonalPreferences ? "Cancel" : "Done") { dismiss() }
             .foregroundStyle(HomeboardPalette.accent)
         }
       }
@@ -7296,55 +7316,54 @@ private struct AddSharedMemberSheet: View {
 
 private struct SharedBriefEditorSheet: View {
   @Environment(AppModel.self) private var appModel
+
+  private var currentMember: MemberPreferenceCard? {
+    if let userId = appModel.account?.id,
+       let linkedMember = appModel.board.members.first(where: { $0.userId == userId }) {
+      return linkedMember
+    }
+
+    return appModel.board.members.first(where: {
+      $0.userId.isEmpty && $0.role == "owner"
+    })
+  }
+
+  var body: some View {
+    if let currentMember {
+      SharedMemberDetailSheet(
+        member: currentMember,
+        presentation: .personalPreferences
+      )
+    } else {
+      SharedBriefEditorUnavailableView()
+    }
+  }
+}
+
+private struct SharedBriefEditorUnavailableView: View {
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    @Bindable var appModel = appModel
-
     NavigationStack {
-      ScrollView(.vertical, showsIndicators: false) {
-        VStack(alignment: .leading, spacing: 18) {
-          SharedPageHeader(
-            eyebrow: "Group brief",
-            title: "Keep the search current",
-            subtitle: "These are the constraints that affect every listing on the board."
-          )
+      VStack(alignment: .leading, spacing: 16) {
+        SharedPageHeader(
+          eyebrow: "Personal preferences",
+          title: "Your profile is still connecting",
+          subtitle: "Refresh the board, then reopen Edit search brief. Your roommates’ settings have not been changed."
+        )
 
-          SharedField(title: "City", prompt: "New York City", text: $appModel.profile.city)
-          SharedField(title: "Move-in", prompt: "August", text: $appModel.profile.moveInDate)
-
-          VStack(alignment: .leading, spacing: 8) {
-            Text("Member-owned limits")
-              .font(.headline)
-              .foregroundStyle(HomeboardPalette.primaryText)
-            Text("Budget and commute are no longer set for the whole group here. Each person controls those fields from their member card, and Homeboard derives the group total automatically.")
-              .font(.subheadline)
-              .foregroundStyle(HomeboardPalette.secondaryText)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          .padding(16)
-          .sharedSurface(cornerRadius: 18)
-
-          Button {
-            Task {
-              await appModel.saveBoardBrief()
-              if appModel.boardError == nil {
-                dismiss()
-              }
-            }
-          } label: {
-            Text("Save group brief")
-              .font(.headline.weight(.bold))
-              .foregroundStyle(Color.black)
-              .frame(maxWidth: .infinity)
-              .frame(height: 54)
-              .background(HomeboardPalette.accent)
-              .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-          }
+        Button("Close") { dismiss() }
+          .font(.headline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .frame(maxWidth: .infinity)
+          .frame(height: 52)
+          .background(HomeboardPalette.accentGradient)
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           .buttonStyle(.plain)
-        }
-        .padding(18)
+
+        Spacer()
       }
+      .padding(18)
       .background(WorkspaceBackgroundView())
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {

@@ -36,6 +36,18 @@ struct RootView: View {
       }
       .zIndex(10)
 
+      if appModel.showsPostAuthNotificationPrompt {
+        Color.black.opacity(0.60)
+          .ignoresSafeArea()
+          .transition(.opacity)
+          .zIndex(15)
+
+        PostAuthNotificationPrompt()
+          .padding(.horizontal, 20)
+          .transition(.scale(scale: 0.94).combined(with: .opacity))
+          .zIndex(16)
+      }
+
       if showsLaunchIntro {
         HomeboardLaunchIntro()
           .transition(.opacity.combined(with: .scale(scale: 1.015)))
@@ -45,6 +57,7 @@ struct RootView: View {
     .background(HomeboardPalette.background.ignoresSafeArea())
     .preferredColorScheme(.dark)
     .animation(.easeInOut(duration: 0.24), value: appModel.currentScreen)
+    .animation(.easeInOut(duration: 0.20), value: appModel.showsPostAuthNotificationPrompt)
     .environment(appModel)
     .task {
       await appModel.bootstrap()
@@ -95,6 +108,79 @@ struct RootView: View {
     ) { _ in
       appModel.consumeSharedListingImport()
     }
+  }
+}
+
+private struct PostAuthNotificationPrompt: View {
+  @Environment(AppModel.self) private var appModel
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      HStack(alignment: .top, spacing: 13) {
+        Image(systemName: "bell.badge.fill")
+          .font(.title3.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .frame(width: 46, height: 46)
+          .background(HomeboardPalette.accentGradient)
+          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Stay in sync with your board")
+            .font(.title3.weight(.bold))
+            .foregroundStyle(HomeboardPalette.primaryText)
+
+          Text("Turn on notifications for new listings, roommate reactions, invitations, and decisions that need you.")
+            .font(.subheadline)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+
+      Button {
+        Task {
+          await appModel.respondToPostAuthNotificationPrompt(enableNotifications: true)
+        }
+      } label: {
+        Group {
+          if appModel.isNotificationPermissionLoading {
+            ProgressView().tint(HomeboardPalette.buttonText)
+          } else {
+            Text("Turn on notifications")
+          }
+        }
+        .font(.headline.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.buttonText)
+        .frame(maxWidth: .infinity)
+        .frame(height: 52)
+        .background(HomeboardPalette.accentGradient)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      }
+      .buttonStyle(.plain)
+      .disabled(appModel.isNotificationPermissionLoading)
+      .accessibilityIdentifier("homeboard.notifications.enable")
+
+      Button("Not now") {
+        Task {
+          await appModel.respondToPostAuthNotificationPrompt(enableNotifications: false)
+        }
+      }
+      .font(.subheadline.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.secondaryText)
+      .frame(maxWidth: .infinity)
+      .buttonStyle(.plain)
+      .disabled(appModel.isNotificationPermissionLoading)
+      .accessibilityIdentifier("homeboard.notifications.notNow")
+    }
+    .padding(20)
+    .frame(maxWidth: 370)
+    .background(HomeboardPalette.surface.opacity(0.99))
+    .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 25, style: .continuous)
+        .stroke(HomeboardPalette.borderStrong.opacity(0.62), lineWidth: 1)
+    }
+    .shadow(color: Color.black.opacity(0.42), radius: 28, x: 0, y: 16)
   }
 }
 

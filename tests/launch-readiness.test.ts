@@ -82,15 +82,34 @@ test("the beta exposes a non-secret health check and invite-gates web registrati
   assert.match(registration, /inviteData\.invitation\.status === "pending"/);
 });
 
-test("the native beta offers honest notification status and privacy-safe feedback", () => {
+test("notification permission is offered after auth and not buried in workspace settings", () => {
   const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
   const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
+  const app = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardNativeApp.swift");
+  const root = read("ios/HomeboardNative/HomeboardNative/Sources/RootView.swift");
 
   assert.match(workspace, /Share beta feedback/);
   assert.match(workspace, /ShareLink\(item: report\)/);
   assert.match(workspace, /never your email, listing addresses, URLs, comments, or preferences/);
-  assert.match(workspace, /live delivery pending/);
-  assert.match(appModel, /Live board alerts will begin after the beta sender is connected/);
+  assert.doesNotMatch(workspace, /title: "Notification permission"/);
+  assert.match(appModel, /preparePostAuthenticationPrompts\(\)/);
+  assert.match(appModel, /respondToPostAuthNotificationPrompt/);
+  assert.match(app, /authorizationStatus == \.notDetermined/);
+  assert.match(root, /Stay in sync with your board/);
+  assert.match(root, /Turn on notifications/);
+});
+
+test("edit search brief opens the complete personal preference editor", () => {
+  const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+
+  assert.match(workspace, /title: "Edit search brief"/);
+  assert.match(workspace, /These changes only apply to your personal preferences/);
+  assert.match(workspace, /presentation: \.personalPreferences/);
+  assert.match(workspace, /SharedField\(title: "Ideal monthly share"/);
+  assert.match(workspace, /SharedField\(\s*title: "Preferred neighborhoods"/);
+  assert.match(workspace, /SharedField\(\s*title: "Must-haves"/);
+  assert.match(workspace, /SharedField\(\s*title: "Hard limits"/);
+  assert.doesNotMatch(workspace, /Each person controls those fields from their member card/);
 });
 
 test("release verification scans tracked secrets and attaches correlation IDs", () => {

@@ -7,6 +7,11 @@ extension Notification.Name {
 }
 
 enum NativePushService {
+  static func shouldOfferAuthorization() async -> Bool {
+    let settings = await UNUserNotificationCenter.current().notificationSettings()
+    return settings.authorizationStatus == .notDetermined
+  }
+
   static func requestAuthorization() async throws {
     let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
     guard granted else { throw HomeboardAPIError.server("Notifications are disabled for Homeboard in Settings.") }

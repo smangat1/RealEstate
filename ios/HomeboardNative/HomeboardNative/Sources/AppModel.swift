@@ -110,6 +110,8 @@ final class AppModel {
   var authError: String?
   var authFeedback: String?
   var showsPostAuthInvitePrompt = false
+  var showsPostAuthNotificationPrompt = false
+  var isNotificationPermissionLoading = false
   var showsGuestPreviewWelcome = false
   var showsGuestAuthenticationPrompt = false
   var onboardingError: String?
@@ -371,7 +373,7 @@ final class AppModel {
       let response = try await api.fetchSession(accessToken: session.accessToken)
       applySessionResponse(response, session: session)
       pendingConfirmationEmail = ""
-      showsPostAuthInvitePrompt = true
+      await preparePostAuthenticationPrompts()
     } catch {
       let message = readable(error)
       let normalized = message.lowercased()
@@ -450,7 +452,7 @@ final class AppModel {
       let response = try await api.fetchSession(accessToken: session.accessToken)
       applySessionResponse(response, session: session)
       pendingConfirmationEmail = ""
-      showsPostAuthInvitePrompt = true
+      await preparePostAuthenticationPrompts()
     } catch {
       authError = readableAuthError(error, email: trimmedEmail)
     }
@@ -504,9 +506,17 @@ final class AppModel {
         applySessionResponse(response, session: refreshed)
       }
       pendingConfirmationEmail = ""
-      showsPostAuthInvitePrompt = true
+      await preparePostAuthenticationPrompts()
     } catch {
       authError = readableAuthError(error, email: session.email)
+    }
+  }
+
+  private func preparePostAuthenticationPrompts() async {
+    showsPostAuthInvitePrompt = false
+    showsPostAuthNotificationPrompt = await NativePushService.shouldOfferAuthorization()
+    if !showsPostAuthNotificationPrompt {
+      showsPostAuthInvitePrompt = true
     }
   }
 
@@ -533,6 +543,22 @@ final class AppModel {
       showsPostAuthInvitePrompt = false
     } catch {
       authError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+  }
+
+  func respondToPostAuthNotificationPrompt(enableNotifications: Bool) async {
+    guard showsPostAuthNotificationPrompt, !isNotificationPermissionLoading else { return }
+    isNotificationPermissionLoading = true
+    defer {
+      isNotificationPermissionLoading = false
+      showsPostAuthNotificationPrompt = false
+      showsPostAuthInvitePrompt = true
+      persist()
+    }
+
+    if enableNotifications {
+      // A declined system prompt should never block the user from finishing sign-in.
+      try? await NativePushService.requestAuthorization()
     }
   }
 
@@ -1217,6 +1243,8 @@ final class AppModel {
     authError = nil
     authFeedback = nil
     showsPostAuthInvitePrompt = false
+    showsPostAuthNotificationPrompt = false
+    isNotificationPermissionLoading = false
     showsGuestPreviewWelcome = false
     showsGuestAuthenticationPrompt = false
     onboardingError = nil
@@ -2130,17 +2158,6 @@ final class AppModel {
     } catch {
       boardError = readable(error)
       return nil
-    }
-  }
-
-  func enableNotifications() {
-    Task {
-      do {
-        try await NativePushService.requestAuthorization()
-        boardFeedback = "Notification permission is ready. Live board alerts will begin after the beta sender is connected."
-      } catch {
-        boardError = readable(error)
-      }
     }
   }
 
