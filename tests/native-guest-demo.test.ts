@@ -28,17 +28,21 @@ test("release builds expose a guarded sample board before authentication", () =>
   assert.doesNotMatch(previewBuilder, /#if DEBUG/);
 });
 
-test("guest preview pages through the real app before sign in", () => {
+test("guest preview is one real app screen that gates every interaction", () => {
+  const guestPreview = boardShell.slice(
+    boardShell.indexOf("private struct GuestPreviewBoardView"),
+  );
+
   assert.match(boardShell, /if appModel\.isGuestPreview \{[\s\S]*GuestPreviewBoardView\(\)/);
-  assert.match(boardShell, /enum GuestPreviewPage/);
-  assert.match(boardShell, /SharedSearchMapView\(\)/);
-  assert.match(boardShell, /SharedShortlistView\(\)/);
-  assert.match(boardShell, /SharedUpdatesView\(\)/);
-  assert.match(boardShell, /scrollTargetBehavior\(\.paging\)/);
-  assert.match(boardShell, /guard page == \.signIn/);
-  assert.match(boardShell, /appModel\.beginGuestAuthentication\(mode: \.signIn\)/);
-  assert.doesNotMatch(boardShell, /DEMO MODE|Hi—this is Homeboard’s demo|GuestPreviewPrompt/);
-  assert.doesNotMatch(boardShell, /GuestPreviewAccountBar/);
+  assert.match(guestPreview, /SharedSearchMapView\(\)/);
+  assert.match(guestPreview, /DragGesture\(minimumDistance: 0/);
+  assert.match(guestPreview, /Make this search yours/);
+  assert.match(guestPreview, /appModel\.openWelcomeAccessFromGuestPreview\(\)/);
+  assert.match(guestPreview, /homeboard\.preview\.interaction/);
+  assert.doesNotMatch(guestPreview, /scrollTargetBehavior\(\.paging\)/);
+  assert.doesNotMatch(guestPreview, /SharedShortlistView\(\)|SharedUpdatesView\(\)/);
+  assert.doesNotMatch(guestPreview, /DEMO MODE|Hi—this is Homeboard’s demo|GuestPreviewPrompt/);
+  assert.doesNotMatch(guestPreview, /GuestPreviewAccountBar/);
   assert.match(workspace, /if !appModel\.isGuestPreview \{/);
 });
 

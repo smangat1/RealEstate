@@ -90,142 +90,115 @@ struct BoardShellView: View {
   }
 }
 
-private enum GuestPreviewPage: String, Hashable {
-  case search
-  case shortlist
-  case updates
-  case signIn
-}
-
 private struct GuestPreviewBoardView: View {
   @Environment(AppModel.self) private var appModel
-  @State private var visiblePage: GuestPreviewPage? = .search
+  @State private var showsSignInPrompt = false
 
   var body: some View {
-    GeometryReader { geometry in
-      ScrollView(.vertical, showsIndicators: false) {
-        LazyVStack(spacing: 0) {
-          previewPage(
-            id: .search,
-            accessibilityLabel: "Homeboard search preview",
-            size: geometry.size
-          ) {
-            NavigationStack {
-              SharedSearchMapView()
-            }
-            .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-          }
-
-          previewPage(
-            id: .shortlist,
-            accessibilityLabel: "Homeboard shortlist preview",
-            size: geometry.size
-          ) {
-            NavigationStack {
-              SharedShortlistView()
-            }
-            .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-          }
-
-          previewPage(
-            id: .updates,
-            accessibilityLabel: "Homeboard updates preview",
-            size: geometry.size
-          ) {
-            NavigationStack {
-              SharedUpdatesView()
-            }
-            .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-          }
-
-          GuestPreviewSignInTransition()
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .id(GuestPreviewPage.signIn)
-        }
-        .scrollTargetLayout()
+    ZStack {
+      NavigationStack {
+        SharedSearchMapView()
       }
-      .scrollTargetBehavior(.paging)
-      .scrollPosition(id: $visiblePage)
-      .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-      .onChange(of: visiblePage) { _, page in
-        guard page == .signIn else { return }
-        DispatchQueue.main.async {
-          if appModel.isGuestPreview {
-            appModel.beginGuestAuthentication(mode: .signIn)
-          }
+      .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
+      .toolbarBackground(.visible, for: .navigationBar)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+
+      Color.clear
+        .contentShape(Rectangle())
+        .gesture(
+          DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .onEnded { _ in
+              showsSignInPrompt = true
+            }
+        )
+        .accessibilityElement()
+        .accessibilityLabel("Explore the Homeboard sample board")
+        .accessibilityHint("Any interaction asks you to continue to Homeboard")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+          showsSignInPrompt = true
         }
+        .accessibilityIdentifier("homeboard.preview.interaction")
+
+      if showsSignInPrompt {
+        Color.black.opacity(0.60)
+          .ignoresSafeArea()
+          .transition(.opacity)
+
+        GuestSignInPrompt(
+          onContinue: {
+            appModel.openWelcomeAccessFromGuestPreview()
+          },
+          onDismiss: {
+            showsSignInPrompt = false
+          }
+        )
+        .padding(.horizontal, 20)
+        .transition(.scale(scale: 0.95).combined(with: .opacity))
       }
     }
     .background(HomeboardPalette.background)
-  }
-
-  private func previewPage<Content: View>(
-    id: GuestPreviewPage,
-    accessibilityLabel: String,
-    size: CGSize,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    ZStack {
-      content()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-
-      Button {
-        appModel.beginGuestAuthentication(mode: .signIn)
-      } label: {
-        Color.clear
-          .contentShape(Rectangle())
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(accessibilityLabel)
-      .accessibilityHint("Swipe up to keep looking, or activate to continue with Apple")
-      .accessibilityIdentifier("homeboard.preview.\(id.rawValue)")
-
-      VStack {
-        Spacer()
-        Image(systemName: "chevron.compact.down")
-          .font(.system(size: 22, weight: .bold))
-          .foregroundStyle(HomeboardPalette.primaryText.opacity(0.82))
-          .frame(width: 42, height: 28)
-          .background(Color.black.opacity(0.48), in: Capsule())
-          .overlay {
-            Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1)
-          }
-          .shadow(color: Color.black.opacity(0.32), radius: 8, y: 3)
-          .padding(.bottom, 8)
-      }
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
-    }
-    .frame(width: size.width, height: size.height)
-    .clipped()
-    .id(id)
+    .animation(.easeInOut(duration: 0.20), value: showsSignInPrompt)
   }
 }
 
-private struct GuestPreviewSignInTransition: View {
+private struct GuestSignInPrompt: View {
+  let onContinue: () -> Void
+  let onDismiss: () -> Void
+
   var body: some View {
-    ZStack {
-      HomeboardPalette.background
+    VStack(alignment: .leading, spacing: 18) {
+      HStack(alignment: .top, spacing: 13) {
+        Image(systemName: "person.crop.circle.badge.plus")
+          .font(.title3.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .frame(width: 46, height: 46)
+          .background(HomeboardPalette.accentGradient)
+          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
 
-      VStack(spacing: 18) {
-        Image("HomeboardMark")
-          .resizable()
-          .scaledToFit()
-          .padding(14)
-          .frame(width: 96, height: 96)
-          .background(HomeboardPalette.accent)
-          .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Make this search yours")
+            .font(.title3.weight(.bold))
+            .foregroundStyle(HomeboardPalette.primaryText)
 
-        ProgressView()
-          .tint(HomeboardPalette.accent)
-          .accessibilityLabel("Opening Apple sign in")
+          Text("Continue to sign in before opening listings, changing filters, or moving the map.")
+            .font(.subheadline)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
+
+      Button("Continue") {
+        onContinue()
+      }
+      .font(.headline.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.buttonText)
+      .frame(maxWidth: .infinity)
+      .frame(height: 52)
+      .background(HomeboardPalette.accentGradient)
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("homeboard.preview.continue")
+
+      Button("Not now") {
+        onDismiss()
+      }
+      .font(.subheadline.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.secondaryText)
+      .frame(maxWidth: .infinity)
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("homeboard.preview.dismiss")
     }
+    .padding(20)
+    .frame(maxWidth: 370)
+    .background(HomeboardPalette.surface.opacity(0.99))
+    .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 25, style: .continuous)
+        .stroke(HomeboardPalette.borderStrong.opacity(0.62), lineWidth: 1)
+    }
+    .shadow(color: Color.black.opacity(0.42), radius: 28, x: 0, y: 16)
   }
 }
 

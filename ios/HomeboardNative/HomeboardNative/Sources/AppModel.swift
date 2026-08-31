@@ -112,6 +112,7 @@ final class AppModel {
   var showsPostAuthInvitePrompt = false
   var showsPostAuthNotificationPrompt = false
   var isNotificationPermissionLoading = false
+  var opensWelcomeOnAccessPage = false
   var onboardingError: String?
   var boardError: String?
   var inviteFeedback: String?
@@ -246,9 +247,11 @@ final class AppModel {
     persist()
   }
 
-  func beginGuestAuthentication(mode: AuthMode) {
+  func openWelcomeAccessFromGuestPreview() {
     clearGuestPreviewState()
-    openAuth(mode: mode)
+    opensWelcomeOnAccessPage = true
+    currentScreen = .welcome
+    persist()
   }
 
   func openBoardTab(_ tab: BoardTab) {
@@ -1084,7 +1087,11 @@ final class AppModel {
 
   func resetToWelcome() {
     if authSession == nil {
-      openPreviewBoard()
+      if opensWelcomeOnAccessPage {
+        currentScreen = .welcome
+      } else {
+        openPreviewBoard()
+      }
       persist()
       return
     }
@@ -1226,6 +1233,7 @@ final class AppModel {
     showsPostAuthInvitePrompt = false
     showsPostAuthNotificationPrompt = false
     isNotificationPermissionLoading = false
+    opensWelcomeOnAccessPage = false
     onboardingError = nil
     boardFeedback = nil
     inviteFeedback = nil
@@ -3249,6 +3257,7 @@ final class AppModel {
 
     account = nil
     authSession = nil
+    opensWelcomeOnAccessPage = false
     board = MobileBoard(
       id: "preview-workspace",
       title: "NYC roommate search · Preview",

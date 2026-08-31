@@ -10,7 +10,7 @@ final class HomeboardNativeUITests: XCTestCase {
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
 
-    let searchPreview = app.buttons["homeboard.preview.search"]
+    let searchPreview = app.buttons["homeboard.preview.interaction"]
     XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["DEMO MODE"].exists)
     XCTAssertFalse(app.staticTexts["Hi—this is Homeboard’s demo."].exists)
@@ -21,33 +21,32 @@ final class HomeboardNativeUITests: XCTestCase {
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
 
-    let searchPreview = app.buttons["homeboard.preview.search"]
+    let searchPreview = app.buttons["homeboard.preview.interaction"]
     XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
     waitUntilHittable(searchPreview)
     searchPreview.tap()
 
-    XCTAssertTrue(app.staticTexts["One account. No password."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Make this search yours"].waitForExistence(timeout: 5))
+    let continueButton = app.buttons["homeboard.preview.continue"]
+    XCTAssertTrue(continueButton.exists)
+    continueButton.tap()
+
+    XCTAssertTrue(app.staticTexts["Get into the workspace."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["Continue with Apple"].exists)
   }
 
-  func testPreviewSwipesThroughAppScreensAndIntoSignIn() {
+  func testMovingThePreviewMapShowsTheSignInPrompt() {
     let app = XCUIApplication()
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
 
-    let searchPreview = app.buttons["homeboard.preview.search"]
+    let searchPreview = app.buttons["homeboard.preview.interaction"]
     XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
     waitUntilHittable(searchPreview)
-    searchPreview.swipeUp()
+    searchPreview.swipeLeft()
 
-    let shortlistPreview = app.buttons["homeboard.preview.shortlist"]
-    XCTAssertTrue(shortlistPreview.waitForExistence(timeout: 5))
-    shortlistPreview.swipeUp()
-
-    let updatesPreview = app.buttons["homeboard.preview.updates"]
-    XCTAssertTrue(updatesPreview.waitForExistence(timeout: 5))
-    updatesPreview.swipeUp()
-
-    XCTAssertTrue(app.staticTexts["One account. No password."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Make this search yours"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["homeboard.preview.continue"].exists)
   }
 
   private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 5) {

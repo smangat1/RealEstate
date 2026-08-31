@@ -51,8 +51,11 @@ struct WelcomeView: View {
       .ignoresSafeArea(.keyboard, edges: .bottom)
     }
     .onAppear {
+      selectedPage = appModel.opensWelcomeOnAccessPage ? 1 : 0
       #if DEBUG
-      selectedPage = min(max(debugWelcomePage, 0), 1)
+      if !appModel.opensWelcomeOnAccessPage {
+        selectedPage = min(max(debugWelcomePage, 0), 1)
+      }
       #endif
     }
     .onChange(of: debugWelcomePage) { _, newValue in
@@ -195,6 +198,7 @@ struct WelcomeView: View {
 
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.12)) {
+          appModel.opensWelcomeOnAccessPage = true
           selectedPage = 1
           welcomeDragOffset = 0
         }
@@ -240,6 +244,7 @@ struct WelcomeView: View {
 
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.12)) {
+          appModel.opensWelcomeOnAccessPage = false
           selectedPage = 0
           welcomeDragOffset = 0
         }

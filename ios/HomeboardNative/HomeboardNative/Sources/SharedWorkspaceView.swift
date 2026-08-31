@@ -2549,7 +2549,7 @@ struct SharedShortlistView: View {
         .presentationBackground(HomeboardPalette.background)
     }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
-      if !appModel.isGuestPreview && !shortlistGuideDismissed {
+      if !shortlistGuideDismissed {
         SharedCoachmarkOverlay(
           target: anchors["shortlist-filters"],
           title: "This is the group’s shared memory",
@@ -2931,7 +2931,7 @@ struct SharedUpdatesView: View {
         .presentationBackground(HomeboardPalette.background)
     }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
-      if !appModel.isGuestPreview && !updatesGuideDismissed {
+      if !updatesGuideDismissed {
         SharedCoachmarkOverlay(
           target: anchors["updates-composer"],
           title: "Leave decisions here, not in another chat",
