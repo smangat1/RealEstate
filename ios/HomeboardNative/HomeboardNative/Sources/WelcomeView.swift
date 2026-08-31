@@ -283,8 +283,6 @@ struct WelcomeView: View {
           pendingInviteBanner
         }
 
-        demoAccessButton
-
         accessKeyButton
 
         if showsInviteEntry || !appModel.pendingInviteCode.isEmpty {
@@ -334,44 +332,6 @@ struct WelcomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
     .buttonStyle(WelcomeAccessPressStyle())
-  }
-
-  private var demoAccessButton: some View {
-    Button {
-      withAnimation(.easeInOut(duration: 0.24)) {
-        appModel.openGuestPreview()
-      }
-    } label: {
-      HStack(spacing: 12) {
-        Image(systemName: "eye.fill")
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(HomeboardPalette.accent)
-          .frame(width: 38, height: 38)
-          .background(HomeboardPalette.accent.opacity(0.11))
-          .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Explore the demo")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.primaryText)
-          Text("Look around before creating an account.")
-            .font(.caption)
-            .foregroundStyle(HomeboardPalette.tertiaryText)
-        }
-
-        Spacer(minLength: 4)
-
-        Image(systemName: "arrow.right")
-          .font(.caption.weight(.bold))
-          .foregroundStyle(HomeboardPalette.accent)
-      }
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .homeboardInsetSurface(cornerRadius: 16, accent: HomeboardPalette.accent)
-      .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-    .buttonStyle(.plain)
-    .accessibilityIdentifier("homeboard.demo.open")
   }
 
   private var compactAccountButtons: some View {

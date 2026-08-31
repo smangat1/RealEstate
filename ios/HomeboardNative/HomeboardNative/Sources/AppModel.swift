@@ -112,8 +112,6 @@ final class AppModel {
   var showsPostAuthInvitePrompt = false
   var showsPostAuthNotificationPrompt = false
   var isNotificationPermissionLoading = false
-  var showsGuestPreviewWelcome = false
-  var showsGuestAuthenticationPrompt = false
   var onboardingError: String?
   var boardError: String?
   var inviteFeedback: String?
@@ -156,8 +154,8 @@ final class AppModel {
     }
     restore()
     authSession = NativeAuthSessionStore.load()
-    if authSession == nil, currentScreen != .welcome {
-      currentScreen = .welcome
+    if authSession == nil {
+      openPreviewBoard()
     }
     persist()
   }
@@ -246,25 +244,6 @@ final class AppModel {
     }
     currentScreen = .auth
     persist()
-  }
-
-  func openGuestPreview() {
-    openPreviewBoard()
-    showsGuestAuthenticationPrompt = false
-    showsGuestPreviewWelcome = true
-  }
-
-  func dismissGuestPreviewWelcome() {
-    showsGuestPreviewWelcome = false
-  }
-
-  func requestGuestAuthentication() {
-    guard isGuestPreview, !showsGuestPreviewWelcome else { return }
-    showsGuestAuthenticationPrompt = true
-  }
-
-  func dismissGuestAuthenticationPrompt() {
-    showsGuestAuthenticationPrompt = false
   }
 
   func beginGuestAuthentication(mode: AuthMode) {
@@ -1104,8 +1083,10 @@ final class AppModel {
   }
 
   func resetToWelcome() {
-    if isGuestPreview {
-      clearGuestPreviewState()
+    if authSession == nil {
+      openPreviewBoard()
+      persist()
+      return
     }
     currentScreen = .welcome
     persist()
@@ -1245,14 +1226,11 @@ final class AppModel {
     showsPostAuthInvitePrompt = false
     showsPostAuthNotificationPrompt = false
     isNotificationPermissionLoading = false
-    showsGuestPreviewWelcome = false
-    showsGuestAuthenticationPrompt = false
     onboardingError = nil
     boardFeedback = nil
     inviteFeedback = nil
     boardError = nil
-    currentScreen = .welcome
-    boardTab = .board
+    openPreviewBoard()
   }
 
   func markLegacyProjectIgnored() {
@@ -2543,7 +2521,11 @@ final class AppModel {
     case "welcome":
       let page = Int(components.dropFirst().first ?? "0") ?? 0
       UserDefaults.standard.set(min(max(page, 0), 1), forKey: "homeboard.debug.welcomePage")
-      resetToWelcome()
+      if isGuestPreview {
+        clearGuestPreviewState()
+      }
+      currentScreen = .welcome
+      persist()
     case "preview":
       openPreviewBoard()
       if let tabName = components.dropFirst().first {
@@ -3315,8 +3297,6 @@ final class AppModel {
   }
 
   private func clearGuestPreviewState() {
-    showsGuestPreviewWelcome = false
-    showsGuestAuthenticationPrompt = false
     localShortlistsByBoard.removeValue(forKey: "preview-workspace")
     localMembersByBoard.removeValue(forKey: "preview-workspace")
     localBoardsById.removeValue(forKey: "preview-workspace")

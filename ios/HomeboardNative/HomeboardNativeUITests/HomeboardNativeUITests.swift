@@ -5,44 +5,56 @@ final class HomeboardNativeUITests: XCTestCase {
     continueAfterFailure = false
   }
 
-  func testWelcomeScreenLaunches() {
+  func testUnauthenticatedLaunchOpensDirectlyIntoTheAppPreview() {
     let app = XCUIApplication()
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
 
-    XCTAssertTrue(app.staticTexts["HOMEBOARD"].waitForExistence(timeout: 5))
-    XCTAssertTrue(
-      app.staticTexts["Find the place everyone can live with."]
-        .waitForExistence(timeout: 5)
-    )
+    let searchPreview = app.buttons["homeboard.preview.search"]
+    XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["DEMO MODE"].exists)
+    XCTAssertFalse(app.staticTexts["Hi—this is Homeboard’s demo."].exists)
   }
 
-  func testGuestDemoGatesBoardControlsBehindAuthentication() {
+  func testPreviewInteractionContinuesDirectlyToAppleSignIn() {
     let app = XCUIApplication()
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
 
-    XCTAssertTrue(app.staticTexts["HOMEBOARD"].waitForExistence(timeout: 5))
-    app.swipeUp()
+    let searchPreview = app.buttons["homeboard.preview.search"]
+    XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
+    waitUntilHittable(searchPreview)
+    searchPreview.tap()
 
-    let openDemo = app.buttons["homeboard.demo.open"]
-    XCTAssertTrue(openDemo.waitForExistence(timeout: 5))
-    openDemo.tap()
+    XCTAssertTrue(app.staticTexts["One account. No password."].waitForExistence(timeout: 5))
+  }
 
-    XCTAssertTrue(app.staticTexts["Hi—this is Homeboard’s demo."].waitForExistence(timeout: 5))
-    let lookAround = app.buttons["homeboard.demo.lookAround"]
-    XCTAssertTrue(lookAround.exists)
-    lookAround.tap()
+  func testPreviewSwipesThroughAppScreensAndIntoSignIn() {
+    let app = XCUIApplication()
+    app.launchArguments.append("-homeboard.resetForUITesting")
+    app.launch()
 
-    XCTAssertFalse(app.tabBars.firstMatch.exists)
-    XCTAssertTrue(app.buttons["homeboard.demo.signIn"].waitForExistence(timeout: 3))
-    XCTAssertTrue(app.buttons["homeboard.demo.createAccount"].exists)
+    let searchPreview = app.buttons["homeboard.preview.search"]
+    XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
+    waitUntilHittable(searchPreview)
+    searchPreview.swipeUp()
 
-    let interactionGate = app.buttons["homeboard.demo.interactionGate"]
-    XCTAssertTrue(interactionGate.waitForExistence(timeout: 3))
-    interactionGate.tap()
+    let shortlistPreview = app.buttons["homeboard.preview.shortlist"]
+    XCTAssertTrue(shortlistPreview.waitForExistence(timeout: 5))
+    shortlistPreview.swipeUp()
 
-    XCTAssertTrue(app.staticTexts["Ready to make it yours?"].waitForExistence(timeout: 3))
-    XCTAssertTrue(app.buttons["homeboard.demo.promptCreateAccount"].exists)
+    let updatesPreview = app.buttons["homeboard.preview.updates"]
+    XCTAssertTrue(updatesPreview.waitForExistence(timeout: 5))
+    updatesPreview.swipeUp()
+
+    XCTAssertTrue(app.staticTexts["One account. No password."].waitForExistence(timeout: 5))
+  }
+
+  private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 5) {
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "hittable == true"),
+      object: element
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed)
   }
 }
