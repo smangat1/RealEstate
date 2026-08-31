@@ -247,11 +247,28 @@ final class AppModel {
     persist()
   }
 
-  func openWelcomeAccessFromGuestPreview() {
+  func openWelcomeFromGuestPreview() {
     clearGuestPreviewState()
-    opensWelcomeOnAccessPage = true
+    opensWelcomeOnAccessPage = false
+    #if DEBUG
+    UserDefaults.standard.set(0, forKey: "homeboard.debug.welcomePage")
+    #endif
     currentScreen = .welcome
     persist()
+  }
+
+  @discardableResult
+  func saveInviteForAppleSignIn(code rawCode: String) -> Bool {
+    let inviteCode = normalizedInviteToken(from: rawCode)
+    guard !inviteCode.isEmpty else {
+      authError = "Open an invite link or paste its token first."
+      return false
+    }
+
+    authError = nil
+    pendingInviteCode = inviteCode
+    persist()
+    return true
   }
 
   func openBoardTab(_ tab: BoardTab) {
@@ -281,7 +298,9 @@ final class AppModel {
       return
     }
 
-    openAuth(mode: .signIn, inviteCode: inviteCode)
+    opensWelcomeOnAccessPage = true
+    currentScreen = .welcome
+    persist()
   }
 
   func completeAuth(name: String, email: String) {

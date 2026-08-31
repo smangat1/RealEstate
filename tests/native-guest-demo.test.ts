@@ -35,9 +35,10 @@ test("guest preview is one real app screen that gates every interaction", () => 
 
   assert.match(boardShell, /if appModel\.isGuestPreview \{[\s\S]*GuestPreviewBoardView\(\)/);
   assert.match(guestPreview, /SharedSearchMapView\(\)/);
+  assert.match(guestPreview, /Rectangle\(\)[\s\S]*Color\.black\.opacity\(0\.001\)/);
   assert.match(guestPreview, /DragGesture\(minimumDistance: 0/);
   assert.match(guestPreview, /Make this search yours/);
-  assert.match(guestPreview, /appModel\.openWelcomeAccessFromGuestPreview\(\)/);
+  assert.match(guestPreview, /appModel\.openWelcomeFromGuestPreview\(\)/);
   assert.match(guestPreview, /homeboard\.preview\.interaction/);
   assert.doesNotMatch(guestPreview, /scrollTargetBehavior\(\.paging\)/);
   assert.doesNotMatch(guestPreview, /SharedShortlistView\(\)|SharedUpdatesView\(\)/);

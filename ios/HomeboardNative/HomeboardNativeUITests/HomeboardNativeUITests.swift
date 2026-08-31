@@ -16,7 +16,7 @@ final class HomeboardNativeUITests: XCTestCase {
     XCTAssertFalse(app.staticTexts["Hi—this is Homeboard’s demo."].exists)
   }
 
-  func testPreviewInteractionContinuesDirectlyToAppleSignIn() {
+  func testPreviewInteractionOpensTheWelcomeStoryBeforeAppleSignIn() {
     let app = XCUIApplication()
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
@@ -31,8 +31,15 @@ final class HomeboardNativeUITests: XCTestCase {
     XCTAssertTrue(continueButton.exists)
     continueButton.tap()
 
-    XCTAssertTrue(app.staticTexts["Get into the workspace."].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["Continue with Apple"].exists)
+    let hero = app.staticTexts["Finding a place with friends doesn’t have to end your friendship."]
+    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    let accessTitle = app.staticTexts["Get into the workspace."]
+    XCTAssertFalse(accessTitle.isHittable)
+
+    hero.swipeUp()
+
+    waitUntilHittable(accessTitle)
+    waitUntilHittable(app.buttons["homeboard.welcome.apple"])
   }
 
   func testMovingThePreviewMapShowsTheSignInPrompt() {

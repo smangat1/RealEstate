@@ -253,7 +253,9 @@ test("every native build configuration uses Apple-only account entry", () => {
   assert.match(apiSource, /var provider = "apple"/);
   assert.match(appModelSource, /func submitAppleAuth/);
   assert.match(entitlements, /com\.apple\.developer\.applesignin/);
-  assert.match(welcomeSource, /Continue with Apple/);
+  assert.match(welcomeSource, /SignInWithAppleButton\(\.continue\)/);
+  assert.match(welcomeSource, /HomeboardAppleSignIn\.prepare\(request\)/);
+  assert.match(welcomeSource, /appModel\.submitAppleAuth/);
   assert.doesNotMatch(appleAuthViewSource, /developmentLogin|DEVELOPMENT ACCOUNT|Personal Team/);
   assert.doesNotMatch(appleAuthViewSource, /SecureField\("Password"/);
   assert.match(appleAuthViewSource, /SignInWithAppleButton[\s\S]*\.frame\(height: 50\)/);

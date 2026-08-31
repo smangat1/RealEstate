@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import UIKit
 
@@ -11,6 +12,7 @@ struct WelcomeView: View {
   @State private var keyRotation = 0.0
   @State private var isUnlockingInvite = false
   @State private var isInviteUnlocked = false
+  @State private var appleNonce: String?
   @AppStorage("homeboard.debug.welcomePage") private var debugWelcomePage = 0
   @FocusState private var inviteCodeFocused: Bool
 
@@ -323,42 +325,42 @@ struct WelcomeView: View {
   }
 
   private var fullAccountButtons: some View {
-    Button {
-      withAnimation(.easeInOut(duration: 0.24)) {
-        appModel.openAuth(mode: .signIn)
-      }
-    } label: {
-      Label("Continue with Apple", systemImage: "apple.logo")
-        .font(.subheadline.weight(.semibold))
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 15)
-        .background(HomeboardPalette.accentGradient)
-        .foregroundStyle(HomeboardPalette.buttonText)
+    VStack(alignment: .leading, spacing: 10) {
+      ZStack {
+        SignInWithAppleButton(.continue) { request in
+          do {
+            appleNonce = try HomeboardAppleSignIn.prepare(request)
+            appModel.authError = nil
+          } catch {
+            appleNonce = nil
+            appModel.authError = readable(error)
+          }
+        } onCompletion: { result in
+          finishAppleAuthorization(result)
+        }
+        .signInWithAppleButtonStyle(.white)
+        .frame(height: 52)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-    .buttonStyle(WelcomeAccessPressStyle())
-  }
+        .disabled(appModel.isAuthLoading)
+        .opacity(appModel.isAuthLoading ? 0.58 : 1)
+        .accessibilityIdentifier("homeboard.welcome.apple")
 
-  private var compactAccountButtons: some View {
-    compactAccountButton("Continue with Apple", mode: .signIn)
-    .padding(.top, 2)
-  }
-
-  private func compactAccountButton(_ title: String, mode: AppModel.AuthMode) -> some View {
-    Button {
-      withAnimation(.easeInOut(duration: 0.2)) {
-        appModel.openAuth(mode: mode, inviteCode: joinCode)
+        if appModel.isAuthLoading {
+          RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color.black.opacity(0.48))
+          ProgressView()
+            .tint(.white)
+        }
       }
-    } label: {
-      Text(title)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(HomeboardPalette.secondaryText)
-        .frame(maxWidth: .infinity)
-        .frame(height: 34)
-        .background(Color.white.opacity(0.045))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+      .frame(height: 52)
+
+      if let authError = appModel.authError, !authError.isEmpty {
+        Label(authError, systemImage: "exclamationmark.circle.fill")
+          .font(.footnote.weight(.medium))
+          .foregroundStyle(Color.red.opacity(0.92))
+          .fixedSize(horizontal: false, vertical: true)
+      }
     }
-    .buttonStyle(.plain)
   }
 
   private var workspacePreview: some View {
@@ -677,13 +679,13 @@ struct WelcomeView: View {
   }
 
   private var keyActionTitle: String {
-    if isInviteUnlocked { return "Continue to sign in" }
+    if isInviteUnlocked { return "Invite saved" }
     if showsInviteEntry { return "Enter your key" }
     return "Have an invite key?"
   }
 
   private var keyActionDetail: String {
-    if isInviteUnlocked { return "Authentication comes before board access." }
+    if isInviteUnlocked { return "Continue with Apple below to join the board." }
     if showsInviteEntry { return "Paste the link your roommate sent you." }
     return "Tap to turn the key and join an existing board."
   }
@@ -719,7 +721,17 @@ struct WelcomeView: View {
 
     try? await Task.sleep(for: .milliseconds(320))
 
-    await appModel.startInviteJoin(code: joinCode)
+    guard appModel.saveInviteForAppleSignIn(code: joinCode) else {
+      withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+        isInviteUnlocked = false
+        keyRotation = 90
+      }
+      isUnlockingInvite = false
+      inviteCodeFocused = true
+      return
+    }
+
+    isUnlockingInvite = false
 
     if appModel.currentScreen == .welcome, appModel.authError != nil {
       withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
@@ -729,6 +741,39 @@ struct WelcomeView: View {
       isUnlockingInvite = false
       inviteCodeFocused = true
     }
+  }
+
+  private func finishAppleAuthorization(_ result: Result<ASAuthorization, Error>) {
+    switch result {
+    case .success(let authorization):
+      do {
+        let credential = try HomeboardAppleSignIn.credential(
+          from: authorization,
+          nonce: appleNonce
+        )
+        appleNonce = nil
+        Task {
+          await appModel.submitAppleAuth(
+            identityToken: credential.identityToken,
+            nonce: credential.nonce,
+            displayName: credential.displayName,
+            inviteCode: joinCode.isEmpty ? appModel.pendingInviteCode : joinCode
+          )
+        }
+      } catch {
+        appleNonce = nil
+        appModel.authError = readable(error)
+      }
+    case .failure(let error):
+      appleNonce = nil
+      if (error as? ASAuthorizationError)?.code != .canceled {
+        appModel.authError = readable(error)
+      }
+    }
+  }
+
+  private func readable(_ error: Error) -> String {
+    (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
   }
 
   private func memberAvatar(

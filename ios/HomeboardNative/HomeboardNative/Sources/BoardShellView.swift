@@ -104,9 +104,10 @@ private struct GuestPreviewBoardView: View {
       .allowsHitTesting(false)
       .accessibilityHidden(true)
 
-      Color.clear
+      Rectangle()
+        .fill(Color.black.opacity(0.001))
         .contentShape(Rectangle())
-        .gesture(
+        .highPriorityGesture(
           DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onEnded { _ in
               showsSignInPrompt = true
@@ -120,15 +121,19 @@ private struct GuestPreviewBoardView: View {
           showsSignInPrompt = true
         }
         .accessibilityIdentifier("homeboard.preview.interaction")
+        .allowsHitTesting(!showsSignInPrompt)
+        .zIndex(0)
 
       if showsSignInPrompt {
         Color.black.opacity(0.60)
           .ignoresSafeArea()
+          .allowsHitTesting(false)
           .transition(.opacity)
+          .zIndex(1)
 
         GuestSignInPrompt(
           onContinue: {
-            appModel.openWelcomeAccessFromGuestPreview()
+            appModel.openWelcomeFromGuestPreview()
           },
           onDismiss: {
             showsSignInPrompt = false
@@ -136,6 +141,7 @@ private struct GuestPreviewBoardView: View {
         )
         .padding(.horizontal, 20)
         .transition(.scale(scale: 0.95).combined(with: .opacity))
+        .zIndex(2)
       }
     }
     .background(HomeboardPalette.background)
@@ -169,24 +175,27 @@ private struct GuestSignInPrompt: View {
         }
       }
 
-      Button("Continue") {
-        onContinue()
+      Button(action: onContinue) {
+        Text("Continue")
+          .font(.headline.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .frame(maxWidth: .infinity)
+          .frame(height: 52)
+          .background(HomeboardPalette.accentGradient)
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
-      .font(.headline.weight(.semibold))
-      .foregroundStyle(HomeboardPalette.buttonText)
-      .frame(maxWidth: .infinity)
-      .frame(height: 52)
-      .background(HomeboardPalette.accentGradient)
-      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       .buttonStyle(.plain)
       .accessibilityIdentifier("homeboard.preview.continue")
 
-      Button("Not now") {
-        onDismiss()
+      Button(action: onDismiss) {
+        Text("Not now")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .frame(maxWidth: .infinity)
+          .frame(minHeight: 44)
+          .contentShape(Rectangle())
       }
-      .font(.subheadline.weight(.semibold))
-      .foregroundStyle(HomeboardPalette.secondaryText)
-      .frame(maxWidth: .infinity)
       .buttonStyle(.plain)
       .accessibilityIdentifier("homeboard.preview.dismiss")
     }
