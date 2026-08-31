@@ -36,7 +36,7 @@
   <key>HomeboardKeychainAccessGroup</key>
   <string>$(AppIdentifierPrefix)com.homeboard.native.shared</string>
   <key>LSApplicationCategoryType</key>
-  <string>public.app-category.lifestyle</string>
+  <string>public.app-category.business</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsLocalNetworking</key>

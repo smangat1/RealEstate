@@ -42,6 +42,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: HomeboardNative/Info.plist
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.business
         CURRENT_PROJECT_VERSION: 14
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
@@ -131,6 +132,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: HomeboardMac/Info.plist
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.business
         CODE_SIGN_ENTITLEMENTS: HomeboardMac/HomeboardMac.entitlements
         CURRENT_PROJECT_VERSION: 14
         MARKETING_VERSION: 0.0.13
