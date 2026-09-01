@@ -929,9 +929,12 @@ struct OnboardingView: View {
                 Spacer(minLength: 4)
               }
               .padding(.horizontal, 12)
+              .frame(maxWidth: .infinity, alignment: .leading)
               .frame(height: 54)
+              .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
             if index < addressSearch.suggestions.count - 1 {
               Rectangle()
@@ -1025,9 +1028,12 @@ struct OnboardingView: View {
                 Spacer(minLength: 4)
               }
               .padding(.horizontal, 12)
+              .frame(maxWidth: .infinity, alignment: .leading)
               .frame(height: 54)
+              .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
             if index < addressSearch.suggestions.count - 1 {
               Rectangle()

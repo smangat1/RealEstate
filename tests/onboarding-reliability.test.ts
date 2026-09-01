@@ -67,6 +67,18 @@ test("onboarding choices can be cleared with a second tap", () => {
   assert.match(multiChoiceFlow, /\? \[\]\s*: \[option\]/);
 });
 
+test("Apple Maps suggestions use the full visible row as the tap target", () => {
+  const activeOnboarding = onboardingView.slice(
+    onboardingView.indexOf("struct OnboardingView"),
+    onboardingView.indexOf("private struct LegacyOnboardingView"),
+  );
+  const fullRowTargets = activeOnboarding.match(
+    /\.frame\(maxWidth: \.infinity, alignment: \.leading\)[\s\S]{0,100}\.contentShape\(Rectangle\(\)\)/g,
+  ) ?? [];
+
+  assert.equal(fullRowTargets.length, 2);
+});
+
 test("active onboarding exposes failures and offers a real retry", () => {
   const navigation = onboardingView.slice(
     onboardingView.indexOf("private var navigationBar"),
