@@ -553,7 +553,7 @@ export default async function SettingsPage({
                     <div className="settings-subsection">
                       <h3>Workspace invites</h3>
                       <p className="settings-help-copy">
-                        Create a single-use link and send it through Messages or any app. It works with Sign in with Apple—including Hide My Email.
+                        Create a single-use link and send it through Messages or any app. It works with Sign in with Apple, including Hide My Email.
                         Creating another link replaces the currently pending one.
                       </p>
                       <form action={createBoardInvitationAction} className="account-form">

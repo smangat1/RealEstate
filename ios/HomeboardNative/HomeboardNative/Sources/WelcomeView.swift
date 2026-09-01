@@ -27,7 +27,7 @@ struct WelcomeView: View {
             heroContent
           }
           .contentShape(Rectangle())
-          .gesture(welcomeAdvanceGesture)
+          .simultaneousGesture(welcomeAdvanceGesture)
           .offset(
             y: selectedPage == 0
               ? welcomeDragOffset
@@ -129,7 +129,7 @@ struct WelcomeView: View {
           .fill(HomeboardPalette.accent)
           .frame(width: 52, height: 3)
 
-        Text("Keep listings, commutes, and tradeoffs in one shared place—before the group chat becomes the problem.")
+        Text("Keep listings, commutes, and tradeoffs in one shared place. Do this before the group chat becomes the problem.")
           .font(.body)
           .foregroundStyle(HomeboardPalette.secondaryText)
           .fixedSize(horizontal: false, vertical: true)
@@ -156,13 +156,23 @@ struct WelcomeView: View {
         }
       }
 
-      HStack(spacing: 8) {
-        Text("Swipe up to continue")
-        Image(systemName: "arrow.up")
+      Button {
+        showAccessPage()
+      } label: {
+        HStack(spacing: 8) {
+          Text("Continue")
+          Image(systemName: "arrow.up")
+        }
+        .font(.subheadline.weight(.bold))
+        .foregroundStyle(HomeboardPalette.buttonText)
+        .frame(maxWidth: .infinity)
+        .frame(height: 52)
+        .background(HomeboardPalette.accentGradient)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
-      .font(.caption.weight(.semibold))
-      .foregroundStyle(HomeboardPalette.tertiaryText)
-      .frame(maxWidth: .infinity, alignment: .center)
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("homeboard.welcome.continue")
     }
     .padding(.top, 6)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -198,13 +208,17 @@ struct WelcomeView: View {
           return
         }
 
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.12)) {
-          appModel.opensWelcomeOnAccessPage = true
-          selectedPage = 1
-          welcomeDragOffset = 0
-        }
+        showAccessPage()
       }
+  }
+
+  private func showAccessPage() {
+    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+    withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.12)) {
+      appModel.opensWelcomeOnAccessPage = true
+      selectedPage = 1
+      welcomeDragOffset = 0
+    }
   }
 
   private var welcomeReturnGesture: some Gesture {
@@ -290,6 +304,8 @@ struct WelcomeView: View {
           pendingInviteBanner
         }
 
+        fullAccountButtons
+
         accessKeyButton
 
         if showsInviteEntry || !appModel.pendingInviteCode.isEmpty {
@@ -297,8 +313,6 @@ struct WelcomeView: View {
             .id("invite-code")
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
-
-        fullAccountButtons
 
         Spacer(minLength: 12)
 

@@ -11,7 +11,7 @@ const setupUrl = new URL("/safari", siteUrl);
 const previewImage = new URL("/api/og?slide=product", siteUrl);
 
 export const metadata: Metadata = {
-  title: { absolute: "Homeboard for Safari — Save rentals from your Mac" },
+  title: { absolute: "Homeboard for Safari: Save rentals from your Mac" },
   description: "Connect Homeboard to Safari on your Mac, review a rental in one click, and save it to the same shared board as your iPhone.",
   alternates: { canonical: setupUrl },
   openGraph: {

@@ -14,7 +14,7 @@ export const MARKETING_SLIDES = [
     hash: "#problem",
     label: "The first problem",
     title: "You shouldn’t have to open Maps every time you find somewhere that matches your aesthetic.",
-    description: "One place you love. Seven tabs. No actual answer. Rent is one number—a life is not.",
+    description: "One place you love. Seven tabs. No actual answer. Rent is one number. Your life is not.",
     background: "#FBF5ED",
     foreground: "#27362F",
     accent: "#48695C",

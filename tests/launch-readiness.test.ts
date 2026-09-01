@@ -1,10 +1,42 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { extname, join, resolve } from "node:path";
 import test from "node:test";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+
+function userFacingSourceFiles(relativePath: string): string[] {
+  const absolutePath = resolve(root, relativePath);
+  if (!existsSync(absolutePath)) return [];
+  if (!statSync(absolutePath).isDirectory()) return [absolutePath];
+
+  return readdirSync(absolutePath, { withFileTypes: true }).flatMap((entry) => {
+    const childPath = join(absolutePath, entry.name);
+    if (entry.isDirectory()) return userFacingSourceFiles(childPath);
+    return [childPath];
+  });
+}
+
+test("ASD-STE100 copy avoids em dashes in the website and app", () => {
+  const extensions = new Set([".js", ".json", ".plist", ".swift", ".ts", ".tsx"]);
+  const roots = [
+    "app",
+    "components",
+    "lib",
+    "ios/HomeboardNative/HomeboardNative/Sources",
+    "ios/HomeboardNative/HomeboardMac",
+    "ios/HomeboardNative/HomeboardSafariExtension",
+    "ios/HomeboardNative/HomeboardShareExtension",
+  ];
+  const offenders = roots
+    .flatMap(userFacingSourceFiles)
+    .filter((path) => extensions.has(extname(path)))
+    .filter((path) => readFileSync(path, "utf8").includes("—"))
+    .map((path) => path.slice(root.length + 1));
+
+  assert.deepEqual(offenders, []);
+});
 
 test("the public site has branded metadata and installable icons", () => {
   const layout = read("app/layout.tsx");
@@ -90,7 +122,7 @@ test("notification permission is offered after auth and not buried in workspace 
 
   assert.match(workspace, /Share beta feedback/);
   assert.match(workspace, /ShareLink\(item: report\)/);
-  assert.match(workspace, /never your email, listing addresses, URLs, comments, or preferences/);
+  assert.match(workspace, /It does not include your email, listing addresses, URLs, comments, or preferences/);
   assert.doesNotMatch(workspace, /title: "Notification permission"/);
   assert.match(appModel, /preparePostAuthenticationPrompts\(\)/);
   assert.match(appModel, /respondToPostAuthNotificationPrompt/);

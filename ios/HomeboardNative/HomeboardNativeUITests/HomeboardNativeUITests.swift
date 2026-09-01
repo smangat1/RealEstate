@@ -5,55 +5,44 @@ final class HomeboardNativeUITests: XCTestCase {
     continueAfterFailure = false
   }
 
-  func testUnauthenticatedLaunchOpensDirectlyIntoTheAppPreview() {
+  func testUnauthenticatedLaunchOpensTheWelcomeStory() {
     let app = XCUIApplication()
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
-
-    let searchPreview = app.buttons["homeboard.preview.interaction"]
-    XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
-    XCTAssertFalse(app.staticTexts["DEMO MODE"].exists)
-    XCTAssertFalse(app.staticTexts["Hi—this is Homeboard’s demo."].exists)
-  }
-
-  func testPreviewInteractionOpensTheWelcomeStoryBeforeAppleSignIn() {
-    let app = XCUIApplication()
-    app.launchArguments.append("-homeboard.resetForUITesting")
-    app.launch()
-
-    let searchPreview = app.buttons["homeboard.preview.interaction"]
-    XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
-    waitUntilHittable(searchPreview)
-    searchPreview.tap()
-
-    XCTAssertTrue(app.staticTexts["Make this search yours"].waitForExistence(timeout: 5))
-    let continueButton = app.buttons["homeboard.preview.continue"]
-    XCTAssertTrue(continueButton.exists)
-    continueButton.tap()
 
     let hero = app.staticTexts["Finding a place with friends doesn’t have to end your friendship."]
     XCTAssertTrue(hero.waitForExistence(timeout: 5))
-    let accessTitle = app.staticTexts["Get into the workspace."]
-    XCTAssertFalse(accessTitle.isHittable)
-
-    hero.swipeUp()
-
-    waitUntilHittable(accessTitle)
-    waitUntilHittable(app.buttons["homeboard.welcome.apple"])
+    XCTAssertTrue(app.buttons["homeboard.welcome.continue"].exists)
+    XCTAssertFalse(app.buttons["homeboard.preview.interaction"].exists)
+    XCTAssertFalse(app.staticTexts["DEMO MODE"].exists)
   }
 
-  func testMovingThePreviewMapShowsTheSignInPrompt() {
+  func testContinueOpensAppleSignInWithoutAHiddenPreviewPrompt() {
     let app = XCUIApplication()
     app.launchArguments.append("-homeboard.resetForUITesting")
     app.launch()
 
-    let searchPreview = app.buttons["homeboard.preview.interaction"]
-    XCTAssertTrue(searchPreview.waitForExistence(timeout: 5))
-    waitUntilHittable(searchPreview)
-    searchPreview.swipeLeft()
+    let continueButton = app.buttons["homeboard.welcome.continue"]
+    XCTAssertTrue(continueButton.waitForExistence(timeout: 5))
+    waitUntilHittable(continueButton)
+    continueButton.tap()
 
-    XCTAssertTrue(app.staticTexts["Make this search yours"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["homeboard.preview.continue"].exists)
+    let accessTitle = app.staticTexts["Get into the workspace."]
+    XCTAssertTrue(accessTitle.waitForExistence(timeout: 5))
+    waitUntilHittable(app.buttons["homeboard.welcome.apple"])
+  }
+
+  func testWelcomeStoryStillSupportsTheUpwardSwipe() {
+    let app = XCUIApplication()
+    app.launchArguments.append("-homeboard.resetForUITesting")
+    app.launch()
+
+    let hero = app.staticTexts["Finding a place with friends doesn’t have to end your friendship."]
+    XCTAssertTrue(hero.waitForExistence(timeout: 5))
+    hero.swipeUp()
+
+    XCTAssertTrue(app.staticTexts["Get into the workspace."].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["homeboard.welcome.apple"].exists)
   }
 
   private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 5) {

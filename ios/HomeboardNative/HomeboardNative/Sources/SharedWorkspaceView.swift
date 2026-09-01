@@ -747,7 +747,7 @@ struct SharedSearchMapView: View {
                     } label: {
                       SharedPriceMarker(
                         text: isComparisonActive
-                          ? comparisonScores[item.listing.id].map { "\($0.total)" } ?? "—"
+                          ? comparisonScores[item.listing.id].map { "\($0.total)" } ?? "Not scored"
                           : SharedListingText.compactPrice(item.listing.priceLine),
                         isSelected: selectedListing?.id == item.listing.id,
                         comparisonScore: isComparisonActive ? comparisonScores[item.listing.id] : nil,
@@ -1215,14 +1215,13 @@ struct SharedSearchMapView: View {
           SharedListingShareWorkflowGuide(
             onDismiss: {
               firstListingGuidePending = false
-              searchGuideDismissed = true
             }
           )
         } else if !searchGuideDismissed {
           SharedCoachmarkOverlay(
             target: anchors["search-controls"],
-            title: "Search the way you think",
-            message: "Switch between the map and cards, apply exact filters, draw an area, or rank what matters to turn available listings into a color-coded comparison map.",
+            title: "Use the top bar to work with listings",
+            message: "Map and Cards change the view. Filters narrow the results. Area limits the map. Compare ranks the saved homes by price, commute, space, neighborhood, and features.",
             targetLabel: "MAP · CARDS · FILTERS · COMPARE",
             onDismiss: { searchGuideDismissed = true }
           )
@@ -3319,7 +3318,7 @@ private struct SharedBetaFeedbackSheet: View {
           .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
         Label(
-          "The diagnostic summary includes version and counts only—never your email, listing addresses, URLs, comments, or preferences. You can review it before sharing.",
+          "The diagnostic summary includes only the version and item counts. It does not include your email, listing addresses, URLs, comments, or preferences. You can review it before sharing.",
           systemImage: "hand.raised.fill"
         )
         .font(.caption)
@@ -3357,12 +3356,12 @@ private struct SharedSafariSaveGuideSheet: View {
     (
       "safari",
       "Open the exact listing",
-      "In Safari, open the individual rental or unit page you want to save—not search results or a building-level recommendation card."
+      "In Safari, open the individual rental or unit page that you want to save. Do not use search results or a building-level recommendation card."
     ),
     (
       "square.and.arrow.up",
       "Share to Homeboard",
-      "Tap Safari’s Share button—the square with the upward arrow—then choose Homeboard. The Share sheet closes immediately."
+      "Tap Safari’s Share button. It is the square with the upward arrow. Then choose Homeboard. The Share sheet closes immediately."
     ),
     (
       "highlighter",
@@ -6120,7 +6119,7 @@ private struct SharedListingRatingsPanel: View {
     let average = Double(spreads.reduce(0, +)) / Double(max(spreads.count, 1))
     if average <= 0.8 { return "Strong group overlap" }
     if average <= 1.6 { return "Mostly aligned, with a few tradeoffs" }
-    return "Different reads — worth discussing"
+    return "Different reads. Discuss this."
   }
 
   var body: some View {
@@ -6989,7 +6988,9 @@ private struct SharedMemberDetailSheet: View {
   @State private var dealbreakers = ""
   @State private var petsRequired = false
   @State private var accessibilityNeeds = ""
+  @State private var moveInTime = ""
   @State private var validationError: String?
+  @State private var isSaving = false
 
   private var canEdit: Bool {
     member.userId.isEmpty || member.userId == appModel.account?.id
@@ -7010,8 +7011,23 @@ private struct SharedMemberDetailSheet: View {
             SharedPageHeader(
               eyebrow: "Personal preferences",
               title: "Edit search brief",
-              subtitle: "These changes only apply to your personal preferences. Everyone else keeps their own settings."
+              subtitle: "These changes only apply to your personal preferences. The shared move-in time is labeled separately."
             )
+
+            VStack(alignment: .leading, spacing: 12) {
+              SharedSectionTitle(title: "Shared move-in time", trailing: "Whole board")
+              Text("Change the target date or timeframe for this board. Leave it blank if the timing is open.")
+                .font(.subheadline)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+              SharedField(
+                title: "Move-in date or timeframe",
+                prompt: "August 15 or early fall",
+                text: $moveInTime
+              )
+            }
+            .padding(16)
+            .sharedSurface(cornerRadius: 20)
           } else {
             HStack(spacing: 14) {
               SharedAvatar(name: member.name, size: 62)
@@ -7126,7 +7142,7 @@ private struct SharedMemberDetailSheet: View {
                   .foregroundStyle(HomeboardPalette.danger)
               }
 
-              Button(editsPersonalPreferences ? "Save my preferences" : "Save my limits") {
+              Button(editsPersonalPreferences ? "Save changes" : "Save my limits") {
                 save()
               }
               .font(.headline.weight(.bold))
@@ -7136,6 +7152,8 @@ private struct SharedMemberDetailSheet: View {
               .background(HomeboardPalette.accent)
               .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
               .buttonStyle(.plain)
+              .disabled(isSaving || appModel.isBoardLoading)
+              .opacity(isSaving || appModel.isBoardLoading ? 0.58 : 1)
             }
             .padding(16)
             .sharedSurface(cornerRadius: 20)
@@ -7173,6 +7191,7 @@ private struct SharedMemberDetailSheet: View {
         dealbreakers = member.dealbreakers.joined(separator: ", ")
         petsRequired = member.petsRequired ?? false
         accessibilityNeeds = (member.accessibilityNeeds ?? []).joined(separator: ", ")
+        moveInTime = appModel.profile.moveInDate
       }
     }
   }
@@ -7228,9 +7247,28 @@ private struct SharedMemberDetailSheet: View {
     updated.petsRequired = petsRequired
     updated.accessibilityNeeds = SharedListingText.csv(accessibilityNeeds)
     updated.status = "profile complete"
-    appModel.updateManualMember(updated)
-    if appModel.boardError == nil {
-      dismiss()
+    if editsPersonalPreferences {
+      let nextMoveInTime = moveInTime.trimmingCharacters(in: .whitespacesAndNewlines)
+      appModel.profile.moveInDate = nextMoveInTime
+      isSaving = true
+      Task {
+        await appModel.saveBoardBrief()
+        guard appModel.boardError == nil else {
+          validationError = appModel.boardError
+          isSaving = false
+          return
+        }
+        appModel.updateManualMember(updated)
+        isSaving = false
+        if appModel.boardError == nil {
+          dismiss()
+        }
+      }
+    } else {
+      appModel.updateManualMember(updated)
+      if appModel.boardError == nil {
+        dismiss()
+      }
     }
   }
 
@@ -7543,7 +7581,7 @@ private struct SharedListingShareWorkflowGuide: View {
           workflowStep(
             number: 1,
             title: "Open the exact listing",
-            detail: "Use the individual home or unit page—not search results or a nearby-listings card."
+            detail: "Use the individual home or unit page. Do not use search results or a nearby-listings card."
           )
           SharedDivider()
           SharedShareSheetPreview()
@@ -7562,7 +7600,7 @@ private struct SharedListingShareWorkflowGuide: View {
 
         Button(action: onDismiss) {
           HStack {
-            Text("Got it—start browsing")
+            Text("Start browsing")
             Spacer()
             Image(systemName: "arrow.right")
           }

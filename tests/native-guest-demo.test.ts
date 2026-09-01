@@ -10,41 +10,40 @@ const native = (path: string) => readFileSync(
 );
 
 const appModel = native("HomeboardNative/Sources/AppModel.swift");
-const boardShell = native("HomeboardNative/Sources/BoardShellView.swift");
-const workspace = native("HomeboardNative/Sources/SharedWorkspaceView.swift");
+const welcome = native("HomeboardNative/Sources/WelcomeView.swift");
 const iphoneInfo = native("HomeboardNative/Info.plist");
 const macInfo = native("HomeboardMac/Info.plist");
 
-test("release builds expose a guarded sample board before authentication", () => {
-  const previewBuilder = appModel.slice(
-    appModel.indexOf("private func openPreviewBoard"),
-    appModel.indexOf("private func parseAmount"),
+test("signed-out launches and sign-outs open the welcome flow without a preview board", () => {
+  const initializer = appModel.slice(
+    appModel.indexOf("init()"),
+    appModel.indexOf("func bootstrap"),
+  );
+  const clearedSession = appModel.slice(
+    appModel.indexOf("private func clearSessionState"),
+    appModel.indexOf("func markLegacyProjectIgnored"),
   );
 
-  assert.match(appModel, /var isGuestPreview: Bool/);
-  assert.match(appModel, /if authSession == nil \{\s*openPreviewBoard\(\)/);
-  assert.match(previewBuilder, /id: "preview-workspace"/);
-  assert.match(previewBuilder, /shortlist: \[astoria, hamilton, brooklyn\]/);
-  assert.doesNotMatch(previewBuilder, /#if DEBUG/);
+  assert.match(initializer, /if authSession == nil \{[\s\S]*currentScreen = \.welcome/);
+  assert.doesNotMatch(initializer, /openPreviewBoard\(\)/);
+  assert.match(clearedSession, /currentScreen = \.welcome/);
+  assert.doesNotMatch(clearedSession, /openPreviewBoard\(\)/);
 });
 
-test("guest preview is one real app screen that gates every interaction", () => {
-  const guestPreview = boardShell.slice(
-    boardShell.indexOf("private struct GuestPreviewBoardView"),
+test("the welcome story has a direct button before Apple sign-in", () => {
+  const hero = welcome.slice(
+    welcome.indexOf("private var heroContent"),
+    welcome.indexOf("private var welcomeAdvanceGesture"),
+  );
+  const access = welcome.slice(
+    welcome.indexOf("private var accessContent"),
+    welcome.indexOf("private var fullAccountButtons"),
   );
 
-  assert.match(boardShell, /if appModel\.isGuestPreview \{[\s\S]*GuestPreviewBoardView\(\)/);
-  assert.match(guestPreview, /SharedSearchMapView\(\)/);
-  assert.match(guestPreview, /Rectangle\(\)[\s\S]*Color\.black\.opacity\(0\.001\)/);
-  assert.match(guestPreview, /DragGesture\(minimumDistance: 0/);
-  assert.match(guestPreview, /Make this search yours/);
-  assert.match(guestPreview, /appModel\.openWelcomeFromGuestPreview\(\)/);
-  assert.match(guestPreview, /homeboard\.preview\.interaction/);
-  assert.doesNotMatch(guestPreview, /scrollTargetBehavior\(\.paging\)/);
-  assert.doesNotMatch(guestPreview, /SharedShortlistView\(\)|SharedUpdatesView\(\)/);
-  assert.doesNotMatch(guestPreview, /DEMO MODE|Hi—this is Homeboard’s demo|GuestPreviewPrompt/);
-  assert.doesNotMatch(guestPreview, /GuestPreviewAccountBar/);
-  assert.match(workspace, /if !appModel\.isGuestPreview \{/);
+  assert.match(hero, /Text\("Continue"\)/);
+  assert.match(hero, /showAccessPage\(\)/);
+  assert.match(hero, /homeboard\.welcome\.continue/);
+  assert.ok(access.indexOf("fullAccountButtons") < access.indexOf("accessKeyButton"));
 });
 
 test("iPhone and Mac bundles identify Homeboard as a Business app", () => {

@@ -63,7 +63,7 @@ export function InstallExperience() {
             </p>
             <div className={styles.installSteps}>
               <article><b>01</b><p><strong>Install on iPhone</strong>Join the beta through Apple TestFlight.</p></article>
-              <article><b>02</b><p><strong>Send setup to your Mac</strong>AirDrop, Message, or copy one link—no extension-directory search.</p></article>
+              <article><b>02</b><p><strong>Send setup to your Mac</strong>Use AirDrop, Messages, or copy one link. You do not need to search an extension directory.</p></article>
               <article><b>03</b><p><strong>Scan one QR code</strong>Pair the Safari companion with the signed-in iPhone app.</p></article>
               <article><b>04</b><p><strong>Save from Safari</strong>Review a rental and send it straight into your shared board.</p></article>
             </div>

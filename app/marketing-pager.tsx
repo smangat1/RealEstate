@@ -35,7 +35,7 @@ function syncShareMetadata(page: number) {
   if (page > 0) canonicalUrl.searchParams.set("slide", slide.key);
   const previewImage = new URL("/api/og", pageUrl.origin);
   previewImage.searchParams.set("slide", slide.key);
-  const title = page === 0 ? "Homeboard — Pick your next home on vibes" : `${slide.title} · Homeboard`;
+  const title = page === 0 ? "Homeboard: Pick your next home on vibes" : `${slide.title} · Homeboard`;
 
   document.title = title;
   document.querySelectorAll<HTMLLinkElement>('link[rel="canonical"]').forEach((element) => {

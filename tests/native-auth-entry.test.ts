@@ -307,13 +307,14 @@ test("entry uses solid fixed cards that track reversible vertical swipes", () =>
   assert.match(welcomeSource, /y: topMargin \+ \(height \/ 2\)/);
   assert.doesNotMatch(welcomeSource, /forwardProgress|returnProgress/);
   assert.doesNotMatch(welcomeSource, /\.opacity\(selectedPage/);
-  assert.match(welcomeSource, /Swipe up to continue/);
+  assert.match(welcomeSource, /Text\("Continue"\)/);
+  assert.match(welcomeSource, /homeboard\.welcome\.continue/);
   assert.match(welcomeSource, /Image\(systemName: "arrow\.up"\)/);
   assert.match(welcomeSource, /Text\("SWIPE DOWN"\)/);
   assert.match(welcomeSource, /Image\(systemName: "arrow\.down"\)/);
 });
 
-test("onboarding accepts solo renters and captures routable commute access", () => {
+test("onboarding skips arbitrary group size and captures routable commute access", () => {
   assert.match(authViewSource, /case \.city:[\s\S]*citySearchAnswer/);
   assert.match(authViewSource, /Start typing a city or metro/);
   assert.match(authViewSource, /Optional autocomplete from Apple Maps/);
@@ -324,8 +325,11 @@ test("onboarding accepts solo renters and captures routable commute access", () 
     authViewSource,
     /return \["New York City", "Jersey City", "Boston"/,
   );
-  assert.match(authViewSource, /if option == "Just me" \{ return 1 \}/);
-  assert.match(authViewSource, /case \.groupSize:[\s\S]*renterCount\(for: option\)/);
+  const activeOnboarding = authViewSource.slice(
+    authViewSource.indexOf("private enum OnboardingQuestion"),
+    authViewSource.indexOf("private struct LegacyOnboardingView"),
+  );
+  assert.doesNotMatch(activeOnboarding, /case groupSize|case \.groupSize|How many people need a home/);
   assert.match(authViewSource, /OnboardingAddressSearch/);
   assert.match(authViewSource, /MKLocalSearchCompleter/);
   assert.match(authViewSource, /completer\.region = MKCoordinateRegion/);
@@ -334,7 +338,7 @@ test("onboarding accepts solo renters and captures routable commute access", () 
   assert.match(authViewSource, /Start typing an address or place/);
   assert.match(authViewSource, /Suggestions from Apple Maps/);
   assert.match(authViewSource, /Car or consistent ride/);
-  assert.match(authViewSource, /No car — transit first/);
+  assert.match(authViewSource, /No car, transit first/);
   assert.match(authViewSource, /Sometimes \/ either/);
   assert.match(authViewSource, /appModel\.profile\.commuteAccess/);
   assert.doesNotMatch(
@@ -346,7 +350,14 @@ test("onboarding accepts solo renters and captures routable commute access", () 
 test("onboarding keeps only core setup steps and teaches the first listing share", () => {
   assert.match(
     authViewSource,
-    /var questions: \[OnboardingQuestion\] = \[[\s\S]*\.city,[\s\S]*\.moveIn,[\s\S]*\.groupSize,[\s\S]*\.budget,[\s\S]*\.commuteTarget,[\s\S]*\.priorities,[\s\S]*\.review/,
+    /var questions: \[OnboardingQuestion\] = \[[\s\S]*\.city,[\s\S]*\.moveIn,[\s\S]*\.budget,[\s\S]*\.commuteTarget,[\s\S]*\.priorities,[\s\S]*\.review/,
+  );
+  assert.doesNotMatch(
+    authViewSource.slice(
+      authViewSource.indexOf("private var onboardingQuestions"),
+      authViewSource.indexOf("private var onboardingStepCount"),
+    ),
+    /\.groupSize/,
   );
   assert.match(authViewSource, /includesNameQuestion \? \.name : \.city/);
   assert.match(authViewSource, /HOW CAN YOU USUALLY GET THERE\?/);
@@ -368,4 +379,12 @@ test("onboarding keeps only core setup steps and teaches the first listing share
   assert.doesNotMatch(workspaceSource, /label: "AirDrop"|label: "Messages"|label: "Mail"/);
   assert.match(workspaceSource, /Review what Homeboard found/);
   assert.match(workspaceSource, /The \+ button is only a manual backup/);
+});
+
+test("the search brief can change the shared move-in time", () => {
+  assert.match(workspaceSource, /@State private var moveInTime = ""/);
+  assert.match(workspaceSource, /Shared move-in time/);
+  assert.match(workspaceSource, /Move-in date or timeframe/);
+  assert.match(workspaceSource, /appModel\.profile\.moveInDate = nextMoveInTime/);
+  assert.match(workspaceSource, /await appModel\.saveBoardBrief\(\)/);
 });

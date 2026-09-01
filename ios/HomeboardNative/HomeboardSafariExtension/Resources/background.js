@@ -20,11 +20,36 @@ async function sendNativeMessage(message) {
   throw lastError || new Error("Homeboard is not connected on this device.");
 }
 
-async function startPageScan(tab) {
-  const tabId = tab?.id;
-  if (!Number.isInteger(tabId)) {
-    throw new Error("Safari did not provide the active tab.");
+async function resolveActiveTab(tab) {
+  if (Number.isInteger(tab?.id)) return tab;
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  const activeTab = tabs.find((candidate) => Number.isInteger(candidate?.id));
+  if (activeTab) return activeTab;
+  throw new Error("Safari did not provide the active tab.");
+}
+
+async function showActionFailure(tab) {
+  let activeTab;
+  try {
+    activeTab = await resolveActiveTab(tab);
+  } catch {
+    return;
   }
+  const tabId = activeTab.id;
+  try {
+    await browser.action.setBadgeBackgroundColor({ tabId, color: "#B42318" });
+    await browser.action.setBadgeText({ tabId, text: "!" });
+    globalThis.setTimeout(() => {
+      browser.action.setBadgeText({ tabId, text: "" }).catch(() => {});
+    }, 4000);
+  } catch {
+    // Some Safari versions do not display action badges.
+  }
+}
+
+async function startPageScan(tab) {
+  const activeTab = await resolveActiveTab(tab);
+  const tabId = activeTab.id;
 
   let presentation = /mac/i.test(globalThis.navigator?.platform || "")
     ? "compact"
@@ -48,12 +73,16 @@ async function startPageScan(tab) {
   } catch {
     // The declared content script may already be installed on this page.
   }
-  await browser.tabs.sendMessage(tabId, request);
+  const response = await browser.tabs.sendMessage(tabId, request);
+  if (response?.started !== true) {
+    throw new Error("The Homeboard page scanner did not start.");
+  }
 }
 
 browser.action.onClicked.addListener((tab) => {
   startPageScan(tab).catch((error) => {
     console.error("Homeboard could not start the page scan.", error);
+    showActionFailure(tab);
   });
 });
 

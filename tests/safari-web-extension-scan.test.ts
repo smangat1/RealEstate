@@ -22,9 +22,12 @@ test("the Safari toolbar starts the in-page scan instead of opening a popup", ()
   assert.match(backgroundSource, /homeboard\.analyzeListing/);
   assert.equal(manifest.background.persistent, false);
   assert.equal(manifest.background.type, undefined);
-  assert.match(backgroundSource, /Number\.isInteger\(tabId\)/);
-  assert.doesNotMatch(backgroundSource, /!tab\?\.id/);
+  assert.match(backgroundSource, /Number\.isInteger\(tab\?\.id\)/);
+  assert.doesNotMatch(backgroundSource, /if \(!tab\?\.id\)/);
+  assert.match(backgroundSource, /browser\.tabs\.query\(\{ active: true, currentWindow: true \}\)/);
   assert.match(backgroundSource, /browser\.scripting\.executeScript/);
+  assert.match(backgroundSource, /response\?\.started !== true/);
+  assert.match(backgroundSource, /browser\.action\.setBadgeText/);
   assert.match(contentSource, /This page did not finish scanning/);
   assert.match(contentSource, /showPageScanFailure\(error\)/);
 });

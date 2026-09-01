@@ -47,6 +47,24 @@ test("onboarding interactions avoid synchronous full-state persistence", () => {
   assert.match(answerButton, /contentShape\(RoundedRectangle/);
   assert.match(answerButton, /buttonStyle\(\.plain\)/);
   assert.doesNotMatch(answerButton, /AuthPressStyle/);
+  assert.match(onboardingView, /\.id\(question\)/);
+  assert.match(onboardingView, /appModel\.saveOnboardingDraft\(\)/);
+});
+
+test("onboarding choices can be cleared with a second tap", () => {
+  const singleChoiceFlow = onboardingView.slice(
+    onboardingView.indexOf("private func applySingleOption"),
+    onboardingView.indexOf("private func toggleMultiOption"),
+  );
+  const multiChoiceFlow = onboardingView.slice(
+    onboardingView.indexOf("private func toggleMultiOption"),
+    onboardingView.indexOf("private func commitCustomAnswer"),
+  );
+
+  assert.match(singleChoiceFlow, /if isSingleOptionSelected\(option\)/);
+  assert.match(singleChoiceFlow, /clearSingleOption\(\)/);
+  assert.match(multiChoiceFlow, /values\.count == 1/);
+  assert.match(multiChoiceFlow, /\? \[\]\s*: \[option\]/);
 });
 
 test("active onboarding exposes failures and offers a real retry", () => {

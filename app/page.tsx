@@ -18,7 +18,7 @@ export async function generateMetadata({ searchParams }: HomePageProps): Promise
   const siteUrl = getSiteUrl();
   const shareUrl = new URL(slide.key === "vibes" ? "/" : `/?slide=${slide.key}`, siteUrl);
   const previewImage = new URL(`/api/og?slide=${slide.key}`, siteUrl);
-  const title = slide.key === "vibes" ? "Homeboard — Pick your next home on vibes" : `${slide.title} · Homeboard`;
+  const title = slide.key === "vibes" ? "Homeboard: Pick your next home on vibes" : `${slide.title} · Homeboard`;
 
   return {
     title: { absolute: title },
@@ -90,7 +90,7 @@ export default function HomePage() {
           <div className={styles.productFeatures}>
             <article><b>01</b><p><strong>Collects the listing</strong>Address, rent, bedrooms, bathrooms, and the source stay together.</p></article>
             <article><b>02</b><p><strong>Checks the real commute</strong>Drive, train, bus, and walking routes are compared for every saved place.</p></article>
-            <article><b>03</b><p><strong>Explains the tradeoff</strong>Your group sees why a place fits—not just a mystery score.</p></article>
+            <article><b>03</b><p><strong>Explains the tradeoff</strong>Your group sees why a place fits. It is not a mystery score.</p></article>
           </div>
           <p className={styles.productRoadmap}>
             <strong>On the roadmap</strong>

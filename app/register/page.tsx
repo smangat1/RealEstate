@@ -68,7 +68,7 @@ export default async function RegisterPage({
               Create the account that should join this shared workspace.
             </h1>
             <p>
-              Create your account here, then come straight back to accept the shared workspace invite. The link—not your email address—carries the invitation.
+              Create your account here. Then return to accept the shared workspace invite. The link carries the invitation. Your email address does not.
             </p>
 
             {error ? <div className="account-message account-message-error">{error}</div> : null}

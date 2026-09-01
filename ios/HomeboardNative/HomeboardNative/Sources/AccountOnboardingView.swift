@@ -691,7 +691,6 @@ private enum OnboardingQuestion: Int, CaseIterable, Identifiable {
   case name
   case city
   case moveIn
-  case groupSize
   case budget
   case commuteTarget
   case commuteAccess
@@ -747,6 +746,7 @@ struct OnboardingView: View {
           .padding(.bottom, 118)
         }
         .scrollDismissesKeyboard(.interactively)
+        .id(question)
       }
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -856,7 +856,7 @@ struct OnboardingView: View {
           get: { appModel.profile.name },
           set: { value in
             appModel.profile.name = value
-            appModel.syncBoardFromProfile()
+            appModel.saveOnboardingDraft()
           }
         )
       )
@@ -956,7 +956,7 @@ struct OnboardingView: View {
       set: { value in
         appModel.profile.city = value
         addressSearch.updateCity(query: value)
-        appModel.syncBoardFromProfile()
+        appModel.saveOnboardingDraft()
       }
     )
   }
@@ -968,7 +968,7 @@ struct OnboardingView: View {
       let resolved = await addressSearch.resolvedSearchArea(for: suggestion)
       appModel.profile.city = resolved
       addressSearch.primeRegion(city: resolved)
-      appModel.syncBoardFromProfile()
+      appModel.saveOnboardingDraft()
     }
   }
 
@@ -1101,7 +1101,7 @@ struct OnboardingView: View {
   }
 
   private var commuteAccessOptions: [String] {
-    ["Car or consistent ride", "No car — transit first", "Sometimes / either"]
+    ["Car or consistent ride", "No car, transit first", "Sometimes / either"]
   }
 
   private var commuteAddressBinding: Binding<String> {
@@ -1130,7 +1130,7 @@ struct OnboardingView: View {
       appModel.profile.commuteTarget = resolved
       appModel.profile.commuteAccess = nil
       ensureDefaultCommuteRange()
-      appModel.syncBoardFromProfile()
+      appModel.saveOnboardingDraft()
     }
   }
 
@@ -1138,17 +1138,26 @@ struct OnboardingView: View {
     customFieldFocused = false
     addressSearch.clear()
     showsOther = false
-    appModel.profile.commuteAccess = value
-    appModel.profile.commuteTarget = ""
-    appModel.profile.minCommuteMinutes = ""
-    appModel.profile.maxCommuteMinutes = ""
-    appModel.syncBoardFromProfile()
+    if appModel.profile.commuteAccess == value {
+      appModel.profile.commuteAccess = nil
+    } else {
+      appModel.profile.commuteAccess = value
+      appModel.profile.commuteTarget = ""
+      appModel.profile.minCommuteMinutes = ""
+      appModel.profile.maxCommuteMinutes = ""
+    }
+    appModel.saveOnboardingDraft()
   }
 
   private func applyCommuteAccess(_ option: String) {
-    appModel.profile.commuteAccess = commuteAccessValue(for: option)
-    ensureDefaultCommuteRange()
-    appModel.syncBoardFromProfile()
+    let value = commuteAccessValue(for: option)
+    if appModel.profile.commuteAccess == value {
+      appModel.profile.commuteAccess = nil
+    } else {
+      appModel.profile.commuteAccess = value
+      ensureDefaultCommuteRange()
+    }
+    appModel.saveOnboardingDraft()
   }
 
   private func ensureDefaultCommuteRange() {
@@ -1166,14 +1175,14 @@ struct OnboardingView: View {
         get: { Int(appModel.profile.minCommuteMinutes) ?? 5 },
         set: { value in
           appModel.profile.minCommuteMinutes = String(value)
-          appModel.syncBoardFromProfile()
+          appModel.saveOnboardingDraft()
         }
       ),
       maximumMinutes: Binding(
         get: { Int(appModel.profile.maxCommuteMinutes) ?? 45 },
         set: { value in
           appModel.profile.maxCommuteMinutes = String(value)
-          appModel.syncBoardFromProfile()
+          appModel.saveOnboardingDraft()
         }
       )
     )
@@ -1281,6 +1290,8 @@ struct OnboardingView: View {
       .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
     .buttonStyle(.plain)
+    .frame(maxWidth: .infinity)
+    .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     .accessibilityAddTraits(selected ? .isSelected : [])
   }
 
@@ -1297,7 +1308,7 @@ struct OnboardingView: View {
           customField("Maximum", text: $customSecondary, keyboard: .numberPad)
         }
       } else {
-        customField(otherPrompt, text: $customPrimary, keyboard: question == .commuteLimit || question == .groupSize ? .numberPad : .default)
+        customField(otherPrompt, text: $customPrimary, keyboard: question == .commuteLimit ? .numberPad : .default)
       }
 
       if isMultiSelectQuestion {
@@ -1363,8 +1374,6 @@ struct OnboardingView: View {
       reviewRow("City", value: appModel.profile.city, destination: .city)
       reviewDivider
       reviewRow("Move-in", value: appModel.profile.moveInDate, destination: .moveIn)
-      reviewDivider
-      reviewRow("Group", value: "\(appModel.profile.groupSize) renter\(appModel.profile.groupSize == 1 ? "" : "s")", destination: .groupSize)
       reviewDivider
       reviewRow("Budget", value: budgetSummary, destination: .budget)
       reviewDivider
@@ -1508,14 +1517,12 @@ struct OnboardingView: View {
       return []
     case .moveIn:
       return ["ASAP", "Next month", "In 2–3 months", "In 4–6 months", "Flexible", "Just exploring"]
-    case .groupSize:
-      return ["Just me", "2 renters", "3 renters", "4 renters", "5 renters", "6 renters"]
     case .budget:
       return ["Under $1,200", "$1,200–$1,500", "$1,500–$1,800", "$1,800–$2,200", "$2,200–$2,800", "$2,800+"]
     case .commuteTarget:
       return []
     case .commuteAccess:
-      return ["Car or consistent ride", "No car — transit first", "Sometimes / either"]
+      return ["Car or consistent ride", "No car, transit first", "Sometimes / either"]
     case .commuteLimit:
       return []
     case .neighborhoods:
@@ -1551,7 +1558,6 @@ struct OnboardingView: View {
     case .name: return "What should your roommates call you?"
     case .city: return "Where is the group searching?"
     case .moveIn: return "When do you want to move?"
-    case .groupSize: return "How many people need a home?"
     case .budget: return "What can you contribute each month?"
     case .commuteTarget: return "Include your commute?"
     case .commuteAccess: return "How can you usually get there?"
@@ -1569,10 +1575,9 @@ struct OnboardingView: View {
     switch question {
     case .name: return "This is how your name will appear on shared updates and decisions."
     case .city: return "Type a city or metro area. You can narrow the neighborhoods in a moment."
-    case .moveIn: return "A rough timeframe is enough for now."
-    case .groupSize: return "Count everyone who will be on the apartment search."
+    case .moveIn: return "A rough timeframe is enough. You can change it later."
     case .budget: return "This is your personal share, not the whole apartment. Everyone adds their own range, then Homeboard derives the group total and a fair split."
-    case .commuteTarget: return "Add one routable destination, how you travel, and your comfortable time range—all on this page. Remote workers can skip it."
+    case .commuteTarget: return "Add one routable destination. Add how you travel and your comfortable time range on this page. Remote workers can skip it."
     case .commuteAccess: return "Homeboard only recommends routes you can realistically use. A car includes a dependable ride to work."
     case .commuteLimit: return "Choose when a home feels too close to work and when it becomes too far. Every route inside the range scores equally."
     case .neighborhoods: return "Select as many as you want. These are preferences, not permanent limits."
@@ -1592,7 +1597,6 @@ struct OnboardingView: View {
     switch question {
     case .city: return "City or metro area"
     case .moveIn: return "Date or timeframe"
-    case .groupSize: return "Number of renters"
     case .commuteTarget: return "Full work or school address"
     case .commuteAccess: return "Commute access"
     case .commuteLimit: return "Commute range"
@@ -1617,7 +1621,6 @@ struct OnboardingView: View {
     var questions: [OnboardingQuestion] = [
       .city,
       .moveIn,
-      .groupSize,
       .budget,
       .commuteTarget,
       .priorities,
@@ -1659,8 +1662,6 @@ struct OnboardingView: View {
       return !appModel.profile.city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     case .moveIn:
       return !appModel.profile.moveInDate.isEmpty || customPrimaryIsValid
-    case .groupSize:
-      return appModel.profile.groupSize > 0 || customPrimaryIsValid
     case .budget:
       return !appModel.profile.budgetMax.isEmpty || customBudgetIsValid
     case .commuteTarget:
@@ -1734,13 +1735,16 @@ struct OnboardingView: View {
 
   private func applySingleOption(_ option: String) {
     showsOther = false
+    if isSingleOptionSelected(option) {
+      clearSingleOption()
+      appModel.saveOnboardingDraft()
+      return
+    }
     switch question {
     case .city:
       appModel.profile.city = option
     case .moveIn:
       appModel.profile.moveInDate = option
-    case .groupSize:
-      appModel.profile.groupSize = renterCount(for: option) ?? 1
     case .budget:
       let range = budgetRange(for: option)
       appModel.profile.budgetMin = range.min
@@ -1756,7 +1760,29 @@ struct OnboardingView: View {
     default:
       break
     }
-    appModel.syncBoardFromProfile()
+    appModel.saveOnboardingDraft()
+  }
+
+  private func clearSingleOption() {
+    switch question {
+    case .moveIn:
+      appModel.profile.moveInDate = ""
+    case .budget:
+      appModel.profile.budgetMin = ""
+      appModel.profile.budgetMax = ""
+    case .commuteAccess:
+      appModel.profile.commuteAccess = nil
+    case .commuteLimit:
+      appModel.profile.maxCommuteMinutes = ""
+    case .readiness:
+      appModel.profile.readiness = .init(
+        hasOfferLetter: false,
+        needsGuarantor: false,
+        hasProofOfIncome: false
+      )
+    default:
+      break
+    }
   }
 
   private func toggleMultiOption(_ option: String) {
@@ -1764,7 +1790,9 @@ struct OnboardingView: View {
     let emptyChoice = option.localizedCaseInsensitiveContains("no hard") || option == "Open to any area"
 
     if emptyChoice {
-      values = [option]
+      values = values.count == 1 && values[0].caseInsensitiveCompare(option) == .orderedSame
+        ? []
+        : [option]
     } else {
       values.removeAll {
         $0.localizedCaseInsensitiveContains("no hard") || $0 == "Open to any area"
@@ -1777,7 +1805,7 @@ struct OnboardingView: View {
     }
 
     setSelectedValues(values)
-    appModel.syncBoardFromProfile()
+    appModel.saveOnboardingDraft()
   }
 
   private func commitCustomAnswer() {
@@ -1796,8 +1824,6 @@ struct OnboardingView: View {
       appModel.profile.city = primary
     case .moveIn:
       appModel.profile.moveInDate = primary
-    case .groupSize:
-      appModel.profile.groupSize = max(1, Int(primary.filter(\.isNumber)) ?? 1)
     case .budget:
       appModel.profile.budgetMin = primary.filter(\.isNumber)
       appModel.profile.budgetMax = secondary.filter(\.isNumber)
@@ -1823,7 +1849,7 @@ struct OnboardingView: View {
     default:
       break
     }
-    appModel.syncBoardFromProfile()
+    appModel.saveOnboardingDraft()
   }
 
   private func setSelectedValues(_ values: [String]) {
@@ -1855,7 +1881,6 @@ struct OnboardingView: View {
     switch question {
     case .city: return appModel.profile.city == option
     case .moveIn: return appModel.profile.moveInDate == option
-    case .groupSize: return appModel.profile.groupSize == (renterCount(for: option) ?? -1)
     case .budget:
       let range = budgetRange(for: option)
       return appModel.profile.budgetMin == range.min && appModel.profile.budgetMax == range.max
@@ -1878,11 +1903,6 @@ struct OnboardingView: View {
       break
     case .moveIn:
       loadOtherIfNeeded(value: appModel.profile.moveInDate)
-    case .groupSize:
-      if !(1...6).contains(appModel.profile.groupSize) {
-        showsOther = true
-        customPrimary = String(appModel.profile.groupSize)
-      }
     case .budget:
       let matchesPreset = options.contains { isSingleOptionSelected($0) }
       if !appModel.profile.budgetMax.isEmpty && !matchesPreset {
@@ -1906,7 +1926,7 @@ struct OnboardingView: View {
       if appModel.profile.maxCommuteMinutes.isEmpty {
         appModel.profile.maxCommuteMinutes = "45"
       }
-      appModel.syncBoardFromProfile()
+      appModel.saveOnboardingDraft()
     case .neighborhoods, .priorities, .mustHaves, .dealbreakers:
       let custom = selectedValues.filter { value in
         !options.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame })
@@ -1973,7 +1993,7 @@ struct OnboardingView: View {
     let minimum = appModel.profile.minCommuteMinutes
     let maximum = appModel.profile.maxCommuteMinutes
     if target.isEmpty {
-      if appModel.profile.commuteAccess == "remote" { return "Works remotely — not scored" }
+      if appModel.profile.commuteAccess == "remote" { return "Works remotely. Not scored." }
       if appModel.profile.commuteAccess == "skip" { return "Commute matching skipped" }
       return ""
     }
@@ -1992,15 +2012,10 @@ struct OnboardingView: View {
     }
   }
 
-  private func renterCount(for option: String) -> Int? {
-    if option == "Just me" { return 1 }
-    return Int(option.filter(\.isNumber))
-  }
-
   private func commuteAccessValue(for option: String) -> String? {
     switch option {
     case "Car or consistent ride": return "car"
-    case "No car — transit first": return "transit"
+    case "No car, transit first": return "transit"
     case "Sometimes / either": return "flexible"
     default: return nil
     }

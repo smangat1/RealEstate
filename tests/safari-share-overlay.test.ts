@@ -189,6 +189,7 @@ test("Mac and iPhone Safari saves use the same authenticated board path", () => 
     ),
   );
   assert.match(extensionSyncSource, /refresh_token/);
+  assert.match(extensionSyncSource, /request\.timeoutInterval = 12/);
   assert.match(safariHandlerSource, /HomeboardExtensionSyncClient\.saveListing/);
   assert.match(safariHandlerSource, /"synced": true/);
   assert.match(xcodeProjectSpec, /HomeboardMac:/);

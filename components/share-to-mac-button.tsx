@@ -54,7 +54,7 @@ export function ShareToMacButton({
         document.execCommand("copy");
         field.remove();
       }
-      showFeedback("Link copied — send it to your Mac");
+      showFeedback("Link copied. Send it to your Mac.");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       showFeedback("Couldn’t share · copy this page’s link");

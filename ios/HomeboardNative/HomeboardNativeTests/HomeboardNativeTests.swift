@@ -103,7 +103,7 @@ final class HomeboardNativeTests: XCTestCase {
 
   func testMapGeocodesVerifiedAddressWithoutTitleOrBoardCity() {
     let listing = ListingPreview(
-      title: "Secaucus — Meadowlands apartments",
+      title: "Secaucus: Meadowlands apartments",
       address: "1 Meadowlands Pkwy, Secaucus, NJ 07094",
       location: "Secaucus",
       priceLine: "$2,750",
@@ -578,7 +578,7 @@ final class HomeboardNativeTests: XCTestCase {
       options: [option]
     )
 
-    XCTAssertFalse(plan.shouldRun)
+    XCTAssertEqual(plan.fields, ["insights"])
   }
 
   func testAddressComponentsCompleteAStreetOnlyCapture() async {

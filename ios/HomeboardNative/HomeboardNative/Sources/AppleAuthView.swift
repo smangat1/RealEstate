@@ -88,7 +88,7 @@ struct AppleAuthView: View {
           .frame(height: 50)
 
           Label(
-            "Homeboard receives an Apple identity token—not your Apple password.",
+            "Homeboard receives an Apple identity token. It does not receive your Apple password.",
             systemImage: "checkmark.shield.fill"
           )
           .font(.caption.weight(.medium))

@@ -544,6 +544,7 @@ enum HomeboardExtensionSyncClient {
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 12
     return request
   }
 

@@ -127,6 +127,17 @@ test("page guides replay explicitly and dim through the status-bar safe area", (
   assert.match(mapSource, /dismiss\(\)/);
   assert.match(mapSource, /let topOverflow = max\(geometry\.safeAreaInsets\.top, 80\)/);
   assert.match(mapSource, /y: -\(topOverflow \/ 2\) \+ 0\.5/);
+  const searchGuideFlow = mapSource.slice(
+    mapSource.indexOf("if firstListingGuidePending"),
+    mapSource.indexOf("private func defaultMapRegion"),
+  );
+  assert.match(searchGuideFlow, /firstListingGuidePending = false/);
+  assert.doesNotMatch(
+    searchGuideFlow.slice(0, searchGuideFlow.indexOf("else if !searchGuideDismissed")),
+    /searchGuideDismissed = true/,
+  );
+  assert.match(searchGuideFlow, /Use the top bar to work with listings/);
+  assert.match(searchGuideFlow, /Map and Cards change the view/);
 });
 
 test("comparison map ranks core priorities plus grounded home features and allows tied levels", () => {

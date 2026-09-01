@@ -16,7 +16,7 @@ const macApp = read("ios/HomeboardNative/HomeboardMac/HomeboardMacApp.swift");
 const environmentExample = read(".env.example");
 
 test("the website gives the Safari companion a dedicated shareable setup page", () => {
-  assert.match(setupPage, /Homeboard for Safari — Save rentals from your Mac/);
+  assert.match(setupPage, /Homeboard for Safari: Save rentals from your Mac/);
   assert.match(setupPage, /Open the companion/);
   assert.match(setupPage, /Scan the QR/);
   assert.match(setupPage, /Enable in Safari/);

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   metadataBase: getSiteUrl(),
   applicationName: "Homeboard",
   title: {
-    default: "Homeboard — Pick your next home on vibes",
+    default: "Homeboard: Pick your next home on vibes",
     template: "%s · Homeboard",
   },
   description: "Save rental listings together, compare real commutes, and understand the tradeoffs before your group chooses a home.",
@@ -37,12 +37,12 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Homeboard",
-    title: "Homeboard — Pick your next home on vibes",
+    title: "Homeboard: Pick your next home on vibes",
     description: "Save rental listings together. Homeboard handles commute math, comparisons, and group tradeoffs.",
   },
   twitter: {
     card: "summary",
-    title: "Homeboard — Pick your next home on vibes",
+    title: "Homeboard: Pick your next home on vibes",
     description: "Save rental listings together. Homeboard handles commute math, comparisons, and group tradeoffs.",
   },
   formatDetection: {

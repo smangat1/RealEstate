@@ -156,7 +156,9 @@ final class AppModel {
     restore()
     authSession = NativeAuthSessionStore.load()
     if authSession == nil {
-      openPreviewBoard()
+      clearGuestPreviewState(preservingNonPreviewBoard: true)
+      opensWelcomeOnAccessPage = false
+      currentScreen = .welcome
     }
     persist()
   }
@@ -967,6 +969,10 @@ final class AppModel {
     scheduleOnboardingPersistence()
   }
 
+  func saveOnboardingDraft() {
+    scheduleOnboardingPersistence()
+  }
+
   func flushOnboardingDraft() {
     onboardingPersistenceTask?.cancel()
     onboardingPersistenceTask = nil
@@ -1105,15 +1111,6 @@ final class AppModel {
   }
 
   func resetToWelcome() {
-    if authSession == nil {
-      if opensWelcomeOnAccessPage {
-        currentScreen = .welcome
-      } else {
-        openPreviewBoard()
-      }
-      persist()
-      return
-    }
     currentScreen = .welcome
     persist()
   }
@@ -1257,7 +1254,7 @@ final class AppModel {
     boardFeedback = nil
     inviteFeedback = nil
     boardError = nil
-    openPreviewBoard()
+    currentScreen = .welcome
   }
 
   func markLegacyProjectIgnored() {
@@ -3345,13 +3342,16 @@ final class AppModel {
     ]
   }
 
-  private func clearGuestPreviewState() {
+  private func clearGuestPreviewState(preservingNonPreviewBoard: Bool = false) {
     localShortlistsByBoard.removeValue(forKey: "preview-workspace")
     localMembersByBoard.removeValue(forKey: "preview-workspace")
     localBoardsById.removeValue(forKey: "preview-workspace")
     localProfilesByBoard.removeValue(forKey: "preview-workspace")
-    board = .empty
     account = nil
+    if preservingNonPreviewBoard, board.id != "preview-workspace" {
+      return
+    }
+    board = .empty
     listingInventory = []
     listingInventoryNextCursor = nil
     listingInventoryHasMore = false
