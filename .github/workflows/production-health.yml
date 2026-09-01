@@ -1,0 +1,42 @@
+name: Production health
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check Homeboard production health
+        run: |
+          curl --fail --silent --show-error \
+            --retry 2 --retry-delay 5 --max-time 20 \
+            https://real-estate-samyanmangat-6662s-projects.vercel.app/api/health \
+            | tee /tmp/homeboard-health.json
+          node -e 'const fs=require("fs"); const body=JSON.parse(fs.readFileSync("/tmp/homeboard-health.json","utf8")); if(body.ok!==true) process.exit(1)'
+
+      - name: Send optional outage alert
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.HOMEBOARD_ALERT_WEBHOOK_URL }}
+          ALERT_WEBHOOK_BEARER_TOKEN: ${{ secrets.HOMEBOARD_ALERT_WEBHOOK_BEARER_TOKEN }}
+        run: |
+          if [ -z "$ALERT_WEBHOOK_URL" ]; then exit 0; fi
+          headers=(-H 'content-type: application/json')
+          if [ -n "$ALERT_WEBHOOK_BEARER_TOKEN" ]; then
+            headers+=(-H "authorization: Bearer $ALERT_WEBHOOK_BEARER_TOKEN")
+          fi
+          curl --fail --silent --show-error --max-time 10 \
+            "${headers[@]}" \
+            --data '{"service":"homeboard","area":"production","operation":"health_check","severity":"critical","message":"Homeboard production health check failed."}' \
+            "$ALERT_WEBHOOK_URL"

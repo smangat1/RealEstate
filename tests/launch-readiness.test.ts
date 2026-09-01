@@ -97,6 +97,8 @@ test("notification permission is offered after auth and not buried in workspace 
   assert.match(app, /authorizationStatus == \.notDetermined/);
   assert.match(root, /Stay in sync with your board/);
   assert.match(root, /Turn on notifications/);
+  assert.match(root, /when a roommate posts a new message/);
+  assert.doesNotMatch(root, /new listings, roommate reactions, invitations/);
 });
 
 test("edit search brief opens the complete personal preference editor", () => {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireMobileAppUser } from "@/lib/mobile-auth";
+import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "register_push_device", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to register device.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }
@@ -42,6 +44,7 @@ export async function DELETE(request: Request) {
     await prisma.pushDevice.deleteMany({ where: { userId: user.id, token: parsed.data.token.toLowerCase() } });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "unregister_push_device", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to unregister device.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }

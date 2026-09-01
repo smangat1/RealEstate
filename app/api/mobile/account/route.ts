@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireMobileAppUser } from "@/lib/mobile-auth";
+import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -17,6 +18,12 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    await sendOperationalAlert(error, {
+      area: "mobile_api",
+      operation: "delete_account",
+      requestId: request.headers.get("x-homeboard-request-id"),
+      severity: "critical",
+    });
     const message = error instanceof Error ? error.message : "Unable to delete account.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }

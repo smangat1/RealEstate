@@ -61,6 +61,10 @@ struct RootView: View {
     .environment(appModel)
     .task {
       await appModel.bootstrap()
+      await appModel.uploadPendingNativeDiagnostics()
+      if let boardId = PendingBoardNotification.consume() {
+        await appModel.openBoardChatNotification(boardId: boardId)
+      }
     }
     .task {
       try? await Task.sleep(for: .seconds(1.45))
@@ -101,6 +105,15 @@ struct RootView: View {
         appModel.registerPushToken(token)
       }
     }
+    .onReceive(NotificationCenter.default.publisher(for: .homeboardNativeDiagnostics)) { _ in
+      Task { await appModel.uploadPendingNativeDiagnostics() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .homeboardOpenBoardChat)) { notification in
+      if let boardId = notification.object as? String {
+        _ = PendingBoardNotification.consume()
+        Task { await appModel.openBoardChatNotification(boardId: boardId) }
+      }
+    }
     .onReceive(
       NotificationCenter.default.publisher(
         for: UIApplication.didBecomeActiveNotification
@@ -129,7 +142,7 @@ private struct PostAuthNotificationPrompt: View {
             .font(.title3.weight(.bold))
             .foregroundStyle(HomeboardPalette.primaryText)
 
-          Text("Turn on notifications for new listings, roommate reactions, invitations, and decisions that need you.")
+          Text("Turn on notifications when a roommate posts a new message. Other board activity stays in the app for now.")
             .font(.subheadline)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)

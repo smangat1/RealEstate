@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getBoardPageData, getRecentBoardsForUser } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload, mapBoardSummaryForMobile } from "@/lib/mobile-payloads";
+import { sendOperationalAlert } from "@/lib/monitoring";
 
 export async function GET(request: Request) {
   try {
@@ -28,6 +29,11 @@ export async function GET(request: Request) {
         : null,
     });
   } catch (error) {
+    await sendOperationalAlert(error, {
+      area: "mobile_api",
+      operation: "load_session",
+      requestId: request.headers.get("x-homeboard-request-id"),
+    });
     const message = error instanceof Error ? error.message : "Unauthorized";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }

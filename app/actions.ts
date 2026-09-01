@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { getCurrentAppUser, getCurrentAuthUser, getOnboardingSeedFromAuthUser, syncAuthUserToProfile } from "@/lib/auth";
 import { isAppEnabled } from "@/lib/app-mode";
+import { notifyBoardChat } from "@/lib/apns";
 import {
   acceptBoardInvitation,
   addBoardListingComment,
@@ -30,6 +32,7 @@ import {
 } from "@/lib/board-data";
 import { trackEvent } from "@/lib/analytics";
 import { assertThrottle } from "@/lib/action-throttle";
+import { sendOperationalAlert } from "@/lib/monitoring";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function redirectWithMessage(path: string, key: "error" | "notice", message: string): never {
@@ -261,6 +264,22 @@ export async function sendChatAction(formData: FormData) {
   }
 
   await sendChat(boardId, content, { userId: currentUser.id, authorName: currentUser.displayName });
+  after(async () => {
+    try {
+      await notifyBoardChat({
+        boardId,
+        authorUserId: currentUser.id,
+        authorName: currentUser.displayName,
+        content,
+      });
+    } catch (error) {
+      await sendOperationalAlert(error, {
+        area: "push",
+        operation: "notify_web_board_chat",
+        severity: "error",
+      });
+    }
+  });
   revalidatePath(`/boards/${boardId}`);
 }
 

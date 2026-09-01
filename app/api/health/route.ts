@@ -30,6 +30,11 @@ export async function GET() {
         configuration: requiredConfigurationReady ? "ok" : "unavailable",
         database: databaseReady ? "ok" : "unavailable",
       },
+      capabilities: {
+        errorMonitoring: runtime.errorMonitoringConfigured ? "configured" : "pending",
+        operationalAlerts: runtime.operationalAlertsConfigured ? "configured" : "pending",
+        boardChatPush: runtime.boardChatPushConfigured ? "configured" : "pending",
+      },
       checkedAt: new Date().toISOString(),
     },
     {

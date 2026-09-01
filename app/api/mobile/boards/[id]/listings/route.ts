@@ -4,6 +4,7 @@ import { z } from "zod";
 import { addListingToBoard, getBoardPageData } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload, mapListingInventoryForMobile } from "@/lib/mobile-payloads";
+import { sendOperationalAlert } from "@/lib/monitoring";
 import { previewListingImport } from "@/lib/listing-sources";
 import { listingSourceTrustWarning } from "@/lib/listing-source-policy";
 import { prisma } from "@/lib/prisma";
@@ -287,6 +288,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       source: "database",
     });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "load_listing_inventory", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to load listings.";
     return NextResponse.json(
       { error: message },
@@ -360,6 +362,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!data) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     return response(data);
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "add_listing", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to add listing.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }

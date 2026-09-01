@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getBoardPageData, renameBoard, saveBoardProfile } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
+import { sendOperationalAlert } from "@/lib/monitoring";
 import { createOnboardingDraftProfile } from "@/lib/onboarding-flow";
 import type { RentalProfile } from "@/lib/types";
 
@@ -76,6 +77,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       missingFields: boardData.missingFields,
     });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "load_board", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unauthorized";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }
@@ -121,6 +123,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       missingFields: boardData.missingFields,
     });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "save_board_brief", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to save board brief.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }
@@ -145,6 +148,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     return NextResponse.json({ board: buildMobileBoardPayload(next), profile: next.profile, missingFields: next.missingFields });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "rename_board", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to rename board.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }

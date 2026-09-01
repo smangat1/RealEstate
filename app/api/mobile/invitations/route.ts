@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { createBoardInvitation, revokeBoardInvitation } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
+import { sendOperationalAlert } from "@/lib/monitoring";
 
 const createInvitationSchema = z.object({
   boardId: z.string().min(1).max(120),
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
       inviteUrl: `${new URL(request.url).origin}/invite/${invitation.inviteCode}`,
     });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "create_invitation", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to create invitation.";
     return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
   }
@@ -40,6 +42,7 @@ export async function DELETE(request: Request) {
     await revokeBoardInvitation(parsed.data.invitationId, user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
+    await sendOperationalAlert(error, { area: "mobile_api", operation: "revoke_invitation", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to revoke invitation.";
     const status = message === "MOBILE_AUTH_REQUIRED" ? 401 : message.includes("Only the workspace owner") ? 403 : 500;
     return NextResponse.json({ error: message }, { status });

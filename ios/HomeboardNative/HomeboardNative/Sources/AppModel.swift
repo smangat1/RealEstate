@@ -2177,6 +2177,27 @@ final class AppModel {
     }
   }
 
+  func uploadPendingNativeDiagnostics() async {
+    guard let session = authSession else { return }
+    let payloads = PendingNativeDiagnostics.snapshot()
+    guard !payloads.isEmpty else { return }
+    do {
+      try await api.uploadNativeDiagnostics(
+        accessToken: session.accessToken,
+        payloads: payloads
+      )
+      PendingNativeDiagnostics.removeFirst(payloads.count)
+    } catch {
+      // Keep diagnostics queued for the next authenticated launch.
+    }
+  }
+
+  func openBoardChatNotification(boardId: String) async {
+    guard authSession != nil else { return }
+    await openBoard(id: boardId)
+    openBoardTab(.updates)
+  }
+
   func handleIncomingURL(_ url: URL) {
     let components = url.pathComponents.filter { $0 != "/" }
     let queryCode = URLComponents(url: url, resolvingAgainstBaseURL: false)?

@@ -194,6 +194,12 @@ private struct PushDeviceRequest: Encodable {
   var environment: String
 }
 
+private struct NativeDiagnosticsRequest: Encodable {
+  var payloads: [String]
+  var appVersion: String
+  var buildNumber: String
+}
+
 private struct PasswordRecoveryRequest: Encodable {
   var email: String
 }
@@ -999,6 +1005,21 @@ final class HomeboardAPI {
       method: "POST",
       accessToken: accessToken,
       body: PushDeviceRequest(token: token, environment: environment)
+    )
+  }
+
+  func uploadNativeDiagnostics(accessToken: String, payloads: [String]) async throws {
+    guard !payloads.isEmpty else { return }
+    let info = Bundle.main.infoDictionary
+    let _: EmptyResponse = try await requestBackend(
+      path: "/api/mobile/diagnostics",
+      method: "POST",
+      accessToken: accessToken,
+      body: NativeDiagnosticsRequest(
+        payloads: payloads,
+        appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
+        buildNumber: info?["CFBundleVersion"] as? String ?? "unknown"
+      )
     )
   }
 

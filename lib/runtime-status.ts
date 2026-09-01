@@ -20,6 +20,9 @@ export type RuntimeStatus = {
   ollamaReplyModel: string;
   commuteMode: CommuteServiceMode;
   commuteConfigured: boolean;
+  errorMonitoringConfigured: boolean;
+  operationalAlertsConfigured: boolean;
+  boardChatPushConfigured: boolean;
 };
 
 function hasValue(value?: string) {
@@ -39,6 +42,14 @@ export function getRuntimeStatus(): RuntimeStatus {
   const databaseConfigured = hasValue(process.env.DATABASE_URL);
   const ollamaConfigured = hasValue(process.env.OLLAMA_URL) || hasValue(process.env.OLLAMA_MODEL);
   const commuteConfigured = hasValue(process.env.OPENROUTESERVICE_API_KEY);
+  const errorMonitoringConfigured =
+    hasValue(process.env.SENTRY_DSN) || hasValue(process.env.NEXT_PUBLIC_SENTRY_DSN);
+  const operationalAlertsConfigured =
+    errorMonitoringConfigured || hasValue(process.env.HOMEBOARD_ALERT_WEBHOOK_URL);
+  const boardChatPushConfigured =
+    hasValue(process.env.APNS_KEY_ID)
+    && hasValue(process.env.APNS_TEAM_ID)
+    && hasValue(process.env.APNS_PRIVATE_KEY);
   const appEnabled = isAppEnabled();
   const commuteMode = getCommuteServiceMode(demoMode);
   const overallStatus =
@@ -61,5 +72,8 @@ export function getRuntimeStatus(): RuntimeStatus {
     ollamaReplyModel: ollama.replyModel,
     commuteMode,
     commuteConfigured,
+    errorMonitoringConfigured,
+    operationalAlertsConfigured,
+    boardChatPushConfigured,
   };
 }
