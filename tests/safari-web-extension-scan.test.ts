@@ -20,6 +20,13 @@ test("the Safari toolbar starts the in-page scan instead of opening a popup", ()
   assert.match(backgroundSource, /browser\.action\.onClicked/);
   assert.match(backgroundSource, /homeboard\.startPageScan/);
   assert.match(backgroundSource, /homeboard\.analyzeListing/);
+  assert.equal(manifest.background.persistent, false);
+  assert.equal(manifest.background.type, undefined);
+  assert.match(backgroundSource, /Number\.isInteger\(tabId\)/);
+  assert.doesNotMatch(backgroundSource, /!tab\?\.id/);
+  assert.match(backgroundSource, /browser\.scripting\.executeScript/);
+  assert.match(contentSource, /This page did not finish scanning/);
+  assert.match(contentSource, /showPageScanFailure\(error\)/);
 });
 
 test("Mac Safari skips the visual sentence sweep", () => {

@@ -36,6 +36,7 @@ private final class HomeboardMacConnectionModel: ObservableObject {
   @Published var isWorking = false
   @Published var errorMessage: String?
   @Published var feedback: String?
+  @Published var safariStatusMessage: String?
   @Published var pairingChallenge: HomeboardDevicePairingChallenge?
   @Published var pairingStatusText = "Creating a secure QR code…"
   @Published var isPairing = false
@@ -201,9 +202,11 @@ private final class HomeboardMacConnectionModel: ObservableObject {
       withIdentifier: safariExtensionIdentifier
     ) { error in
       Task { @MainActor in
-        if let error {
-          self.errorMessage = error.localizedDescription
+        if error != nil {
+          self.safariStatusMessage =
+            "Safari Settings could not be opened automatically. Open Safari → Settings → Extensions."
         } else {
+          self.safariStatusMessage = nil
           self.feedback = "Safari Settings opened. Switch Homeboard on, then return here."
         }
       }
@@ -217,10 +220,14 @@ private final class HomeboardMacConnectionModel: ObservableObject {
       Task { @MainActor in
         self.safariExtensionStateKnown = true
         self.safariExtensionIsEnabled = state?.isEnabled == true
-        if let error {
-          self.errorMessage = error.localizedDescription
+        if error != nil {
+          self.safariStatusMessage =
+            "Safari could not confirm the extension status yet. Open Safari Settings to verify Homeboard is enabled."
         } else if state?.isEnabled == true {
+          self.safariStatusMessage = nil
           self.feedback = "Homeboard is enabled in Safari and ready to save listings."
+        } else {
+          self.safariStatusMessage = nil
         }
       }
     }
@@ -360,6 +367,11 @@ private struct HomeboardMacConnectionView: View {
           Label(error, systemImage: "exclamationmark.triangle.fill")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(HomeboardMacPalette.danger)
+        }
+        if let safariStatus = model.safariStatusMessage {
+          Label(safariStatus, systemImage: "safari")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.68))
         }
         if let feedback = model.feedback {
           Label(feedback, systemImage: "checkmark.circle.fill")

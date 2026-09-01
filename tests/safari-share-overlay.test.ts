@@ -222,6 +222,11 @@ test("the connected Mac setup uses a compact self-contained panel", () => {
   assert.match(macAppSource, /HomeboardMacPalette\.surface\.opacity\(0\.72\)/);
   assert.match(macAppSource, /Open Safari Settings/);
   assert.match(macAppSource, /getStateOfSafariExtension/);
+  assert.match(macAppSource, /safariStatusMessage/);
+  assert.doesNotMatch(
+    macAppSource,
+    /refreshSafariExtensionState\(\)[\s\S]*self\.errorMessage = error\.localizedDescription/,
+  );
 });
 
 test("Mac Debug and installed Release builds cannot register the same Safari extension identity", () => {

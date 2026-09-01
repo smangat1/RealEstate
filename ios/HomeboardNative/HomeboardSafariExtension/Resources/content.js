@@ -877,7 +877,6 @@
           -webkit-backdrop-filter: blur(2px);
           backdrop-filter: blur(2px);
           pointer-events: auto;
-        }
         .review-panel {
           position: fixed;
           right: 10px;
@@ -1541,14 +1540,37 @@
     }
   }
 
+  function showPageScanFailure(error) {
+    const session = pageScanSession;
+    const ui = session?.ui;
+    if (!ui?.host?.isConnected) {
+      pageScanSession = null;
+      return;
+    }
+    session.running = false;
+    ui.highlightLayer.replaceChildren();
+    ui.tag.classList.add("hidden");
+    ui.completeSource.textContent = "HOMEBOARD · SAFARI";
+    ui.completeTitle.textContent = "This page did not finish scanning";
+    ui.completeSummary.textContent = error instanceof Error && error.message
+      ? error.message
+      : "Try again, or use Safari’s Share button to send the page to Homeboard.";
+    ui.reviewButton.textContent = "Dismiss";
+    ui.reviewButton.disabled = false;
+    ui.reviewButton.addEventListener("click", () => {
+      ui.host.remove();
+      if (pageScanSession === session) pageScanSession = null;
+    }, { once: true });
+    ui.completeCard.classList.remove("hidden");
+  }
+
   browser.runtime.onMessage.addListener((request) => {
     if (request?.type === "homeboard.extractListing") {
       return Promise.resolve(extractListing());
     }
     if (request?.type === "homeboard.startPageScan") {
-      startPageScan({ presentation: request.presentation }).catch(() => {
-        pageScanSession?.ui?.host.remove();
-        pageScanSession = null;
+      startPageScan({ presentation: request.presentation }).catch((error) => {
+        showPageScanFailure(error);
       });
       return Promise.resolve({ started: true });
     }

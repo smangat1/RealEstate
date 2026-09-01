@@ -21,7 +21,10 @@ async function sendNativeMessage(message) {
 }
 
 async function startPageScan(tab) {
-  if (!tab?.id || !tab.url?.startsWith("http")) return;
+  const tabId = tab?.id;
+  if (!Number.isInteger(tabId)) {
+    throw new Error("Safari did not provide the active tab.");
+  }
 
   let presentation = /mac/i.test(globalThis.navigator?.platform || "")
     ? "compact"
@@ -38,14 +41,14 @@ async function startPageScan(tab) {
   };
 
   try {
-    await browser.tabs.sendMessage(tab.id, request);
-  } catch {
     await browser.scripting.executeScript({
-      target: { tabId: tab.id },
+      target: { tabId },
       files: ["content.js"]
     });
-    await browser.tabs.sendMessage(tab.id, request);
+  } catch {
+    // The declared content script may already be installed on this page.
   }
+  await browser.tabs.sendMessage(tabId, request);
 }
 
 browser.action.onClicked.addListener((tab) => {
