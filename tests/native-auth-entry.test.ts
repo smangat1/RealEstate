@@ -223,7 +223,9 @@ test("launch intro overlaps bootstrap and hands off immediately to a restored bo
 });
 
 test("the post-auth board chooser is compact, immediate, and does not reset tab navigation", () => {
-  assert.match(appleAuthViewSource, /if appModel\.showsPostAuthInvitePrompt/);
+  assert.match(rootSource, /if appModel\.showsPostAuthInvitePrompt/);
+  assert.match(rootSource, /PostAuthInvitePrompt\(\)/);
+  assert.doesNotMatch(appleAuthViewSource, /if appModel\.showsPostAuthInvitePrompt/);
   assert.doesNotMatch(appleAuthViewSource, /\.sheet\(isPresented: postAuthInviteBinding\)/);
   assert.match(authViewSource, /\.frame\(maxWidth: 360\)/);
   assert.match(authViewSource, /continueAfterAuthenticationWithoutInvite\(\)/);
@@ -307,8 +309,7 @@ test("entry uses solid fixed cards that track reversible vertical swipes", () =>
   assert.match(welcomeSource, /y: topMargin \+ \(height \/ 2\)/);
   assert.doesNotMatch(welcomeSource, /forwardProgress|returnProgress/);
   assert.doesNotMatch(welcomeSource, /\.opacity\(selectedPage/);
-  assert.match(welcomeSource, /Text\("Continue"\)/);
-  assert.match(welcomeSource, /homeboard\.welcome\.continue/);
+  assert.match(welcomeSource, /Swipe up to continue/);
   assert.match(welcomeSource, /Image\(systemName: "arrow\.up"\)/);
   assert.match(welcomeSource, /Text\("SWIPE DOWN"\)/);
   assert.match(welcomeSource, /Image\(systemName: "arrow\.down"\)/);

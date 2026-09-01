@@ -48,6 +48,18 @@ struct RootView: View {
           .zIndex(16)
       }
 
+      if appModel.showsPostAuthInvitePrompt {
+        Color.black.opacity(0.58)
+          .ignoresSafeArea()
+          .transition(.opacity)
+          .zIndex(15)
+
+        PostAuthInvitePrompt()
+          .padding(.horizontal, 20)
+          .transition(.scale(scale: 0.94).combined(with: .opacity))
+          .zIndex(16)
+      }
+
       if showsLaunchIntro {
         HomeboardLaunchIntro()
           .transition(.opacity.combined(with: .scale(scale: 1.015)))
@@ -58,6 +70,7 @@ struct RootView: View {
     .preferredColorScheme(.dark)
     .animation(.easeInOut(duration: 0.24), value: appModel.currentScreen)
     .animation(.easeInOut(duration: 0.20), value: appModel.showsPostAuthNotificationPrompt)
+    .animation(.easeInOut(duration: 0.20), value: appModel.showsPostAuthInvitePrompt)
     .environment(appModel)
     .task {
       await appModel.bootstrap()

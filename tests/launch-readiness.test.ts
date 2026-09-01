@@ -131,6 +131,9 @@ test("notification permission is offered after auth and not buried in workspace 
   assert.match(root, /Turn on notifications/);
   assert.match(root, /when a roommate posts a new message/);
   assert.doesNotMatch(root, /new listings, roommate reactions, invitations/);
+  assert.match(root, /if appModel\.showsPostAuthInvitePrompt/);
+  assert.match(root, /PostAuthInvitePrompt\(\)/);
+  assert.match(root, /value: appModel\.showsPostAuthInvitePrompt/);
 });
 
 test("edit search brief opens the complete personal preference editor", () => {

@@ -30,7 +30,7 @@ test("signed-out launches and sign-outs open the welcome flow without a preview 
   assert.doesNotMatch(clearedSession, /openPreviewBoard\(\)/);
 });
 
-test("the welcome story has a direct button before Apple sign-in", () => {
+test("the welcome story keeps swipe entry and explains both account paths", () => {
   const hero = welcome.slice(
     welcome.indexOf("private var heroContent"),
     welcome.indexOf("private var welcomeAdvanceGesture"),
@@ -40,10 +40,10 @@ test("the welcome story has a direct button before Apple sign-in", () => {
     welcome.indexOf("private var fullAccountButtons"),
   );
 
-  assert.match(hero, /Text\("Continue"\)/);
-  assert.match(hero, /showAccessPage\(\)/);
-  assert.match(hero, /homeboard\.welcome\.continue/);
-  assert.ok(access.indexOf("fullAccountButtons") < access.indexOf("accessKeyButton"));
+  assert.match(hero, /Swipe up to continue/);
+  assert.doesNotMatch(hero, /homeboard\.welcome\.continue/);
+  assert.match(access, /Existing users: click the key\. New accounts: sign in with Apple\./);
+  assert.ok(access.indexOf("accessKeyButton") < access.indexOf("fullAccountButtons"));
 });
 
 test("iPhone and Mac bundles identify Homeboard as a Business app", () => {

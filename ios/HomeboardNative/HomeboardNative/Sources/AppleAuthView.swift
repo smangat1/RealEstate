@@ -104,19 +104,7 @@ struct AppleAuthView: View {
         .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
       }
 
-      if appModel.showsPostAuthInvitePrompt {
-        Color.black.opacity(0.58)
-          .ignoresSafeArea()
-          .transition(.opacity)
-
-        PostAuthInvitePrompt()
-          .environment(appModel)
-          .padding(.horizontal, 20)
-          .transition(.scale(scale: 0.94).combined(with: .opacity))
-          .zIndex(1)
-      }
     }
-    .animation(.easeInOut(duration: 0.2), value: appModel.showsPostAuthInvitePrompt)
   }
 
   private var header: some View {

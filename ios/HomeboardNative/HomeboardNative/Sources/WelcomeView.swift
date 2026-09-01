@@ -129,7 +129,7 @@ struct WelcomeView: View {
           .fill(HomeboardPalette.accent)
           .frame(width: 52, height: 3)
 
-        Text("Keep listings, commutes, and tradeoffs in one shared place. Do this before the group chat becomes the problem.")
+        Text("Keep listings, commutes, and tradeoffs in one shared place before the group chat becomes the problem.")
           .font(.body)
           .foregroundStyle(HomeboardPalette.secondaryText)
           .fixedSize(horizontal: false, vertical: true)
@@ -156,23 +156,13 @@ struct WelcomeView: View {
         }
       }
 
-      Button {
-        showAccessPage()
-      } label: {
-        HStack(spacing: 8) {
-          Text("Continue")
-          Image(systemName: "arrow.up")
-        }
-        .font(.subheadline.weight(.bold))
-        .foregroundStyle(HomeboardPalette.buttonText)
-        .frame(maxWidth: .infinity)
-        .frame(height: 52)
-        .background(HomeboardPalette.accentGradient)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      HStack(spacing: 8) {
+        Text("Swipe up to continue")
+        Image(systemName: "arrow.up")
       }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("homeboard.welcome.continue")
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.tertiaryText)
+      .frame(maxWidth: .infinity, alignment: .center)
     }
     .padding(.top, 6)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -294,7 +284,7 @@ struct WelcomeView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .fixedSize(horizontal: false, vertical: true)
 
-          Text("Use an invite key from your group, then continue with Apple to create or reopen your Homeboard account.")
+          Text("Existing users: click the key. New accounts: sign in with Apple.")
             .font(.subheadline)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
@@ -304,8 +294,6 @@ struct WelcomeView: View {
           pendingInviteBanner
         }
 
-        fullAccountButtons
-
         accessKeyButton
 
         if showsInviteEntry || !appModel.pendingInviteCode.isEmpty {
@@ -313,6 +301,8 @@ struct WelcomeView: View {
             .id("invite-code")
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
+
+        fullAccountButtons
 
         Spacer(minLength: 12)
 
@@ -667,6 +657,7 @@ struct WelcomeView: View {
       .frame(maxWidth: .infinity)
     }
     .buttonStyle(WelcomeAccessPressStyle())
+    .accessibilityIdentifier("homeboard.welcome.invite-toggle")
     .accessibilityHint("Turns the key and activates the shared board invite link field")
   }
 
