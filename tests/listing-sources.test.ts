@@ -6,6 +6,7 @@ import {
   canonicalizeListingUrl,
   detectListingProvider,
   evaluateExactListingMatch,
+  isZillowBuildingDetailUrl,
   keepExactListingCandidates,
   previewListingImport,
 } from "@/lib/listing-sources";
@@ -92,6 +93,50 @@ test("generic Zillow, StreetEasy, and web-search URLs are never accepted as sour
       /exact rental unit/i,
     );
   }
+});
+
+test("a selected Zillow building unit can keep its building detail URL", () => {
+  const preview = previewListingImport({
+    url: "https://www.zillow.com/apartments/tuxedo-ny/tuxedo-farms/Cnh3g7/",
+    address: "5 Summit Trl, Tuxedo, NY 10987",
+    unit: "05-2D",
+    price: 3_720,
+    bedrooms: 1,
+    bathrooms: 1,
+  });
+
+  assert.equal(
+    preview.normalizedUrl,
+    "https://zillow.com/apartments/tuxedo-ny/tuxedo-farms/Cnh3g7",
+  );
+  assert.equal(preview.suggestedUnit, "05-2D");
+  assert.deepEqual(preview.missingEssentialFields, []);
+  assert.equal(isZillowBuildingDetailUrl(preview.normalizedUrl), true);
+});
+
+test("a Zillow building page still needs one complete selected unit", () => {
+  const url = "https://www.zillow.com/apartments/tuxedo-ny/tuxedo-farms/Cnh3g7/";
+
+  assert.throws(
+    () => previewListingImport({
+      url,
+      address: "5 Summit Trl, Tuxedo, NY 10987",
+      price: 3_720,
+      bedrooms: 1,
+      bathrooms: 1,
+    }),
+    /exact rental unit/i,
+  );
+  assert.throws(
+    () => previewListingImport({
+      url,
+      address: "5 Summit Trl, Tuxedo, NY 10987",
+      unit: "05-2D",
+      price: 3_720,
+      bedrooms: 1,
+    }),
+    /exact rental unit/i,
+  );
 });
 
 test("same building with a different apartment is rejected", () => {

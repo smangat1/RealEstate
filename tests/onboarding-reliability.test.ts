@@ -45,7 +45,7 @@ test("onboarding interactions avoid synchronous full-state persistence", () => {
     onboardingView.indexOf("private var otherAnswerFields"),
   );
   assert.match(answerButton, /contentShape\(RoundedRectangle/);
-  assert.match(answerButton, /buttonStyle\(\.plain\)/);
+  assert.match(answerButton, /buttonStyle\(HomeboardAreaButtonStyle\(\)\)/);
   assert.doesNotMatch(answerButton, /AuthPressStyle/);
   assert.match(onboardingView, /\.id\(question\)/);
   assert.match(onboardingView, /appModel\.saveOnboardingDraft\(\)/);

@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
+import { GROUP_DECISION_REQUIRES_TWO_MEMBERS, pendingBoardQuestions } from "@/lib/board-decisions";
 
 import type {
   BoardActivityRecord,
@@ -57,10 +58,17 @@ import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
 import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
+import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
   listingSourceTrustWarning,
   sourceIsGloballyDiscoverable,
 } from "@/lib/listing-source-policy";
+
+const RECENTLY_DELETED_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
+
+function recentlyDeletedCutoff() {
+  return new Date(Date.now() - RECENTLY_DELETED_RETENTION_MS);
+}
 
 function parseJsonArray(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -472,7 +480,7 @@ function mapListingRow(row: {
     amenities: parseJsonArray(row.amenities),
     fees: parseJsonObject(row.fees),
     description: row.description,
-    images: parseJsonArray(row.images),
+    images: parseJsonArray(row.images).map(refreshListingImageUrl),
     providerData:
       row.providerData && typeof row.providerData === "object" && !Array.isArray(row.providerData)
         ? row.providerData as Record<string, unknown>
@@ -551,7 +559,9 @@ function mapRoommateRow(row: {
 }
 
 async function ensureStarterCatalog() {
-  const count = await prisma.listing.count();
+  const count = await prisma.listing.count({
+    where: { sourceName: { in: ["demo_curated", "starter_catalog"] } },
+  });
   if (count > 0) return;
 
   const now = new Date();
@@ -1045,7 +1055,7 @@ function describeListingFit(
     return {
       fitLabel: "best practical fit" as const,
       fitReason: `${locationLabel} is landing as one of the cleanest practical matches in the starter catalog.${commuteLine}${neighborhoodLine}`,
-      tradeoffSummary: `It lines up well on the basics, especially ${withinBudget ? "budget" : "overall balance"}, and it should be one of the first places your group pressure-tests together.`,
+      tradeoffSummary: `It lines up well on the basics, especially ${withinBudget ? "budget" : "overall balance"}, and it should be one of the first places your group reviews together.`,
     };
   }
 
@@ -1318,6 +1328,7 @@ export async function getBoardPageData(
     includeCommutes: true,
   },
 ): Promise<BoardPageData | null> {
+  const recentlyDeletedCutoffDate = recentlyDeletedCutoff();
   const demoMode = isDemoModeEnabled();
   if (demoMode && options.includeSuggestedListings === true) {
     await ensureStarterCatalog();
@@ -1348,13 +1359,19 @@ export async function getBoardPageData(
         },
         orderBy: { createdAt: "desc" },
       },
-      chatMessages: { orderBy: { createdAt: "asc" } },
+      chatMessages: { orderBy: { createdAt: "desc" }, take: 250 },
       boardListings: {
+        where: {
+          OR: [
+            { deletedAt: null },
+            { deletedAt: { gt: recentlyDeletedCutoffDate } },
+          ],
+        },
         orderBy: { updatedAt: "desc" },
         include: {
           listing: true,
           votes: { include: { roommate: true }, orderBy: { createdAt: "desc" } },
-          comments: { include: { roommate: true }, orderBy: { createdAt: "desc" } },
+          comments: { include: { roommate: true }, orderBy: { createdAt: "desc" }, take: 100 },
           ratings: { include: { roommate: true }, orderBy: { updatedAt: "desc" } },
           sources: {
             include: {
@@ -1372,14 +1389,16 @@ export async function getBoardPageData(
               },
             },
             orderBy: { createdAt: "desc" },
+            take: 50,
           },
-          verifications: { include: { roommate: true }, orderBy: { createdAt: "desc" } },
+          verifications: { include: { roommate: true }, orderBy: { createdAt: "desc" }, take: 50 },
           reviews: { include: { roommate: true }, orderBy: { updatedAt: "desc" } },
           decisions: {
             include: {
               votes: { include: { roommate: true }, orderBy: { updatedAt: "desc" } },
             },
             orderBy: { createdAt: "desc" },
+            take: 50,
           },
         },
       },
@@ -1388,6 +1407,13 @@ export async function getBoardPageData(
   });
 
   if (!board || !board.searchProfile) return null;
+
+  // Pending questions must not expire when they fall outside the recent feed.
+  const decisionEvents = await prisma.boardEvent.findMany({
+    where: { boardId: board.id, eventType: { in: ["decision_opened", "decision_resolved"] } },
+    select: { eventType: true, content: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
 
   const profile = mapProfileRow({
     ...board.searchProfile,
@@ -1405,10 +1431,13 @@ export async function getBoardPageData(
 
   const roommates = board.roommates
     .map(mapRoommateRow);
+  const householdRoommates = roommates.filter(
+    (roommate) => roommate.roleLabel !== "commute point",
+  );
 
   const members = board.members.map(mapBoardMemberRow);
   const invitations = board.invitations.map(mapInvitationRow);
-  const groupSynthesis = summarizeGroup(roommates, profile);
+  const groupSynthesis = summarizeGroup(householdRoommates, profile);
   const effectiveProfile: SearchProfileData = {
     ...profile,
     budgetMin: groupSynthesis.groupBudgetMin ?? undefined,
@@ -1417,7 +1446,7 @@ export async function getBoardPageData(
     commuteTarget: groupSynthesis.commuteDestinations[0] ?? undefined,
   };
 
-  const messages = board.chatMessages.map((message) => ({
+  const messages = [...board.chatMessages].reverse().map((message) => ({
     id: message.id,
     boardId: message.boardId,
     role: message.role,
@@ -1427,7 +1456,7 @@ export async function getBoardPageData(
     createdAt: message.createdAt.toISOString(),
   }));
 
-  const boardListings: BoardListingRecord[] = board.boardListings.map((entry) => ({
+  const mapBoardListing = (entry: (typeof board.boardListings)[number]): BoardListingRecord => ({
     id: entry.id,
     boardId: entry.boardId,
     listingId: entry.listingId,
@@ -1438,12 +1467,20 @@ export async function getBoardPageData(
     aiTradeoffAnalysis: entry.aiTradeoffAnalysis,
     aiRedFlags: parseJsonArray(entry.aiRedFlags),
     questionsToAsk: parseJsonArray(entry.questionsToAsk),
+    deletedAt: entry.deletedAt?.toISOString() ?? null,
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
     listing: mapListingRow(entry.listing),
-  }));
+  });
+  const boardListings = board.boardListings
+    .filter((entry) => entry.deletedAt === null)
+    .map(mapBoardListing);
+  const recentlyDeletedBoardListings = board.boardListings
+    .filter((entry) => entry.deletedAt !== null)
+    .map(mapBoardListing);
+  const activeBoardListingRows = board.boardListings.filter((entry) => entry.deletedAt === null);
 
-  const voteRows: BoardListingVoteRecord[] = board.boardListings.flatMap((entry) =>
+  const voteRows: BoardListingVoteRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.votes.map((vote) => ({
       id: vote.id,
       boardListingId: vote.boardListingId,
@@ -1459,7 +1496,7 @@ export async function getBoardPageData(
     })),
   );
 
-  const commentRows: BoardListingCommentRecord[] = board.boardListings.flatMap((entry) =>
+  const commentRows: BoardListingCommentRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.comments.map((comment) => ({
       id: comment.id,
       boardListingId: comment.boardListingId,
@@ -1474,7 +1511,7 @@ export async function getBoardPageData(
     })),
   );
 
-  const ratingRows: BoardListingRatingRecord[] = board.boardListings.flatMap((entry) =>
+  const ratingRows: BoardListingRatingRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.ratings.map((rating) => ({
       id: rating.id,
       boardListingId: rating.boardListingId,
@@ -1494,7 +1531,7 @@ export async function getBoardPageData(
     })),
   );
 
-  const sourceRows: BoardListingSourceRecord[] = board.boardListings.flatMap((entry) =>
+  const sourceRows: BoardListingSourceRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.sources.map((source) => ({
       id: source.id,
       boardListingId: source.boardListingId,
@@ -1523,7 +1560,7 @@ export async function getBoardPageData(
     })),
   );
 
-  const verificationRows: BoardListingVerificationRecord[] = board.boardListings.flatMap((entry) =>
+  const verificationRows: BoardListingVerificationRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.verifications.map((verification) => ({
       id: verification.id,
       boardListingId: verification.boardListingId,
@@ -1537,7 +1574,7 @@ export async function getBoardPageData(
     })),
   );
 
-  const reviewRows: BoardListingReviewRecord[] = board.boardListings.flatMap((entry) =>
+  const reviewRows: BoardListingReviewRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.reviews.map((review) => ({
       id: review.id,
       boardListingId: review.boardListingId,
@@ -1557,7 +1594,7 @@ export async function getBoardPageData(
     })),
   );
 
-  const decisionRows: BoardListingDecisionRecord[] = board.boardListings.flatMap((entry) =>
+  const decisionRows: BoardListingDecisionRecord[] = activeBoardListingRows.flatMap((entry) =>
     entry.decisions.map((decision) => ({
       id: decision.id,
       boardListingId: decision.boardListingId,
@@ -1594,8 +1631,8 @@ export async function getBoardPageData(
     options.includeSuggestedListings === true
       ? await getSuggestedListings(
           effectiveProfile,
-          boardListings,
-          roommates,
+          [...boardListings, ...recentlyDeletedBoardListings],
+          householdRoommates,
         )
       : [];
   const commuteAnchors = getCommuteAnchors(roommates);
@@ -1647,7 +1684,7 @@ export async function getBoardPageData(
         entry.id,
         analyzeListingForGroup({
           listing: entry.listing,
-          members: roommates,
+          members: householdRoommates,
           routes: boardListingCommutesByBoardListingId[entry.id]?.routes ?? [],
           reviews: listingReviewsByBoardListingId[entry.id] ?? [],
           sourceConfirmed: sources.some((source) => source.confirmedAt !== null),
@@ -1682,8 +1719,10 @@ export async function getBoardPageData(
     invitations,
     groupSynthesis,
     activity,
+    pendingDecisionQuestions: pendingBoardQuestions(decisionEvents),
     messages,
     boardListings,
+    recentlyDeletedBoardListings,
     boardListingCommutesByBoardListingId,
     listingVotesByBoardListingId: groupByKey(voteRows, "boardListingId"),
     listingCommentsByBoardListingId: groupByKey(commentRows, "boardListingId"),
@@ -1715,6 +1754,16 @@ export async function createBoardAndReturnId(input: {
   const title = input.title?.trim() || "New workspace";
   const blankProfile = createBlankProfile("temp");
   const seededProfile = finalizeProfileState({ ...blankProfile, ...(input.profileSeed ?? {}) });
+
+  await prisma.user.update({
+    where: { id: input.userId },
+    data: {
+      workAddress:
+        seededProfile.commuteAccess === "remote" || seededProfile.commuteAccess === "skip"
+          ? null
+          : seededProfile.commuteTarget?.trim() || null,
+    },
+  });
 
   if (input.creationRequestId) {
     const existing = await prisma.searchBoard.findUnique({
@@ -1811,7 +1860,9 @@ export async function createBoardAndReturnId(input: {
         where: { creationRequestId: input.creationRequestId },
         select: { id: true, userId: true },
       });
-      if (existing?.userId === input.userId) return existing.id;
+      if (existing?.userId === input.userId) {
+        return existing.id;
+      }
     }
     throw error;
   }
@@ -1892,6 +1943,16 @@ export async function saveBoardProfile(boardId: string, actingUserId: string, ne
     },
   });
 
+  await prisma.user.update({
+    where: { id: actingUserId },
+    data: {
+      workAddress:
+        finalizedProfile.commuteAccess === "remote" || finalizedProfile.commuteAccess === "skip"
+          ? null
+          : finalizedProfile.commuteTarget?.trim() || null,
+    },
+  });
+
   const changedFields = summarizeProfileChanges(boardData.profile, finalizedProfile);
   if (changedFields.length > 0) {
     await addBoardEvent(
@@ -1961,7 +2022,10 @@ export async function sendChat(boardId: string, content: string, author: { userI
         : ruleProfile;
     nextProfile = finalizeProfileState(nextProfile);
 
-    const groupSynthesis = summarizeGroup(boardData.roommates, nextProfile);
+    const householdRoommates = boardData.roommates.filter(
+      (roommate) => roommate.roleLabel !== "commute point",
+    );
+    const groupSynthesis = summarizeGroup(householdRoommates, nextProfile);
     const suggestedCount = (
       await getSuggestedListings(
         {
@@ -1971,7 +2035,7 @@ export async function sendChat(boardId: string, content: string, author: { userI
           stretchBudget: groupSynthesis.groupStretchBudget ?? undefined,
         },
         boardData.boardListings,
-        boardData.roommates,
+        householdRoommates,
       )
     ).length;
     const fallbackAssistant = generateAssistantReply(
@@ -2070,15 +2134,19 @@ export async function addListingToBoard(
     bedrooms?: string;
     bathrooms?: string;
     squareFeet?: string;
+    availableDate?: string;
     amenities?: string[];
     modelInsights?: ListingModelInsight[];
     description?: string;
     imageUrl?: string;
     userNotes?: string;
     actorRoommateId?: string;
-    actorUserId?: string;
+    actorUserId: string;
   },
 ) {
+  if (!(await ensureBoard(boardId, input.actorUserId))) {
+    throw new Error("Workspace not found.");
+  }
   const extracted = input.pastedText ? extractListingFromText(input.pastedText) : null;
   const rawSourceUrl = normalizeLooseText(input.sourceUrl);
   const parsedPrice = input.price ? Number(input.price) : extracted?.price ?? null;
@@ -2101,9 +2169,19 @@ export async function addListingToBoard(
   const normalizedUnit = normalizeLooseText(input.unit || importPreview?.suggestedUnit);
   const normalizedCity = normalizeLooseText(input.city || extracted?.city);
   const normalizedNeighborhood = normalizeLooseText(input.neighborhood || extracted?.neighborhood);
+  const rawAvailableDate = normalizeLooseText(input.availableDate);
+  const parsedAvailableDate = rawAvailableDate && !Number.isNaN(Date.parse(rawAvailableDate))
+    ? new Date(rawAvailableDate)
+    : null;
 
   const existingBoardListings = await prisma.boardListing.findMany({
-    where: { boardId },
+    where: {
+      boardId,
+      OR: [
+        { deletedAt: null },
+        { deletedAt: { gt: recentlyDeletedCutoff() } },
+      ],
+    },
     include: { listing: true },
   });
 
@@ -2125,37 +2203,46 @@ export async function addListingToBoard(
   });
 
   if (duplicateBoardListing) {
-    await prisma.boardListing.update({
-      where: { id: duplicateBoardListing.id },
-      data: { userStatus: duplicateBoardListing.userStatus === "rejected" ? "maybe" : duplicateBoardListing.userStatus },
-    });
-    if (input.modelInsights?.length || input.listingTitle?.trim()) {
-      const existingProviderData = duplicateBoardListing.listing.providerData;
-      await prisma.listing.update({
-        where: { id: duplicateBoardListing.listing.id },
-        data: {
-          providerData: {
-            ...(existingProviderData && typeof existingProviderData === "object" && !Array.isArray(existingProviderData)
-              ? existingProviderData as Record<string, unknown>
-              : {}),
-            ...(input.modelInsights?.length
-              ? { homeboardModelInsights: input.modelInsights }
-              : {}),
-            ...(input.listingTitle?.trim()
-              ? { homeboardListingTitle: input.listingTitle.trim() }
-              : {}),
+    const capturedImageUrl = input.imageUrl?.trim();
+    const capturedTitle = input.listingTitle?.trim();
+    const existingProviderData = duplicateBoardListing.listing.providerData;
+    const listingRefresh = input.modelInsights?.length || capturedTitle || capturedImageUrl
+      ? prisma.listing.update({
+          where: { id: duplicateBoardListing.listing.id },
+          data: {
+            ...(capturedImageUrl ? { images: json([capturedImageUrl]) } : {}),
+            providerData: {
+              ...(existingProviderData && typeof existingProviderData === "object" && !Array.isArray(existingProviderData)
+                ? existingProviderData as Record<string, unknown>
+                : {}),
+              ...(input.modelInsights?.length
+                ? { homeboardModelInsights: input.modelInsights }
+                : {}),
+              ...(capturedTitle
+                ? { homeboardListingTitle: capturedTitle }
+                : {}),
+            },
           },
+        })
+      : Promise.resolve();
+    await Promise.all([
+      prisma.boardListing.update({
+        where: { id: duplicateBoardListing.id },
+        data: {
+          userStatus: duplicateBoardListing.userStatus === "rejected" ? "maybe" : duplicateBoardListing.userStatus,
+          deletedAt: null,
         },
-      });
-    }
-    await addBoardEvent(
-      boardId,
-      "system",
-      "System",
-      "listing_deduped",
-      `A duplicate listing was folded back into the workspace instead of creating a second copy: ${formatListingLabel(duplicateBoardListing.listing)}.`,
-    );
-    await touchBoard(boardId);
+      }),
+      listingRefresh,
+      addBoardEvent(
+        boardId,
+        "system",
+        "System",
+        "listing_deduped",
+        `A duplicate listing was folded back into the workspace instead of creating a second copy: ${formatListingLabel(duplicateBoardListing.listing)}.`,
+      ),
+      touchBoard(boardId),
+    ]);
     return;
   }
 
@@ -2173,10 +2260,12 @@ export async function addListingToBoard(
       bedrooms: parsedBedrooms,
       bathrooms: parsedBathrooms,
       squareFeet: input.squareFeet ? Number(input.squareFeet) : extracted?.squareFeet ?? null,
+      availableDate: parsedAvailableDate,
       description: input.description?.trim() || input.pastedText?.trim() || null,
       amenities: json(input.amenities ?? []),
       providerData: {
         homeboardModelInsights: input.modelInsights ?? [],
+        ...(rawAvailableDate ? { homeboardAvailableDateText: rawAvailableDate } : {}),
         ...(input.listingTitle?.trim()
           ? { homeboardListingTitle: input.listingTitle.trim() }
           : {}),
@@ -2199,7 +2288,7 @@ export async function addListingToBoard(
   const analysis = {
     aiSummary: listing.description ? "Listing added to the workspace for review." : "Listing saved with partial details.",
     aiTradeoffAnalysis: "This was added manually, so the key thing is to confirm the missing details before anyone overcommits to it.",
-    aiRedFlags: json(["Source details may still be incomplete"]),
+    aiRedFlags: json(["Align on room split and check that the move-in timing works for the group."]),
     questionsToAsk: json(["Can you confirm the current availability and full monthly cost?"]),
   };
 
@@ -2214,7 +2303,9 @@ export async function addListingToBoard(
     },
   });
 
-  if (input.sourceUrl?.trim() && (input.actorRoommateId || input.actorUserId)) {
+  const submitSource = async () => {
+    const sourceURL = input.sourceUrl?.trim();
+    if (!sourceURL || (!input.actorRoommateId && !input.actorUserId)) return;
     const actor = input.actorRoommateId
       ? await prisma.roommateProfile.findUnique({
           where: { id: input.actorRoommateId },
@@ -2228,44 +2319,46 @@ export async function addListingToBoard(
       await submitBoardListingSource({
         boardListingId: boardListing.id,
         userId: actor.linkedUserId,
-        url: input.sourceUrl,
-        label: `${detectListingProvider(input.sourceUrl)} listing`,
+        url: sourceURL,
+        label: `${detectListingProvider(sourceURL)} listing`,
       });
     }
-  }
+  };
 
-  if (listing.price !== null) {
-    await prisma.priceHistory.create({
-      data: {
-        listingId: listing.id,
-        price: listing.price,
-        observedAt: new Date(),
-        source: "manual",
-      },
-    });
-  }
-
-  await addBoardEvent(
-    boardId,
-    "system",
-    "System",
-    "listing_added",
-    `${
-      input.method === "pasted_link"
-        ? "A link was saved"
-        : input.method === "pasted_text"
-          ? "A pasted listing was added"
-          : "A manual listing was created"
-    }: ${formatListingLabel(listing)}.`,
-  );
-  await trackEvent("listing_imported", {
-    boardId,
-    boardListingId: boardListing.id,
-    listingId: listing.id,
-    method: input.method,
-    provider: listing.sourceName,
-  });
-  await touchBoard(boardId);
+  await Promise.all([
+    submitSource(),
+    listing.price !== null
+      ? prisma.priceHistory.create({
+          data: {
+            listingId: listing.id,
+            price: listing.price,
+            observedAt: new Date(),
+            source: "manual",
+          },
+        })
+      : Promise.resolve(),
+    addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "listing_added",
+      `${
+        input.method === "pasted_link"
+          ? "A link was saved"
+          : input.method === "pasted_text"
+            ? "A pasted listing was added"
+            : "A manual listing was created"
+      }: ${formatListingLabel(listing)}.`,
+    ),
+    trackEvent("listing_imported", {
+      boardId,
+      boardListingId: boardListing.id,
+      listingId: listing.id,
+      method: input.method,
+      provider: listing.sourceName,
+    }),
+    touchBoard(boardId),
+  ]);
 }
 
 export async function createBoardInvitation(
@@ -2550,6 +2643,13 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
     });
 
     if (!existingRoommate) {
+      const previousRoommate = await transaction.roommateProfile.findFirst({
+        where: {
+          linkedUserId: userId,
+          boardId: { not: invitation.boardId },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
       await transaction.roommateProfile.create({
         data: {
           boardId: invitation.boardId,
@@ -2559,9 +2659,11 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
           budgetMin: null,
           budgetMax: null,
           stretchBudget: null,
-          commuteDestination: null,
-          maxCommuteMinutes: null,
-          commutePriority: "medium",
+          commuteDestination: previousRoommate?.commuteDestination ?? user.workAddress,
+          commuteAccess: previousRoommate?.commuteAccess ?? null,
+          preferredCommuteMinutes: previousRoommate?.preferredCommuteMinutes ?? null,
+          maxCommuteMinutes: previousRoommate?.maxCommuteMinutes ?? null,
+          commutePriority: previousRoommate?.commutePriority ?? "medium",
           neighborhoodPriority: "medium",
           spacePriority: "medium",
           privacyPriority: "medium",
@@ -2641,6 +2743,7 @@ export async function addRoommateToBoard(
 export async function updateRoommateProfile(
   roommateId: string,
   input: {
+    name?: string;
     budgetMin?: string;
     idealBudget?: string;
     budgetMax?: string;
@@ -2719,6 +2822,7 @@ export async function updateRoommateProfile(
   const roommate = await prisma.roommateProfile.update({
     where: { id: roommateId },
     data: {
+      ...(input.name !== undefined ? { name: input.name.trim() || current.name } : {}),
       ...(input.budgetMin !== undefined ? { budgetMin: nextBudgetMin } : {}),
       ...(input.idealBudget !== undefined ? { idealBudget: nextIdealBudget } : {}),
       ...(input.budgetMax !== undefined ? { budgetMax: nextBudgetMax } : {}),
@@ -2806,7 +2910,18 @@ export async function renameBoard(boardId: string, actorUserId: string, title: s
   await touchBoard(boardId);
 }
 
-export async function updateBoardListingStatus(boardListingId: string, status: BoardListingRecord["userStatus"]) {
+export async function updateBoardListingStatus(
+  boardListingId: string,
+  status: BoardListingRecord["userStatus"],
+  actorUserId: string,
+) {
+  const existing = await prisma.boardListing.findUnique({
+    where: { id: boardListingId },
+    select: { boardId: true },
+  });
+  if (!existing || !(await ensureBoard(existing.boardId, actorUserId))) {
+    throw new Error("Listing not found.");
+  }
   const boardListing = await prisma.boardListing.update({
     where: { id: boardListingId },
     data: { userStatus: status },
@@ -2825,6 +2940,107 @@ export async function updateBoardListingStatus(boardListingId: string, status: B
     status,
   });
   await touchBoard(boardListing.boardId);
+}
+
+export async function moveBoardListingToRecentlyDeleted(
+  boardListingId: string,
+  actorUserId: string,
+) {
+  const existing = await prisma.boardListing.findUnique({
+    where: { id: boardListingId },
+    include: { listing: true },
+  });
+  if (!existing || !(await ensureBoard(existing.boardId, actorUserId))) {
+    throw new Error("Listing not found.");
+  }
+
+  // A network retry must not restart the seven-day retention clock.
+  if (!existing.deletedAt) {
+    await prisma.boardListing.update({
+      where: { id: boardListingId },
+      data: { deletedAt: new Date() },
+    });
+    await addBoardEvent(
+      existing.boardId,
+      "system",
+      "System",
+      "listing_moved_to_recently_deleted",
+      `${formatListingLabel(existing.listing)} was moved to Recently Deleted.`,
+    );
+    await trackEvent("listing_moved_to_recently_deleted", {
+      boardId: existing.boardId,
+      boardListingId,
+    });
+    await touchBoard(existing.boardId);
+  }
+}
+
+export async function restoreRecentlyDeletedBoardListing(
+  boardListingId: string,
+  actorUserId: string,
+) {
+  const existing = await prisma.boardListing.findUnique({
+    where: { id: boardListingId },
+    include: { listing: true },
+  });
+  if (!existing || !(await ensureBoard(existing.boardId, actorUserId))) {
+    throw new Error("Listing not found.");
+  }
+
+  if (existing.deletedAt) {
+    await prisma.boardListing.update({
+      where: { id: boardListingId },
+      data: { deletedAt: null },
+    });
+    await addBoardEvent(
+      existing.boardId,
+      "system",
+      "System",
+      "listing_restored",
+      `${formatListingLabel(existing.listing)} was restored to the board.`,
+    );
+    await touchBoard(existing.boardId);
+  }
+}
+
+export async function clearRecentlyDeletedBoardListings(
+  boardId: string,
+  actorUserId: string,
+) {
+  const ownedBoard = await prisma.searchBoard.findFirst({
+    where: { id: boardId, userId: actorUserId },
+    select: { id: true },
+  });
+  if (!ownedBoard) {
+    throw new Error("RECENTLY_DELETED_OWNER_REQUIRED");
+  }
+  const result = await prisma.boardListing.deleteMany({
+    where: { boardId, deletedAt: { not: null } },
+  });
+  if (result.count > 0) {
+    await addBoardEvent(
+      boardId,
+      "system",
+      "System",
+      "recently_deleted_cleared",
+      `Recently Deleted was cleared (${result.count} listing${result.count === 1 ? "" : "s"}).`,
+    );
+    await touchBoard(boardId);
+  }
+  return result.count;
+}
+
+export async function purgeExpiredRecentlyDeletedBoardListings(
+  boardId: string,
+  actorUserId: string,
+) {
+  if (!(await ensureBoard(boardId, actorUserId))) {
+    throw new Error("Workspace not found.");
+  }
+  const cutoff = recentlyDeletedCutoff();
+  return prisma.boardListing.deleteMany({
+    where: { boardId, deletedAt: { lte: cutoff } },
+  });
 }
 
 export async function updateBoardListingWorkflow(
@@ -2997,18 +3213,27 @@ export async function voteOnBoardListingDecision(
     throw new Error("Listing or member profile not found.");
   }
 
-  let decision = await prisma.boardListingDecision.findFirst({
-    where: { boardListingId, type, closedAt: null },
-    orderBy: { createdAt: "desc" },
-  });
-  decision ??= await prisma.boardListingDecision.create({
-    data: { boardListingId, type, createdByRoommateId: roommateId },
-  });
+  await prisma.$transaction(async (transaction) => {
+    await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${boardListingId}:${type}`}))`;
+    const memberCount = await transaction.boardMember.count({
+      where: { boardId: boardListing.boardId },
+    });
+    if (memberCount < 2) {
+      throw new Error(GROUP_DECISION_REQUIRES_TWO_MEMBERS);
+    }
+    let decision = await transaction.boardListingDecision.findFirst({
+      where: { boardListingId, type, closedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+    decision ??= await transaction.boardListingDecision.create({
+      data: { boardListingId, type, createdByRoommateId: roommateId },
+    });
 
-  await prisma.boardListingDecisionVote.upsert({
-    where: { decisionId_roommateId: { decisionId: decision.id, roommateId } },
-    create: { decisionId: decision.id, roommateId, choice },
-    update: { choice },
+    await transaction.boardListingDecisionVote.upsert({
+      where: { decisionId_roommateId: { decisionId: decision.id, roommateId } },
+      create: { decisionId: decision.id, roommateId, choice },
+      update: { choice },
+    });
   });
   await addBoardEvent(
     boardListing.boardId,
@@ -3044,14 +3269,59 @@ export async function updateBoardListingDetails(
 ) {
   const existing = await prisma.boardListing.findUnique({
     where: { id: boardListingId },
-    include: { listing: true },
+    include: {
+      listing: {
+        include: { _count: { select: { boardListings: true } } },
+      },
+    },
   });
   if (!existing) throw new Error("Listing not found.");
 
   const nextPrice = input.price === undefined ? existing.listing.price : input.price;
   await prisma.$transaction(async (tx) => {
+    let editedListingId = existing.listingId;
+    if (existing.listing.source === "api" || existing.listing._count.boardListings > 1) {
+      const cloned = await tx.listing.create({
+        data: {
+          source: existing.listing.source,
+          sourceName: existing.listing.sourceName,
+          sourceUrl: existing.listing.sourceUrl,
+          externalId: null,
+          address: existing.listing.address,
+          unit: existing.listing.unit,
+          city: existing.listing.city,
+          state: existing.listing.state,
+          zip: existing.listing.zip,
+          neighborhood: existing.listing.neighborhood,
+          latitude: existing.listing.latitude,
+          longitude: existing.listing.longitude,
+          price: existing.listing.price,
+          bedrooms: existing.listing.bedrooms,
+          bathrooms: existing.listing.bathrooms,
+          squareFeet: existing.listing.squareFeet,
+          availableDate: existing.listing.availableDate,
+          propertyType: existing.listing.propertyType,
+          amenities: existing.listing.amenities,
+          fees: existing.listing.fees,
+          description: existing.listing.description,
+          images: existing.listing.images,
+          providerData: existing.listing.providerData ?? Prisma.JsonNull,
+          providerStatus: existing.listing.providerStatus,
+          providerListedAt: existing.listing.providerListedAt,
+          providerRemovedAt: existing.listing.providerRemovedAt,
+          providerLastSeenAt: existing.listing.providerLastSeenAt,
+          providerFetchedAt: existing.listing.providerFetchedAt,
+          status: existing.listing.status,
+        },
+      });
+      editedListingId = cloned.id;
+      await tx.boardListing.update({
+        where: { id: boardListingId },
+        data: { listingId: editedListingId },
+      });
+    }
     await tx.listing.update({
-      where: { id: existing.listingId },
+      where: { id: editedListingId },
       data: {
         address: input.address?.trim() || existing.listing.address,
         city: input.city?.trim() || existing.listing.city,
@@ -3066,12 +3336,14 @@ export async function updateBoardListingDetails(
     });
     await tx.boardListing.update({
       where: { id: boardListingId },
-      data: { userNotes: input.userNotes?.trim() || null },
+      data: input.userNotes === undefined
+        ? {}
+        : { userNotes: input.userNotes.trim() || null },
     });
     if (nextPrice !== null && nextPrice !== existing.listing.price) {
       await tx.priceHistory.create({
         data: {
-          listingId: existing.listingId,
+          listingId: editedListingId,
           price: nextPrice,
           observedAt: new Date(),
           source: "user_update",
@@ -3160,9 +3432,22 @@ export async function saveSuggestedListingToBoard(
   status: BoardListingRecord["userStatus"],
   actorUserId: string,
 ) {
-  const board = await prisma.boardListing.findFirst({ where: { boardId, listingId } });
+  const boardData = await getBoardPageData(boardId, actorUserId, {
+    includeSuggestedListings: true,
+    includeCommutes: false,
+  });
+  if (!boardData) throw new Error("Workspace not found.");
+
+  let board = await prisma.boardListing.findFirst({ where: { boardId, listingId } });
+  if (board?.deletedAt && board.deletedAt <= recentlyDeletedCutoff()) {
+    await prisma.boardListing.delete({ where: { id: board.id } });
+    board = null;
+  }
   if (board) {
-    await prisma.boardListing.update({ where: { id: board.id }, data: { userStatus: status } });
+    await prisma.boardListing.update({
+      where: { id: board.id },
+      data: { userStatus: status, deletedAt: null },
+    });
     const existingListing = await prisma.listing.findUnique({ where: { id: listingId } });
     await addBoardEvent(
       boardId,
@@ -3175,15 +3460,13 @@ export async function saveSuggestedListingToBoard(
     return;
   }
 
-  const boardData = await getBoardPageData(boardId, actorUserId, { includeSuggestedListings: true });
-  if (!boardData) return;
-
   const listing = boardData.suggestedListings.find((entry) => entry.listing.id === listingId);
+  if (!listing) throw new Error("Listing is not available in this workspace.");
   const analysis = listing
     ? {
         aiSummary: listing.fitReason,
         aiTradeoffAnalysis: listing.tradeoffSummary,
-        aiRedFlags: json(["Needs normal listing verification before commitment."]),
+        aiRedFlags: json(["Compare bedroom sizes to decide a fair rent split across roommates."]),
         questionsToAsk: json(["Can you confirm the total move-in cost and exact availability date?"]),
       }
     : {
@@ -3218,59 +3501,68 @@ export async function saveBoardListingVote(
   vote: BoardListingVoteRecord["vote"],
   note?: string,
 ) {
+  const [boardListing, roommate] = await Promise.all([
+    prisma.boardListing.findUnique({
+      where: { id: boardListingId },
+      include: { listing: true },
+    }),
+    prisma.roommateProfile.findUnique({ where: { id: roommateId } }),
+  ]);
+  if (!boardListing || !roommate || roommate.boardId !== boardListing.boardId) {
+    throw new Error("Listing or member profile not found.");
+  }
   const voteRecord = await prisma.boardListingVote.upsert({
     where: { boardListingId_roommateId: { boardListingId, roommateId } },
     create: { boardListingId, roommateId, vote, note: note?.trim() || null },
     update: { vote, note: note?.trim() || null },
   });
-  const boardListing = await prisma.boardListing.findUnique({
-    where: { id: boardListingId },
-    include: { listing: true },
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    roommate.name,
+    "listing_vote_saved",
+    `${roommate.name} marked ${formatListingLabel(boardListing.listing)} as ${voteRecord.vote}.`,
+  );
+  await trackEvent("listing_reaction_added", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    roommateId,
+    vote: voteRecord.vote,
   });
-  const roommate = await prisma.roommateProfile.findUnique({ where: { id: roommateId } });
-  if (boardListing && roommate) {
-    await addBoardEvent(
-      boardListing.boardId,
-      "roommate",
-      roommate.name,
-      "listing_vote_saved",
-      `${roommate.name} marked ${formatListingLabel(boardListing.listing)} as ${voteRecord.vote}.`,
-    );
-    await trackEvent("listing_reaction_added", {
-      boardId: boardListing.boardId,
-      boardListingId,
-      roommateId,
-      vote: voteRecord.vote,
-    });
-    await touchBoard(boardListing.boardId);
-  }
+  await touchBoard(boardListing.boardId);
 }
 
 export async function addBoardListingComment(boardListingId: string, roommateId: string, content: string) {
   const trimmedContent = content.trim();
-  await prisma.boardListingComment.create({
-    data: { boardListingId, roommateId, content: content.trim() },
-  });
-  const boardListing = await prisma.boardListing.findUnique({
-    where: { id: boardListingId },
-    include: { listing: true },
-  });
-  const roommate = await prisma.roommateProfile.findUnique({ where: { id: roommateId } });
-  if (boardListing && roommate) {
-    await addBoardEvent(
-      boardListing.boardId,
-      "roommate",
-      roommate.name,
-      "listing_comment_added",
-      `${roommate.name} left a note on ${formatListingLabel(boardListing.listing)}: ${trimmedContent}`,
-    );
-    await trackEvent("listing_comment_added", {
-      boardId: boardListing.boardId,
-      boardListingId,
-      roommateId,
-    });
-    await touchBoard(boardListing.boardId);
+  if (!trimmedContent || trimmedContent.length > 2_000) {
+    throw new Error("Comment must be between 1 and 2,000 characters.");
   }
+  const [boardListing, roommate] = await Promise.all([
+    prisma.boardListing.findUnique({
+      where: { id: boardListingId },
+      include: { listing: true },
+    }),
+    prisma.roommateProfile.findUnique({ where: { id: roommateId } }),
+  ]);
+  if (!boardListing || !roommate || roommate.boardId !== boardListing.boardId) {
+    throw new Error("Listing or member profile not found.");
+  }
+  await prisma.boardListingComment.create({
+    data: { boardListingId, roommateId, content: trimmedContent },
+  });
+  await addBoardEvent(
+    boardListing.boardId,
+    "roommate",
+    roommate.name,
+    "listing_comment_added",
+    `${roommate.name} left a note on ${formatListingLabel(boardListing.listing)}: ${trimmedContent}`,
+  );
+  await trackEvent("listing_comment_added", {
+    boardId: boardListing.boardId,
+    boardListingId,
+    roommateId,
+  });
+  await touchBoard(boardListing.boardId);
 }
 
 export async function saveBoardListingRatings(

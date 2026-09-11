@@ -1,6 +1,7 @@
 (() => {
   if (window.__homeboardListingExtractorInstalled) return;
   window.__homeboardListingExtractorInstalled = true;
+  const SAVE_CONFIRMATION_DELAY_MS = 900;
 
   const cleanText = (value) => {
     if (typeof value !== "string") return null;
@@ -26,14 +27,64 @@
 
   function canonicalURL() {
     const canonical = document.querySelector('link[rel="canonical"]')?.href;
-    return canonical || location.href;
+    if (canonical) {
+      try {
+        const target = new URL(canonical, location.href);
+        if (target.origin === location.origin && target.pathname.replace(/\/+$/, '') === location.pathname.replace(/\/+$/, '')) return target.href;
+      } catch { /* The visible page URL remains authoritative during navigation. */ }
+    }
+    return location.href;
+  }
+
+  function visibleListingAddress(roots = recommendationRoots()) {
+    for (const element of document.querySelectorAll(
+      '[data-testid="bdp-building-address"],[data-testid="home-details-summary-headline"],'
+      + '[data-testid="address"],[itemprop="streetAddress"],address,h1,h2,main h1 + p'
+    )) {
+      if (isRecommendationElement(element, roots) || isListingCard(element) || element.closest('[hidden],[aria-hidden="true"]')) continue;
+      if (!isPageElementVisible(element)) continue;
+      const address = addressFromText(element.innerText || element.textContent || "");
+      if (address) return address;
+    }
+    return null;
+  }
+
+  function isPageElementVisible(element) {
+    for (let node = element; node && node.nodeType === Node.ELEMENT_NODE; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+    }
+    return true;
+  }
+
+  function currentPageIdentity() {
+    const roots = recommendationRoots();
+    const heading = [...document.querySelectorAll('h1')].find((element) =>
+      !isRecommendationElement(element, roots) && !isListingCard(element)
+      && !element.closest('[hidden],[aria-hidden="true"]')
+      && isPageElementVisible(element)
+    );
+    return JSON.stringify([
+      location.href,
+      buildingAddressKey(visibleListingAddress(roots)),
+      cleanText(heading?.innerText || heading?.textContent)
+    ]);
+  }
+
+  function isCaptureCurrent(capture) {
+    return capture?.pageIdentity === currentPageIdentity();
   }
 
   function metaContent(selector) {
     return cleanText(document.querySelector(selector)?.content);
   }
 
+  let structuredNodeContexts = new WeakMap();
+  let structuredNodeParents = new WeakMap();
+
   function parseStructuredData() {
+    structuredNodeContexts = new WeakMap();
+    structuredNodeParents = new WeakMap();
     const roots = [];
     const scripts = document.querySelectorAll(
       'script[type="application/ld+json"], script[type="application/json"], script#__NEXT_DATA__'
@@ -51,22 +102,35 @@
 
     const nodes = [];
     const seen = new Set();
-    const visit = (value, depth = 0) => {
+    const visit = (value, depth = 0, context = "root", parent = null) => {
       if (
         !value
         || typeof value !== "object"
-        || depth > 10
+        || depth > 16
         || seen.has(value)
-        || nodes.length > 12_000
+        || nodes.length > 24_000
       ) return;
       seen.add(value);
       if (Array.isArray(value)) {
-        value.forEach((item) => visit(item, depth + 1));
+        value.forEach((item) => visit(item, depth + 1, context, parent));
         return;
       }
-      if (types(value).includes("itemlist")) return;
+      const contextDescriptor = [
+        context,
+        value.name,
+        value.headline,
+        value.description
+      ].filter((item) => typeof item === "string").join(" ");
+      if (
+        types(value).includes("itemlist")
+        && !/\b(?:available|availability|units?|floor.?plans?)\b/i.test(contextDescriptor)
+      ) return;
+      structuredNodeContexts.set(value, context);
+      if (parent) structuredNodeParents.set(value, parent);
       nodes.push(value);
-      Object.values(value).forEach((item) => visit(item, depth + 1));
+      Object.entries(value).forEach(([key, item]) => {
+        visit(item, depth + 1, `${context}.${key}`, value);
+      });
     };
     roots.forEach((root) => visit(root));
     return nodes;
@@ -140,7 +204,7 @@
     });
   }
 
-  function bestStructuredNode(nodes) {
+  function bestStructuredNode(nodes, visibleAddress = null) {
     const preferredTypes = [
       "apartment",
       "accommodation",
@@ -155,6 +219,14 @@
     let winner = {};
     let winningScore = Number.NEGATIVE_INFINITY;
     for (const node of nodes) {
+      const visibleKey = buildingAddressKey(visibleAddress);
+      const nodeKey = buildingAddressKey(structuredAncestorAddress(node));
+      if (visibleKey && nodeKey && visibleKey !== nodeKey) continue;
+      const visibleUnit = unitFromText(visibleAddress || "");
+      const nodeUnit = normalizedUnitIdentifier(valueForKeys(node, ["unit", "unitNumber", "apartmentNumber", "apartmentSuite"]));
+      if (visibleUnit && nodeUnit && visibleUnit !== nodeUnit) continue;
+      const context = structuredNodeContexts.get(node) || "";
+      if (/recommend|similar|nearby|history|unavailable|off.?market/i.test(context)) continue;
       const nodeTypes = types(node);
       let score = preferredTypes.some((type) => nodeTypes.includes(type)) ? 5 : 0;
       if (node.address) score += 4;
@@ -231,6 +303,32 @@
     ].filter(Boolean).join(", "));
   }
 
+  function buildingAddressKey(value) {
+    const address = cleanText(value);
+    if (!address) return null;
+    return address
+      .toLowerCase()
+      .replace(/\b(?:apt|apartment|unit|suite)\s*#?\s*[a-z0-9-]+\b.*$/i, "")
+      .replace(/#\s*[a-z0-9-]+\b.*$/i, "")
+      .split(",")[0]
+      .replace(/\bnorth\b/g, "n")
+      .replace(/\bsouth\b/g, "s")
+      .replace(/\beast\b/g, "e")
+      .replace(/\bwest\b/g, "w")
+      .replace(/\bstreet\b/g, "st")
+      .replace(/\bavenue\b/g, "ave")
+      .replace(/\bboulevard\b/g, "blvd")
+      .replace(/\broad\b/g, "rd")
+      .replace(/\bdrive\b/g, "dr")
+      .replace(/\blane\b/g, "ln")
+      .replace(/\bplace\b/g, "pl")
+      .replace(/\bcourt\b/g, "ct")
+      .replace(/\bterrace\b/g, "ter")
+      .replace(/\bparkway\b/g, "pkwy")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim() || null;
+  }
+
   function structuredCity(node) {
     const addressNode = typeof node.address === "object" ? node.address : null;
     return cleanText(first(addressNode?.addressLocality, node.city, node.cityName));
@@ -277,18 +375,93 @@
     return null;
   }
 
-  function imageValue(node) {
-    const value = first(
-      metaContent('meta[property="og:image"]'),
-      metaContent('meta[name="twitter:image"]'),
-      node.image
-    );
-    if (typeof value === "string") return value;
-    if (Array.isArray(value)) {
-      const item = value[0];
-      return typeof item === "string" ? item : cleanText(item?.url);
+  function absoluteImageURL(value) {
+    const candidate = cleanText(value);
+    if (!candidate) return null;
+    try {
+      const url = new URL(candidate, document.baseURI || location.href);
+      if (!["http:", "https:"].includes(url.protocol)) return null;
+      if (/(?:logo|favicon|avatar|sprite|map-marker|placeholder)[^/]*\.(?:svg|png|gif)(?:$|\?)/i.test(url.href)) {
+        return null;
+      }
+      return url.href;
+    } catch {
+      return null;
     }
-    return cleanText(value?.url || value?.contentUrl);
+  }
+
+  function structuredImageURL(value) {
+    if (typeof value === "string") return absoluteImageURL(value);
+    if (Array.isArray(value)) {
+      return value.map(structuredImageURL).find(Boolean) || null;
+    }
+    if (value && typeof value === "object") {
+      return absoluteImageURL(value.url || value.contentUrl || value.thumbnailUrl);
+    }
+    return null;
+  }
+
+  function visibleListingImageURL(roots = recommendationRoots()) {
+    const selectors = [
+      '[data-testid*="gallery" i] img',
+      '[data-testid*="hero" i] img',
+      '[data-testid*="media" i] img',
+      '[class*="gallery" i] img',
+      '[class*="hero" i] img',
+      'main picture img',
+      '[role="main"] picture img',
+      'main img',
+      '[role="main"] img'
+    ];
+    const images = new Set(document.querySelectorAll(selectors.join(',')));
+    let winner = null;
+    let winningScore = Number.NEGATIVE_INFINITY;
+    for (const image of images) {
+      if (isRecommendationElement(image, roots) || isListingCard(image)) continue;
+      if (image.closest('nav,header,footer,[class*="map" i],[data-testid*="map" i]')) continue;
+      const url = first(
+        absoluteImageURL(image.currentSrc),
+        absoluteImageURL(image.src),
+        absoluteImageURL(image.getAttribute('data-src')),
+        absoluteImageURL(image.getAttribute('data-lazy-src')),
+        absoluteImageURL(image.getAttribute('data-original'))
+      );
+      if (!url) continue;
+      const rect = image.getBoundingClientRect();
+      const width = image.naturalWidth || rect.width;
+      const height = image.naturalHeight || rect.height;
+      const ratio = height > 0 ? width / height : 0;
+      if (width < 220 || height < 140 || ratio < 0.65 || ratio > 2.8) continue;
+      const descriptor = [
+        image.alt,
+        image.id,
+        image.className,
+        image.closest('[data-testid]')?.getAttribute('data-testid'),
+        image.closest('[class]')?.className
+      ].filter((value) => typeof value === 'string').join(' ');
+      if (/logo|icon|avatar|map|street.?view|floor.?plan/i.test(descriptor)) continue;
+      const heroBonus = /gallery|hero|photo|media/i.test(descriptor) ? 1_000_000 : 0;
+      const viewportBonus = rect.bottom > 0 && rect.top < innerHeight ? 250_000 : 0;
+      const score = heroBonus + viewportBonus + Math.min(width * height, 900_000);
+      if (score > winningScore) {
+        winner = url;
+        winningScore = score;
+      }
+    }
+    return winner;
+  }
+
+  function imageValue(node, roots = recommendationRoots()) {
+    return first(
+      absoluteImageURL(metaContent('meta[property="og:image:secure_url"]')),
+      absoluteImageURL(metaContent('meta[property="og:image"]')),
+      absoluteImageURL(metaContent('meta[name="twitter:image"]')),
+      absoluteImageURL(document.querySelector('link[rel~="image_src"]')?.href),
+      structuredImageURL(node.primaryImageOfPage),
+      structuredImageURL(node.image),
+      structuredImageURL(node.thumbnailUrl),
+      visibleListingImageURL(roots)
+    );
   }
 
   function primaryTextValues(roots = recommendationRoots()) {
@@ -319,7 +492,8 @@
     primaryNode,
     isBuildingPage,
     primaryValues,
-    roots
+    roots,
+    unitCandidates = []
   ) {
     const headings = [...document.querySelectorAll("h1, h2, h3")]
       .filter((element) => !isRecommendationElement(element, roots) && !isListingCard(element))
@@ -374,58 +548,555 @@
       `TITLE: ${cleanText(document.title) || ""}`,
       `HEADINGS:\n${headings.join("\n")}`,
       `RELEVANT PAGE LINES:\n${relevantLines.join("\n")}`,
-      `STRUCTURED FACT CANDIDATES:\n${structured.map((candidate) => JSON.stringify(candidate)).join("\n")}`
+      `STRUCTURED FACT CANDIDATES:\n${structured.map((candidate) => JSON.stringify(candidate)).join("\n")}`,
+      `VISIBLE UNIT CANDIDATES:\n${unitCandidates.map((candidate) => JSON.stringify(candidate)).join("\n")}`
     ].join("\n\n").slice(0, 14_000);
   }
 
-  function unitOptions(nodes) {
-    const options = [];
-    const seen = new Set();
-    for (const candidate of nodes) {
-      const unit = cleanText(valueForKeys(
-        candidate,
-        ["unit", "unitNumber", "apartmentNumber", "unitCode", "apartmentSuite", "floorPlanName"]
-      ));
-      const label = unit;
-      const price = numeric(valueForKeys(
-        candidate,
-        ["price", "rent", "monthlyRent", "minPrice", "lowPrice"]
-      ));
-      const bedrooms = numeric(valueForKeys(
-        candidate,
-        ["bedrooms", "beds", "bedCount", "minBeds", "numberOfBedrooms"]
-      ));
-      const bathrooms = numeric(valueForKeys(
-        candidate,
-        ["bathrooms", "baths", "bathCount", "minBaths", "numberOfBathrooms"]
-      ));
-      const squareFeet = numeric(valueForKeys(
-        candidate,
-        ["squareFeet", "livingArea", "floorSize"]
-      ));
-      const factCount = [price, bedrooms, bathrooms, squareFeet]
-        .filter((value) => value !== null).length;
-      if (!unit || !label || factCount < 2) continue;
+  function currentAvailabilityRoots(roots = recommendationRoots()) {
+    const result = new Set(document.querySelectorAll([
+      '[data-testid*="available-units" i]', '[data-testid*="availability-list" i]',
+      '[data-testid*="unit-list" i]', '[data-testid*="floor-plans" i]',
+      '[data-testid*="floorplans" i]', '[id*="available-units" i]',
+      '[id*="floorplans" i]', '[class*="available-units" i]', '[class*="floorplans" i]'
+    ].join(',')));
+    for (const heading of document.querySelectorAll('h1,h2,h3,h4,[role="heading"]')) {
+      const text = cleanText(heading.innerText || heading.textContent);
+      if (!text || unavailableUnitPattern.test(text)) continue;
+      if (!/\b(?:available (?:apartments|homes|units)|availability|(?:apartment )?floor\s*plans?)\b/i.test(text)) continue;
+      const root = heading.closest('section,[role="region"]') || heading.parentElement;
+      if (root) result.add(root);
+    }
+    return new Set([...result].filter((root) => !isRecommendationElement(root, roots)));
+  }
 
-      const key = `${label}|${price}|${bedrooms}|${bathrooms}`.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      options.push({
-        id: unit || key,
-        label,
-        unit: unit?.toUpperCase() || null,
+  // Preserve the row and line order used by the Share flow's native parser.
+  function collectScanEvidence(roots, primaryNode, structuredUnitEvidence) {
+    const availabilityRoots = currentAvailabilityRoots(roots);
+    const withinAvailability = (element) => [...availabilityRoots]
+      .some((root) => root === element || root.contains(element));
+    const readSection = (root) => {
+      let visited = 0;
+      const read = (node) => {
+        if (++visited > 24_000) return "";
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || "";
+        if (node.nodeType !== Node.ELEMENT_NODE) return "";
+        if (node.matches('script,style,noscript,nav,footer,header,form,[hidden],[aria-hidden="true"],#homeboard-page-scan-root')) return "";
+        if (isRecommendationElement(node, roots)) return "";
+        if (isListingCard(node) && !withinAvailability(node)) return "";
+        const descriptor = [node.id, node.className, node.getAttribute('data-testid')]
+          .filter((value) => typeof value === 'string').join(' ');
+        if (/unavailable|off.market|past.listings|rental.history/i.test(descriptor)) return "";
+        const style = getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden") return "";
+        if (node.tagName === "BR") return "\n";
+        let text = "";
+        let excludedHeadingLevel = null;
+        for (const child of node.childNodes) {
+          const heading = child.nodeType === Node.ELEMENT_NODE && /^H[1-6]$/.test(child.tagName);
+          if (heading) {
+            const level = Number(child.tagName[1]);
+            if (excludedHeadingLevel !== null && level <= excludedHeadingLevel) excludedHeadingLevel = null;
+            if (unavailableUnitPattern.test(child.textContent || "")) excludedHeadingLevel = level;
+          }
+          if (excludedHeadingLevel === null) text += read(child);
+        }
+        const block = /^(?:block|flex|grid|list-item|table-row|table-cell|table|flow-root)$/.test(style.display);
+        return block ? `\n${text}\n` : text;
+      };
+      return read(root).replace(/[\t ]+/g, ' ').replace(/ *\n */g, '\n')
+        .replace(/\n{3,}/g, '\n\n').trim().slice(0, 32_000);
+    };
+    const outerAvailabilityRoots = [...availabilityRoots].filter((root) =>
+      ![...availabilityRoots].some((other) => other !== root && other.contains(root))
+    );
+    const availabilityPageEvidence = outerAvailabilityRoots.map(readSection).filter(Boolean).join('\n\n').slice(0, 32_000);
+    const main = document.querySelector('main,[role="main"]') || document.body;
+    const semanticPageEvidence = main ? readSection(main) : "";
+    const primaryFacts = [...document.querySelectorAll(
+      'h1,address,[itemprop="streetAddress"],[data-testid="price"],'
+      + '[data-testid*="bed-bath" i],[data-testid*="monthly-rent" i],[itemprop="price"]'
+    )].filter((element) => !isRecommendationElement(element, roots) && !isListingCard(element))
+      .map((element) => cleanText(element.innerText || element.textContent)).filter(Boolean);
+    const primaryPageEvidence = [structuredAddress(primaryNode), ...primaryFacts].filter(Boolean).join('\n').slice(0, 10_000);
+    return {
+      primaryPageEvidence,
+      semanticPageEvidence,
+      availabilityPageEvidence,
+      // Keep every structured option available for native validation, outside the page digest's cap.
+      structuredUnitEvidence: structuredUnitEvidence.join('\n'),
+      secondaryPageEvidence: [primaryPageEvidence, availabilityPageEvidence, semanticPageEvidence]
+        .filter(Boolean).join('\n\n').slice(0, 32_000)
+    };
+  }
+
+  const unavailableUnitPattern =
+    /\b(?:unavailable|no[ _-]?longer[ _-]?available|off[ _-]?market|rented|leased|(?:recently[ _-]?)?sold|resale|for[ _-]?sale|in[ _-]?contract|coming[ _-]?soon)\b/i;
+
+  function normalizedUnitIdentifier(value) {
+    const unit = cleanText(typeof value === "number" ? String(value) : value)
+      ?.replace(/^(?:unit|apt|apartment)\s*(?:#|number|no\.?)?\s*/i, "")
+      .replace(/^#\s*/, "")
+      .replace(/[.,;:]+$/, "")
+      .toUpperCase();
+    if (!unit || unit.length > 24) return null;
+    if (/^(?:AVAILABLE|AVAILABILITY|DETAILS?|FEATURES?|AMENITIES|FLOOR|PLAN|NOW|RENT|RENTAL|HOME|LISTING)$/i.test(unit)) {
+      return null;
+    }
+    return /^[A-Z0-9][A-Z0-9-]{0,23}$/.test(unit) ? unit : null;
+  }
+
+  function normalizedFloorPlanLabel(value) {
+    const label = cleanText(value)
+      ?.replace(/^(?:the\s+)?(?:floor\s*plan|floorplan|layout)\s*[:#-]?\s*/i, "")
+      .replace(/\s+(?:floor\s*plan|floorplan)$/i, "");
+    if (
+      !label
+      || label.length > 80
+      || /^(?:available units?|availability|floor plans?|view|details?|select|apply|contact)$/i.test(label)
+      || unavailableUnitPattern.test(label)
+    ) return null;
+    return label;
+  }
+
+  function floorPlanLabelFromText(value) {
+    const raw = typeof value === "string" ? value : "";
+    const line = raw.split(/\n+/)
+      .map(cleanText)
+      .find((candidate) => candidate && /\bfloor\s*plan\b/i.test(candidate));
+    const direct = normalizedFloorPlanLabel(line);
+    if (direct) return direct;
+    const compact = cleanText(raw);
+    const match = compact?.match(/\b([A-Za-z0-9][A-Za-z0-9-]{0,23})\s+floor\s*plan\b/i);
+    return normalizedFloorPlanLabel(match?.[1]);
+  }
+
+  function explicitUnitIdentifiers(text) {
+    const value = cleanText(text) || "";
+    const identifiers = [];
+    const patterns = [
+      /\b(?:unit|apt|apartment)\b\s*(?:#|number|no\.?)?\s*:?[ ]*(?:unit\s*)?#?\s*([A-Za-z0-9][A-Za-z0-9-]{0,23})\b/gi,
+      /#\s*([A-Za-z0-9][A-Za-z0-9-]{0,23})\b/g
+    ];
+    for (const pattern of patterns) {
+      for (const match of value.matchAll(pattern)) {
+        const unit = normalizedUnitIdentifier(match[1]);
+        if (unit && !identifiers.includes(unit)) identifiers.push(unit);
+      }
+    }
+    return identifiers;
+  }
+
+  function structuredAncestorValue(node, keys, maximumDepth = 6) {
+    let current = node;
+    for (let depth = 0; current && depth <= maximumDepth; depth += 1) {
+      const value = valueForKeys(current, keys);
+      if (value !== null) return value;
+      current = structuredNodeParents.get(current);
+    }
+    return null;
+  }
+
+  function structuredFloorPlanLabel(node) {
+    let current = node;
+    for (let depth = 0; current && depth <= 6; depth += 1) {
+      const explicitLabel = normalizedFloorPlanLabel(valueForKeys(
+        current,
+        ["floorPlanName", "floorplanName", "planName", "layoutName"]
+      ));
+      if (explicitLabel) return explicitLabel;
+
+      const context = structuredNodeContexts.get(current) || "";
+      const unit = valueForKeys(
+        current,
+        ["unit", "unitNumber", "apartmentNumber", "unitCode", "apartmentSuite"]
+      );
+      const hasFloorPlanShape = Array.isArray(current.units)
+        || valueForKeys(current, ["minPrice", "maxPrice", "minBaseRent", "maxBaseRent"]) !== null;
+      if (!unit && /floor.?plans?|layouts?/i.test(context) && hasFloorPlanShape) {
+        const contextualLabel = normalizedFloorPlanLabel(current.name);
+        if (contextualLabel) return contextualLabel;
+      }
+      current = structuredNodeParents.get(current);
+    }
+    return null;
+  }
+
+  function structuredAncestorAddress(node) {
+    let current = node;
+    for (let depth = 0; current && depth <= 6; depth += 1) {
+      const address = structuredAddress(current);
+      if (address) return address;
+      current = structuredNodeParents.get(current);
+    }
+    return null;
+  }
+
+  function nearestPrecedingHeadingText(element) {
+    let preceding = null;
+    for (const heading of document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')) {
+      if (element.contains(heading)) continue;
+      const position = heading.compareDocumentPosition(element);
+      if (position & Node.DOCUMENT_POSITION_FOLLOWING) preceding = heading;
+      if (position & Node.DOCUMENT_POSITION_PRECEDING) break;
+    }
+    return cleanText(preceding?.innerText || preceding?.textContent);
+  }
+
+  function inheritedFloorPlanText(row, boundaryRoots, recommendationSections) {
+    let current = row.parentElement;
+    for (let depth = 0; current && depth < 7; depth += 1, current = current.parentElement) {
+      if (isRecommendationElement(current, recommendationSections)) return null;
+      const descriptor = [
+        current.id,
+        current.className,
+        current.getAttribute?.('data-testid'),
+        current.getAttribute?.('aria-label')
+      ].filter((value) => typeof value === 'string').join(' ');
+      const text = cleanText(current.innerText || current.textContent);
+      if (
+        (
+          /floor.?plan|floorplan|layout|unit.?group|accordion/i.test(descriptor)
+          || /^(?:[a-z0-9-]+\s+)?floor\s*plan\b/i.test(text || "")
+        )
+        && text
+        && text.length <= 12_000
+        && (bedroomsFromText(text) !== null || bathroomsFromText(text) !== null)
+      ) return text;
+      if (boundaryRoots.has(current)) break;
+    }
+    return null;
+  }
+
+  function unitOptions(
+    nodes,
+    roots = recommendationRoots(),
+    { pageAddress = null, primaryNode = null, structuredEvidence = [] } = {}
+  ) {
+    const options = [];
+    const seen = new Map();
+    const optionRanks = [];
+    const optionQualities = [];
+
+    const appendOption = ({
+      unit,
+      label,
+      price,
+      bedrooms,
+      bathrooms,
+      squareFeet,
+      availableDate,
+      groupLabel,
+      sourceRank = 1
+    }) => {
+      const cleanUnit = normalizedUnitIdentifier(unit);
+      const cleanLabel = cleanUnit || normalizedFloorPlanLabel(label);
+      const hasLayout = bedrooms !== null && bedrooms !== undefined
+        || bathrooms !== null && bathrooms !== undefined;
+      if (
+        !cleanLabel
+        || !Number.isFinite(price)
+        || price < 300
+        || price > 100_000
+        || !hasLayout
+      ) return;
+
+      const key = cleanUnit
+        ? `unit|${cleanUnit}`
+        : `plan|${cleanLabel}|${bedrooms}|${bathrooms}`.toLowerCase();
+      const option = {
+        id: cleanUnit || key,
+        label: cleanLabel,
+        unit: cleanUnit,
         price,
         bedrooms,
         bathrooms,
         squareFeet,
-        availableDate: cleanText(valueForKeys(
-          candidate,
-          ["availableDate", "availabilityDate", "dateAvailable"]
-        ))
+        availableDate: cleanText(availableDate),
+        _groupKey: normalizedFloorPlanLabel(groupLabel || (!cleanUnit ? cleanLabel : null))
+          ?.toLowerCase() || null
+      };
+      const quality = [price, bedrooms, bathrooms, squareFeet, option.availableDate]
+        .filter((value) => value !== null && value !== undefined && value !== "").length
+        + (cleanUnit ? 2 : 0);
+      const existingIndex = seen.get(key);
+      if (existingIndex !== undefined) {
+        if (
+          sourceRank < optionRanks[existingIndex]
+          || (
+            sourceRank === optionRanks[existingIndex]
+            && quality <= optionQualities[existingIndex]
+          )
+        ) return;
+        options[existingIndex] = option;
+        optionRanks[existingIndex] = sourceRank;
+        optionQualities[existingIndex] = quality;
+        return;
+      }
+      seen.set(key, options.length);
+      options.push(option);
+      optionRanks.push(sourceRank);
+      optionQualities.push(quality);
+    };
+
+    const pageAddressKey = buildingAddressKey(pageAddress);
+    let structuredCandidateCount = 0;
+    for (const candidate of nodes) {
+      if (structuredCandidateCount >= 800) break;
+      const unit = normalizedUnitIdentifier(valueForKeys(
+        candidate,
+        ["unit", "unitNumber", "apartmentNumber", "unitCode", "apartmentSuite"]
+      ));
+      const planLabel = structuredFloorPlanLabel(candidate);
+      const ownsPlan = valueForKeys(candidate, ["floorPlanName", "floorplanName", "planName", "layoutName"]) !== null
+        || (candidate.name && Array.isArray(candidate.units));
+      if (!unit && !ownsPlan) continue;
+      const label = unit || planLabel;
+      if (!label) continue;
+      const context = structuredNodeContexts.get(candidate) || "";
+      if (/recommend|similar|nearby|history|unavailable|off.?market|past.?listings/i.test(context)) continue;
+      const contextIsAvailability = /(?:available|availability)/i.test(context);
+      const contextIsUnitCollection = /(?:units?|floor.?plans?)/i.test(context);
+      const candidateAddressKey = buildingAddressKey(structuredAncestorAddress(candidate));
+      const matchesPageAddress = Boolean(
+        pageAddressKey && candidateAddressKey && pageAddressKey === candidateAddressKey
+      );
+      const matchesPageURL = structuredURLMatchesPage(candidate);
+      if (pageAddressKey && candidateAddressKey && !matchesPageAddress) continue;
+      const availableDate = cleanText(structuredAncestorValue(
+        candidate,
+        ["availableDate", "availabilityDate", "dateAvailable", "availableFrom"]
+      ));
+      const status = cleanText(structuredAncestorValue(candidate, [
+        "availability", "availabilityStatus", "homeStatus", "listingStatus", "status", "saleStatus"
+      ]));
+      if (status && unavailableUnitPattern.test(status)) continue;
+      const hasAvailabilitySignal = Boolean(availableDate || status || contextIsAvailability);
+      if (
+        candidate !== primaryNode
+        && !matchesPageAddress
+        && !matchesPageURL
+        && !(contextIsUnitCollection && hasAvailabilitySignal)
+      ) continue;
+      if (!unit && candidate !== primaryNode && !hasAvailabilitySignal) continue;
+      structuredCandidateCount += 1;
+
+      const price = numeric(structuredAncestorValue(
+        candidate,
+        ["price", "rent", "monthlyRent", "baseRent", "minBaseRent", "minPrice", "lowPrice"]
+      ));
+      const bedrooms = numeric(structuredAncestorValue(
+        candidate,
+        ["bedrooms", "beds", "bedCount", "minBeds", "numberOfBedrooms"]
+      ));
+      const bathrooms = numeric(structuredAncestorValue(
+        candidate,
+        ["bathrooms", "baths", "bathCount", "minBaths", "numberOfBathrooms"]
+      ));
+      const squareFeet = numeric(structuredAncestorValue(
+        candidate,
+        ["squareFeet", "sqft", "livingArea", "floorSize"]
+      ));
+      structuredEvidence.push(JSON.stringify({ unit, label, price, bedrooms, bathrooms, squareFeet, availableDate, groupLabel: planLabel }));
+      appendOption({
+        unit,
+        label,
+        price,
+        bedrooms,
+        bathrooms,
+        squareFeet,
+        availableDate,
+        groupLabel: planLabel,
+        sourceRank: candidate === primaryNode || matchesPageURL || matchesPageAddress
+          ? 3
+          : 2
       });
-      if (options.length >= 12) break;
     }
-    return options;
+
+    const availabilityRoots = currentAvailabilityRoots(roots);
+
+    const rowSelectors = [
+      '[data-testid="unit" i]',
+      '[data-testid*="unit-card" i]',
+      '[data-testid*="unit-row" i]',
+      '[data-testid*="unit-item" i]',
+      '[data-testid*="unit-listing" i]',
+      '[data-testid*="floor-plan-card" i]',
+      '[data-testid*="floorplan-card" i]',
+      '[class*="unit-card" i]',
+      '[class*="unitrow" i]',
+      '[class*="unit-row" i]',
+      '[class*="floor-plan-card" i]',
+      '[class*="floorplan-card" i]',
+      '[class*="availability" i] tr',
+      '[aria-label*="floor plan" i]',
+      '[role="row"]',
+      'table tbody tr'
+    ];
+    const rows = new Map();
+    const availabilityRows = new Set();
+    const addRows = (elements, semanticAvailability = false, rank = 3) => {
+      for (const element of elements) {
+        if (rows.size >= 700) break;
+        rows.set(element, Math.max(rows.get(element) || 0, rank));
+        if (semanticAvailability) availabilityRows.add(element);
+      }
+    };
+    for (const selector of rowSelectors) {
+      addRows(document.querySelectorAll(selector));
+      if (rows.size >= 700) break;
+    }
+    for (const root of availabilityRoots) {
+      addRows(root.querySelectorAll([
+        'article',
+        'li',
+        'tr',
+        '[role="row"]',
+        '[role="listitem"]',
+        '[data-testid*="unit-card" i]',
+        '[data-testid*="unit-row" i]',
+        '[data-testid*="floor-plan-card" i]',
+        '[data-testid*="floorplan-card" i]'
+      ].join(',')), true, 4);
+      const floorPlanControls = [...root.querySelectorAll('button,[role="button"]')]
+        .filter((control) => {
+          const text = cleanText(control.innerText || control.textContent);
+          return Boolean(
+            text
+            && text.length <= 2_000
+            && /\bfloor\s*plans?\b/i.test(text)
+            && priceFromText(text) !== null
+            && (bedroomsFromText(text) !== null || bathroomsFromText(text) !== null)
+          );
+        });
+      addRows(floorPlanControls, true, 4);
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode();
+      let visitedTextNodes = 0;
+      while (textNode && visitedTextNodes < 4_000 && rows.size < 700) {
+        visitedTextNodes += 1;
+        if (explicitUnitIdentifiers(textNode.nodeValue || "").length > 0) {
+          let candidate = textNode.parentElement;
+          for (let depth = 0; candidate && depth < 8; depth += 1) {
+            const candidateText = cleanText(candidate.innerText || candidate.textContent);
+            if (!candidateText || candidateText.length > 2_000) break;
+            if (priceFromText(candidateText) !== null) {
+              addRows([candidate], true, 5);
+              break;
+            }
+            if (candidate === root) break;
+            candidate = candidate.parentElement;
+          }
+        }
+        textNode = walker.nextNode();
+      }
+    }
+
+    const labelSelector = [
+      '[data-testid*="unit-name" i]',
+      '[data-testid*="unit-number" i]',
+      '[data-testid*="floor-plan-name" i]',
+      '[data-testid*="floorplan-name" i]',
+      '[class*="unit-name" i]',
+      '[class*="floor-plan-name" i]',
+      '[class*="floorplan-name" i]',
+      'h2',
+      'h3',
+      'h4',
+      'th'
+    ].join(',');
+
+    for (const [row, rowRank] of rows) {
+      if (isRecommendationElement(row, roots) || isListingCard(row)) continue;
+      if (row.closest('[hidden],[aria-hidden="true"]')) continue;
+      const text = cleanText(row.innerText || row.textContent);
+      if (
+        !text
+        || text.length < 8
+        || text.length > 2_000
+        || unavailableUnitPattern.test(text)
+        || unavailableUnitPattern.test(nearestPrecedingHeadingText(row) || "")
+      ) continue;
+      const candidateAddressKey = buildingAddressKey(addressFromText(text));
+      if (pageAddressKey && candidateAddressKey && candidateAddressKey !== pageAddressKey) continue;
+
+      const descriptor = [
+        row.id,
+        row.className,
+        row.getAttribute('data-testid'),
+        row.getAttribute('aria-label')
+      ].filter((value) => typeof value === 'string').join(' ');
+      const textUnits = explicitUnitIdentifiers(text);
+      const attributeUnit = normalizedUnitIdentifier(first(
+        row.getAttribute('data-unit'),
+        row.getAttribute('data-unit-number'),
+        row.getAttribute('data-apartment')
+      ));
+      if (!attributeUnit && textUnits.length > 1) continue;
+      const unit = attributeUnit || (textUnits.length === 1 ? textUnits[0] : null);
+      const hasUnitContext = /unit|floor.?plan|availability/i.test(descriptor)
+        || availabilityRows.has(row)
+        || Boolean(unit);
+      if (!hasUnitContext) continue;
+
+      const attributePlan = normalizedFloorPlanLabel(first(
+        row.getAttribute('data-floorplan'),
+        row.getAttribute('data-floor-plan')
+      ));
+      const labelNode = row.matches(labelSelector)
+        ? row
+        : row.querySelector(labelSelector);
+      const lineLabel = (row.innerText || "")
+        .split(/\n+/)
+        .map(cleanText)
+        .find((line) =>
+          line
+          && line.length <= 80
+          && !/(?:\$|\b(?:studio|\d+(?:\.\d+)?)\s*(?:bd|br|bed|ba|bath)|sq\.?\s*ft|square feet|available\b)/i.test(line)
+          && !/^(?:view|details?|apply|contact|tour|select|more)(?:\s+\w+){0,2}$/i.test(line)
+        );
+      const label = unit || normalizedFloorPlanLabel(
+        attributePlan || labelNode?.innerText || labelNode?.textContent || lineLabel
+      );
+      if (!label) continue;
+      if (!unit && !availabilityRows.has(row) && !/floor.?plan|floorplan|layout/i.test(descriptor)) {
+        continue;
+      }
+
+      const inheritedText = inheritedFloorPlanText(row, availabilityRoots, roots);
+      const layoutText = [text, inheritedText].filter(Boolean).join(" ");
+
+      const availableDateMatch = text.match(
+        /\b(?:available|availability)\s*(?:on|from|:)?\s*(now|immediately|[A-Za-z]{3,9}\s+\d{1,2}(?:,\s*\d{4})?)\b/i
+      );
+      appendOption({
+        unit,
+        label,
+        price: priceFromText(text),
+        bedrooms: bedroomsFromText(text) ?? bedroomsFromText(layoutText),
+        bathrooms: bathroomsFromText(text) ?? bathroomsFromText(layoutText),
+        squareFeet: squareFeetFromText(text) ?? squareFeetFromText(layoutText),
+        availableDate: availableDateMatch?.[1] || null,
+        groupLabel: floorPlanLabelFromText(inheritedText || text),
+        sourceRank: unit ? Math.max(rowRank, 5) : rowRank
+      });
+    }
+    const rankedOptions = options
+      .map((option, index) => ({ option, rank: optionRanks[index] }));
+    const exactUnitGroups = new Set(
+      rankedOptions
+        .filter(({ option }) => option.unit && option._groupKey)
+        .map(({ option }) => option._groupKey)
+    );
+    return rankedOptions
+      .filter(({ option }) => option.unit || !exactUnitGroups.has(option._groupKey))
+      .sort((left, right) => right.rank - left.rank)
+      .slice(0, 80)
+      .map(({ option }) => {
+        const { _groupKey, ...publicOption } = option;
+        return publicOption;
+      });
   }
 
   function priceFromText(text) {
@@ -439,12 +1110,12 @@
 
   function bedroomsFromText(text) {
     if (/\bstudio\b/i.test(text)) return 0;
-    const match = text.match(/\b(\d+(?:\.\d+)?)\s*(?:bd|bed|beds|bedroom|bedrooms)\b/i);
+    const match = text.match(/\b(\d+(?:\.\d+)?)\s*(?:bd|br|bed|beds|bedroom|bedrooms)\b/i);
     return numeric(match?.[1]);
   }
 
   function bathroomsFromText(text) {
-    const match = text.match(/\b(\d+(?:\.\d+)?)\s*(?:ba|bath|baths|bathroom|bathrooms)\b/i);
+    const match = text.match(/\b(\d+(?:\.\d+)?)\s*(?:ba|bth|bath|baths|bathroom|bathrooms)\b/i);
     return numeric(match?.[1]);
   }
 
@@ -455,7 +1126,7 @@
 
   function addressFromText(text) {
     const match = text.match(
-      /\b(\d{1,6}\s+[A-Za-z0-9.' -]+?\s(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Place|Pl|Court|Ct|Way|Parkway|Pkwy|Terrace|Ter)(?:\s*(?:#|Apt|Apartment|Unit)\s*[A-Za-z0-9-]+)?(?:,\s*[A-Za-z .'-]+,\s*[A-Z]{2}\s*\d{5})?)/i
+      /\b(\d{1,6}[A-Za-z]?\s+(?:(?:Route|Rte|Highway|Hwy)\s+\d+[A-Za-z]?|[A-Za-z0-9.' -]+?\s(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Place|Pl|Court|Ct|Way|Parkway|Pkwy|Terrace|Ter)\b)(?:,?\s*(?:#|Apt|Apartment|Unit)\s*[A-Za-z0-9-]+)?(?:,\s*[A-Za-z .'-]+,\s*[A-Z]{2}\s*\d{5})?)/i
     );
     return cleanText(match?.[1]);
   }
@@ -483,8 +1154,7 @@
   }
 
   function unitFromText(text) {
-    const match = text.match(/(?:\b(?:apt|apartment|unit)\s*|#\s*)([A-Za-z0-9-]{1,16})\b/i);
-    return cleanText(match?.[1])?.toUpperCase() || null;
+    return explicitUnitIdentifiers(text)[0] || null;
   }
 
   function sourceName() {
@@ -509,9 +1179,11 @@
 
   function extractListing() {
     const nodes = parseStructuredData();
-    const node = bestStructuredNode(nodes);
-    const coordinate = structuredCoordinate(node);
     const roots = recommendationRoots();
+    const visibleAddress = visibleListingAddress(roots);
+    const pageIdentity = currentPageIdentity();
+    const node = bestStructuredNode(nodes, visibleAddress);
+    const coordinate = structuredCoordinate(node);
     const primaryValues = primaryTextValues(roots);
     const text = [
       metaContent('meta[name="description"]'),
@@ -522,12 +1194,14 @@
     const floorSize = typeof node.floorSize === "object" ? node.floorSize.value : node.floorSize;
     const pageTitle = cleanText(
       first(
+        JSON.parse(pageIdentity)[2],
         metaContent('meta[property="og:title"]'),
         node.name,
         document.title
       )
     );
     const baseAddress = first(
+      visibleAddress,
       structuredAddress(node),
       selectorText([
         '[data-testid="bdp-building-address"]',
@@ -552,6 +1226,7 @@
     ));
     const address = composeAddress(baseAddress, city, region, postalCode);
     const unit = first(
+      unitFromText(visibleAddress || ""),
       cleanText(node.apartmentSuite),
       cleanText(node.unitCode),
       cleanText(valueForKeys(node, ["unit", "unitNumber", "apartmentNumber"])),
@@ -583,16 +1258,27 @@
       numeric(floorSize),
       squareFeetFromText(text)
     );
+    const structuredUnitEvidence = [];
+    const availableUnitOptions = unitOptions(nodes, roots, {
+      pageAddress: address,
+      primaryNode: node,
+      structuredEvidence: structuredUnitEvidence
+    });
+    const scanEvidence = collectScanEvidence(roots, node, structuredUnitEvidence);
     const isBuildingPage =
       /\/apartments?\//i.test(location.pathname)
       || types(node).includes("apartmentcomplex")
-      || /\b(?:floor plans|units available)\b/i.test(text.slice(0, 10_000));
+      || currentAvailabilityRoots(roots).size > 0
+      || /\b(?:floor plans|available units|units available)\b/i.test(text.slice(0, 10_000))
+      || availableUnitOptions.length > 1;
 
     const factCount = [address, price, bedrooms, bathrooms, squareFeet]
       .filter((value) => value !== null && value !== undefined).length;
+    const detailPage = isActualListingPage(nodes, node, address);
 
     return {
       url: location.href,
+      pageIdentity,
       canonicalURL: canonicalURL(),
       sourceName: sourceName(),
       pageTitle,
@@ -610,18 +1296,21 @@
       bedrooms,
       bathrooms,
       squareFeet,
-      imageURL: imageValue(node),
+      imageURL: imageValue(node, roots),
       summary: cleanText(metaContent('meta[property="og:description"]') || metaContent('meta[name="description"]')),
+      detailPage,
       listingScope: isBuildingPage ? "building" : "unit",
       extractionConfidence: factCount >= 4 ? "high" : factCount >= 2 ? "medium" : "low",
+      ...scanEvidence,
       pageEvidence: pageEvidence(
         nodes,
         node,
         isBuildingPage,
         primaryValues,
-        roots
+        roots,
+        availableUnitOptions
       ),
-      unitOptions: isBuildingPage ? unitOptions(nodes) : []
+      unitOptions: isBuildingPage ? availableUnitOptions : []
     };
   }
 
@@ -706,13 +1395,14 @@
     return ranges;
   }
 
-  function createPageScanUI({ compact = false } = {}) {
+  function createPageScanUI({ compact = false, pillPicker = false } = {}) {
     document.querySelector("#homeboard-page-scan-root")?.remove();
 
     const host = document.createElement("div");
     host.id = "homeboard-page-scan-root";
     host.setAttribute("aria-live", "polite");
     host.classList.toggle("compact", compact);
+    host.classList.toggle("mobile-pills", pillPicker);
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
       <style>
@@ -731,6 +1421,9 @@
           pointer-events: none;
         }
         :host(.compact) .highlight-layer {
+          display: none;
+        }
+        :host(.mobile-pills) .highlight-layer {
           display: none;
         }
         .sentence-highlight {
@@ -813,6 +1506,49 @@
           width: min(470px, calc(100vw - 40px));
           margin: 0;
         }
+        :host(.mobile-pills) .scan-tag {
+          top: auto;
+          right: 12px;
+          bottom: max(12px, env(safe-area-inset-bottom));
+          min-height: 34px;
+          padding: 8px 12px;
+        }
+        :host(.mobile-pills) .complete-card {
+          right: 10px;
+          bottom: max(10px, env(safe-area-inset-bottom));
+          left: 10px;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 8px;
+          width: auto;
+          max-width: 520px;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+          -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+          transition:
+            opacity 150ms ease,
+            transform 150ms ease,
+            visibility 0s linear;
+          will-change: opacity, transform;
+        }
+        :host(.mobile-pills.carousel-collapsed) .complete-card,
+        :host(.mobile-pills.review-open) .complete-card {
+          visibility: hidden;
+          pointer-events: none;
+          opacity: 0;
+          transform: translateY(10px) scale(0.97);
+          transition-delay: 0s, 0s, 150ms;
+        }
+        :host(.mobile-pills.scan-failed) .complete-card {
+          padding: 10px;
+          border: 1px solid rgba(146, 167, 158, 0.7);
+          border-radius: 18px;
+          background: rgba(61, 80, 74, 0.97);
+          box-shadow: 0 18px 46px rgba(36, 49, 41, 0.34);
+        }
         .complete-source {
           margin-bottom: 4px;
           display: block;
@@ -840,6 +1576,187 @@
           font-size: 11px;
           line-height: 1.25;
           text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        :host(.mobile-pills) .complete-copy {
+          display: none;
+        }
+        :host(.mobile-pills.scan-failed) .complete-copy {
+          display: block;
+        }
+        .capture-pills {
+          display: none;
+        }
+        :host(.mobile-pills) .capture-pills {
+          --listing-pill-width: min(300px, calc(100vw - 68px));
+          grid-column: 1;
+          display: flex;
+          box-sizing: border-box;
+          gap: 10px;
+          width: 100%;
+          padding: 4px calc((100% - var(--listing-pill-width)) / 2) 6px;
+          overflow-x: auto;
+          overscroll-behavior-x: contain;
+          scroll-padding-inline: calc((100% - var(--listing-pill-width)) / 2);
+          scrollbar-width: none;
+          scroll-snap-type: x mandatory;
+          touch-action: pan-x;
+          -webkit-overflow-scrolling: touch;
+        }
+        :host(.mobile-pills) .capture-pills::-webkit-scrollbar {
+          display: none;
+        }
+        .listing-pill {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          flex: 0 0 var(--listing-pill-width);
+          gap: 4px 12px;
+          min-width: 0;
+          min-height: 58px;
+          padding: 10px 14px;
+          border: 1px solid rgba(249, 226, 205, 0.34);
+          border-radius: 19px;
+          background:
+            linear-gradient(145deg, rgba(75, 97, 89, 0.98), rgba(49, 68, 62, 0.98));
+          box-shadow:
+            0 10px 28px rgba(24, 34, 29, 0.30),
+            inset 0 1px rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(18px);
+          backdrop-filter: blur(18px);
+          color: #fff3e5;
+          text-align: left;
+          scroll-snap-align: center;
+          scroll-snap-stop: always;
+          cursor: pointer;
+          opacity: 0.58;
+          transform: scale(0.94);
+          transition:
+            opacity 160ms ease,
+            transform 160ms ease,
+            border-color 160ms ease,
+            background 160ms ease;
+        }
+        .listing-pill.carousel-active {
+          border-color: rgba(249, 226, 205, 0.58);
+          opacity: 1;
+          transform: scale(1);
+        }
+        .listing-pill:active {
+          background:
+            linear-gradient(145deg, rgba(83, 106, 98, 0.99), rgba(55, 75, 68, 0.99));
+          transform: scale(0.975);
+        }
+        .listing-pill:disabled {
+          cursor: wait;
+          opacity: 0.52;
+        }
+        .listing-pill.saving,
+        .listing-pill.saved {
+          border-color: rgba(249, 226, 205, 0.82);
+          background: rgba(61, 80, 74, 0.99);
+          opacity: 1;
+        }
+        .pill-copy {
+          min-width: 0;
+        }
+        .pill-title,
+        .pill-facts {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .pill-title {
+          color: #f9e2cd;
+          font-size: 12px;
+          font-weight: 850;
+          letter-spacing: -0.01em;
+        }
+        .pill-facts {
+          margin-top: 3px;
+          color: rgba(255, 243, 229, 0.78);
+          font-size: 10.5px;
+          font-weight: 650;
+        }
+        .pill-price {
+          color: #fff3e5;
+          font-size: 14px;
+          font-weight: 850;
+          letter-spacing: -0.02em;
+          white-space: nowrap;
+        }
+        .listing-pill.saved .pill-price {
+          font-size: 12px;
+        }
+        .listing-pill.edit-pill {
+          border-style: dashed;
+          background:
+            linear-gradient(145deg, rgba(69, 88, 82, 0.96), rgba(44, 60, 55, 0.96));
+        }
+        .listing-pill.edit-pill .pill-title {
+          color: #fff3e5;
+        }
+        .listing-pill.edit-pill .pill-price {
+          color: #f9e2cd;
+          font-size: 12px;
+        }
+        .collapsed-tab {
+          display: none;
+        }
+        :host(.mobile-pills) .collapsed-tab {
+          position: fixed;
+          right: 0;
+          bottom: max(12px, env(safe-area-inset-bottom));
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 34px;
+          padding: 0 10px 0 12px;
+          border: 1px solid rgba(249, 226, 205, 0.38);
+          border-right: 0;
+          border-radius: 17px 0 0 17px;
+          background: rgba(61, 80, 74, 0.96);
+          box-shadow: 0 8px 24px rgba(24, 34, 29, 0.28);
+          -webkit-backdrop-filter: blur(18px);
+          backdrop-filter: blur(18px);
+          color: #f9e2cd;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: -0.01em;
+          pointer-events: none;
+          visibility: hidden;
+          opacity: 0;
+          transform: translateX(8px);
+          transition:
+            opacity 150ms ease,
+            transform 150ms ease,
+            visibility 0s linear 150ms;
+        }
+        :host(.mobile-pills.carousel-collapsed:not(.review-open):not(.scan-failed)) .collapsed-tab {
+          pointer-events: auto;
+          visibility: visible;
+          opacity: 1;
+          transform: translateX(0);
+          transition-delay: 0s;
+        }
+        .collapsed-tab-chevron {
+          font-size: 13px;
+          line-height: 1;
+        }
+        :host(.mobile-pills) .review-button.mobile-hidden {
+          display: none;
+        }
+        :host(.mobile-pills.scan-failed) .review-button {
+          display: block;
+        }
+        :host(.mobile-pills) .complete-card .close-button {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          clip-path: inset(50%);
+          overflow: hidden;
           white-space: nowrap;
         }
         button {
@@ -877,6 +1794,7 @@
           -webkit-backdrop-filter: blur(2px);
           backdrop-filter: blur(2px);
           pointer-events: auto;
+        }
         .review-panel {
           position: fixed;
           right: 10px;
@@ -1059,6 +1977,8 @@
         @media (prefers-reduced-motion: reduce) {
           .scan-dot { animation: none; }
           .sentence-highlight { transition: none; }
+          :host(.mobile-pills) .complete-card,
+          :host(.mobile-pills) .collapsed-tab { transition: none; }
         }
       </style>
       <div class="highlight-layer" id="highlightLayer"></div>
@@ -1073,9 +1993,14 @@
           <strong id="completeTitle">Listing ready</strong>
           <span id="completeSummary">Review the details Homeboard found.</span>
         </div>
+        <div class="capture-pills hidden" id="capturePills" aria-label="Listings ready to save"></div>
         <button class="review-button" id="reviewButton" type="button">Review and save</button>
         <button class="close-button" id="dismissButton" type="button" aria-label="Dismiss Homeboard">×</button>
       </section>
+      <button class="collapsed-tab" id="collapsedTab" type="button" aria-label="Show Homeboard listing">
+        <span id="collapsedLabel">Listing</span>
+        <span class="collapsed-tab-chevron" aria-hidden="true">‹</span>
+      </button>
       <div class="backdrop hidden" id="backdrop"></div>
       <section class="review-panel hidden" id="reviewPanel" role="dialog" aria-modal="true" aria-label="Review Homeboard listing details">
         <header class="panel-header">
@@ -1125,13 +2050,15 @@
     const hideReview = () => {
       byID("backdrop").classList.add("hidden");
       byID("reviewPanel").classList.add("hidden");
+      host.classList.remove("review-open");
+      host.dispatchEvent(new CustomEvent("homeboard.reviewClosed"));
     };
     byID("dismissButton").addEventListener("click", () => host.remove());
     byID("panelClose").addEventListener("click", hideReview);
     byID("cancelReview").addEventListener("click", hideReview);
     byID("backdrop").addEventListener("click", hideReview);
 
-    return {
+    const ui = {
       host,
       shadow,
       phase: byID("scanPhase"),
@@ -1141,6 +2068,9 @@
       completeTitle: byID("completeTitle"),
       completeSource: byID("completeSource"),
       completeSummary: byID("completeSummary"),
+      capturePills: byID("capturePills"),
+      collapsedTab: byID("collapsedTab"),
+      collapsedLabel: byID("collapsedLabel"),
       reviewButton: byID("reviewButton"),
       backdrop: byID("backdrop"),
       reviewPanel: byID("reviewPanel"),
@@ -1158,6 +2088,66 @@
       },
       hideReview
     };
+    configureMobileSwipeDismiss(ui, pillPicker);
+    return ui;
+  }
+
+  function configureMobileSwipeDismiss(ui, enabled) {
+    if (!enabled) return;
+    let pointerID = null;
+    let startX = 0;
+    let startY = 0;
+    let verticalGesture = false;
+
+    const reset = () => {
+      pointerID = null;
+      verticalGesture = false;
+      ui.completeCard.style.removeProperty("transform");
+      ui.completeCard.style.removeProperty("opacity");
+    };
+
+    ui.capturePills.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      pointerID = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      verticalGesture = false;
+    });
+
+    ui.capturePills.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== pointerID) return;
+      const deltaX = event.clientX - startX;
+      const deltaY = Math.max(0, event.clientY - startY);
+      if (!verticalGesture && deltaY > 8 && deltaY > Math.abs(deltaX) * 1.15) {
+        verticalGesture = true;
+        ui.capturePills.setPointerCapture?.(event.pointerId);
+      }
+      if (!verticalGesture) return;
+      event.preventDefault();
+      ui.completeCard.style.transform = `translateY(${deltaY}px)`;
+      ui.completeCard.style.opacity = String(Math.max(0.22, 1 - deltaY / 150));
+    });
+
+    const finish = (event) => {
+      if (event.pointerId !== pointerID) return;
+      const deltaX = event.clientX - startX;
+      const deltaY = Math.max(0, event.clientY - startY);
+      if (verticalGesture && deltaY > 56 && deltaY > Math.abs(deltaX) * 1.15) {
+        ui.completeCard.style.transform = "translateY(120px)";
+        ui.completeCard.style.opacity = "0";
+        globalThis.setTimeout(() => ui.host.remove(), 150);
+        pointerID = null;
+        return;
+      }
+      reset();
+    };
+
+    ui.capturePills.addEventListener("pointerup", finish);
+    ui.capturePills.addEventListener("pointercancel", reset);
+    ui.capturePills.setAttribute(
+      "aria-label",
+      "Listings ready to save. Swipe down to dismiss."
+    );
   }
 
   const scanDelay = (milliseconds) => new Promise((resolve) => {
@@ -1186,6 +2176,80 @@
       Number.isFinite(value.bathrooms) ? `${formatScanNumber(value.bathrooms)} ba` : null
     ].filter(Boolean);
     return facts.join(" · ") || "Review the details Homeboard found.";
+  }
+
+  function missingRequiredFields(value) {
+    return ["address", "price", "bedrooms", "bathrooms"].filter((key) =>
+      value[key] === null || value[key] === undefined || value[key] === ""
+    );
+  }
+
+  function bedroomLabel(value) {
+    if (!Number.isFinite(value)) return null;
+    if (value === 0) return "Studio";
+    return `${formatScanNumber(value)} ${value === 1 ? "bed" : "beds"}`;
+  }
+
+  function bathroomLabel(value) {
+    if (!Number.isFinite(value)) return null;
+    return `${formatScanNumber(value)} ${value === 1 ? "bath" : "baths"}`;
+  }
+
+  function mobileListingTitle(candidate, option = null, multiple = false) {
+    const address = cleanText(candidate.address || candidate.pageTitle);
+    const unit = cleanText(candidate.unit || option?.unit);
+    const optionLabel = cleanText(option?.label);
+    const detail = unit
+      ? (/^unit\b/i.test(unit) ? unit : `Unit ${unit}`)
+      : optionLabel;
+    if (multiple && detail) return detail;
+    if (address && detail && !address.toLowerCase().includes(detail.toLowerCase())) {
+      return `${address} · ${detail}`;
+    }
+    if (address) return address;
+    if (detail) return detail;
+    return multiple ? "Available listing" : "This listing";
+  }
+
+  function populateMobileListingPill(button, capture, titleText, trailingText = null) {
+    const copy = document.createElement("span");
+    copy.className = "pill-copy";
+    const title = document.createElement("span");
+    title.className = "pill-title";
+    title.textContent = titleText;
+    const facts = document.createElement("span");
+    facts.className = "pill-facts";
+    facts.textContent = [
+      bedroomLabel(capture.bedrooms),
+      bathroomLabel(capture.bathrooms),
+      Number.isFinite(capture.squareFeet)
+        ? `${formatScanNumber(capture.squareFeet)} sq ft`
+        : null
+    ].filter(Boolean).join(" · ") || "A few details need review";
+    copy.append(title, facts);
+
+    const price = document.createElement("span");
+    price.className = "pill-price";
+    price.textContent = trailingText || (Number.isFinite(capture.price)
+      ? `$${formatScanNumber(capture.price)}`
+      : "Review →");
+    button.replaceChildren(copy, price);
+    return { title, facts, price };
+  }
+
+  function showMobileSavedPill(ui, capture) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "listing-pill saved";
+    button.disabled = true;
+    populateMobileListingPill(
+      button,
+      capture,
+      mobileListingTitle(capture),
+      "Saved ✓"
+    );
+    ui.capturePills.replaceChildren(button);
+    ui.capturePills.classList.remove("hidden");
   }
 
   function listingSource(value) {
@@ -1270,6 +2334,17 @@
     };
   }
 
+  async function saveListingCapture(capture) {
+    const response = await browser.runtime.sendMessage({
+      type: "homeboard.saveListing",
+      capture
+    });
+    if (!response?.saved) {
+      throw new Error(response?.error || "Homeboard could not save this rental.");
+    }
+    return response;
+  }
+
   function mergedCapture(capture, analysis) {
     const resolvedFacts = Object.fromEntries(
       Object.entries(analysis?.facts || {})
@@ -1285,9 +2360,41 @@
     };
   }
 
+  function resolvedUnitOptions(capture, analysis) {
+    // An empty analyzed list is meaningful: do not resurrect rejected candidates.
+    return Array.isArray(analysis?.options)
+      ? analysis.options
+      : (Array.isArray(capture?.unitOptions) ? capture.unitOptions : []);
+  }
+
+  function listingCandidates(capture, analysis) {
+    const baseCapture = mergedCapture(capture, analysis);
+    const options = resolvedUnitOptions(capture, analysis);
+    if (options.length > 0) {
+      return options.map((option) => ({
+        option,
+        capture: {
+          ...baseCapture,
+          unit: option.unit || null,
+          price: option.price ?? null,
+          bedrooms: option.bedrooms ?? null,
+          bathrooms: option.bathrooms ?? null,
+          squareFeet: option.squareFeet ?? null,
+          availableDate: option.availableDate ?? null,
+          listingScope: "unit",
+          unitOptions: []
+        }
+      }));
+    }
+    return baseCapture.listingScope === "building" ? [] : [{ option: null, capture: baseCapture }];
+  }
+
   function configureReview(ui, originalCapture, analysis) {
-    let reviewCapture = mergedCapture(originalCapture, analysis);
-    let selectedExactOption = (analysis?.options || []).length === 0;
+    let groundedCapture = originalCapture;
+    let latestAnalysis = analysis;
+    let reviewCapture = mergedCapture(groundedCapture, latestAnalysis);
+    let groundedOptions = resolvedUnitOptions(groundedCapture, latestAnalysis);
+    let selectedExactOption = groundedOptions.length === 0;
     let didSelectOption = false;
     let reviewOpened = false;
     const editedFields = new Set();
@@ -1317,8 +2424,14 @@
       field.addEventListener("input", () => editedFields.add(key));
     });
 
-    const renderOptions = (options) => {
-      if (options.length === 0 || ui.optionList.childElementCount > 0) return;
+    const renderOptions = (options, { replace = false } = {}) => {
+      if (replace) ui.optionList.replaceChildren();
+      if (options.length === 0) {
+        ui.optionList.classList.add("hidden");
+        selectedExactOption = true;
+        return;
+      }
+      if (ui.optionList.childElementCount > 0) return;
       selectedExactOption = false;
       ui.optionList.classList.remove("hidden");
       options.forEach((option) => {
@@ -1354,14 +2467,15 @@
       ui.panelNote.textContent =
         "This is a building page. Choose the exact unit before saving.";
     };
-    renderOptions(analysis?.options || []);
-    if ((analysis?.options || []).length === 0 && analysis?.missingFields?.length) {
+    renderOptions(groundedOptions);
+    if (groundedOptions.length === 0 && analysis?.missingFields?.length) {
       ui.panelNote.textContent =
         "Homeboard left uncertain details blank. Confirm them before saving.";
     }
 
     const showReview = () => {
       reviewOpened = true;
+      ui.host.classList.add("review-open");
       ui.backdrop.classList.remove("hidden");
       ui.reviewPanel.classList.remove("hidden");
       ui.fields.address.focus({ preventScroll: true });
@@ -1388,6 +2502,10 @@
     });
 
     ui.saveButton.addEventListener("click", async () => {
+      if (!isCaptureCurrent(reviewCapture)) {
+        synchronizePageNavigation();
+        return;
+      }
       if (!selectedExactOption) {
         ui.panelNote.textContent =
           "Choose the exact unit or floor plan before saving.";
@@ -1402,10 +2520,7 @@
         bedrooms: numericField(ui.fields.bedrooms),
         bathrooms: numericField(ui.fields.bathrooms)
       };
-      const required = ["address", "price", "bedrooms", "bathrooms"];
-      const missing = required.filter((key) =>
-        reviewed[key] === null || reviewed[key] === undefined || reviewed[key] === ""
-      );
+      const missing = missingRequiredFields(reviewed);
       Object.entries(ui.fields).forEach(([key, field]) => {
         field.classList.toggle("missing", missing.includes(key));
       });
@@ -1423,20 +2538,18 @@
       ui.reviewButton.textContent = "Saving…";
       ui.reviewButton.disabled = true;
       try {
-        const response = await browser.runtime.sendMessage({
-          type: "homeboard.saveListing",
-          capture: reviewed
-        });
-        if (!response?.saved) {
-          throw new Error(response?.error || "Homeboard could not save this rental.");
-        }
+        const response = await saveListingCapture(reviewed);
         ui.hideReview();
         ui.completeTitle.textContent = "Saved to Homeboard";
         ui.completeSummary.textContent = response.synced
           ? "This reviewed listing is now on the same board on every device."
-          : "Saved locally. Open Homeboard to finish syncing this board.";
+          : "Saved safely. Homeboard will finish syncing in the background.";
         ui.reviewButton.textContent = "Saved";
         ui.reviewButton.disabled = true;
+        if (ui.host.classList.contains("mobile-pills")) {
+          showMobileSavedPill(ui, reviewed);
+          globalThis.setTimeout(() => ui.host.remove(), SAVE_CONFIRMATION_DELAY_MS);
+        }
       } catch (error) {
         ui.saveButton.disabled = false;
         ui.saveButton.textContent = "Try saving again";
@@ -1450,8 +2563,29 @@
     });
 
     return {
+      showReview,
+      get isEditing() { return reviewOpened || didSelectOption; },
+      prepareCapture(capture) {
+        reviewCapture = { ...capture };
+        selectedExactOption = true;
+        didSelectOption = true;
+        ui.optionList.classList.add("hidden");
+        ui.panelNote.textContent = "Confirm the details Homeboard could not verify.";
+        fillFields();
+      },
+      applyAnalysis(nextCapture, nextAnalysis) {
+        if (reviewOpened || didSelectOption) return;
+        groundedCapture = nextCapture;
+        latestAnalysis = nextAnalysis;
+        groundedOptions = resolvedUnitOptions(nextCapture, nextAnalysis);
+        reviewCapture = mergedCapture(groundedCapture, latestAnalysis);
+        selectedExactOption = groundedOptions.length === 0;
+        renderOptions(groundedOptions, { replace: true });
+        fillFields();
+      },
       applyEnhancedAnalysis(enhancedAnalysis) {
-        const enhancedCapture = mergedCapture(originalCapture, enhancedAnalysis);
+        latestAnalysis = enhancedAnalysis;
+        const enhancedCapture = mergedCapture(groundedCapture, enhancedAnalysis);
         if (didSelectOption) {
           const nonUnitFields = [
             "address", "city", "neighborhood", "imageURL", "summary",
@@ -1466,9 +2600,12 @@
           reviewCapture = { ...reviewCapture, ...enhancedCapture };
         }
         fillFields({ preserveUserInput: reviewOpened });
-        renderOptions(enhancedAnalysis?.options || []);
+        if (!reviewOpened && !didSelectOption) {
+          groundedOptions = resolvedUnitOptions(groundedCapture, enhancedAnalysis);
+          renderOptions(groundedOptions, { replace: true });
+        }
         if (
-          (enhancedAnalysis?.options || []).length === 0
+          groundedOptions.length === 0
           && enhancedAnalysis?.missingFields?.length === 0
         ) {
           ui.panelNote.textContent = enhancedAnalysis.usedOnDeviceModel
@@ -1479,18 +2616,425 @@
     };
   }
 
+  function configureMobilePillPicker(ui, originalCapture, analysis, review) {
+    const collapseDelay = 4_000;
+    let groundedCapture = originalCapture;
+    let latestAnalysis = analysis;
+    let hasChosen = false;
+    let carouselFrame = null;
+    let collapseTimer = null;
+    let pageScrollController = null;
+
+    const clearCollapseTimer = () => {
+      if (collapseTimer === null) return;
+      globalThis.clearTimeout(collapseTimer);
+      collapseTimer = null;
+    };
+
+    const stopListeningForPageScroll = () => {
+      pageScrollController?.abort();
+      pageScrollController = null;
+    };
+
+    const collapseCarousel = () => {
+      clearCollapseTimer();
+      stopListeningForPageScroll();
+      if (
+        !ui.host.isConnected
+        || hasChosen
+        || ui.saveButton.disabled
+        || !ui.reviewPanel.classList.contains("hidden")
+      ) return;
+      ui.completeCard.style.removeProperty("transform");
+      ui.completeCard.style.removeProperty("opacity");
+      ui.host.classList.add("carousel-collapsed");
+    };
+
+    const armPageScrollCollapse = () => {
+      if (pageScrollController || ui.host.classList.contains("carousel-collapsed")) return;
+      pageScrollController = new AbortController();
+      const onPageScroll = (event) => {
+        const path = event.composedPath?.() || [];
+        if (path.includes(ui.host)) return;
+        collapseCarousel();
+      };
+      globalThis.addEventListener("scroll", onPageScroll, {
+        passive: true,
+        signal: pageScrollController.signal
+      });
+      document.addEventListener("scroll", onPageScroll, {
+        capture: true,
+        passive: true,
+        signal: pageScrollController.signal
+      });
+    };
+
+    const scheduleCollapse = ({ restart = false } = {}) => {
+      if (restart) clearCollapseTimer();
+      if (
+        collapseTimer !== null
+        || !ui.host.isConnected
+        || hasChosen
+        || ui.saveButton.disabled
+        || !ui.reviewPanel.classList.contains("hidden")
+        || ui.host.classList.contains("carousel-collapsed")
+      ) return;
+      armPageScrollCollapse();
+      collapseTimer = globalThis.setTimeout(collapseCarousel, collapseDelay);
+    };
+
+    const expandCarousel = () => {
+      if (!ui.host.isConnected || hasChosen) return;
+      ui.host.classList.remove("carousel-collapsed");
+      scheduleCarouselUpdate();
+      scheduleCollapse({ restart: true });
+    };
+
+    const updateCenteredPill = () => {
+      carouselFrame = null;
+      const pills = [...ui.capturePills.querySelectorAll(".listing-pill")];
+      if (pills.length === 0) return;
+      const carouselRect = ui.capturePills.getBoundingClientRect();
+      const carouselCenter = carouselRect.left + carouselRect.width / 2;
+      const centered = pills.reduce((closest, pill) => {
+        const rect = pill.getBoundingClientRect();
+        const distance = Math.abs(rect.left + rect.width / 2 - carouselCenter);
+        return !closest || distance < closest.distance ? { pill, distance } : closest;
+      }, null)?.pill;
+      for (const pill of pills) {
+        const active = pill === centered;
+        pill.classList.toggle("carousel-active", active);
+        if (active) pill.setAttribute("aria-current", "true");
+        else pill.removeAttribute("aria-current");
+      }
+    };
+
+    const scheduleCarouselUpdate = () => {
+      if (carouselFrame !== null) return;
+      carouselFrame = globalThis.requestAnimationFrame(updateCenteredPill);
+    };
+
+    ui.capturePills.addEventListener("scroll", scheduleCarouselUpdate, { passive: true });
+    ui.capturePills.addEventListener("pointerdown", () => {
+      clearCollapseTimer();
+      stopListeningForPageScroll();
+    });
+    ui.capturePills.addEventListener("pointerup", () => {
+      scheduleCollapse({ restart: true });
+    });
+    ui.capturePills.addEventListener("pointercancel", () => {
+      scheduleCollapse({ restart: true });
+    });
+    ui.capturePills.addEventListener("focusin", clearCollapseTimer);
+    ui.capturePills.addEventListener("focusout", () => {
+      scheduleCollapse({ restart: true });
+    });
+    ui.collapsedTab.addEventListener("click", expandCarousel);
+    ui.host.addEventListener("homeboard.reviewClosed", () => {
+      scheduleCollapse({ restart: true });
+    });
+
+    const render = (nextAnalysis) => {
+      if (hasChosen || review.isEditing) return;
+      if (nextAnalysis) latestAnalysis = nextAnalysis;
+      const wasCollapsed = ui.host.classList.contains("carousel-collapsed");
+      const baseCapture = mergedCapture(groundedCapture, latestAnalysis);
+      const candidates = listingCandidates(groundedCapture, latestAnalysis);
+      if (candidates.length === 0) {
+        clearCollapseTimer();
+        stopListeningForPageScroll();
+        ui.capturePills.replaceChildren();
+        ui.completeCard.classList.add("hidden");
+        return;
+      }
+      ui.completeCard.classList.remove("hidden");
+      const centeredID = ui.capturePills.querySelector('.carousel-active')?.dataset.optionId;
+
+      ui.capturePills.replaceChildren();
+      ui.capturePills.classList.remove("hidden");
+      ui.reviewButton.classList.add("mobile-hidden");
+      ui.completeTitle.textContent = candidates.length > 1
+        ? "Choose a unit to save"
+        : "Tap the listing to save";
+      ui.completeSummary.textContent = baseCapture.address
+        || "Homeboard found the details shown below.";
+      ui.collapsedLabel.textContent = candidates.length > 1
+        ? `${candidates.length} units`
+        : "Listing";
+      ui.collapsedTab.setAttribute(
+        "aria-label",
+        candidates.length > 1
+          ? `Show ${candidates.length} Homeboard unit choices`
+          : "Show the Homeboard listing"
+      );
+
+      for (const { option, capture } of candidates) {
+        const missing = missingRequiredFields(capture);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "listing-pill";
+        button.dataset.optionId = option?.id || option?.unit || "listing";
+        const { title, facts, price } = populateMobileListingPill(
+          button,
+          capture,
+          mobileListingTitle(capture, option, candidates.length > 1)
+        );
+        button.setAttribute(
+          "aria-label",
+          missing.length > 0
+            ? `${title.textContent}. Review missing ${missing.join(", ")}`
+            : `Save ${title.textContent}, ${facts.textContent}, ${price.textContent} to Homeboard`
+        );
+
+        button.addEventListener("click", async () => {
+          if (!isCaptureCurrent(capture)) {
+            synchronizePageNavigation();
+            return;
+          }
+          if (hasChosen) return;
+          hasChosen = true;
+          if (missing.length > 0) {
+            review.prepareCapture(capture);
+            review.showReview();
+            hasChosen = false;
+            return;
+          }
+
+          const buttons = [...ui.capturePills.querySelectorAll(".listing-pill")];
+          buttons.forEach((candidate) => { candidate.disabled = true; });
+          button.classList.add("saving");
+          price.textContent = "Saving…";
+          ui.completeTitle.textContent = "Saving to Homeboard";
+          try {
+            await saveListingCapture(capture);
+            button.classList.remove("saving");
+            button.classList.add("saved");
+            price.textContent = "Saved ✓";
+            ui.capturePills.replaceChildren(button);
+            ui.completeTitle.textContent = "Saved to Homeboard";
+            ui.completeSummary.textContent = listingSummary(capture);
+            globalThis.setTimeout(() => ui.host.remove(), SAVE_CONFIRMATION_DELAY_MS);
+          } catch (error) {
+            hasChosen = false;
+            buttons.forEach((candidate) => { candidate.disabled = false; });
+            button.classList.remove("saving");
+            price.textContent = Number.isFinite(capture.price)
+              ? `$${formatScanNumber(capture.price)}`
+              : "Try again →";
+            ui.completeTitle.textContent = "Could not save yet. Tap to retry";
+            ui.completeSummary.textContent = error instanceof Error
+              ? error.message
+              : "Homeboard could not save this rental.";
+          }
+        });
+        ui.capturePills.appendChild(button);
+      }
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "listing-pill edit-pill";
+      editButton.dataset.optionId = "edit";
+      const editContent = populateMobileListingPill(
+        editButton,
+        {},
+        "Edit details",
+        "Edit →"
+      );
+      editContent.facts.textContent = "Change anything before saving";
+      editButton.setAttribute(
+        "aria-label",
+        "Edit the listing details before saving to Homeboard"
+      );
+      editButton.addEventListener("click", () => {
+        if (!isCaptureCurrent(groundedCapture)) {
+          synchronizePageNavigation();
+          return;
+        }
+        if (hasChosen) return;
+        clearCollapseTimer();
+        stopListeningForPageScroll();
+        ui.host.classList.remove("carousel-collapsed");
+        review.showReview();
+      });
+      ui.capturePills.appendChild(editButton);
+
+      ui.capturePills.scrollLeft = 0;
+      if (centeredID) {
+        const centered = [...ui.capturePills.children].find((pill) => pill.dataset.optionId === centeredID);
+        if (centered) ui.capturePills.scrollLeft = centered.offsetLeft - (ui.capturePills.clientWidth - centered.offsetWidth) / 2;
+      }
+      scheduleCarouselUpdate();
+      if (!wasCollapsed) scheduleCollapse();
+    };
+
+    render(analysis);
+    return {
+      applyAnalysis(nextCapture, nextAnalysis) {
+        groundedCapture = nextCapture;
+        render(nextAnalysis);
+      },
+      applyEnhancedAnalysis(enhancedAnalysis) {
+        render(enhancedAnalysis);
+      }
+    };
+  }
+
+  function unitOptionSignature(capture) {
+    const options = Array.isArray(capture?.unitOptions) ? capture.unitOptions : [];
+    return JSON.stringify([capture?.availabilityPageEvidence, capture?.structuredUnitEvidence, options.map((option) => [
+      normalizedUnitIdentifier(option?.unit),
+      normalizedFloorPlanLabel(option?.label),
+      option?.price ?? null,
+      option?.bedrooms ?? null,
+      option?.bathrooms ?? null,
+      option?.squareFeet ?? null,
+      cleanText(option?.availableDate)
+    ])]);
+  }
+
+  async function settledPageCapture(initialCapture) {
+    let capture = initialCapture;
+    let previous = unitOptionSignature(capture);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 650));
+      if (!isCaptureCurrent(initialCapture)) return null;
+      const next = extractListing();
+      const signature = unitOptionSignature(next);
+      capture = next;
+      if (signature === previous) break;
+      previous = signature;
+    }
+    return capture;
+  }
+
+  function observeLiveUnitChanges(session, initialCapture, review, pillPicker) {
+    if (!pillPicker || typeof MutationObserver !== "function") return;
+    const buildingKey = buildingAddressKey(initialCapture.address);
+    let appliedSignature = unitOptionSignature(initialCapture);
+    let pendingSignature = null;
+    let pendingCapture = null;
+    let consecutiveMatches = 0;
+    let checks = 0;
+    let checkTimer = null;
+    let expirationTimer = null;
+    let analysisRevision = 0;
+
+    const stop = () => {
+      analysisRevision += 1;
+      observer.disconnect();
+      if (checkTimer !== null) globalThis.clearTimeout(checkTimer);
+      if (expirationTimer !== null) globalThis.clearTimeout(expirationTimer);
+      checkTimer = null;
+      expirationTimer = null;
+    };
+
+    const scheduleCheck = () => {
+      if (checkTimer !== null || checks >= 14) return;
+      checkTimer = globalThis.setTimeout(check, 650);
+    };
+
+    const check = () => {
+      checkTimer = null;
+      checks += 1;
+      if (
+        !session.ui.host.isConnected
+        || pageScanSession !== session
+        || !isCaptureCurrent(initialCapture)
+      ) {
+        stop();
+        return;
+      }
+
+      const nextCapture = extractListing();
+      const nextBuildingKey = buildingAddressKey(nextCapture.address);
+      if (
+        nextCapture.detailPage !== true
+        || (buildingKey && nextBuildingKey && buildingKey !== nextBuildingKey)
+      ) return;
+
+      const nextSignature = unitOptionSignature(nextCapture);
+      if (nextSignature === appliedSignature) {
+        pendingSignature = null;
+        pendingCapture = null;
+        consecutiveMatches = 0;
+        return;
+      }
+      if (nextSignature === pendingSignature) {
+        consecutiveMatches += 1;
+      } else {
+        pendingSignature = nextSignature;
+        pendingCapture = nextCapture;
+        consecutiveMatches = 1;
+      }
+
+      if (consecutiveMatches < 2) {
+        scheduleCheck();
+        return;
+      }
+
+      appliedSignature = pendingSignature;
+      const settledCapture = pendingCapture;
+      pendingSignature = null;
+      pendingCapture = null;
+      consecutiveMatches = 0;
+      const revision = ++analysisRevision;
+      analyzePageCapture(settledCapture, { allowSystemModel: true }).then((analysis) => {
+        if (revision !== analysisRevision || pageScanSession !== session || !session.ui.host.isConnected || !isCaptureCurrent(settledCapture)) return;
+        review.applyAnalysis(settledCapture, analysis);
+        pillPicker.applyAnalysis(settledCapture, analysis);
+      });
+    };
+
+    const observer = new MutationObserver((records) => {
+      if (records.every((record) => record.target === session.ui.host)) return;
+      scheduleCheck();
+    });
+    observer.observe(document.body || document.documentElement, {
+      attributes: true,
+      attributeFilter: ["aria-hidden", "class", "hidden"],
+      characterData: true,
+      childList: true,
+      subtree: true
+    });
+    session.stopObserving = stop;
+    // Include changes that finished loading while the initial native analysis ran.
+    scheduleCheck();
+    expirationTimer = globalThis.setTimeout(() => {
+      observer.disconnect();
+      if (checkTimer !== null) globalThis.clearTimeout(checkTimer);
+      // Let an already requested final analysis finish after observation ends.
+      if (session.ui.completeCard.classList.contains("hidden")) session.ui.host.remove();
+    }, 12_000);
+  }
+
   async function startPageScan({ presentation = "visual" } = {}) {
-    if (pageScanSession?.running) return;
+    if (pageScanSession?.running) return true;
     pageScanSession?.ui?.host.remove();
 
-    const visualTracking = presentation !== "compact";
-    const ui = createPageScanUI({ compact: !visualTracking });
+    const visualTracking = presentation === "visual";
+    const mobilePillPicker = presentation === "mobile-pills";
+    let capture = extractListing();
+    if (mobilePillPicker && !isLikelyListingCapture(capture)) {
+      pageScanSession = null;
+      return false;
+    }
+    const ui = createPageScanUI({
+      compact: presentation === "compact",
+      pillPicker: mobilePillPicker
+    });
     const session = { running: true, ui };
     pageScanSession = session;
-    const capture = extractListing();
+    if (mobilePillPicker) {
+      capture = await settledPageCapture(capture);
+      if (!capture || pageScanSession !== session || !ui.host.isConnected || !isLikelyListingCapture(capture)) {
+        ui.host.remove();
+        session.running = false;
+        return false;
+      }
+    }
     let analysisFinished = false;
     const analysisTask = analyzePageCapture(capture, {
-      allowSystemModel: visualTracking
+      allowSystemModel: visualTracking || mobilePillPicker
     }).then((result) => {
       analysisFinished = true;
       return result;
@@ -1505,7 +3049,7 @@
     if (!ui.host.isConnected) {
       session.running = false;
       if (pageScanSession === session) pageScanSession = null;
-      return;
+      return false;
     }
     ui.highlightLayer.replaceChildren();
     if (!analysisFinished) {
@@ -1513,7 +3057,11 @@
     }
 
     const analysis = await analysisTask;
-    if (!ui.host.isConnected || pageScanSession !== session) return;
+    if (!ui.host.isConnected || pageScanSession !== session || !isCaptureCurrent(capture)) {
+      ui.host.remove();
+      session.running = false;
+      return false;
+    }
     const resolved = mergedCapture(capture, analysis);
     const source = listingSource(resolved);
     session.running = false;
@@ -1524,20 +3072,28 @@
     ui.completeSummary.textContent = listingSummary(resolved);
     ui.completeCard.classList.remove("hidden");
     const review = configureReview(ui, capture, analysis);
+    const pillPicker = mobilePillPicker
+      ? configureMobilePillPicker(ui, capture, analysis, review)
+      : null;
+    observeLiveUnitChanges(session, capture, review, pillPicker);
 
-    if (!visualTracking) {
+    if (!visualTracking && !mobilePillPicker) {
       analyzePageCapture(capture, { allowSystemModel: true })
         .then((enhancedAnalysis) => {
-          if (!ui.host.isConnected || pageScanSession !== session) return;
+          if (!ui.host.isConnected || pageScanSession !== session || !isCaptureCurrent(capture)) return;
           review.applyEnhancedAnalysis(enhancedAnalysis);
-          ui.completeSummary.textContent = listingSummary(
-            mergedCapture(capture, enhancedAnalysis)
-          );
+          pillPicker?.applyEnhancedAnalysis(enhancedAnalysis);
+          if (!mobilePillPicker) {
+            ui.completeSummary.textContent = listingSummary(
+              mergedCapture(capture, enhancedAnalysis)
+            );
+          }
         })
         .catch(() => {
           // The fast grounded review remains usable if deeper analysis is unavailable.
         });
     }
+    return true;
   }
 
   function showPageScanFailure(error) {
@@ -1551,10 +3107,11 @@
     ui.highlightLayer.replaceChildren();
     ui.tag.classList.add("hidden");
     ui.completeSource.textContent = "HOMEBOARD · SAFARI";
+    ui.host.classList.add("scan-failed");
     ui.completeTitle.textContent = "This page did not finish scanning";
     ui.completeSummary.textContent = error instanceof Error && error.message
       ? error.message
-      : "Try again, or use Safari’s Share button to send the page to Homeboard.";
+      : "Try again, or open Homeboard for setup help.";
     ui.reviewButton.textContent = "Dismiss";
     ui.reviewButton.disabled = false;
     ui.reviewButton.addEventListener("click", () => {
@@ -1562,6 +3119,220 @@
       if (pageScanSession === session) pageScanSession = null;
     }, { once: true });
     ui.completeCard.classList.remove("hidden");
+  }
+
+  function isMobileSafariContext() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function isVisibleInViewport(element) {
+    const rect = element?.getBoundingClientRect?.();
+    if (!rect || rect.width < 1 || rect.height < 1) return false;
+    return rect.bottom > 0
+      && rect.right > 0
+      && rect.top < innerHeight
+      && rect.left < innerWidth;
+  }
+
+  function hasActiveMapResultsUI() {
+    const map = [...document.querySelectorAll([
+      '[data-testid*="search-page-map" i]',
+      '[data-testid*="map-container" i]',
+      '[aria-label*="map search results" i]',
+      '[class*="search-map" i]'
+    ].join(','))].find((element) => {
+      if (!isVisibleInViewport(element)) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width >= innerWidth * 0.38 && rect.height >= innerHeight * 0.22;
+    });
+    if (!map) return false;
+    const visibleCards = [...document.querySelectorAll(
+      '[data-testid*="property-card" i],[data-testid*="listing-card" i],'
+      + '[class*="property-card" i],[class*="listing-card" i]'
+    )].filter(isVisibleInViewport);
+    return visibleCards.length >= 1;
+  }
+
+  function listingURLKind() {
+    let url;
+    try {
+      url = new URL(location.href);
+    } catch {
+      return "unknown";
+    }
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname.toLowerCase().replace(/\/+$/, "") || "/";
+    const segments = path.split('/').filter(Boolean);
+    const lastSegment = segments.at(-1) || "";
+    const mapQueryKeys = [
+      "searchquerystate", "mapbounds", "mapbound", "viewport", "bbox"
+    ];
+    if (mapQueryKeys.some((key) => url.searchParams.has(key))) return "search";
+    if (/\/(?:search|map)(?:\/|$)/.test(path)) return "search";
+
+    if (host.endsWith("zillow.com")) {
+      if (path.includes("/homedetails/")) return "detail";
+      if (path.startsWith("/apartments/") && segments.length >= 4) return "detail";
+      return "search";
+    }
+    if (host.endsWith("streeteasy.com")) {
+      if (/^\/(?:building|rental|sale)\//.test(path)) return "detail";
+      return "search";
+    }
+    if (host.endsWith("realtor.com")) {
+      return path.includes("/realestateandhomes-detail/") ? "detail" : "search";
+    }
+    if (host.endsWith("apartments.com")) {
+      return segments.length >= 2 && /^(?=.*\d)[a-z0-9]{5,}$/.test(lastSegment)
+        ? "detail"
+        : "search";
+    }
+    if (host.endsWith("redfin.com")) {
+      return /\/home\/\d+/.test(path) ? "detail" : "search";
+    }
+    if (host.endsWith("craigslist.org")) {
+      return /\/d\/[^/]+\/\d+\.html$/.test(path) ? "detail" : "search";
+    }
+    if (host.endsWith("renthop.com")) {
+      return /\/listing\/|\/\d{5,}$/.test(path) ? "detail" : "search";
+    }
+    if (host.endsWith("rent.com")) {
+      return /\d{3,}/.test(lastSegment) && segments.length >= 2 ? "detail" : "search";
+    }
+    if (host.endsWith("compass.com") || host.endsWith("corcoran.com")) {
+      return path.includes("/listing/") ? "detail" : "search";
+    }
+    if (host.endsWith("elliman.com")) {
+      return /\/(?:rentals|sales)\/detail\//.test(path) ? "detail" : "search";
+    }
+    if (host.endsWith("serhant.com")) {
+      return path.includes("/properties/") ? "detail" : "search";
+    }
+    if (host.endsWith("sothebysrealty.com")) {
+      return /\/(?:rentals|sales)\/detail\/|\/property\//.test(path) ? "detail" : "search";
+    }
+    return "unknown";
+  }
+
+  function isActualListingPage(nodes, primaryNode, address) {
+    if (hasActiveMapResultsUI()) return false;
+    const urlKind = listingURLKind();
+    if (urlKind === "search") return false;
+    if (urlKind === "detail") return true;
+
+    const addressKey = buildingAddressKey(address);
+    const headingKey = buildingAddressKey(
+      document.querySelector('main h1,[role="main"] h1,h1')?.textContent
+    );
+    const matchingStructuredListing = nodes.some((candidate) =>
+      structuredURLMatchesPage(candidate)
+      && (
+        candidate === primaryNode
+        || types(candidate).some((type) => [
+          "apartment", "apartmentcomplex", "accommodation", "residence",
+          "singlefamilyresidence", "house", "product", "realestatelisting"
+        ].includes(type))
+      )
+    );
+    return Boolean(
+      matchingStructuredListing
+      && addressKey
+      && headingKey
+      && (addressKey === headingKey || headingKey.includes(addressKey) || addressKey.includes(headingKey))
+    );
+  }
+
+  function isLikelyListingCapture(capture) {
+    if (capture?.detailPage !== true) return false;
+    if (pendingPageContent && capture.pageIdentity && JSON.stringify(JSON.parse(capture.pageIdentity).slice(1)) === pendingPageContent) return false;
+    const unitOptions = Array.isArray(capture?.unitOptions)
+      ? capture.unitOptions
+      : [];
+    if (capture?.listingScope === "building") {
+      const availability = capture.availabilityPageEvidence || "";
+      return Boolean(capture?.address && (
+        unitOptions.length > 0
+        || (priceFromText(availability) !== null && (bedroomsFromText(availability) !== null || bathroomsFromText(availability) !== null))
+      ));
+    }
+    const listingFactCount = [capture?.price, capture?.bedrooms, capture?.bathrooms]
+      .filter((value) => value !== null && value !== undefined).length;
+    return Boolean(capture?.address && listingFactCount >= 2);
+  }
+
+  let automaticPageIdentity = currentPageIdentity();
+  let pendingPageContent = null;
+  let automaticScanURL = null;
+  let automaticScanAttempts = 0;
+  let automaticScanTimer = null;
+
+  function synchronizePageNavigation() {
+    if (!globalThis.document?.documentElement) return;
+    const identity = currentPageIdentity();
+    if (identity === automaticPageIdentity) return;
+    const previous = JSON.parse(automaticPageIdentity);
+    const next = JSON.parse(identity);
+    if (next[0] !== previous[0]) pendingPageContent = JSON.stringify(previous.slice(1));
+    if (JSON.stringify(next.slice(1)) !== pendingPageContent) pendingPageContent = null;
+    automaticPageIdentity = identity;
+    pageScanSession?.stopObserving?.();
+    pageScanSession?.ui?.host.remove();
+    pageScanSession = null;
+    automaticScanURL = null;
+    automaticScanAttempts = 0;
+    if (automaticScanTimer) globalThis.clearTimeout(automaticScanTimer);
+    automaticScanTimer = null;
+    scheduleAutomaticListingScan();
+  }
+
+  function scheduleAutomaticListingScan(reset = false) {
+    if (!isMobileSafariContext()) return;
+    if (reset) {
+      automaticScanAttempts = 0;
+    }
+    if (automaticScanTimer || automaticScanAttempts >= 40) return;
+
+    automaticScanTimer = globalThis.setTimeout(() => {
+      automaticScanTimer = null;
+      if (currentPageIdentity() !== automaticPageIdentity) {
+        synchronizePageNavigation();
+        return;
+      }
+      // Do not spend the readiness retry budget while Safari is backgrounded.
+      // This commonly happens just after installing or launching Homeboard.
+      if (document.hidden) return;
+      if (pageScanSession?.running) {
+        scheduleAutomaticListingScan();
+        return;
+      }
+
+      // Search and map pages change constantly. Wait for a real navigation instead
+      // of repeatedly running the full listing extractor while results are browsed.
+      if (listingURLKind() === "search") {
+        automaticScanAttempts = 0;
+        return;
+      }
+
+      automaticScanAttempts += 1;
+      const capture = extractListing();
+      const captureURL = capture.pageIdentity;
+      if (isLikelyListingCapture(capture) && captureURL !== automaticScanURL) {
+        automaticScanURL = captureURL;
+        startPageScan({ presentation: "mobile-pills" })
+          .then((started) => {
+            if (started) return;
+            automaticScanURL = null;
+            scheduleAutomaticListingScan();
+          })
+          .catch((error) => {
+            automaticScanURL = null;
+            showPageScanFailure(error);
+          });
+        return;
+      }
+      scheduleAutomaticListingScan();
+    }, automaticScanAttempts === 0 ? 350 : 1200);
   }
 
   browser.runtime.onMessage.addListener((request) => {
@@ -1576,4 +3347,26 @@
     }
     return undefined;
   });
+
+  if (isMobileSafariContext()) {
+    scheduleAutomaticListingScan(true);
+    const navigationObserver = new MutationObserver(() => {
+      const previousIdentity = automaticPageIdentity;
+      synchronizePageNavigation();
+      if (automaticPageIdentity === previousIdentity && automaticScanURL === null) {
+        scheduleAutomaticListingScan();
+      }
+    });
+    navigationObserver.observe(document.documentElement, { childList: true, characterData: true, subtree: true });
+    globalThis.addEventListener("popstate", synchronizePageNavigation);
+    globalThis.addEventListener("hashchange", synchronizePageNavigation);
+    globalThis.addEventListener("pageshow", () => {
+      synchronizePageNavigation();
+      scheduleAutomaticListingScan(true);
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && automaticScanURL === null) scheduleAutomaticListingScan();
+    });
+    globalThis.setInterval(synchronizePageNavigation, 500);
+  }
 })();

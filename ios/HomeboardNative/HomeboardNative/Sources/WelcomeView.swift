@@ -284,7 +284,7 @@ struct WelcomeView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .fixedSize(horizontal: false, vertical: true)
 
-          Text("Existing users: click the key. New accounts: sign in with Apple.")
+          Text("If you already have a board code, tap the key. Otherwise, sign in with Apple.")
             .font(.subheadline)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
@@ -822,6 +822,7 @@ struct WelcomeView: View {
 private struct WelcomeAccessPressStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
+      .contentShape(Rectangle())
       .scaleEffect(configuration.isPressed ? 0.975 : 1)
       .opacity(configuration.isPressed ? 0.86 : 1)
       .animation(.easeOut(duration: 0.12), value: configuration.isPressed)

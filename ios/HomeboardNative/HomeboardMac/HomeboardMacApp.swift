@@ -117,9 +117,20 @@ private final class HomeboardMacConnectionModel: ObservableObject {
         await HomeboardExtensionSyncClient.cancelDevicePairing(pairingChallenge)
       }
       try await loadBoardsAndSelectDestination()
+      guard !boards.isEmpty else {
+        HomeboardSharedAuthStore.delete()
+        HomeboardSharedImportStore.setActiveBoard(nil)
+        activeBoardId = ""
+        pairingChallenge = nil
+        isPairing = false
+        pairingStatusText = "Refresh to create a secure QR code"
+        throw HomeboardExtensionSyncError.server(
+          "That Apple identity has no Homeboard yet. Finish onboarding on iPhone, or scan the QR code to connect the exact account already signed in there."
+        )
+      }
       pairingChallenge = nil
       isPairing = false
-      feedback = "This Mac is connected to the same Homeboard account as your phone."
+      feedback = "This Mac is connected to an existing Homeboard account."
       objectWillChange.send()
     } catch {
       errorMessage = readable(error)
@@ -136,6 +147,7 @@ private final class HomeboardMacConnectionModel: ObservableObject {
     defer { isWorking = false }
     do {
       try await loadBoardsAndSelectDestination()
+      await syncPendingImports(reportWhenEmpty: false)
     } catch {
       errorMessage = readable(error)
     }
@@ -149,36 +161,33 @@ private final class HomeboardMacConnectionModel: ObservableObject {
       : "Safari will save reviewed listings to this board on every device."
   }
 
-  func syncPendingImports() async {
+  func syncPendingImports(reportWhenEmpty: Bool = true) async {
     guard !activeBoardId.isEmpty else {
       errorMessage = "Choose the destination board first."
       return
     }
-    let imports = HomeboardSharedImportStore.consumeAll()
+    let imports = HomeboardSharedImportStore.all()
     guard !imports.isEmpty else {
-      feedback = "There are no offline Safari saves waiting to sync."
+      if reportWhenEmpty {
+        feedback = "There are no offline Safari saves waiting to sync."
+      }
       return
     }
 
     isWorking = true
     errorMessage = nil
-    var deferred: [HomeboardSharedImportStore.PendingImport] = []
     var savedCount = 0
     for var listing in imports {
       listing.boardId = listing.boardId ?? activeBoardId
       do {
-        try await HomeboardExtensionSyncClient.saveListing(
+        try await HomeboardListingSavePipeline.synchronizeQueued(
           listing,
           boardId: listing.boardId
         )
         savedCount += 1
       } catch {
-        deferred.append(listing)
         errorMessage = readable(error)
       }
-    }
-    if !deferred.isEmpty {
-      HomeboardSharedImportStore.prepend(deferred)
     }
     isWorking = false
     if savedCount > 0 {
@@ -396,6 +405,7 @@ private struct HomeboardMacConnectionView: View {
     .onChange(of: scenePhase) { _, phase in
       if phase == .active {
         model.refreshSafariExtensionState()
+        Task { await model.syncPendingImports(reportWhenEmpty: false) }
       }
     }
   }
@@ -483,11 +493,16 @@ private struct HomeboardMacConnectionView: View {
 
       HStack(spacing: 12) {
         Rectangle().fill(.white.opacity(0.1)).frame(height: 1)
-        Text("OR")
+        Text("EXISTING APPLE ACCOUNT")
           .font(.system(size: 9, weight: .heavy))
           .foregroundStyle(.white.opacity(0.34))
         Rectangle().fill(.white.opacity(0.1)).frame(height: 1)
       }
+
+      Text("QR pairing is safest when Hide My Email or a different Apple app identity might create a second account.")
+        .font(.system(size: 10, weight: .medium))
+        .foregroundStyle(.white.opacity(0.52))
+        .fixedSize(horizontal: false, vertical: true)
 
       ZStack {
         SignInWithAppleButton(.continue) { request in

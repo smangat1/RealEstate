@@ -64,6 +64,7 @@ private struct MobileListingCreateRequest: Encodable {
   var bedrooms: Double?
   var bathrooms: Double?
   var squareFeet: Int?
+  var availableDate: String?
   var amenities: [String]?
   var modelInsights: [HomeboardListingInsight]?
   var description: String?
@@ -76,6 +77,7 @@ private struct MobileListingPatchRequest: Encodable {
   var status: String?
   var userNotes: String?
   var workflowStatus: String?
+  var restore: Bool? = nil
 }
 
 private struct MobileReactionRequest: Encodable {
@@ -144,10 +146,13 @@ private struct BoardAnalyticsRequest: Encodable {
 }
 
 private struct MobileBoardUpdateRequest: Encodable {
-  var action: String
-  var content: String?
-  var question: String?
-  var resolution: String?
+  let action: String
+  let content: String
+
+  init(content: String) {
+    action = "update"
+    self.content = content
+  }
 }
 
 private struct MobileBoardRenameRequest: Encodable {
@@ -156,6 +161,7 @@ private struct MobileBoardRenameRequest: Encodable {
 
 private struct MobileMemberCreateRequest: Encodable {
   var name: String
+  var roleLabel: String?
   var budgetMin: Double?
   var idealBudget: Double?
   var budgetMax: Double?
@@ -169,6 +175,7 @@ private struct MobileMemberCreateRequest: Encodable {
 }
 
 private struct MobileMemberPatchRequest: Encodable {
+  var name: String?
   var budgetMin: Double?
   var idealBudget: Double?
   var budgetMax: Double?
@@ -194,10 +201,35 @@ private struct PushDeviceRequest: Encodable {
   var environment: String
 }
 
+private struct PushDeviceDeleteRequest: Encodable {
+  var token: String
+}
+
 private struct NativeDiagnosticsRequest: Encodable {
   var payloads: [String]
   var appVersion: String
   var buildNumber: String
+}
+
+private struct MobileBugReportRequest: Encodable {
+  var description: String
+  var currentScreen: String
+  var boardId: String?
+  var appVersion: String
+  var buildNumber: String
+  var deviceKind: String
+  var osVersion: String
+  var boardLoaded: Bool
+  var boardCount: Int
+  var memberCount: Int
+  var savedListingCount: Int
+  var shareDiagnostics: String
+}
+
+struct MobileBugReportResponse: Decodable {
+  var ok: Bool
+  var reportId: String
+  var promisedBy: String
 }
 
 private struct PasswordRecoveryRequest: Encodable {
@@ -443,11 +475,20 @@ final class HomeboardAPI {
   private let decoder: JSONDecoder
   private let encoder: JSONEncoder
   private let backendRequestTimeout: TimeInterval = 12
+  private let boardRequestTimeout: TimeInterval = 20
 
-  init(session: URLSession = .shared) {
-    self.session = session
+  init(session: URLSession? = nil) {
+    self.session = session ?? Self.makeNetworkSession()
     self.decoder = JSONDecoder()
     self.encoder = JSONEncoder()
+  }
+
+  private static func makeNetworkSession() -> URLSession {
+    let configuration = URLSessionConfiguration.default
+    configuration.waitsForConnectivity = true
+    configuration.timeoutIntervalForRequest = 20
+    configuration.timeoutIntervalForResource = 45
+    return URLSession(configuration: configuration)
   }
 
   func signUp(name: String, email: String, password: String) async throws -> NativeSignUpOutcome {
@@ -564,12 +605,16 @@ final class HomeboardAPI {
     try await requestBackend(
       path: "/api/mobile/session?includeBoard=1",
       accessToken: accessToken,
-      timeoutInterval: 12
+      timeoutInterval: boardRequestTimeout
     )
   }
 
   func fetchBoard(accessToken: String, boardId: String) async throws -> MobileBoardLoadResponse {
-    try await requestBackend(path: "/api/mobile/boards/\(boardId)", accessToken: accessToken)
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)",
+      accessToken: accessToken,
+      timeoutInterval: boardRequestTimeout
+    )
   }
 
   func fetchListingInventory(
@@ -664,6 +709,7 @@ final class HomeboardAPI {
         bedrooms: Double(listing.bedrooms),
         bathrooms: Double(listing.bathrooms),
         squareFeet: listing.squareFeet,
+        availableDate: listing.availableDate,
         amenities: listing.amenities.isEmpty ? nil : listing.amenities,
         modelInsights: listing.modelInsights.isEmpty ? nil : listing.modelInsights,
         description: listing.summary,
@@ -687,6 +733,33 @@ final class HomeboardAPI {
       method: "PATCH",
       accessToken: accessToken,
       body: MobileListingPatchRequest(status: status, userNotes: note, workflowStatus: workflowStatus)
+    )
+  }
+
+  func restoreListing(accessToken: String, boardId: String, listingId: String) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: MobileListingPatchRequest(status: nil, userNotes: nil, workflowStatus: nil, restore: true)
+    )
+  }
+
+  func clearRecentlyDeleted(accessToken: String, boardId: String) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/recently-deleted",
+      method: "DELETE",
+      accessToken: accessToken,
+      body: EmptyRequestBody()
+    )
+  }
+
+  func purgeExpiredRecentlyDeleted(accessToken: String, boardId: String) async throws {
+    let _: EmptyResponse = try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/recently-deleted",
+      method: "POST",
+      accessToken: accessToken,
+      body: EmptyRequestBody()
     )
   }
 
@@ -874,15 +947,7 @@ final class HomeboardAPI {
   }
 
   func addBoardUpdate(accessToken: String, boardId: String, content: String) async throws -> MobileBoardLoadResponse {
-    try await boardUpdate(accessToken: accessToken, boardId: boardId, body: .init(action: "update", content: content, question: nil, resolution: nil))
-  }
-
-  func openDecision(accessToken: String, boardId: String, question: String) async throws -> MobileBoardLoadResponse {
-    try await boardUpdate(accessToken: accessToken, boardId: boardId, body: .init(action: "open_decision", content: nil, question: question, resolution: nil))
-  }
-
-  func resolveDecision(accessToken: String, boardId: String, question: String, resolution: String) async throws -> MobileBoardLoadResponse {
-    try await boardUpdate(accessToken: accessToken, boardId: boardId, body: .init(action: "resolve_decision", content: nil, question: question, resolution: resolution))
+    try await boardUpdate(accessToken: accessToken, boardId: boardId, body: .init(content: content))
   }
 
   private func boardUpdate(accessToken: String, boardId: String, body: MobileBoardUpdateRequest) async throws -> MobileBoardLoadResponse {
@@ -897,7 +962,10 @@ final class HomeboardAPI {
     budgetMax: Double?,
     stretchBudget: Double?,
     commuteDestination: String?,
-    maxCommuteMinutes: Int?
+    maxCommuteMinutes: Int?,
+    roleLabel: String? = nil,
+    commuteAccess: String? = nil,
+    preferredCommuteMinutes: Int? = nil
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/members",
@@ -905,13 +973,14 @@ final class HomeboardAPI {
       accessToken: accessToken,
       body: MobileMemberCreateRequest(
         name: name,
+        roleLabel: roleLabel,
         budgetMin: budgetMin,
         idealBudget: budgetMax,
         budgetMax: budgetMax,
         stretchBudget: stretchBudget,
         commuteDestination: commuteDestination,
-        commuteAccess: nil,
-        preferredCommuteMinutes: nil,
+        commuteAccess: commuteAccess,
+        preferredCommuteMinutes: preferredCommuteMinutes,
         maxCommuteMinutes: maxCommuteMinutes,
         petsRequired: nil,
         accessibilityNeeds: nil
@@ -925,6 +994,7 @@ final class HomeboardAPI {
       method: "PATCH",
       accessToken: accessToken,
       body: MobileMemberPatchRequest(
+        name: member.status == "commute point" ? member.name : nil,
         budgetMin: member.budgetMin,
         idealBudget: member.idealBudget,
         budgetMax: member.budgetMax,
@@ -1008,6 +1078,15 @@ final class HomeboardAPI {
     )
   }
 
+  func unregisterPushDevice(accessToken: String, token: String) async throws {
+    let _: EmptyResponse = try await requestBackend(
+      path: "/api/mobile/push-devices",
+      method: "DELETE",
+      accessToken: accessToken,
+      body: PushDeviceDeleteRequest(token: token)
+    )
+  }
+
   func uploadNativeDiagnostics(accessToken: String, payloads: [String]) async throws {
     guard !payloads.isEmpty else { return }
     let info = Bundle.main.infoDictionary
@@ -1019,6 +1098,40 @@ final class HomeboardAPI {
         payloads: payloads,
         appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
         buildNumber: info?["CFBundleVersion"] as? String ?? "unknown"
+      )
+    )
+  }
+
+  func submitBugReport(
+    accessToken: String,
+    description: String,
+    currentScreen: String,
+    boardId: String?,
+    deviceKind: String,
+    boardLoaded: Bool,
+    boardCount: Int,
+    memberCount: Int,
+    savedListingCount: Int,
+    shareDiagnostics: String
+  ) async throws -> MobileBugReportResponse {
+    let info = Bundle.main.infoDictionary
+    return try await requestBackend(
+      path: "/api/mobile/bug-reports",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileBugReportRequest(
+        description: description,
+        currentScreen: currentScreen,
+        boardId: boardId,
+        appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
+        buildNumber: info?["CFBundleVersion"] as? String ?? "unknown",
+        deviceKind: deviceKind,
+        osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+        boardLoaded: boardLoaded,
+        boardCount: boardCount,
+        memberCount: memberCount,
+        savedListingCount: savedListingCount,
+        shareDiagnostics: shareDiagnostics
       )
     )
   }
@@ -1218,11 +1331,20 @@ final class HomeboardAPI {
     let response: URLResponse
 
     do {
-      (data, response) = try await session.data(for: request)
+      (data, response) = try await dataForRequestWithTransientRetry(request)
     } catch {
       if let urlError = error as? URLError {
         switch urlError.code {
-        case .cannotConnectToHost, .timedOut, .networkConnectionLost, .notConnectedToInternet:
+        case .timedOut:
+          throw HomeboardAPIError.server(
+            "Homeboard’s server took too long to respond. Tap Retry to reconnect."
+          )
+        case .notConnectedToInternet:
+          throw HomeboardAPIError.server(
+            "This device is offline. Reconnect, then tap Retry."
+          )
+        case .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost,
+             .networkConnectionLost, .resourceUnavailable:
           throw HomeboardAPIError.server("Homeboard could not reach the server. Check your connection and try again.")
         default:
           throw HomeboardAPIError.server(urlError.localizedDescription)
@@ -1248,6 +1370,30 @@ final class HomeboardAPI {
       throw HomeboardAPIError.unauthorized
     }
     throw HomeboardAPIError.server(apiError)
+  }
+
+  private func dataForRequestWithTransientRetry(
+    _ request: URLRequest
+  ) async throws -> (Data, URLResponse) {
+    do {
+      return try await session.data(for: request)
+    } catch let urlError as URLError {
+      guard request.httpMethod == "GET", Self.shouldRetryImmediately(urlError) else {
+        throw urlError
+      }
+      try Task.checkCancellation()
+      return try await session.data(for: request)
+    }
+  }
+
+  private static func shouldRetryImmediately(_ error: URLError) -> Bool {
+    switch error.code {
+    case .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost,
+         .networkConnectionLost, .resourceUnavailable:
+      return true
+    default:
+      return false
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 
 import { BrandMark } from "@/components/brand-mark";
 import { InstallTrigger } from "./install-experience";
@@ -17,23 +18,23 @@ export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
 
   return (
     <header className={`${styles.nav} ${headerCollapsed ? styles.navCollapsed : ""} ${headerAtProduct ? styles.navAtProduct : ""}`}>
-      <a className={styles.wordmark} href="#top" aria-label="Homeboard home">
+      <Link className={styles.wordmark} href="#top" aria-label="Homeboard home">
         <BrandMark className={styles.wordmarkIcon} />
         <span>HOMEBOARD</span>
-      </a>
+      </Link>
       <nav className={styles.desktopNav} aria-label="Site navigation">
-        <a href="/?slide=product#product">Product</a>
-        <a href="/safari">Safari for Mac</a>
-        <a href="/privacy">Privacy</a>
-        <a href="/contact">Contact</a>
+        <Link href="/?slide=product#product">Product</Link>
+        <Link href="/safari">Safari for Mac</Link>
+        <Link href="/privacy">Privacy</Link>
+        <Link href="/contact">Contact</Link>
       </nav>
       <details className={styles.mobileMenu} ref={mobileMenuRef}>
         <summary>Menu</summary>
         <nav aria-label="Mobile site navigation">
-          <a href="/?slide=product#product">Product</a>
-          <a href="/safari">Safari for Mac</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/contact">Contact</a>
+          <Link href="/?slide=product#product">Product</Link>
+          <Link href="/safari">Safari for Mac</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/contact">Contact</Link>
         </nav>
       </details>
       <InstallTrigger className={styles.installCorner} />

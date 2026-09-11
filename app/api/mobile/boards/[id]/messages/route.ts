@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { getBoardPageData, sendChat } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
@@ -13,6 +14,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireMobileAppUser(request);
     const { id } = await context.params;
+    assertThrottle({
+      scope: "mobile-board-message",
+      key: `${user.id}:${id}`,
+      limit: 30,
+      windowMs: 60 * 1_000,
+      message: "Messages are being sent too quickly. Please wait a moment.",
+    });
     if (!(await getBoardPageData(id, user.id))) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
@@ -43,6 +51,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       requestId: request.headers.get("x-homeboard-request-id"),
     });
     const message = error instanceof Error ? error.message : "Unable to send message.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      {
+        error: message === "MOBILE_AUTH_REQUIRED"
+          ? "Unauthorized"
+          : isThrottleError(error)
+            ? message
+            : "Unable to send message.",
+      },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : isThrottleError(error) ? 429 : 500 },
+    );
   }
 }

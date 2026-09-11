@@ -27,21 +27,22 @@
     <key>NSExtensionAttributes</key>
     <dict>
       <key>NSExtensionActivationRule</key>
-      <dict>
-        <key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-        <integer>1</integer>
-        <key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
-        <integer>1</integer>
-      <key>NSExtensionActivationSupportsText</key>
-      <true/>
-      </dict>
+      <!--
+        Some rental apps advertise only a private rich-preview representation,
+        and some put the useful URL in NSExtensionItem.attributedContentText
+        instead of an attachment. Match the presence of a share item itself so
+        those hosts cannot filter Homeboard out before its controller launches.
+        CompactShareViewController still requires a valid HTTP(S) URL before it
+        offers a save, so unrelated shares fail closed inside the extension.
+      -->
+      <string>$(HOMEBOARD_EXTENSION_ACTIVATION_RULE)</string>
       <key>NSExtensionJavaScriptPreprocessingFile</key>
       <string>SharePreprocessor</string>
     </dict>
     <key>NSExtensionPointIdentifier</key>
     <string>com.apple.share-services</string>
     <key>NSExtensionPrincipalClass</key>
-    <string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+    <string>$(PRODUCT_MODULE_NAME).CompactShareViewController</string>
   </dict>
 </dict>
 </plist>

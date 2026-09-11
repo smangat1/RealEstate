@@ -33,6 +33,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to complete device pairing.";
     const status = message === "MOBILE_AUTH_REQUIRED" ? 401 : 500;
-    return NextResponse.json({ error: status === 401 ? "The new Mac session could not be verified." : message }, { status, headers });
+    return NextResponse.json(
+      { error: status === 401 ? "The new Mac session could not be verified." : "Unable to complete device pairing." },
+      { status, headers },
+    );
   }
 }

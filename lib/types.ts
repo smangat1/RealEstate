@@ -228,6 +228,7 @@ export type BoardListingRecord = {
   aiTradeoffAnalysis: string | null;
   aiRedFlags: string[];
   questionsToAsk: string[];
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
   listing: ListingRecord;
@@ -311,7 +312,7 @@ export type BoardListingDecisionRecord = {
   id: string;
   boardListingId: string;
   type: "shortlist" | "request_viewing" | "apply";
-  createdByRoommateId: string;
+  createdByRoommateId: string | null;
   createdAt: string;
   closedAt: string | null;
   votes: Array<{
@@ -473,8 +474,10 @@ export type BoardPageData = {
   invitations: BoardInvitationRecord[];
   groupSynthesis: GroupProfile;
   activity: BoardActivityRecord[];
+  pendingDecisionQuestions?: string[];
   messages: ChatMessage[];
   boardListings: BoardListingRecord[];
+  recentlyDeletedBoardListings: BoardListingRecord[];
   boardListingCommutesByBoardListingId: Record<string, BoardListingCommuteRecord>;
   listingVotesByBoardListingId: Record<string, BoardListingVoteRecord[]>;
   listingCommentsByBoardListingId: Record<string, BoardListingCommentRecord[]>;

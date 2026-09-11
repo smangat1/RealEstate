@@ -45,7 +45,7 @@ export async function POST(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to report the listing source.";
     return NextResponse.json(
-      { error: message },
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to report the listing source." },
       { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 400 },
     );
   }

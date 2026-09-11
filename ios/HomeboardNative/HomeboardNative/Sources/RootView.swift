@@ -182,7 +182,7 @@ private struct PostAuthNotificationPrompt: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .disabled(appModel.isNotificationPermissionLoading)
       .accessibilityIdentifier("homeboard.notifications.enable")
 
@@ -194,7 +194,7 @@ private struct PostAuthNotificationPrompt: View {
       .font(.subheadline.weight(.semibold))
       .foregroundStyle(HomeboardPalette.secondaryText)
       .frame(maxWidth: .infinity)
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .disabled(appModel.isNotificationPermissionLoading)
       .accessibilityIdentifier("homeboard.notifications.notNow")
     }

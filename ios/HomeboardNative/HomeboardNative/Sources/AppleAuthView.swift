@@ -56,7 +56,7 @@ struct AppleAuthView: View {
                 .background(Color.white.opacity(0.07))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
             .disabled(appModel.isAuthLoading)
           }
 

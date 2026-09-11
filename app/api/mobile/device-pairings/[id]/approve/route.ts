@@ -97,6 +97,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     const message = error instanceof Error ? error.message : "Unable to approve this Mac.";
     const status = message === "MOBILE_AUTH_REQUIRED" ? 401 : 500;
-    return NextResponse.json({ error: status === 401 ? "Sign in on your iPhone before connecting a Mac." : message }, { status, headers });
+    return NextResponse.json(
+      { error: status === 401 ? "Sign in on your iPhone before connecting a Mac." : "Unable to approve this Mac." },
+      { status, headers },
+    );
   }
 }

@@ -251,9 +251,33 @@ export function isGenericListingUrl(input: string) {
   return pathname === "/" || pathname.startsWith("/search");
 }
 
-export function assertSpecificListingUrl(input: string) {
+export function isZillowBuildingDetailUrl(input: string) {
+  const parsed = new URL(canonicalizeListingUrl(input));
+  if (!parsed.hostname.endsWith("zillow.com")) return false;
+
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  return segments.length === 4
+    && segments[0].toLowerCase() === "apartments"
+    && /^[a-z0-9_-]{4,40}$/i.test(segments[3]);
+}
+
+function hasCompleteSelectedUnitFacts(facts: ListingMatchFacts | undefined) {
+  if (!facts) return false;
+  const identity = normalizedListingAddressParts(facts.address, facts.unit);
+  return Boolean(identity.street && identity.unit)
+    && [facts.price, facts.bedrooms, facts.bathrooms].every(
+      (value) => value !== null && Number.isFinite(value),
+    );
+}
+
+export function assertSpecificListingUrl(
+  input: string,
+  selectedUnitFacts?: ListingMatchFacts,
+) {
   const canonicalUrl = canonicalizeListingUrl(input);
-  if (isGenericListingUrl(canonicalUrl)) {
+  const isConfirmedBuildingUnit = isZillowBuildingDetailUrl(canonicalUrl)
+    && hasCompleteSelectedUnitFacts(selectedUnitFacts);
+  if (isGenericListingUrl(canonicalUrl) && !isConfirmedBuildingUnit) {
     throw new Error(
       "Open the page for the exact rental unit. Search results and building-wide pages cannot be attached as listing sources.",
     );
@@ -303,7 +327,13 @@ export function previewListingImport(input: {
   bedrooms?: number | null;
   bathrooms?: number | null;
 }): ListingImportPreview {
-  const parsed = new URL(assertSpecificListingUrl(input.url));
+  const parsed = new URL(assertSpecificListingUrl(input.url, {
+    address: input.address ?? null,
+    unit: input.unit ?? null,
+    price: input.price ?? null,
+    bedrooms: input.bedrooms ?? null,
+    bathrooms: input.bathrooms ?? null,
+  }));
 
   const hints = pathHints(parsed);
   const address = input.address?.trim() || hints.address;

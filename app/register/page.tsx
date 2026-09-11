@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { signUpAction } from "@/app/actions";
 import { getCurrentAppUser } from "@/lib/auth";
 import { getInvitationByCode } from "@/lib/board-data";
+import { safeRelativePath } from "@/lib/input-safety";
 
 function getInviteCode(nextPath: string) {
   const match = /^\/invite\/([^/?#]+)$/.exec(nextPath);
@@ -27,7 +28,7 @@ export default async function RegisterPage({
   }
 
   const params = await searchParams;
-  const next = typeof params.next === "string" ? params.next : "/";
+  const next = safeRelativePath(typeof params.next === "string" ? params.next : "/");
   const error = typeof params.error === "string" ? params.error : null;
   const email = typeof params.email === "string" ? params.email : "";
   const inviteCode = getInviteCode(next);
@@ -87,7 +88,7 @@ export default async function RegisterPage({
 
               <label className="field-stack">
                 <span>Name</span>
-                <input name="displayName" placeholder="Ava Chen" autoComplete="name" />
+                <input name="displayName" placeholder="Ava Chen" autoComplete="name" maxLength={160} required />
               </label>
               <label className="field-stack">
                 <span>Email</span>
@@ -97,11 +98,21 @@ export default async function RegisterPage({
                   placeholder="ava@homeboard.app"
                   autoComplete="email"
                   defaultValue={email}
+                  maxLength={254}
+                  required
                 />
               </label>
               <label className="field-stack">
                 <span>Password</span>
-                <input name="password" type="password" placeholder="At least 6 characters" autoComplete="new-password" />
+                <input
+                  name="password"
+                  type="password"
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                  minLength={8}
+                  maxLength={128}
+                  required
+                />
               </label>
 
               <div className="register-actions">

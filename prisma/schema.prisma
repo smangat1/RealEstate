@@ -338,6 +338,7 @@ model BoardListing {
   aiTradeoffAnalysis String?
   aiRedFlags         String?
   questionsToAsk     String?
+  deletedAt          DateTime?
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
   board              SearchBoard                @relation(fields: [boardId], references: [id], onDelete: Cascade)
@@ -353,6 +354,7 @@ model BoardListing {
   @@unique([boardId, listingId])
   @@index([boardId, userStatus])
   @@index([boardId, workflowStatus])
+  @@index([boardId, deletedAt])
   @@index([listingId])
 }
 
@@ -601,11 +603,11 @@ model BoardListingDecision {
   id                  String                     @id @default(cuid())
   boardListingId      String
   type                ListingDecisionType
-  createdByRoommateId String
+  createdByRoommateId String?
   createdAt           DateTime                   @default(now())
   closedAt            DateTime?
   boardListing        BoardListing               @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-  createdByRoommate   RoommateProfile            @relation(fields: [createdByRoommateId], references: [id], onDelete: Cascade)
+  createdByRoommate   RoommateProfile?           @relation(fields: [createdByRoommateId], references: [id], onDelete: SetNull)
   votes               BoardListingDecisionVote[]
 
   @@index([boardListingId, createdAt])

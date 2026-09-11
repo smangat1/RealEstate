@@ -1,4 +1,6 @@
+import Foundation
 import MapKit
+import SafariServices
 import SwiftUI
 import UIKit
 
@@ -76,9 +78,17 @@ enum SharedComparisonMath {
     }
     return max(0, 100 - Double(minutes - maximum) * 4)
   }
+
+  static func offerBonusPoints(for offer: SharedListingActiveOffer) -> Int {
+    offer.bonusPoints
+  }
+
+  static func adjustedPriceScore(baseScore: Double, bonusPoints: Int) -> Double {
+    min(100, baseScore + Double(bonusPoints))
+  }
 }
 
-private enum SharedCommuteMode: String, CaseIterable, Hashable, Sendable {
+private enum SharedCommuteMode: String, CaseIterable, Hashable, Codable, Sendable {
   case transit
   case walking
   case automobile
@@ -108,11 +118,36 @@ private enum SharedCommuteMode: String, CaseIterable, Hashable, Sendable {
   }
 }
 
+private enum SharedTransitKind: String, Codable, Sendable {
+  case bus
+  case train
+  case ferry
+  case transit
+
+  var label: String {
+    switch self {
+    case .bus: "Bus"
+    case .train: "Train"
+    case .ferry: "Ferry"
+    case .transit: "Transit"
+    }
+  }
+
+  var icon: String {
+    switch self {
+    case .bus: "bus.fill"
+    case .train: "tram.fill"
+    case .ferry: "ferry.fill"
+    case .transit: "tram.fill"
+    }
+  }
+}
+
 private enum SharedCommuteRouteLogic {
   static func permits(_ mode: SharedCommuteMode, access: String?) -> Bool {
     guard access != "remote", access != "skip" else { return false }
     if mode == .automobile {
-      return access == "car" || access == "flexible"
+      return access == nil || access == "car" || access == "flexible"
     }
     return true
   }
@@ -143,12 +178,14 @@ private enum SharedCommuteRouteLogic {
 }
 
 private struct SharedComparisonCommuteEvidence: Sendable {
-  let score: Double
+  let score: Double?
   let averageMinutes: Int
   let averageEaseMinutes: Int
   let resolvedDestinations: Int
   let requestedDestinations: Int
+  let suppressedLongRouteDestinations: Int
   let usedWalkingFallback: Bool
+  let displayedRouteIDs: Set<String>
   let scoredRouteIDs: Set<String>
   let routeSnapshots: [SharedComparisonRouteSnapshot]
 }
@@ -164,15 +201,139 @@ private struct SharedComparisonCommuteTarget: Sendable {
   let maximumMinutes: Int?
 }
 
-private struct SharedRouteCoordinate: Sendable {
+private struct SharedRouteCoordinate: Codable, Sendable {
   let latitude: Double
   let longitude: Double
 }
 
-private struct SharedRouteResult: Sendable {
+private struct SharedRouteLegResult: Codable, Sendable {
+  let mode: SharedCommuteMode
+  let transitKind: SharedTransitKind?
+  let minutes: Int
+  let coordinates: [SharedRouteCoordinate]
+}
+
+private struct SharedRouteResult: Codable, Sendable {
   let minutes: Int
   let stepCount: Int
+  let transitKind: SharedTransitKind?
   let coordinates: [SharedRouteCoordinate]
+  let legs: [SharedRouteLegResult]
+}
+
+private struct SharedComparisonRouteCacheEntry: Codable, Sendable {
+  let result: SharedRouteResult
+  let savedAt: Date
+}
+
+private struct SharedComparisonRouteCachePayload: Codable, Sendable {
+  let version: Int
+  let entries: [String: SharedComparisonRouteCacheEntry]
+}
+
+private actor SharedComparisonRouteCache {
+  static let shared = SharedComparisonRouteCache()
+
+  private static let cacheVersion = 1
+  private static let maximumEntryCount = 1_200
+
+  private let cacheURL: URL
+  private var values: [String: SharedComparisonRouteCacheEntry]
+  private var inFlight: [String: Task<SharedRouteResult?, Never>] = [:]
+  private var persistenceTask: Task<Void, Never>?
+
+  init(fileManager: FileManager = .default) {
+    let baseURL = fileManager.urls(
+      for: .cachesDirectory,
+      in: .userDomainMask
+    ).first ?? fileManager.temporaryDirectory
+    let directoryURL = baseURL.appendingPathComponent(
+      "HomeboardRouteCache",
+      isDirectory: true
+    )
+    try? fileManager.createDirectory(
+      at: directoryURL,
+      withIntermediateDirectories: true
+    )
+    let cacheURL = directoryURL.appendingPathComponent(
+      "comparison-routes-v1.json",
+      isDirectory: false
+    )
+    self.cacheURL = cacheURL
+
+    if let data = try? Data(contentsOf: cacheURL),
+       let payload = try? JSONDecoder().decode(
+         SharedComparisonRouteCachePayload.self,
+         from: data
+       ),
+       payload.version == Self.cacheVersion {
+      values = payload.entries
+    } else {
+      values = [:]
+    }
+  }
+
+  func value(
+    for key: String,
+    operation: @escaping @Sendable () async -> SharedRouteResult?
+  ) async -> SharedRouteResult? {
+    if let cached = values[key] {
+      return cached.result
+    }
+    if let existing = inFlight[key] {
+      return await existing.value
+    }
+
+    let task = Task { await operation() }
+    inFlight[key] = task
+    let result = await task.value
+    inFlight[key] = nil
+    if let result {
+      values[key] = SharedComparisonRouteCacheEntry(
+        result: result,
+        savedAt: Date()
+      )
+      trimIfNeeded()
+      schedulePersistence()
+    }
+    return result
+  }
+
+  private func trimIfNeeded() {
+    let overflow = values.count - Self.maximumEntryCount
+    guard overflow > 0 else { return }
+    let oldestKeys = values
+      .sorted { $0.value.savedAt < $1.value.savedAt }
+      .prefix(overflow)
+      .map(\.key)
+    for key in oldestKeys {
+      values[key] = nil
+    }
+  }
+
+  private func schedulePersistence() {
+    persistenceTask?.cancel()
+    persistenceTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: 400_000_000)
+      guard !Task.isCancelled else { return }
+      await self?.persist()
+    }
+  }
+
+  private func persist() {
+    let payload = SharedComparisonRouteCachePayload(
+      version: Self.cacheVersion,
+      entries: values
+    )
+    guard let data = try? JSONEncoder().encode(payload) else { return }
+    try? data.write(to: cacheURL, options: .atomic)
+  }
+}
+
+private enum SharedRouteAttemptResult: Sendable {
+  case success(SharedRouteResult)
+  case retryableFailure
+  case terminalFailure
 }
 
 private struct SharedLoadedComparisonRoute: Sendable {
@@ -181,11 +342,13 @@ private struct SharedLoadedComparisonRoute: Sendable {
   let memberNames: [String]
   let commuteAccesses: [String]
   let mode: SharedCommuteMode
+  let transitKind: SharedTransitKind?
   let minutes: Int
   let easeMinutes: Int
   let preferredMinutes: Int
   let maximumMinutes: Int
   let coordinates: [SharedRouteCoordinate]
+  let legs: [SharedRouteLegResult]
 }
 
 private struct SharedComparisonRouteSnapshot: Sendable {
@@ -194,11 +357,13 @@ private struct SharedComparisonRouteSnapshot: Sendable {
   let destination: String
   let commuteAccess: String?
   let mode: SharedCommuteMode
+  let transitKind: SharedTransitKind?
   let minutes: Int
   let easeMinutes: Int
   let preferredMinutes: Int
   let maximumMinutes: Int
   let coordinates: [SharedRouteCoordinate]
+  let legs: [SharedRouteLegResult]
 }
 
 private enum SharedComparisonRegionTier: CaseIterable, Identifiable {
@@ -259,11 +424,29 @@ private struct SharedComparisonCommuteCorridor: Identifiable {
   let destination: String
   let commuteAccesses: [String]
   let mode: SharedCommuteMode
+  let transitKind: SharedTransitKind?
   let minutes: Int
   let easeMinutes: Int
   let preferredMinutes: Int
   let maximumMinutes: Int
   let polyline: MKPolyline
+  let legs: [SharedComparisonRouteLeg]
+
+  var transportLabel: String {
+    switch mode {
+    case .automobile: "Car"
+    case .walking: "Walk"
+    case .transit: transitKind?.label ?? "Transit"
+    }
+  }
+
+  var transportIcon: String {
+    switch mode {
+    case .automobile: "car.fill"
+    case .walking: "figure.walk"
+    case .transit: transitKind?.icon ?? "tram.fill"
+    }
+  }
 
   var tier: SharedCommuteCorridorTier {
     if easeMinutes < preferredMinutes { return .tooClose }
@@ -274,10 +457,42 @@ private struct SharedComparisonCommuteCorridor: Identifiable {
   }
 }
 
+private struct SharedComparisonRouteLeg: Identifiable {
+  let id: String
+  let mode: SharedCommuteMode
+  let transitKind: SharedTransitKind?
+  let minutes: Int
+  let calloutCoordinate: CLLocationCoordinate2D
+
+  var transportLabel: String {
+    switch mode {
+    case .automobile: "Car"
+    case .walking: "Walk"
+    case .transit: transitKind?.label ?? "Transit"
+    }
+  }
+
+  var transportIcon: String {
+    switch mode {
+    case .automobile: "car.fill"
+    case .walking: "figure.walk"
+    case .transit: transitKind?.icon ?? "tram.fill"
+    }
+  }
+}
+
+private struct SharedRouteLegDraft {
+  let mode: SharedCommuteMode
+  let transitKind: SharedTransitKind?
+  var distance: CLLocationDistance
+  var coordinates: [SharedRouteCoordinate]
+}
+
 private struct SharedWorkNode: Identifiable {
   let id: String
   let destination: String
   let memberNames: [String]
+  let isAdditionalPoint: Bool
   let commuteAccesses: [String]
   let coordinate: CLLocationCoordinate2D
   let preferredMinutes: Int
@@ -449,13 +664,15 @@ struct SharedSearchMapView: View {
   @State private var showsAddListing = false
   @State private var showsListingDiscovery = false
   @State private var showsSettings = false
+  @State private var isCleaningListings = false
+  @State private var cleanListingSelection = Set<ListingPreview.ID>()
+  @State private var confirmsCleaningListings = false
   @State private var resolvedCoordinates: [String: CLLocationCoordinate2D] = [:]
   @State private var preparedMapItems: [SharedListingMapItem] = []
   @State private var filteredMapItems: [SharedListingMapItem] = []
   @State private var renderedClusters: [SharedListingMapCluster] = []
   @State private var visibleRegion: MKCoordinateRegion?
-  @State private var expandedClusterListingIDs: Set<String> = []
-  @State private var expandedClusterCollapseSpan: Double?
+  @State private var cardClusterListingIDs: Set<String> = []
   @State private var commuteRoutes: [SharedCommuteRoute] = []
   @State private var isLoadingRoutes = false
   @State private var isComparisonActive = false
@@ -470,15 +687,20 @@ struct SharedSearchMapView: View {
   @State private var comparisonCityCenter: CLLocationCoordinate2D?
   @State private var commuteDestinationCoordinates: [String: CLLocationCoordinate2D] = [:]
   @State private var comparisonCommuteEvidence: [String: SharedComparisonCommuteEvidence] = [:]
+  @State private var comparisonEvidenceSignatures: [String: String] = [:]
   @State private var comparisonCommuteCorridors: [SharedComparisonCommuteCorridor] = []
   @State private var selectedComparisonRouteListingID: String?
   @State private var expandedComparisonListing: ListingPreview?
   @State private var loadingComparisonRouteListingID: String?
   @State private var isLoadingComparisonTransit = false
+  @State private var comparisonRoutingCompletedCount = 0
+  @State private var comparisonRoutingTotalCount = 0
+  @State private var comparisonRoutingFailedCount = 0
   @AppStorage("homeboard.map-comparison-priorities") private var storedComparisonPriorities = ""
   @AppStorage("homeboard.map-comparison-city") private var storedComparisonCity = ""
   @AppStorage("homeboard.guide.search.dismissed") private var searchGuideDismissed = false
   @AppStorage("homeboard.guide.first-listing.pending") private var firstListingGuidePending = false
+  @AppStorage("homeboard.guide.safari-extension-v1.dismissed") private var safariExtensionGuideDismissed = false
 
   private var searchListings: [ListingPreview] {
     var seen = Set<String>()
@@ -501,6 +723,10 @@ struct SharedSearchMapView: View {
     })
   }
 
+  private var cleanableListingIDs: Set<ListingPreview.ID> {
+    Set(appModel.board.shortlist.map(\.id))
+  }
+
   private var mapItems: [SharedListingMapItem] {
     preparedMapItems
   }
@@ -509,9 +735,41 @@ struct SharedSearchMapView: View {
     filteredMapItems
   }
 
+  private var visibleCardItems: [SharedListingMapItem] {
+    let clusterFiltered = cardClusterListingIDs.isEmpty
+      ? filteredMapItems
+      : filteredMapItems.filter { cardClusterListingIDs.contains($0.listing.id) }
+    guard isComparisonActive else { return clusterFiltered }
+    return clusterFiltered.sorted { left, right in
+      let leftScore = comparisonScores[left.listing.id]?.total ?? Int.min
+      let rightScore = comparisonScores[right.listing.id]?.total ?? Int.min
+      if leftScore != rightScore { return leftScore > rightScore }
+      return left.listing.id < right.listing.id
+    }
+  }
+
+  private var displayedResultCount: Int {
+    visibleCardItems.count
+  }
+
+  private var activeFilterCount: Int {
+    filters.activeCount + (cardClusterListingIDs.isEmpty ? 0 : 1)
+  }
+
+  private var routableWorkMemberCount: Int {
+    appModel.board.members.filter {
+      $0.commuteAccess != "remote"
+        && $0.commuteAccess != "skip"
+        && !SharedListingText.commuteDestination($0.commuteLine).isEmpty
+    }.count
+  }
+
   private var currentListing: ListingPreview? {
     if let selectedListing, visibleMapItems.contains(where: { $0.listing.id == selectedListing.id }) {
       return selectedListing
+    }
+    if let offerItem = visibleMapItems.first(where: { $0.listing.activeOffer != nil }) {
+      return offerItem.listing
     }
     return renderedClusters.first?.items.first?.listing ?? visibleMapItems.first?.listing
   }
@@ -520,6 +778,7 @@ struct SharedSearchMapView: View {
     var groups: [String: (
       destination: String,
       names: Set<String>,
+      additionalPointNames: Set<String>,
       commuteAccesses: Set<String>,
       coordinate: CLLocationCoordinate2D,
       preferredMinutes: Int,
@@ -541,6 +800,9 @@ struct SharedSearchMapView: View {
       let key = destination.lowercased()
       if var existing = groups[key] {
         existing.names.insert(member.name)
+        if member.status == "commute point" {
+          existing.additionalPointNames.insert(member.name)
+        }
         if let commuteAccess = member.commuteAccess {
           existing.commuteAccesses.insert(commuteAccess)
         }
@@ -551,6 +813,7 @@ struct SharedSearchMapView: View {
         groups[key] = (
           destination: destination,
           names: [member.name],
+          additionalPointNames: member.status == "commute point" ? [member.name] : [],
           commuteAccesses: Set([member.commuteAccess].compactMap { $0 }),
           coordinate: coordinate,
           preferredMinutes: preferred,
@@ -564,6 +827,7 @@ struct SharedSearchMapView: View {
         id: key,
         destination: group.destination,
         memberNames: group.names.sorted(),
+        isAdditionalPoint: group.additionalPointNames.count == group.names.count,
         commuteAccesses: group.commuteAccesses.sorted(),
         coordinate: group.coordinate,
         preferredMinutes: group.preferredMinutes,
@@ -589,17 +853,17 @@ struct SharedSearchMapView: View {
       }
   }
 
-  private var scoredComparisonRouteCorridors: [SharedComparisonCommuteCorridor] {
+  private var primaryComparisonRouteCorridors: [SharedComparisonCommuteCorridor] {
     comparisonCommuteCorridors.filter { corridor in
       comparisonScores[corridor.listingID] != nil
-        && comparisonCommuteEvidence[corridor.listingID]?.scoredRouteIDs.contains(
+        && comparisonCommuteEvidence[corridor.listingID]?.displayedRouteIDs.contains(
           "\(corridor.targetID)|\(corridor.mode.rawValue)"
         ) == true
     }
   }
 
   private var displayedComparisonRouteCorridors: [SharedComparisonCommuteCorridor] {
-    scoredComparisonRouteCorridors.sorted { left, right in
+    primaryComparisonRouteCorridors.sorted { left, right in
       let leftIsSelected = left.listingID == selectedComparisonRouteListingID
       let rightIsSelected = right.listingID == selectedComparisonRouteListingID
       if leftIsSelected != rightIsSelected {
@@ -609,30 +873,113 @@ struct SharedSearchMapView: View {
     }
   }
 
-  private var routedComparisonListingCount: Int {
-    Set(scoredComparisonRouteCorridors.map(\.listingID)).count
+  private var selectedComparisonRouteCorridors: [SharedComparisonCommuteCorridor] {
+    guard let selectedComparisonRouteListingID else { return [] }
+    return primaryComparisonRouteCorridors.filter {
+      $0.listingID == selectedComparisonRouteListingID
+    }
   }
 
-  private func comparisonListingColor(for listingID: String) -> Color {
-    let seed = listingID.unicodeScalars.reduce(0) {
-      (($0 &* 31) &+ Int($1.value)) & 0x7fffffff
+  private var selectedComparisonRouteLegs: [SharedComparisonRouteLeg] {
+    selectedComparisonRouteCorridors.flatMap(\.legs)
+  }
+
+  private var topComparisonListingIDs: Set<String> {
+    guard isComparisonActive else { return [] }
+    return Set(
+      comparisonScores
+        .sorted {
+          if $0.value.total != $1.value.total {
+            return $0.value.total > $1.value.total
+          }
+          return $0.key < $1.key
+        }
+        .prefix(5)
+        .map(\.key)
+    )
+  }
+
+  private var routedComparisonListingCount: Int {
+    let routedIDs = Set(primaryComparisonRouteCorridors.map(\.listingID))
+    guard !cardClusterListingIDs.isEmpty else { return routedIDs.count }
+    return routedIDs.intersection(cardClusterListingIDs).count
+  }
+
+  private var displayedComparisonScoreCount: Int {
+    guard !cardClusterListingIDs.isEmpty else { return comparisonScores.count }
+    return Set(comparisonScores.keys).intersection(cardClusterListingIDs).count
+  }
+
+  private var displayedComparisonRoutingTotalCount: Int {
+    cardClusterListingIDs.isEmpty
+      ? comparisonRoutingTotalCount
+      : visibleCardItems.count
+  }
+
+  private var displayedComparisonRoutingCompletedCount: Int {
+    guard !cardClusterListingIDs.isEmpty else {
+      return comparisonRoutingCompletedCount
     }
-    let position = Double((seed &* 137) % 10_000) / 9_999
-    let hue: Double
-    if position < 0.40 {
-      hue = 0.01 + (position / 0.40) * 0.15 // red through ochre
-    } else if position < 0.84 {
-      hue = 0.20 + ((position - 0.40) / 0.44) * 0.25 // olive through eucalyptus
-    } else {
-      hue = 0.92 + ((position - 0.84) / 0.16) * 0.07 // rose through red
+    return cardClusterListingIDs.reduce(into: 0) { count, listingID in
+      if comparisonEvidenceSignatures[listingID] != nil {
+        count += 1
+      }
     }
-    let saturation = 0.54 + Double((seed / 17) % 17) / 100
-    let brightness = 0.82 + Double((seed / 29) % 13) / 100
-    return Color(hue: hue, saturation: saturation, brightness: brightness)
+  }
+
+  private var comparisonRouteStrokeStyle: StrokeStyle {
+    StrokeStyle(
+      lineWidth: 2.5,
+      lineCap: .round,
+      lineJoin: .round
+    )
+  }
+
+  private func comparisonRouteLegColor(
+    for leg: SharedComparisonRouteLeg
+  ) -> Color {
+    switch leg.mode {
+    case .automobile:
+      return Color(red: 0.98, green: 0.62, blue: 0.30)
+    case .walking:
+      return HomeboardPalette.success
+    case .transit:
+      switch leg.transitKind {
+      case .bus:
+        return Color(red: 0.32, green: 0.70, blue: 0.96)
+      case .train:
+        return Color(red: 0.70, green: 0.56, blue: 0.98)
+      case .ferry:
+        return Color(red: 0.28, green: 0.82, blue: 0.86)
+      case .transit, nil:
+        return HomeboardPalette.accent
+      }
+    }
+  }
+
+  private func comparisonRouteColor(
+    for corridor: SharedComparisonCommuteCorridor
+  ) -> Color {
+    switch corridor.mode {
+    case .automobile:
+      return Color(red: 0.98, green: 0.62, blue: 0.30)
+    case .walking:
+      return HomeboardPalette.success
+    case .transit:
+      return Color(red: 0.45, green: 0.70, blue: 0.96)
+    }
   }
 
   private var comparisonIsReady: Bool {
     comparisonScores.count >= 2
+  }
+
+  private func openComparisonSettings() {
+    presentation = .map
+    if comparisonCityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      comparisonCityQuery = appModel.board.city
+    }
+    showsComparisonSettings = true
   }
 
   private var hasCommuteDestinations: Bool {
@@ -654,10 +1001,7 @@ struct SharedSearchMapView: View {
       }
       .sorted()
       .joined(separator: "|")
-    let bounds = selectedBounds?.coordinates.map {
-      String(format: "%.4f,%.4f", $0.latitude, $0.longitude)
-    }.joined(separator: ";") ?? "all"
-    return "\(center)|\(filters.maxPrice)|\(filters.minimumBedrooms)|\(filters.locationQuery)|\(bounds)|\(listings)"
+    return "\(center)|\(listings)"
   }
 
   var body: some View {
@@ -690,22 +1034,37 @@ struct SharedSearchMapView: View {
                   }
                 }
 
-                ForEach(displayedComparisonRouteCorridors) { corridor in
+                ForEach(displayedComparisonRouteCorridors.filter {
+                  $0.listingID != selectedComparisonRouteListingID
+                }) { corridor in
                   MapPolyline(corridor.polyline)
                     .stroke(
-                      comparisonListingColor(for: corridor.listingID).opacity(
-                        corridor.listingID == selectedComparisonRouteListingID
-                          ? 0.96
-                          : selectedComparisonRouteListingID == nil ? 0.76 : 0.46
+                      comparisonRouteColor(for: corridor).opacity(
+                        selectedComparisonRouteListingID == nil ? 0.76 : 0.46
                       ),
-                      style: StrokeStyle(
-                        lineWidth: corridor.listingID == selectedComparisonRouteListingID
-                          ? 4.8
-                          : 2.75,
-                        lineCap: .round,
-                        lineJoin: .round
-                      )
+                      style: comparisonRouteStrokeStyle
                     )
+                }
+
+                ForEach(selectedComparisonRouteCorridors) { corridor in
+                  MapPolyline(corridor.polyline)
+                    .stroke(
+                      comparisonRouteColor(for: corridor),
+                      style: comparisonRouteStrokeStyle
+                    )
+                }
+
+                ForEach(selectedComparisonRouteLegs) { leg in
+                  Annotation(
+                    "\(leg.transportLabel), about \(leg.minutes) minutes",
+                    coordinate: leg.calloutCoordinate,
+                    anchor: .center
+                  ) {
+                    SharedRouteLegCallout(
+                      leg: leg,
+                      color: comparisonRouteLegColor(for: leg)
+                    )
+                  }
                 }
 
                 ForEach(comparisonWorkNodes) { workNode in
@@ -724,7 +1083,7 @@ struct SharedSearchMapView: View {
                   MapPolyline(commute.route.polyline)
                     .stroke(
                       commute.color.opacity(0.82),
-                      style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                      style: comparisonRouteStrokeStyle
                     )
                 }
               }
@@ -745,24 +1104,40 @@ struct SharedSearchMapView: View {
                         }
                       }
                     } label: {
-                      SharedPriceMarker(
-                        text: isComparisonActive
-                          ? comparisonScores[item.listing.id].map { "\($0.total)" } ?? "Not scored"
-                          : SharedListingText.compactPrice(item.listing.priceLine),
-                        isSelected: selectedListing?.id == item.listing.id,
-                        comparisonScore: isComparisonActive ? comparisonScores[item.listing.id] : nil,
-                        comparisonColor: isComparisonActive
-                          ? comparisonListingColor(for: item.listing.id)
-                          : nil
-                      )
+                      VStack(spacing: 4) {
+                        if isComparisonActive,
+                           selectedComparisonRouteListingID == item.listing.id {
+                          SharedSelectedTransportPopup(
+                            routes: comparisonCommuteCorridors.filter {
+                              $0.listingID == item.listing.id
+                            },
+                            isLoading: loadingComparisonRouteListingID == item.listing.id
+                          )
+                        }
+
+                        SharedPriceMarker(
+                          text: isComparisonActive
+                            ? comparisonScores[item.listing.id].map { "\($0.total)" } ?? "Not scored"
+                            : SharedListingText.compactPrice(item.listing.priceLine),
+                          isSelected: selectedListing?.id == item.listing.id,
+                          comparisonScore: isComparisonActive ? comparisonScores[item.listing.id] : nil,
+                          comparisonColor: isComparisonActive
+                            ? comparisonScores[item.listing.id].map {
+                                comparisonRegionTier(for: $0.total).color
+                              }
+                            : nil,
+                          isHighlighted: topComparisonListingIDs.contains(item.listing.id)
+                        )
+                      }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HomeboardAreaButtonStyle())
                   } else {
                     Button {
-                      zoomIntoCluster(cluster)
+                      filterCardsToCluster(cluster)
                     } label: {
                       SharedListingClusterMarker(
                         count: cluster.items.count,
+                        isSelected: Set(cluster.items.map { $0.listing.id }) == cardClusterListingIDs,
                         comparisonScore: isComparisonActive ? comparisonScore(for: cluster) : nil,
                         comparisonColor: isComparisonActive
                           ? comparisonScore(for: cluster).map {
@@ -771,7 +1146,7 @@ struct SharedSearchMapView: View {
                           : nil
                       )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HomeboardAreaButtonStyle())
                   }
                 }
               }
@@ -787,11 +1162,6 @@ struct SharedSearchMapView: View {
             .ignoresSafeArea(edges: .top)
             .onMapCameraChange(frequency: .onEnd) { context in
               visibleRegion = context.region
-              if let collapseSpan = expandedClusterCollapseSpan,
-                 context.region.span.latitudeDelta >= collapseSpan {
-                expandedClusterListingIDs = []
-                expandedClusterCollapseSpan = nil
-              }
               rebuildMapPresentation()
               if !isComparisonActive {
                 Task {
@@ -891,13 +1261,23 @@ struct SharedSearchMapView: View {
         }
       } else {
         SharedSearchListSurface(
-          listings: visibleMapItems.map(\.listing),
+          listings: visibleCardItems.map(\.listing),
+          comparisonScores: isComparisonActive ? comparisonScores : [:],
+          topListingIDs: topComparisonListingIDs,
           selectedListingID: selectedListing?.id,
+          cleanableListingIDs: cleanableListingIDs,
+          cleanSelection: cleanListingSelection,
+          isCleaning: isCleaningListings,
           isLoading: appModel.isListingInventoryLoading,
           hasMore: appModel.listingInventoryHasMore,
-          onOpen: {
-            selectedListing = $0
-            detailListing = $0
+          onOpen: selectListingFromCards,
+          onToggleCleanSelection: { listing in
+            guard cleanableListingIDs.contains(listing.id) else { return }
+            if cleanListingSelection.contains(listing.id) {
+              cleanListingSelection.remove(listing.id)
+            } else {
+              cleanListingSelection.insert(listing.id)
+            }
           },
           onBrowse: { showsListingDiscovery = true },
           onLoadMore: {
@@ -918,19 +1298,20 @@ struct SharedSearchMapView: View {
 
         SharedSearchControlBar(
           presentation: $presentation,
-          resultCount: visibleMapItems.count,
-          filterCount: filters.activeCount,
+          resultCount: displayedResultCount,
+          filterCount: activeFilterCount,
           hasArea: selectedBounds != nil,
           drawingArea: isDrawingArea,
           comparisonActive: isComparisonActive,
           comparisonReady: comparisonIsReady,
+          cleanableCount: cleanableListingIDs.count,
+          isCleaning: isCleaningListings,
           onFilter: { showsFilters = true },
-          onCompare: {
-            presentation = .map
-            if comparisonCityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-              comparisonCityQuery = appModel.board.city
+          onClean: {
+            withAnimation(.easeInOut(duration: 0.18)) {
+              isCleaningListings.toggle()
+              cleanListingSelection.removeAll()
             }
-            showsComparisonSettings = true
           },
           onDraw: {
             presentation = .map
@@ -944,10 +1325,24 @@ struct SharedSearchMapView: View {
           }
         )
 
-        if !expandedClusterListingIDs.isEmpty {
-          SharedExpandedClusterBar(
-            count: expandedClusterListingIDs.count,
-            onCollapse: collapseExpandedCluster
+        if !cardClusterListingIDs.isEmpty {
+          SharedClusterCardFilterBar(
+            count: visibleCardItems.count,
+            onClear: { cardClusterListingIDs = [] }
+          )
+          .transition(.move(edge: .top).combined(with: .opacity))
+        }
+
+        if presentation == .list, isCleaningListings {
+          SharedCleanListingsActionBar(
+            selectedCount: cleanListingSelection.count,
+            onCancel: {
+              withAnimation(.easeInOut(duration: 0.18)) {
+                isCleaningListings = false
+                cleanListingSelection.removeAll()
+              }
+            },
+            onMove: { confirmsCleaningListings = true }
           )
           .transition(.move(edge: .top).combined(with: .opacity))
         }
@@ -965,6 +1360,13 @@ struct SharedSearchMapView: View {
     .safeAreaInset(edge: .bottom, spacing: 0) {
       if presentation == .map {
         VStack(spacing: 8) {
+          if !visibleMapItems.isEmpty || isComparisonActive {
+            SharedGroupCommuteComparisonButton(
+              isActive: isComparisonActive,
+              action: openComparisonSettings
+            )
+          }
+
           if isComparisonActive {
             if let listing = selectedComparisonRouteListing,
                let score = comparisonScores[listing.id] {
@@ -984,38 +1386,17 @@ struct SharedSearchMapView: View {
               )
             } else {
               SharedComparisonTierLegend(
-                listingCount: comparisonScores.count,
+                listingCount: displayedComparisonScoreCount,
                 routedListingCount: routedComparisonListingCount,
-                isLoadingCommutes: isLoadingComparisonTransit
+                routedWorkMemberCount: routableWorkMemberCount,
+                isLoadingCommutes: isLoadingComparisonTransit,
+                routingCompletedCount: displayedComparisonRoutingCompletedCount,
+                routingTotalCount: displayedComparisonRoutingTotalCount,
+                routingFailedCount: comparisonRoutingFailedCount,
+                commuteAvailable: hasCommuteDestinations
               )
             }
           } else if let listing = currentListing {
-            if commuteRoutes.isEmpty && !isLoadingRoutes {
-              Button {
-                if hasCommuteDestinations {
-                  selectedListing = listing
-                  Task {
-                    await resolveCommuteRoutes(for: listing)
-                  }
-                } else {
-                  showsSettings = true
-                }
-              } label: {
-                Label(
-                  hasCommuteDestinations ? "Compare group commutes" : "Add commute destinations",
-                  systemImage: hasCommuteDestinations ? "arrow.triangle.branch" : "mappin.and.ellipse"
-                )
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Color.black)
-                .padding(.horizontal, 13)
-                .frame(height: 36)
-                .background(HomeboardPalette.accent)
-                .clipShape(Capsule())
-              }
-              .buttonStyle(.plain)
-              .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
             if !commuteRoutes.isEmpty || isLoadingRoutes {
               SharedCommuteRouteStrip(routes: commuteRoutes, isLoading: isLoadingRoutes)
             }
@@ -1083,10 +1464,6 @@ struct SharedSearchMapView: View {
       commuteRoutes = []
       selectedComparisonRouteListingID = nil
       loadingComparisonRouteListingID = nil
-      if !isComparisonActive {
-        comparisonCommuteEvidence = [:]
-        comparisonCommuteCorridors = []
-      }
       rebuildMapPresentation()
       focusMap()
     }
@@ -1095,6 +1472,7 @@ struct SharedSearchMapView: View {
     ) {
       guard isComparisonActive else { return }
       await resolveComparisonCommuteDestinations()
+      focusMap()
       await resolveComparisonCommuteEvidence()
       rebuildMapPresentation()
     }
@@ -1111,6 +1489,10 @@ struct SharedSearchMapView: View {
       }
     }
     .onChange(of: presentation) {
+      if presentation != .list {
+        isCleaningListings = false
+        cleanListingSelection.removeAll()
+      }
       if !isComparisonActive {
         Task {
           if presentation == .map {
@@ -1119,12 +1501,24 @@ struct SharedSearchMapView: View {
             await loadCardInventory()
           }
         }
-      } else if presentation == .list {
-        isComparisonActive = false
       }
     }
+    .confirmationDialog(
+      "Move selected listings?",
+      isPresented: $confirmsCleaningListings,
+      titleVisibility: .visible
+    ) {
+      Button("Move to Recently Deleted", role: .destructive) {
+        appModel.moveListingsToRecentlyDeleted(ids: cleanListingSelection)
+        cleanListingSelection.removeAll()
+        isCleaningListings = false
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This removes the selected listings from the shared board for everyone. They can be restored from Settings for seven days.")
+    }
     .sheet(isPresented: $showsAddListing, onDismiss: {
-      appModel.pendingSharedListingImport = nil
+      appModel.resolvePendingSharedListingImport()
       appModel.consumeSharedListingImport()
     }) {
       AddSharedListingSheet(initialImport: appModel.pendingSharedListingImport)
@@ -1185,6 +1579,7 @@ struct SharedSearchMapView: View {
         cityQuery: $comparisonCityQuery,
         isActive: isComparisonActive,
         listingCount: searchListings.count,
+        commuteAvailable: hasCommuteDestinations,
         onActivate: {
           storedComparisonCity = comparisonCityQuery
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1211,22 +1606,36 @@ struct SharedSearchMapView: View {
     }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
       if !appModel.isGuestPreview {
-        if firstListingGuidePending {
+        if firstListingGuidePending || !safariExtensionGuideDismissed {
           SharedListingShareWorkflowGuide(
             onDismiss: {
               firstListingGuidePending = false
+              safariExtensionGuideDismissed = true
             }
           )
         } else if !searchGuideDismissed {
           SharedCoachmarkOverlay(
             target: anchors["search-controls"],
             title: "Use the top bar to work with listings",
-            message: "Map and Cards change the view. Filters narrow the results. Area limits the map. Compare ranks the saved homes by price, commute, space, neighborhood, and features.",
+            message: "Map and Cards change the view. Tap a numbered map cluster to filter Cards to those homes. Filters narrow the results, Area limits the map, and Compare ranks homes by price, commute, space, neighborhood, and features.",
             targetLabel: "MAP · CARDS · FILTERS · COMPARE",
             onDismiss: { searchGuideDismissed = true }
           )
         }
       }
+    }
+  }
+
+  private func selectListingFromCards(_ listing: ListingPreview) {
+    selectedListing = listing
+    if isComparisonActive,
+       let item = preparedMapItems.first(where: { $0.listing.id == listing.id }) {
+      selectedComparisonRouteListingID = listing.id
+      Task {
+        await loadComparisonRouteOptions(for: item)
+      }
+    } else {
+      detailListing = listing
     }
   }
 
@@ -1256,9 +1665,7 @@ struct SharedSearchMapView: View {
 
   private func rebuildMapPresentation() {
     let filtered = preparedMapItems.filter { item in
-      return (!isComparisonActive || item.hasReliableCoordinate)
-        && (!isComparisonActive || comparisonMetroRegion.contains(item.coordinate, padding: 0))
-        && filters.includes(item.listing)
+      return filters.includes(item.listing)
         && (selectedBounds?.contains(item.coordinate) ?? true)
     }
     filteredMapItems = filtered
@@ -1281,19 +1688,10 @@ struct SharedSearchMapView: View {
       region.contains($0.coordinate, padding: 0.28)
     }
     let visibleItems = viewportItems.isEmpty ? filtered : viewportItems
-    let expandedItems = filtered.filter {
-      expandedClusterListingIDs.contains($0.id)
-    }
-    let regionalItems = visibleItems.filter {
-      !expandedClusterListingIDs.contains($0.id)
-    }
-
     renderedClusters = SharedListingMapCluster.build(
-      items: regionalItems,
-      region: region
-    ) + SharedListingMapCluster.spreadExpanded(
-      items: expandedItems,
-      region: region
+      items: visibleItems,
+      region: region,
+      priorityListingIDs: topComparisonListingIDs
     )
   }
 
@@ -1304,6 +1702,44 @@ struct SharedSearchMapView: View {
           comparisonCityQuery.isEmpty ? appModel.board.city : comparisonCityQuery
         ),
       span: MKCoordinateSpan(latitudeDelta: 1.0, longitudeDelta: 1.18)
+    )
+  }
+
+  private var comparisonFocusRegion: MKCoordinateRegion {
+    let coordinates = preparedMapItems.map(\.coordinate)
+      + comparisonWorkNodes.map(\.coordinate)
+    guard let first = coordinates.first else { return comparisonMetroRegion }
+
+    let bounds = coordinates.dropFirst().reduce(
+      into: (
+        minimumLatitude: first.latitude,
+        maximumLatitude: first.latitude,
+        minimumLongitude: first.longitude,
+        maximumLongitude: first.longitude
+      )
+    ) { result, coordinate in
+      result.minimumLatitude = min(result.minimumLatitude, coordinate.latitude)
+      result.maximumLatitude = max(result.maximumLatitude, coordinate.latitude)
+      result.minimumLongitude = min(result.minimumLongitude, coordinate.longitude)
+      result.maximumLongitude = max(result.maximumLongitude, coordinate.longitude)
+    }
+    let latitudeDelta = min(
+      max((bounds.maximumLatitude - bounds.minimumLatitude) * 1.30, 0.16),
+      160
+    )
+    let longitudeDelta = min(
+      max((bounds.maximumLongitude - bounds.minimumLongitude) * 1.30, 0.18),
+      340
+    )
+    return MKCoordinateRegion(
+      center: CLLocationCoordinate2D(
+        latitude: (bounds.minimumLatitude + bounds.maximumLatitude) / 2,
+        longitude: (bounds.minimumLongitude + bounds.maximumLongitude) / 2
+      ),
+      span: MKCoordinateSpan(
+        latitudeDelta: latitudeDelta,
+        longitudeDelta: longitudeDelta
+      )
     )
   }
 
@@ -1392,11 +1828,12 @@ struct SharedSearchMapView: View {
       let commuteEvidence = comparisonCommuteEvidence[listing.id]
       if isLoadingComparisonTransit,
          !comparisonWorkNodes.isEmpty,
+         item.hasReliableCoordinate,
          commuteEvidence == nil {
         continue
       }
       let commuteValue = comparisonWorkNodes.isEmpty
-        ? ratingScore(listing, dimension: "commute")
+        ? nil
         : commuteEvidence?.score
       let relativePrice = SharedListingText.numericValue(listing.priceLine).map {
         relativeComparisonScore(
@@ -1412,12 +1849,19 @@ struct SharedSearchMapView: View {
           higherIsBetter: true
         )
       }
+      let rawPrice = blendedComparisonScore(
+        analysisScore(listing, dimension: "price"),
+        ratingScore(listing, dimension: "value"),
+        relativePrice
+      )
+      let activeOffer = listing.activeOffer
+      let offerBonus = activeOffer.map { SharedComparisonMath.offerBonusPoints(for: $0) } ?? 0
+      let adjustedPrice = rawPrice.map {
+        SharedComparisonMath.adjustedPriceScore(baseScore: $0, bonusPoints: offerBonus)
+      }
+
       let criterionValues: [SharedComparisonCriterion: Double?] = [
-        .price: blendedComparisonScore(
-          analysisScore(listing, dimension: "price"),
-          ratingScore(listing, dimension: "value"),
-          relativePrice
-        ),
+        .price: adjustedPrice,
         .commute: commuteValue,
         .space: blendedComparisonScore(
           analysisScore(listing, dimension: "space"),
@@ -1466,22 +1910,40 @@ struct SharedSearchMapView: View {
 
       guard knownWeight > 0 else { continue }
       let weights = rawWeights.mapValues { $0 / knownWeight }
+      let priceDetail: String
+      if let activeOffer, offerBonus > 0 {
+        priceDetail = "\(listing.priceLine) · includes +\(offerBonus) pts for active offer (\(activeOffer.badgeLabel))"
+      } else {
+        priceDetail = "\(listing.priceLine) compared with the other visible listings and your budget"
+      }
       var details: [SharedComparisonCriterion: String] = [
-        .price: "\(listing.priceLine) compared with the other visible listings and your budget",
+        .price: priceDetail,
         .space: listing.squareFeet.map { "\($0.formatted()) sq ft plus bedroom, bathroom, and layout evidence" }
           ?? "Bedroom, bathroom, layout, and roommate space evidence",
         .neighborhood: "Saved neighborhood preferences, group ratings, and grounded listing insights",
         .features: "Amenities, finishes, light, layout, and risk evidence found in the listing"
       ]
-      if let commuteEvidence {
+      if let commuteEvidence,
+         commuteEvidence.suppressedLongRouteDestinations > 0,
+         commuteEvidence.resolvedDestinations == commuteEvidence.requestedDestinations {
+        let count = commuteEvidence.suppressedLongRouteDestinations
+        let noun = count == 1 ? "destination is" : "destinations are"
+        let routedNote = commuteEvidence.averageMinutes > 0
+          ? " Other live routes average \(commuteEvidence.averageMinutes) min."
+          : ""
+        details[.commute] = "\(count) work \(noun) certainly outside the saved commute range and scored 0. Extreme route lines are omitted.\(routedNote)"
+      } else if let commuteEvidence,
+         commuteEvidence.resolvedDestinations == commuteEvidence.requestedDestinations {
         let walkingNote = commuteEvidence.usedWalkingFallback ? " · walking was the easiest usable route" : ""
         let easeNote = commuteEvidence.averageEaseMinutes == commuteEvidence.averageMinutes
           ? ""
           : " · \(commuteEvidence.averageEaseMinutes) min ease-adjusted"
-        details[.commute] = "Live best usable routes · \(commuteEvidence.averageMinutes) min actual average\(easeNote) · \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations\(walkingNote)"
+        details[.commute] = "Best usable live routes · \(commuteEvidence.averageMinutes) min average\(easeNote) · \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations\(walkingNote)"
+      } else if let commuteEvidence {
+        details[.commute] = "Live Apple routes found for \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations. Commute stays unscored until every destination resolves."
       } else {
         details[.commute] = comparisonWorkNodes.isEmpty
-          ? "Group commute rating; add a work destination for live route scoring"
+          ? "Commute excluded because no routable office area is saved"
           : "No usable live route was returned, so commute remains unscored"
       }
       result[listing.id] = SharedListingComparisonScore(
@@ -1683,7 +2145,7 @@ struct SharedSearchMapView: View {
     rebuildMapPresentation()
 
     if focus {
-      let region = comparisonMetroRegion
+      let region = comparisonFocusRegion
       visibleRegion = region
       withAnimation(.easeInOut(duration: 0.24)) {
         cameraPosition = .region(region)
@@ -1735,38 +2197,69 @@ struct SharedSearchMapView: View {
     }
     guard !targets.isEmpty else {
       comparisonCommuteEvidence = [:]
+      comparisonEvidenceSignatures = [:]
       comparisonCommuteCorridors = []
       isLoadingComparisonTransit = false
+      comparisonRoutingCompletedCount = 0
+      comparisonRoutingTotalCount = 0
+      comparisonRoutingFailedCount = 0
       return
     }
 
-    let candidates = preparedMapItems.filter { item in
-      item.hasReliableCoordinate
-        && comparisonMetroRegion.contains(item.coordinate, padding: 0)
-        && filters.includes(item.listing)
-        && (selectedBounds?.contains(item.coordinate) ?? true)
-    }
+    let candidates = preparedMapItems.filter(\.hasReliableCoordinate)
     guard !candidates.isEmpty else {
-      comparisonCommuteEvidence = [:]
-      comparisonCommuteCorridors = []
+      isLoadingComparisonTransit = false
+      comparisonRoutingCompletedCount = 0
+      comparisonRoutingTotalCount = 0
+      comparisonRoutingFailedCount = 0
+      return
+    }
+
+    let candidateIDs = Set(candidates.map { $0.listing.id })
+    var next = comparisonCommuteEvidence.filter {
+      candidateIDs.contains($0.key)
+    }
+    var nextSignatures = comparisonEvidenceSignatures.filter {
+      candidateIDs.contains($0.key)
+    }
+    let signatures = Dictionary(uniqueKeysWithValues: candidates.map { item in
+      (
+        item.listing.id,
+        Self.comparisonEvidenceSignature(
+          originLatitude: item.coordinate.latitude,
+          originLongitude: item.coordinate.longitude,
+          targets: targets
+        )
+      )
+    })
+    let pendingCandidates = candidates.filter { item in
+      next[item.listing.id] == nil
+        || nextSignatures[item.listing.id] != signatures[item.listing.id]
+    }
+
+    comparisonCommuteEvidence = next
+    comparisonEvidenceSignatures = nextSignatures
+    rebuildComparisonCommuteCorridors(from: next)
+    comparisonRoutingTotalCount = candidates.count
+    comparisonRoutingCompletedCount = candidates.count - pendingCandidates.count
+    comparisonRoutingFailedCount = next.values.filter {
+      $0.resolvedDestinations < $0.requestedDestinations
+    }.count
+    rebuildMapPresentation()
+
+    guard !pendingCandidates.isEmpty else {
       isLoadingComparisonTransit = false
       return
     }
 
     isLoadingComparisonTransit = true
     defer { isLoadingComparisonTransit = false }
-    comparisonCommuteEvidence = [:]
-    comparisonCommuteCorridors = []
-    selectedComparisonRouteListingID = nil
-    loadingComparisonRouteListingID = nil
-    rebuildMapPresentation()
-    var next: [String: SharedComparisonCommuteEvidence] = [:]
     let batchSize = 3
 
-    for start in stride(from: 0, to: candidates.count, by: batchSize) {
+    for start in stride(from: 0, to: pendingCandidates.count, by: batchSize) {
       guard !Task.isCancelled else { return }
-      let end = min(start + batchSize, candidates.count)
-      let batch = Array(candidates[start..<end])
+      let end = min(start + batchSize, pendingCandidates.count)
+      let batch = Array(pendingCandidates[start..<end])
       let results = await withTaskGroup(
         of: (String, SharedComparisonCommuteEvidence?).self,
         returning: [(String, SharedComparisonCommuteEvidence?)].self
@@ -1795,12 +2288,49 @@ struct SharedSearchMapView: View {
       for (listingID, evidence) in results {
         if let evidence {
           next[listingID] = evidence
+          nextSignatures[listingID] = signatures[listingID]
+          if evidence.resolvedDestinations < evidence.requestedDestinations {
+            comparisonRoutingFailedCount += 1
+          }
+        } else {
+          comparisonRoutingFailedCount += 1
+          if nextSignatures[listingID] != signatures[listingID] {
+            next[listingID] = nil
+            nextSignatures[listingID] = nil
+          }
         }
       }
+      comparisonRoutingCompletedCount += results.count
       comparisonCommuteEvidence = next
+      comparisonEvidenceSignatures = nextSignatures
       rebuildComparisonCommuteCorridors(from: next)
       rebuildMapPresentation()
     }
+  }
+
+  private static func comparisonEvidenceSignature(
+    originLatitude: Double,
+    originLongitude: Double,
+    targets: [SharedComparisonCommuteTarget]
+  ) -> String {
+    let origin = String(
+      format: "%.5f,%.5f",
+      originLatitude,
+      originLongitude
+    )
+    let destinations = targets.map { target in
+      [
+        target.id,
+        target.memberName,
+        String(format: "%.5f,%.5f", target.latitude, target.longitude),
+        target.commuteAccess ?? "unknown",
+        String(target.preferredMinutes ?? 0),
+        String(target.maximumMinutes ?? 45),
+      ].joined(separator: "|")
+    }
+    .sorted()
+    .joined(separator: ";")
+    return "\(origin)>\(destinations)"
   }
 
   private func loadComparisonRouteOptions(
@@ -1812,12 +2342,22 @@ struct SharedSearchMapView: View {
     }
 
     let listingID = item.listing.id
+    let origin = item.coordinate
+    let routableWorkNodes = workNodes.filter { workNode in
+      !Self.commuteIsCertainlyZero(
+        from: origin,
+        to: workNode.coordinate,
+        preferredMinutes: workNode.preferredMinutes,
+        maximumMinutes: workNode.maximumMinutes
+      )
+    }
+    guard !routableWorkNodes.isEmpty else { return }
     let existingRouteIDs = Set(
       comparisonCommuteCorridors
         .filter { $0.listingID == listingID }
         .map { "\($0.targetID)|\($0.mode.rawValue)" }
     )
-    let pendingCount = workNodes.reduce(0) { count, workNode in
+    let pendingCount = routableWorkNodes.reduce(0) { count, workNode in
       count + SharedCommuteMode.allCases.filter {
         !existingRouteIDs.contains("\(workNode.id)|\($0.rawValue)")
       }.count
@@ -1831,74 +2371,54 @@ struct SharedSearchMapView: View {
       }
     }
 
-    let originLatitude = item.coordinate.latitude
-    let originLongitude = item.coordinate.longitude
-    let loaded = await withTaskGroup(
-      of: SharedLoadedComparisonRoute?.self,
-      returning: [SharedLoadedComparisonRoute].self
-    ) { group in
-      for workNode in workNodes {
-        for mode in SharedCommuteMode.allCases
-          where !existingRouteIDs.contains("\(workNode.id)|\(mode.rawValue)") {
-          let targetID = workNode.id
-          let destination = workNode.destination
-          let memberNames = workNode.memberNames
-          let commuteAccesses = workNode.commuteAccesses
-          let destinationLatitude = workNode.coordinate.latitude
-          let destinationLongitude = workNode.coordinate.longitude
-          let preferredMinutes = workNode.preferredMinutes
-          let maximumMinutes = workNode.maximumMinutes
-          group.addTask {
-            let transportType: MKDirectionsTransportType = switch mode {
-            case .transit: .transit
-            case .walking: .walking
-            case .automobile: .automobile
-            }
-            guard let route = await Self.routeResult(
-              from: CLLocationCoordinate2D(
-                latitude: originLatitude,
-                longitude: originLongitude
-              ),
-              to: CLLocationCoordinate2D(
-                latitude: destinationLatitude,
-                longitude: destinationLongitude
-              ),
-              transportType: transportType
-            ) else { return nil }
-            let accessValues: [String?] = commuteAccesses.isEmpty
-              ? [nil]
-              : commuteAccesses.map(Optional.some)
-            let easeMinutes = accessValues.map {
-              SharedCommuteRouteLogic.easeAdjustedMinutes(
-                mode: mode,
-                minutes: route.minutes,
-                stepCount: route.stepCount,
-                access: $0
-              )
-            }.max() ?? route.minutes
-            return SharedLoadedComparisonRoute(
-              targetID: targetID,
-              destination: destination,
-              memberNames: memberNames,
-              commuteAccesses: commuteAccesses,
-              mode: mode,
-              minutes: route.minutes,
-              easeMinutes: easeMinutes,
-              preferredMinutes: preferredMinutes,
-              maximumMinutes: maximumMinutes,
-              coordinates: route.coordinates
-            )
-          }
+    let originLatitude = origin.latitude
+    let originLongitude = origin.longitude
+    var loaded: [SharedLoadedComparisonRoute] = []
+    for workNode in routableWorkNodes {
+      for mode in SharedCommuteMode.allCases
+        where !existingRouteIDs.contains("\(workNode.id)|\(mode.rawValue)") {
+        guard !Task.isCancelled else { return }
+        let transportType: MKDirectionsTransportType = switch mode {
+        case .transit: .transit
+        case .walking: .walking
+        case .automobile: .automobile
         }
+        guard let route = await Self.routeResult(
+          from: CLLocationCoordinate2D(
+            latitude: originLatitude,
+            longitude: originLongitude
+          ),
+          to: workNode.coordinate,
+          transportType: transportType
+        ) else { continue }
+        let accessValues: [String?] = workNode.commuteAccesses.isEmpty
+          ? [nil]
+          : workNode.commuteAccesses.map(Optional.some)
+        let easeMinutes = accessValues.map {
+          SharedCommuteRouteLogic.easeAdjustedMinutes(
+            mode: mode,
+            minutes: route.minutes,
+            stepCount: route.stepCount,
+            access: $0
+          )
+        }.max() ?? route.minutes
+        loaded.append(
+          SharedLoadedComparisonRoute(
+            targetID: workNode.id,
+            destination: workNode.destination,
+            memberNames: workNode.memberNames,
+            commuteAccesses: workNode.commuteAccesses,
+            mode: mode,
+            transitKind: route.transitKind,
+            minutes: route.minutes,
+            easeMinutes: easeMinutes,
+            preferredMinutes: workNode.preferredMinutes,
+            maximumMinutes: workNode.maximumMinutes,
+            coordinates: route.coordinates,
+            legs: route.legs
+          )
+        )
       }
-
-      var values: [SharedLoadedComparisonRoute] = []
-      for await route in group {
-        if let route {
-          values.append(route)
-        }
-      }
-      return values
     }
 
     var next = comparisonCommuteCorridors
@@ -1911,6 +2431,10 @@ struct SharedSearchMapView: View {
         )
       }
       guard routeCoordinates.count >= 2 else { continue }
+      let routeLegs = Self.comparisonRouteLegs(
+        routeID: id,
+        from: route.legs
+      )
       next.removeAll { $0.id == id }
       next.append(
         SharedComparisonCommuteCorridor(
@@ -1921,6 +2445,7 @@ struct SharedSearchMapView: View {
           destination: route.destination,
           commuteAccesses: route.commuteAccesses,
           mode: route.mode,
+          transitKind: route.transitKind,
           minutes: route.minutes,
           easeMinutes: route.easeMinutes,
           preferredMinutes: route.preferredMinutes,
@@ -1928,7 +2453,8 @@ struct SharedSearchMapView: View {
           polyline: MKPolyline(
             coordinates: routeCoordinates,
             count: routeCoordinates.count
-          )
+          ),
+          legs: routeLegs
         )
       )
     }
@@ -1947,7 +2473,10 @@ struct SharedSearchMapView: View {
     var durations: [Int] = []
     var easeDurations: [Int] = []
     var memberScores: [Double] = []
+    var evaluatedDestinationCount = 0
+    var suppressedLongRouteDestinations = 0
     var usedWalkingFallback = false
+    var displayedRouteIDs = Set<String>()
     var scoredRouteIDs = Set<String>()
     var routeSnapshots: [SharedComparisonRouteSnapshot] = []
 
@@ -1962,42 +2491,37 @@ struct SharedSearchMapView: View {
         target.maximumMinutes ?? 45,
         preferred + 5
       )
-      async let transitRouteRequest: SharedRouteResult? = routeResult(
+      if commuteIsCertainlyZero(
         from: origin,
         to: destination,
-        transportType: .transit
-      )
-      async let roadRouteRequest: SharedRouteResult? = routeResult(
-        from: origin,
-        to: destination,
-        transportType: .automobile
-      )
-      let directDistance = CLLocation(
-        latitude: origin.latitude,
-        longitude: origin.longitude
-      ).distance(
-        from: CLLocation(
-          latitude: destination.latitude,
-          longitude: destination.longitude
-        )
-      )
-      async let walkingRouteRequest: SharedRouteResult? = directDistance <= 3_200
-        ? routeResult(
-            from: origin,
-            to: destination,
-            transportType: .walking
-          )
-        : nil
-      let transitRoute = await transitRouteRequest
-      let roadRoute = await roadRouteRequest
-      let walkingCandidate = await walkingRouteRequest
-      let walkingRoute = walkingCandidate.flatMap { $0.minutes <= 30 ? $0 : nil }
+        preferredMinutes: target.preferredMinutes,
+        maximumMinutes: target.maximumMinutes
+      ) {
+        evaluatedDestinationCount += 1
+        suppressedLongRouteDestinations += 1
+        memberScores.append(0)
+        continue
+      }
+      let requestedModes = backgroundRouteModes(for: target.commuteAccess)
 
-      let visibleRoutes: [(SharedCommuteMode, SharedRouteResult)] = [
-        transitRoute.map { (.transit, $0) },
-        roadRoute.map { (.automobile, $0) },
-        walkingRoute.map { (.walking, $0) }
-      ].compactMap { $0 }
+      var visibleRoutes: [(SharedCommuteMode, SharedRouteResult)] = []
+      for mode in requestedModes {
+        guard !Task.isCancelled else { return nil }
+        let transportType: MKDirectionsTransportType = switch mode {
+        case .transit: .transit
+        case .walking: .walking
+        case .automobile: .automobile
+        }
+        guard let route = await routeResult(
+          from: origin,
+          to: destination,
+          transportType: transportType
+        ) else { continue }
+        visibleRoutes.append((mode, route))
+        if SharedCommuteRouteLogic.permits(mode, access: target.commuteAccess) {
+          break
+        }
+      }
       routeSnapshots.append(
         contentsOf: visibleRoutes.map { mode, route in
           SharedComparisonRouteSnapshot(
@@ -2006,6 +2530,7 @@ struct SharedSearchMapView: View {
             destination: target.destination,
             commuteAccess: target.commuteAccess,
             mode: mode,
+            transitKind: route.transitKind,
             minutes: route.minutes,
             easeMinutes: SharedCommuteRouteLogic.easeAdjustedMinutes(
               mode: mode,
@@ -2015,7 +2540,8 @@ struct SharedSearchMapView: View {
             ),
             preferredMinutes: preferred,
             maximumMinutes: maximum,
-            coordinates: route.coordinates
+            coordinates: route.coordinates,
+            legs: route.legs
           )
         }
       )
@@ -2023,7 +2549,7 @@ struct SharedSearchMapView: View {
       let eligibleRoutes = visibleRoutes.filter {
         SharedCommuteRouteLogic.permits($0.0, access: target.commuteAccess)
       }
-      guard let primaryRoute = eligibleRoutes.min(by: {
+      let primaryRoute = eligibleRoutes.min(by: {
         SharedCommuteRouteLogic.easeAdjustedMinutes(
           mode: $0.0,
           minutes: $0.1.minutes,
@@ -2035,9 +2561,27 @@ struct SharedSearchMapView: View {
           stepCount: $1.1.stepCount,
           access: target.commuteAccess
         )
-      }) else {
+      })
+      if let routeToDisplay = primaryRoute ?? visibleRoutes.first {
+        let displayEaseMinutes = SharedCommuteRouteLogic.easeAdjustedMinutes(
+          mode: routeToDisplay.0,
+          minutes: routeToDisplay.1.minutes,
+          stepCount: routeToDisplay.1.stepCount,
+          access: target.commuteAccess
+        )
+        let displayScore = SharedComparisonMath.commuteScore(
+          minutes: displayEaseMinutes,
+          preferredMinutes: target.preferredMinutes,
+          maximumMinutes: target.maximumMinutes
+        )
+        if displayScore > 0 {
+          displayedRouteIDs.insert("\(target.id)|\(routeToDisplay.0.rawValue)")
+        }
+      }
+      guard let primaryRoute else {
         continue
       }
+      evaluatedDestinationCount += 1
       if primaryRoute.0 == .walking {
         usedWalkingFallback = true
       }
@@ -2050,33 +2594,82 @@ struct SharedSearchMapView: View {
         access: target.commuteAccess
       )
       easeDurations.append(easeMinutes)
-      memberScores.append(
-        SharedComparisonMath.commuteScore(
-          minutes: easeMinutes,
-          preferredMinutes: target.preferredMinutes,
-          maximumMinutes: target.maximumMinutes
-        )
-      )
+      memberScores.append(SharedComparisonMath.commuteScore(
+        minutes: easeMinutes,
+        preferredMinutes: target.preferredMinutes,
+        maximumMinutes: target.maximumMinutes
+      ))
     }
 
-    guard !durations.isEmpty,
-          let worstScore = memberScores.min()
-    else { return nil }
-    let averageScore = memberScores.reduce(0, +) / Double(memberScores.count)
+    guard !memberScores.isEmpty || !routeSnapshots.isEmpty else { return nil }
+    let resolvedEveryDestination = evaluatedDestinationCount == targets.count
+    let score: Double?
+    if resolvedEveryDestination,
+       let worstScore = memberScores.min() {
+      let averageScore = memberScores.reduce(0, +) / Double(memberScores.count)
+      score = averageScore * 0.72 + worstScore * 0.28
+    } else {
+      score = nil
+    }
+    let averageMinutes = durations.isEmpty
+      ? 0
+      : Int((Double(durations.reduce(0, +)) / Double(durations.count)).rounded())
+    let averageEaseMinutes = easeDurations.isEmpty
+      ? 0
+      : Int((Double(easeDurations.reduce(0, +)) / Double(easeDurations.count)).rounded())
     return SharedComparisonCommuteEvidence(
-      score: averageScore * 0.72 + worstScore * 0.28,
-      averageMinutes: Int(
-        (Double(durations.reduce(0, +)) / Double(durations.count)).rounded()
-      ),
-      averageEaseMinutes: Int(
-        (Double(easeDurations.reduce(0, +)) / Double(easeDurations.count)).rounded()
-      ),
-      resolvedDestinations: durations.count,
+      score: score,
+      averageMinutes: averageMinutes,
+      averageEaseMinutes: averageEaseMinutes,
+      resolvedDestinations: evaluatedDestinationCount,
       requestedDestinations: targets.count,
+      suppressedLongRouteDestinations: suppressedLongRouteDestinations,
       usedWalkingFallback: usedWalkingFallback,
+      displayedRouteIDs: displayedRouteIDs,
       scoredRouteIDs: scoredRouteIDs,
       routeSnapshots: routeSnapshots
     )
+  }
+
+  private static func commuteIsCertainlyZero(
+    from origin: CLLocationCoordinate2D,
+    to destination: CLLocationCoordinate2D,
+    preferredMinutes: Int?,
+    maximumMinutes: Int?
+  ) -> Bool {
+    let directDistance = CLLocation(
+      latitude: origin.latitude,
+      longitude: origin.longitude
+    ).distance(from: CLLocation(
+      latitude: destination.latitude,
+      longitude: destination.longitude
+    ))
+    // Use an intentionally generous 120 mph lower bound. If even that
+    // impossible best case scores zero, a real ground route can safely score
+    // zero without asking MapKit to draw a cross-country polyline.
+    let optimisticMetersPerMinute = 120.0 * 1_609.344 / 60.0
+    let optimisticMinutes = max(
+      Int(ceil(directDistance / optimisticMetersPerMinute)),
+      1
+    )
+    return SharedComparisonMath.commuteScore(
+      minutes: optimisticMinutes,
+      preferredMinutes: preferredMinutes,
+      maximumMinutes: maximumMinutes
+    ) == 0
+  }
+
+  private static func backgroundRouteModes(
+    for commuteAccess: String?
+  ) -> [SharedCommuteMode] {
+    switch commuteAccess {
+    case "car":
+      return [.automobile, .transit, .walking]
+    case "transit":
+      return [.transit, .walking, .automobile]
+    default:
+      return [.transit, .automobile, .walking]
+    }
   }
 
   private func rebuildComparisonCommuteCorridors(
@@ -2121,6 +2714,7 @@ struct SharedSearchMapView: View {
         destination: snapshot.destination,
         commuteAccesses: Array(Set(routes.compactMap { $0.snapshot.commuteAccess })).sorted(),
         mode: snapshot.mode,
+        transitKind: routes.compactMap { $0.snapshot.transitKind }.first,
         minutes: minutes,
         easeMinutes: easeMinutes,
         preferredMinutes: preferred,
@@ -2128,10 +2722,36 @@ struct SharedSearchMapView: View {
         polyline: MKPolyline(
           coordinates: routeCoordinates,
           count: routeCoordinates.count
+        ),
+        legs: Self.comparisonRouteLegs(
+          routeID: key,
+          from: snapshot.legs
         )
       )
     }
 
+  }
+
+  private static func comparisonRouteLegs(
+    routeID: String,
+    from legs: [SharedRouteLegResult]
+  ) -> [SharedComparisonRouteLeg] {
+    legs.enumerated().compactMap { index, leg in
+      let coordinates = leg.coordinates.map {
+        CLLocationCoordinate2D(
+          latitude: $0.latitude,
+          longitude: $0.longitude
+        )
+      }
+      guard coordinates.count >= 2 else { return nil }
+      return SharedComparisonRouteLeg(
+        id: "\(routeID)|leg-\(index)",
+        mode: leg.mode,
+        transitKind: leg.transitKind,
+        minutes: leg.minutes,
+        calloutCoordinate: coordinates[coordinates.count / 2]
+      )
+    }
   }
 
   private static func routeResult(
@@ -2139,6 +2759,56 @@ struct SharedSearchMapView: View {
     to destination: CLLocationCoordinate2D,
     transportType: MKDirectionsTransportType
   ) async -> SharedRouteResult? {
+    let cacheKey = String(
+      format: "%.5f,%.5f|%.5f,%.5f|%lu",
+      origin.latitude,
+      origin.longitude,
+      destination.latitude,
+      destination.longitude,
+      transportType.rawValue
+    )
+    return await SharedComparisonRouteCache.shared.value(for: cacheKey) {
+      await routeResultWithRetries(
+        from: origin,
+        to: destination,
+        transportType: transportType
+      )
+    }
+  }
+
+  private static func routeResultWithRetries(
+    from origin: CLLocationCoordinate2D,
+    to destination: CLLocationCoordinate2D,
+    transportType: MKDirectionsTransportType
+  ) async -> SharedRouteResult? {
+    let maximumAttempts = 3
+    for attempt in 0..<maximumAttempts {
+      guard !Task.isCancelled else { return nil }
+      let attemptResult = await uncachedRouteResult(
+        from: origin,
+        to: destination,
+        transportType: transportType
+      )
+      switch attemptResult {
+      case .success(let result):
+        return result
+      case .terminalFailure:
+        return nil
+      case .retryableFailure:
+        break
+      }
+      guard attempt < maximumAttempts - 1 else { break }
+      let delay = UInt64(350_000_000 * (1 << attempt))
+      try? await Task.sleep(nanoseconds: delay)
+    }
+    return nil
+  }
+
+  private static func uncachedRouteResult(
+    from origin: CLLocationCoordinate2D,
+    to destination: CLLocationCoordinate2D,
+    transportType: MKDirectionsTransportType
+  ) async -> SharedRouteAttemptResult {
     let request = MKDirections.Request()
     request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
     request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
@@ -2147,24 +2817,218 @@ struct SharedSearchMapView: View {
     if transportType == .transit {
       request.departureDate = Date()
     }
-    guard let response = try? await MKDirections(request: request).calculate(),
-          let route = response.routes.min(by: {
-            $0.expectedTravelTime < $1.expectedTravelTime
-          })
-    else { return nil }
-    let points = route.polyline.points()
-    let coordinates = (0..<route.polyline.pointCount).map {
+    let response: MKDirections.Response
+    do {
+      response = try await MKDirections(request: request).calculate()
+    } catch {
+      return routeFailureIsRetryable(error)
+        ? .retryableFailure
+        : .terminalFailure
+    }
+    guard let route = response.routes.min(by: {
+      $0.expectedTravelTime < $1.expectedTravelTime
+    }) else { return .terminalFailure }
+    let coordinates = routeCoordinates(from: route.polyline)
+    guard coordinates.count >= 2 else { return .terminalFailure }
+    let fallbackMode = commuteMode(
+      for: route.transportType,
+      fallback: commuteMode(for: transportType, fallback: .transit)
+    )
+    let legs = routeLegResults(
+      for: route,
+      fallbackMode: fallbackMode
+    )
+    let primaryTransitKind = legs
+      .filter { $0.mode == .transit }
+      .max { $0.coordinates.count < $1.coordinates.count }?
+      .transitKind
+    return .success(
+      SharedRouteResult(
+        minutes: max(1, Int((route.expectedTravelTime / 60).rounded())),
+        stepCount: route.steps.count,
+        transitKind: primaryTransitKind,
+        coordinates: coordinates,
+        legs: legs
+      )
+    )
+  }
+
+  private static func routeFailureIsRetryable(_ error: Error) -> Bool {
+    if error is CancellationError {
+      return false
+    }
+    if let mapError = error as? MKError {
+      switch mapError.code {
+      case .unknown, .serverFailure, .loadingThrottled:
+        return true
+      case .placemarkNotFound, .directionsNotFound, .decodingFailed:
+        return false
+      @unknown default:
+        return false
+      }
+    }
+    if let urlError = error as? URLError {
+      switch urlError.code {
+      case .timedOut,
+           .cannotFindHost,
+           .cannotConnectToHost,
+           .networkConnectionLost,
+           .dnsLookupFailed,
+           .notConnectedToInternet,
+           .resourceUnavailable:
+        return true
+      default:
+        return false
+      }
+    }
+    return true
+  }
+
+  private static func routeLegResults(
+    for route: MKRoute,
+    fallbackMode: SharedCommuteMode
+  ) -> [SharedRouteLegResult] {
+    var drafts: [SharedRouteLegDraft] = []
+    for step in route.steps {
+      let coordinates = routeCoordinates(from: step.polyline)
+      guard coordinates.count >= 2 else { continue }
+      let mode = commuteMode(
+        for: step.transportType,
+        fallback: fallbackMode,
+        instructions: step.instructions
+      )
+      let transitKind = mode == .transit
+        ? inferredTransitKind(from: [step])
+        : nil
+      if let lastIndex = drafts.indices.last,
+         drafts[lastIndex].mode == mode,
+         drafts[lastIndex].transitKind == transitKind {
+        drafts[lastIndex].distance += max(step.distance, 0)
+        drafts[lastIndex].coordinates = joinedRouteCoordinates(
+          drafts[lastIndex].coordinates,
+          coordinates
+        )
+      } else {
+        drafts.append(
+          SharedRouteLegDraft(
+            mode: mode,
+            transitKind: transitKind,
+            distance: max(step.distance, 0),
+            coordinates: coordinates
+          )
+        )
+      }
+    }
+
+    if drafts.isEmpty {
+      let coordinates = routeCoordinates(from: route.polyline)
+      guard coordinates.count >= 2 else { return [] }
+      drafts = [
+        SharedRouteLegDraft(
+          mode: fallbackMode,
+          transitKind: fallbackMode == .transit
+            ? inferredTransitKind(from: route.steps)
+            : nil,
+          distance: max(route.distance, 1),
+          coordinates: coordinates
+        )
+      ]
+    }
+
+    let weights = drafts.map { draft -> Double in
+      let metersPerSecond: Double = switch draft.mode {
+      case .walking: 1.3
+      case .automobile: 8.5
+      case .transit:
+        switch draft.transitKind {
+        case .bus: 5.5
+        case .train: 11.0
+        case .ferry: 8.0
+        case .transit, nil: 7.0
+        }
+      }
+      return max(draft.distance, 25) / metersPerSecond
+    }
+    let totalWeight = max(weights.reduce(0, +), 1)
+    let totalSeconds = max(route.expectedTravelTime, 60)
+
+    return drafts.enumerated().map { index, draft in
+      SharedRouteLegResult(
+        mode: draft.mode,
+        transitKind: draft.transitKind,
+        minutes: max(
+          1,
+          Int((totalSeconds * weights[index] / totalWeight / 60).rounded())
+        ),
+        coordinates: draft.coordinates
+      )
+    }
+  }
+
+  private static func commuteMode(
+    for transportType: MKDirectionsTransportType,
+    fallback: SharedCommuteMode,
+    instructions: String = ""
+  ) -> SharedCommuteMode {
+    if transportType == .walking
+      || instructions.localizedCaseInsensitiveContains("walk") {
+      return .walking
+    }
+    if transportType == .automobile {
+      return .automobile
+    }
+    if transportType == .transit {
+      return .transit
+    }
+    return fallback
+  }
+
+  private static func routeCoordinates(
+    from polyline: MKPolyline
+  ) -> [SharedRouteCoordinate] {
+    let points = polyline.points()
+    return (0..<polyline.pointCount).map {
       SharedRouteCoordinate(
         latitude: points[$0].coordinate.latitude,
         longitude: points[$0].coordinate.longitude
       )
     }
-    guard coordinates.count >= 2 else { return nil }
-    return SharedRouteResult(
-      minutes: max(1, Int((route.expectedTravelTime / 60).rounded())),
-      stepCount: route.steps.count,
-      coordinates: coordinates
-    )
+  }
+
+  private static func joinedRouteCoordinates(
+    _ leading: [SharedRouteCoordinate],
+    _ trailing: [SharedRouteCoordinate]
+  ) -> [SharedRouteCoordinate] {
+    guard let last = leading.last,
+          let first = trailing.first,
+          abs(last.latitude - first.latitude) < 0.000_001,
+          abs(last.longitude - first.longitude) < 0.000_001
+    else { return leading + trailing }
+    return leading + trailing.dropFirst()
+  }
+
+  private static func inferredTransitKind(
+    from steps: [MKRoute.Step]
+  ) -> SharedTransitKind {
+    let routeText = steps
+      .flatMap { step in [step.instructions, step.notice ?? ""] }
+      .joined(separator: " ")
+      .lowercased()
+
+    if routeText.contains("bus") || routeText.contains("coach") {
+      return .bus
+    }
+    if routeText.contains("ferry") || routeText.contains("boat") {
+      return .ferry
+    }
+    if routeText.contains("train")
+      || routeText.contains("rail")
+      || routeText.contains("subway")
+      || routeText.contains("metro")
+      || routeText.contains("tram") {
+      return .train
+    }
+    return .transit
   }
 
   private static func commuteScore(
@@ -2179,42 +3043,11 @@ struct SharedSearchMapView: View {
     )
   }
 
-  private func zoomIntoCluster(_ cluster: SharedListingMapCluster) {
-    let region = visibleRegion ?? defaultMapRegion()
-    expandedClusterListingIDs = Set(cluster.items.map(\.id))
-    expandedClusterCollapseSpan = region.span.latitudeDelta * 0.82
+  private func filterCardsToCluster(_ cluster: SharedListingMapCluster) {
+    let selectedIDs = Set(cluster.items.map { $0.listing.id })
+    cardClusterListingIDs = selectedIDs == cardClusterListingIDs ? [] : selectedIDs
     selectedListing = nil
     commuteRoutes = []
-    rebuildMapPresentation()
-
-    let latitudes = cluster.items.map(\.coordinate.latitude)
-    let longitudes = cluster.items.map(\.coordinate.longitude)
-    let latitudeSpread = (latitudes.max() ?? cluster.coordinate.latitude)
-      - (latitudes.min() ?? cluster.coordinate.latitude)
-    let longitudeSpread = (longitudes.max() ?? cluster.coordinate.longitude)
-      - (longitudes.min() ?? cluster.coordinate.longitude)
-    let nextLatitudeDelta = max(min(region.span.latitudeDelta * 0.46, latitudeSpread * 1.8 + 0.004), 0.004)
-    let nextLongitudeDelta = max(min(region.span.longitudeDelta * 0.46, longitudeSpread * 1.8 + 0.004), 0.004)
-
-    withAnimation(.easeInOut(duration: 0.22)) {
-      cameraPosition = .region(
-        MKCoordinateRegion(
-          center: cluster.coordinate,
-          span: MKCoordinateSpan(
-            latitudeDelta: nextLatitudeDelta,
-            longitudeDelta: nextLongitudeDelta
-          )
-        )
-      )
-    }
-  }
-
-  private func collapseExpandedCluster() {
-    withAnimation(.easeInOut(duration: 0.2)) {
-      expandedClusterListingIDs = []
-      expandedClusterCollapseSpan = nil
-      rebuildMapPresentation()
-    }
   }
 
   private func loadMapInventory(in region: MKCoordinateRegion) async {
@@ -2244,7 +3077,7 @@ struct SharedSearchMapView: View {
 
   private func focusMap() {
     if isComparisonActive {
-      let region = comparisonMetroRegion
+      let region = comparisonFocusRegion
       visibleRegion = region
       cameraPosition = .region(region)
       rebuildMapPresentation()
@@ -2274,28 +3107,23 @@ struct SharedSearchMapView: View {
 
   private func resolveListingCoordinates() async {
     var next = resolvedCoordinates
-    let shortlistedIDs = Set(appModel.board.shortlist.map(\.id))
     let candidates = searchListings
       .filter {
         $0.coordinate == nil
           && next[$0.id] == nil
-          && shortlistedIDs.contains($0.id)
       }
-      .prefix(40)
 
     for listing in candidates {
+      guard !Task.isCancelled else { return }
       guard let query = SharedListingLocation.geocodingQuery(for: listing) else {
         continue
       }
-      let request = MKLocalSearch.Request()
-      request.naturalLanguageQuery = query
-      if let response = try? await MKLocalSearch(request: request).start(),
-         let coordinate = response.mapItems.first?.placemark.coordinate {
+      if let coordinate = await resolveCoordinate(for: query) {
         next[listing.id] = coordinate
+        resolvedCoordinates = next
+        prepareMapItems()
       }
     }
-    resolvedCoordinates = next
-    prepareMapItems()
   }
 
   private func resolveCommuteRoutes(for requestedListing: ListingPreview? = nil) async {
@@ -2308,6 +3136,9 @@ struct SharedSearchMapView: View {
 
     let destinations = appModel.board.members.compactMap {
       member -> (name: String, target: String, colorKey: String, access: String?)? in
+      guard member.commuteAccess != "remote", member.commuteAccess != "skip" else {
+        return nil
+      }
       let target = SharedListingText.commuteDestination(member.commuteLine)
       guard !target.isEmpty else { return nil }
       return (
@@ -2375,26 +3206,50 @@ struct SharedSearchMapView: View {
     to destination: CLLocationCoordinate2D,
     transportType: MKDirectionsTransportType
   ) async -> MKRoute? {
-    let request = MKDirections.Request()
-    request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
-    request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
-    request.transportType = transportType
-    request.requestsAlternateRoutes = true
-    if transportType == .transit {
-      request.departureDate = Date()
+    for attempt in 0..<3 {
+      guard !Task.isCancelled else { return nil }
+      let request = MKDirections.Request()
+      request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
+      request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+      request.transportType = transportType
+      request.requestsAlternateRoutes = false
+      if transportType == .transit {
+        request.departureDate = Date()
+      }
+      do {
+        let routes = try await MKDirections(request: request).calculate().routes
+        if let route = routes.min(by: {
+          $0.expectedTravelTime < $1.expectedTravelTime
+        }) {
+          return route
+        }
+      } catch {
+        guard routeFailureIsRetryable(error) else { return nil }
+      }
+      if attempt < 2 {
+        try? await Task.sleep(nanoseconds: UInt64(350_000_000 * (1 << attempt)))
+      }
     }
-    return try? await MKDirections(request: request).calculate().routes.min {
-      $0.expectedTravelTime < $1.expectedTravelTime
-    }
+    return nil
   }
 
   private func resolveCoordinate(for destination: String) async -> CLLocationCoordinate2D? {
-    let request = MKLocalSearch.Request()
-    request.naturalLanguageQuery = [destination, appModel.board.city]
+    let query = [destination, appModel.board.city]
       .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
       .joined(separator: ", ")
-    guard let response = try? await MKLocalSearch(request: request).start() else { return nil }
-    return response.mapItems.first?.placemark.coordinate
+    for attempt in 0..<3 {
+      guard !Task.isCancelled else { return nil }
+      let request = MKLocalSearch.Request()
+      request.naturalLanguageQuery = query
+      if let response = try? await MKLocalSearch(request: request).start(),
+         let coordinate = response.mapItems.first?.placemark.coordinate {
+        return coordinate
+      }
+      if attempt < 2 {
+        try? await Task.sleep(nanoseconds: UInt64(250_000_000 * (attempt + 1)))
+      }
+    }
+    return nil
   }
 }
 
@@ -2405,25 +3260,13 @@ struct SharedShortlistView: View {
   @State private var showsListingDiscovery = false
   @State private var comparisonSelection: Set<String> = []
   @State private var showsComparison = false
+  @State private var showsComparisonLimit = false
   @State private var showsSettings = false
+  @State private var showsRecentlyDeleted = false
   @AppStorage("homeboard.guide.shortlist.dismissed") private var shortlistGuideDismissed = false
 
   private var listings: [ListingPreview] {
-    appModel.board.shortlist.filter { listing in
-      switch filter {
-      case .active:
-        return !["passed", "rejected"].contains(listing.status.lowercased()) &&
-          listing.workflowStatus != "decided"
-      case .touring:
-        return listing.status == "toured" || listing.workflowStatus == "viewing"
-      case .applied:
-        return listing.status == "applied" || listing.workflowStatus == "applying"
-      case .passed:
-        return listing.status == "rejected"
-      case .all:
-        return true
-      }
-    }
+    appModel.board.shortlist.filter(filter.includes)
   }
 
   private var comparisonListings: [ListingPreview] {
@@ -2438,8 +3281,8 @@ struct SharedShortlistView: View {
         LazyVStack(alignment: .leading, spacing: 14) {
           SharedPageHeader(
             eyebrow: appModel.board.city,
-            title: "The group shortlist",
-            subtitle: "Every place still worth a conversation, without the spreadsheet noise."
+            title: "Shortlist",
+            subtitle: "Saved places, group votes, and your next move."
           ) {
             HStack(spacing: 8) {
               Button {
@@ -2452,7 +3295,8 @@ struct SharedShortlistView: View {
                   .background(Color.white.opacity(0.06))
                   .clipShape(Circle())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
+              .accessibilityLabel("Board settings")
 
               Button {
                 showsListingDiscovery = true
@@ -2464,23 +3308,60 @@ struct SharedShortlistView: View {
                   .background(HomeboardPalette.accent)
                   .clipShape(Circle())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
+              .accessibilityLabel("Add a listing")
             }
           }
 
           SharedFilterBar(selection: $filter, counts: statusCounts)
+
+          if !appModel.recentlyDeletedListings.isEmpty {
+            HStack(spacing: 8) {
+              Image(systemName: "trash.fill")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.danger)
+              Text("\(appModel.recentlyDeletedListings.count) recently deleted listing\(appModel.recentlyDeletedListings.count == 1 ? "" : "s")")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.secondaryText)
+              Spacer()
+              Button("Review / Restore") {
+                showsRecentlyDeleted = true
+              }
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.accent)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+          }
 
           if appModel.isBoardLoading && appModel.board.shortlist.isEmpty {
             ForEach(0..<3, id: \.self) { _ in
               HomeboardListingSkeletonCard()
             }
           } else if listings.isEmpty {
-            SharedShortlistEmptyState(onBrowse: { showsListingDiscovery = true })
+            if appModel.board.shortlist.isEmpty {
+              SharedShortlistEmptyState(onBrowse: { showsListingDiscovery = true })
+            } else {
+              VStack(spacing: 14) {
+                SharedInlineEmpty(
+                  icon: "line.3.horizontal.decrease.circle",
+                  title: "No \(filter.title.lowercased()) places",
+                  message: "Your saved places are still here. Try another stage."
+                )
+                Button("Show all saved places") { filter = .all }
+                  .font(.subheadline.weight(.bold))
+                  .foregroundStyle(HomeboardPalette.accent)
+                  .frame(maxWidth: .infinity, minHeight: 44)
+                  .buttonStyle(HomeboardAreaButtonStyle())
+              }
+            }
           } else {
             ForEach(listings) { listing in
               SharedShortlistRow(
                 listing: listing,
-                memberCount: max(appModel.board.members.count, 1),
+                memberCount: max(appModel.board.members.filter { $0.status != "commute point" }.count, 1),
                 isSelectedForComparison: comparisonSelection.contains(listing.id),
                 onOpen: { selectedListing = listing },
                 onCompare: { toggleComparison(listing) }
@@ -2490,7 +3371,7 @@ struct SharedShortlistView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
-        .padding(.bottom, comparisonSelection.count >= 2 ? 120 : 36)
+        .padding(.bottom, 24)
       }
       .scrollBounceBehavior(.basedOnSize, axes: .vertical)
       .refreshable {
@@ -2498,29 +3379,43 @@ struct SharedShortlistView: View {
       }
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      if comparisonSelection.count >= 2 {
-        Button {
-          appModel.trackComparisonOpened(listingIds: comparisonListings.map(\.id))
-          showsComparison = true
-        } label: {
-          HStack(spacing: 10) {
-            Image(systemName: "arrow.left.arrow.right")
-            Text("Compare \(comparisonSelection.count) places")
-            Spacer()
-            Image(systemName: "chevron.up")
+      if !comparisonSelection.isEmpty {
+        HStack(spacing: 12) {
+          Button {
+            appModel.trackComparisonOpened(listingIds: comparisonListings.map(\.id))
+            showsComparison = true
+          } label: {
+            Label(
+              comparisonSelection.count == 1 ? "Select one more place" : "Compare \(comparisonSelection.count) places",
+              systemImage: "arrow.left.arrow.right"
+            )
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(HomeboardPalette.buttonText)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(HomeboardPalette.accent.opacity(comparisonSelection.count == 1 ? 0.65 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           }
-          .font(.subheadline.weight(.bold))
-          .foregroundStyle(Color.black)
-          .padding(.horizontal, 18)
-          .frame(height: 54)
-          .background(HomeboardPalette.accent)
-          .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-          .padding(.horizontal, 16)
-          .padding(.vertical, 10)
-          .background(HomeboardPalette.background.opacity(0.96))
+          .buttonStyle(HomeboardAreaButtonStyle())
+          .disabled(comparisonSelection.count < 2)
+
+          Button("Clear") { comparisonSelection.removeAll() }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.accent)
+            .frame(minWidth: 44, minHeight: 44)
+            .buttonStyle(HomeboardAreaButtonStyle())
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(HomeboardPalette.background)
       }
+    }
+    .onChange(of: appModel.board.shortlist.map(\.id)) { _, ids in
+      comparisonSelection.formIntersection(Set(ids))
+    }
+    .alert("Compare up to 3 places", isPresented: $showsComparisonLimit) {
+      Button("Got it", role: .cancel) { }
+    } message: {
+      Text("Deselect a place before adding another, or tap Clear to start again.")
     }
     .toolbar(.hidden, for: .navigationBar)
     .sheet(isPresented: $showsListingDiscovery) {
@@ -2547,6 +3442,12 @@ struct SharedShortlistView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
+    .sheet(isPresented: $showsRecentlyDeleted) {
+      SharedRecentlyDeletedSheet()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
       if !shortlistGuideDismissed {
         SharedCoachmarkOverlay(
@@ -2561,19 +3462,9 @@ struct SharedShortlistView: View {
   }
 
   private var statusCounts: [SharedListingFilter: Int] {
-    var counts: [SharedListingFilter: Int] = [:]
-    counts[.all] = appModel.board.shortlist.count
-    counts[.active] = appModel.board.shortlist.filter {
-      !["passed", "rejected"].contains($0.status.lowercased()) && $0.workflowStatus != "decided"
-    }.count
-    counts[.touring] = appModel.board.shortlist.filter {
-      $0.status == "toured" || $0.workflowStatus == "viewing"
-    }.count
-    counts[.applied] = appModel.board.shortlist.filter {
-      $0.status == "applied" || $0.workflowStatus == "applying"
-    }.count
-    counts[.passed] = appModel.board.shortlist.filter { $0.status == "rejected" }.count
-    return counts
+    Dictionary(uniqueKeysWithValues: SharedListingFilter.allCases.map { stage in
+      (stage, appModel.board.shortlist.filter(stage.includes).count)
+    })
   }
 
   private func toggleComparison(_ listing: ListingPreview) {
@@ -2582,7 +3473,10 @@ struct SharedShortlistView: View {
       return
     }
 
-    guard comparisonSelection.count < 3 else { return }
+    guard comparisonSelection.count < 3 else {
+      showsComparisonLimit = true
+      return
+    }
     comparisonSelection.insert(listing.id)
   }
 }
@@ -2591,8 +3485,10 @@ struct SharedGroupView: View {
   @Environment(AppModel.self) private var appModel
   @State private var copiedInvite = false
   @State private var selectedMember: MemberPreferenceCard?
-  @State private var showsAddMember = false
+  @State private var selectedCommutePoint: MemberPreferenceCard?
+  @State private var showsAddCommutePoint = false
   @State private var showsInviteMember = false
+  @AppStorage("homeboard.guide.commute-points.dismissed") private var commutePointGuideDismissed = false
 
   private var pendingInvites: [BoardInvitationSummary] {
     appModel.board.invitations.filter { $0.status == "pending" }
@@ -2603,6 +3499,14 @@ struct SharedGroupView: View {
     return appModel.board.members.first(where: { $0.userId == userId })?.role == "owner"
   }
 
+  private var people: [MemberPreferenceCard] {
+    appModel.board.members.filter { $0.status != "commute point" }
+  }
+
+  private var commutePoints: [MemberPreferenceCard] {
+    appModel.board.members.filter { $0.status == "commute point" }
+  }
+
   var body: some View {
     ZStack {
       WorkspaceBackgroundView()
@@ -2610,7 +3514,7 @@ struct SharedGroupView: View {
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
           SharedPageHeader(
-            eyebrow: "\(appModel.board.members.count) member\(appModel.board.members.count == 1 ? "" : "s")",
+            eyebrow: "\(people.count) member\(people.count == 1 ? "" : "s")",
             title: "One search, seen together",
             subtitle: "Budgets, commutes, and red lines stay attached to the people who care about them."
           ) {
@@ -2625,7 +3529,7 @@ struct SharedGroupView: View {
                   .background(HomeboardPalette.accent)
                   .clipShape(Circle())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
 
@@ -2640,27 +3544,80 @@ struct SharedGroupView: View {
                 copiedInvite = true
               },
               onInvite: { showsInviteMember = true },
-              onAddManually: { showsAddMember = true }
+              onAddCommutePoint: { showsAddCommutePoint = true }
             )
+          }
+
+          if !commutePointGuideDismissed {
+            SharedCommutePointTutorialCard {
+              commutePointGuideDismissed = true
+            }
           }
 
           VStack(alignment: .leading, spacing: 12) {
             SharedSectionTitle(title: "People", trailing: "Tap to see preferences")
 
-            if appModel.board.members.isEmpty {
+            if people.isEmpty {
               SharedInlineEmpty(
                 icon: "person.2",
                 title: "No profiles yet",
-                message: "Add the first member so the board has someone to optimize for."
+                message: "Invite the first person so the board has someone to optimize for."
               )
             } else {
-              ForEach(appModel.board.members) { member in
+              ForEach(people) { member in
                 Button {
                   selectedMember = member
                 } label: {
                   SharedMemberRow(member: member)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
+              }
+            }
+          }
+
+
+          if isCurrentUserOwner || !commutePoints.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+              SharedSectionTitle(
+                title: "Additional commute points",
+                trailing: commutePoints.isEmpty ? nil : "\(commutePoints.count)"
+              )
+
+              if commutePoints.isEmpty {
+                Button {
+                  showsAddCommutePoint = true
+                } label: {
+                  Label("Add a commute point", systemImage: "mappin.and.ellipse")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(HomeboardPalette.buttonText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(HomeboardPalette.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(HomeboardAreaButtonStyle())
+              } else {
+                ForEach(commutePoints) { point in
+                  Button {
+                    selectedCommutePoint = point
+                  } label: {
+                    SharedCommutePointRow(point: point)
+                  }
+                  .buttonStyle(HomeboardAreaButtonStyle())
+                }
+
+                if isCurrentUserOwner {
+                  Button {
+                    showsAddCommutePoint = true
+                  } label: {
+                    Label("Add another commute point", systemImage: "plus.circle.fill")
+                      .font(.subheadline.weight(.bold))
+                      .foregroundStyle(HomeboardPalette.accent)
+                      .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                      .contentShape(Rectangle())
+                  }
+                  .buttonStyle(HomeboardAreaButtonStyle())
+                }
               }
             }
           }
@@ -2696,51 +3653,6 @@ struct SharedGroupView: View {
               }
             }
           }
-
-          VStack(alignment: .leading, spacing: 12) {
-            SharedSectionTitle(
-              title: "Open decisions",
-              trailing: "\(appModel.board.openQuestions.count) unresolved"
-            )
-
-            if appModel.board.openQuestions.isEmpty {
-              SharedInlineEmpty(
-                icon: "checkmark.circle",
-                title: "Nothing blocking the group",
-                message: "New tradeoffs will appear here as the search gets more specific."
-              )
-            } else {
-              ForEach(appModel.board.openQuestions.prefix(4), id: \.self) { question in
-                HStack(alignment: .top, spacing: 12) {
-                  Circle()
-                    .fill(HomeboardPalette.accent)
-                    .frame(width: 7, height: 7)
-                    .padding(.top, 7)
-
-                  Text(question)
-                    .font(.subheadline)
-                    .foregroundStyle(HomeboardPalette.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                  Spacer(minLength: 8)
-
-                  Button {
-                    appModel.resolveOpenQuestion(question, resolution: "Resolved by the group")
-                  } label: {
-                    Image(systemName: "checkmark")
-                      .font(.caption.weight(.bold))
-                      .foregroundStyle(HomeboardPalette.success)
-                      .frame(width: 30, height: 30)
-                      .background(Color.white.opacity(0.05))
-                      .clipShape(Circle())
-                  }
-                  .buttonStyle(.plain)
-                }
-                .padding(14)
-                .sharedSurface(cornerRadius: 16)
-              }
-            }
-          }
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
@@ -2757,8 +3669,14 @@ struct SharedGroupView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
-    .sheet(isPresented: $showsAddMember) {
-      AddSharedMemberSheet()
+    .sheet(item: $selectedCommutePoint) { point in
+      SharedCommutePointDetailSheet(point: point)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsAddCommutePoint) {
+      AddSharedCommutePointSheet()
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
@@ -2780,7 +3698,7 @@ struct SharedUpdatesView: View {
   @AppStorage("homeboard.guide.updates.dismissed") private var updatesGuideDismissed = false
 
   private var timeline: [SharedTimelineItem] {
-    let messages = appModel.board.chatMessages.map {
+    appModel.board.chatMessages.map {
       SharedTimelineItem(
         id: "message-\($0.id)",
         author: $0.authorName?.isEmpty == false ? $0.authorName! : ($0.role == "assistant" ? "Homeboard" : "Member"),
@@ -2788,10 +3706,6 @@ struct SharedUpdatesView: View {
         isSystem: $0.role == "assistant" || $0.role == "system"
       )
     }
-    let activity = appModel.board.recentActivity.enumerated().map {
-      SharedTimelineItem(id: "activity-\($0.offset)", author: "Board", content: $0.element, isSystem: true)
-    }
-    return messages.isEmpty ? activity : messages
   }
 
   var body: some View {
@@ -2803,9 +3717,9 @@ struct SharedUpdatesView: View {
       ScrollView(.vertical, showsIndicators: false) {
         LazyVStack(alignment: .leading, spacing: 14) {
           SharedPageHeader(
-            eyebrow: "Shared activity",
-            title: "Keep the thread intact",
-            subtitle: "Notes, reactions, and decisions from everyone on the board."
+            eyebrow: "Shared space",
+            title: "Group",
+            subtitle: "One conversation. Every decision answered together."
           ) {
             Button {
               showsSettings = true
@@ -2817,8 +3731,16 @@ struct SharedUpdatesView: View {
                 .background(Color.white.opacity(0.06))
                 .clipShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .accessibilityLabel("Board settings")
           }
+
+          SharedDecisionHub()
+
+          SharedSectionTitle(
+            title: "Conversation",
+            trailing: timeline.isEmpty ? "No messages yet" : "\(timeline.count) message\(timeline.count == 1 ? "" : "s")"
+          )
 
           if appModel.isBoardLoading && timeline.isEmpty {
             VStack(spacing: 12) {
@@ -2838,8 +3760,8 @@ struct SharedUpdatesView: View {
           } else if timeline.isEmpty {
             SharedInlineEmpty(
               icon: "bubble.left.and.bubble.right",
-              title: "The board is quiet",
-              message: "Post the first update so everyone starts from the same context."
+              title: "Start the group conversation",
+              message: "Send the first message so everyone starts with the same context."
             )
           } else {
             ForEach(timeline) { item in
@@ -2849,7 +3771,7 @@ struct SharedUpdatesView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
-        .padding(.bottom, 120)
+        .padding(.bottom, 24)
       }
       .scrollBounceBehavior(.basedOnSize, axes: .vertical)
       .scrollDismissesKeyboard(.interactively)
@@ -2868,7 +3790,7 @@ struct SharedUpdatesView: View {
 
         HStack(alignment: .bottom, spacing: 10) {
           TextField(
-            "Add an update for the group",
+            "Message the group",
             text: $updateDraft,
             axis: .vertical
           )
@@ -2908,7 +3830,8 @@ struct SharedUpdatesView: View {
             .background(HomeboardPalette.accent)
             .clipShape(Circle())
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
+          .accessibilityLabel("Send group message")
           .disabled(
             updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
               || appModel.isPostingBoardUpdate
@@ -2933,9 +3856,9 @@ struct SharedUpdatesView: View {
       if !updatesGuideDismissed {
         SharedCoachmarkOverlay(
           target: anchors["updates-composer"],
-          title: "Leave decisions here, not in another chat",
-          message: "Post what changed, what needs an answer, or why a listing moved. Everyone returns to the same context.",
-          targetLabel: "POST A GROUP UPDATE",
+          title: "Talk it through together",
+          message: "Use messages for discussion. Start a group decision above when everyone needs to answer.",
+          targetLabel: "MESSAGE THE GROUP",
           onDismiss: { updatesGuideDismissed = true }
         )
       }
@@ -2944,7 +3867,7 @@ struct SharedUpdatesView: View {
 
   private func submitUpdate() {
     let message = updateDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !message.isEmpty else { return }
+    guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
     updateDraft = ""
     updateFieldFocused = false
 
@@ -2958,20 +3881,360 @@ struct SharedUpdatesView: View {
   }
 }
 
+// MARK: - Group decisions
+
+private enum SharedDecisionDestination: Identifiable {
+  case poll
+  case vote(String, ListingPollType)
+
+  var id: String {
+    switch self {
+    case .poll: return "poll"
+    case .vote(let listingID, let type): return "vote-\(listingID)-\(type.rawValue)"
+    }
+  }
+}
+
+private struct SharedOpenListingPoll: Identifiable {
+  let listing: ListingPreview
+  let type: ListingPollType
+  let decision: ListingDecisionSummary
+  var id: String { decision.id }
+}
+
+private struct SharedDecisionHub: View {
+  @Environment(AppModel.self) private var appModel
+  @State private var destination: SharedDecisionDestination?
+  @State private var showsAll = false
+
+  private var polls: [SharedOpenListingPoll] {
+    appModel.board.shortlist.flatMap { listing in
+      ListingPollType.allCases.compactMap { type in
+        listing.openDecision(for: type).map {
+          SharedOpenListingPoll(listing: listing, type: type, decision: $0)
+        }
+      }
+    }
+  }
+
+  private var pendingCount: Int { polls.filter { !$0.decision.isGroupResolved }.count }
+
+  private var statusLine: String {
+    if polls.isEmpty { return "None yet" }
+    if pendingCount == 0 { return "All responded" }
+    return "\(pendingCount) waiting"
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      SharedSectionTitle(title: "Group decisions", trailing: statusLine)
+
+      actions
+
+      if polls.isEmpty {
+        Text("Turn a saved place into one clear question everyone answers.")
+          .font(.subheadline)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+      } else {
+        ForEach(Array(polls.prefix(showsAll ? polls.count : 3))) { poll in
+          Button {
+            destination = .vote(poll.listing.id, poll.type)
+          } label: {
+            HStack(spacing: 12) {
+              Image(systemName: "chart.bar.xaxis")
+                .foregroundStyle(HomeboardPalette.accent)
+              VStack(alignment: .leading, spacing: 4) {
+                Text(poll.type.question)
+                  .font(.subheadline.weight(.semibold))
+                  .foregroundStyle(HomeboardPalette.primaryText)
+                Text(poll.listing.title)
+                  .font(.caption)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+                  .lineLimit(1)
+                Text("Resolved \(poll.decision.groupResolvedCount)/\(poll.decision.groupRequiredCount)")
+                  .font(.caption2.weight(.medium))
+                  .foregroundStyle(HomeboardPalette.accent)
+                Text(waitingLine(for: poll.decision))
+                  .font(.caption2)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+                  .lineLimit(1)
+              }
+              Spacer(minLength: 0)
+              Image(systemName: poll.decision.isGroupResolved ? "checkmark.circle.fill" : "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(poll.decision.isGroupResolved ? HomeboardPalette.success : HomeboardPalette.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+
+        if polls.count > 3 {
+          Button(showsAll ? "Show less" : "Show all \(polls.count) decisions") { showsAll.toggle() }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.accent)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .buttonStyle(HomeboardAreaButtonStyle())
+        }
+      }
+    }
+    .padding(16)
+    .sharedSurface(cornerRadius: 20)
+    .sheet(item: $destination) { destination in
+      Group {
+        switch destination {
+        case .poll: SharedListingPollSheet()
+        case .vote(let listingID, let type): SharedListingPollSheet(initialListingID: listingID, initialType: type)
+        }
+      }
+      .presentationDetents([.large])
+      .presentationDragIndicator(.visible)
+      .presentationBackground(HomeboardPalette.background)
+    }
+  }
+
+  @ViewBuilder private var actions: some View {
+    Button { destination = .poll } label: {
+      Label("Start group decision", systemImage: "person.3.sequence.fill")
+        .font(.subheadline.weight(.bold))
+        .foregroundStyle(HomeboardPalette.buttonText)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .background(HomeboardPalette.accent, in: RoundedRectangle(cornerRadius: 14))
+    }
+    .buttonStyle(HomeboardAreaButtonStyle())
+  }
+
+  private func waitingLine(for decision: ListingDecisionSummary) -> String {
+    if decision.isGroupResolved { return "Everyone responded" }
+    let names = decision.remainingMemberNames ?? []
+    if names.isEmpty { return "Waiting for the rest of the group" }
+    return "Waiting on \(names.joined(separator: ", "))"
+  }
+}
+
+private struct SharedListingPollSheet: View {
+  var initialListingID: String? = nil
+  var initialType: ListingPollType = .requestViewing
+  @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+  @State private var listingID = ""
+  @State private var type = ListingPollType.requestViewing
+  @State private var choice: String?
+  @State private var isSubmitting = false
+  @State private var error: String?
+
+  private var listing: ListingPreview? { appModel.board.shortlist.first { $0.id == listingID } }
+  private var decision: ListingDecisionSummary? { listing?.openDecision(for: type) }
+  private var groupMemberCount: Int {
+    appModel.board.members.filter { !$0.userId.isEmpty && $0.status != "commute point" }.count
+  }
+  private var canUseGroupDecision: Bool { groupMemberCount >= 2 }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        if appModel.board.shortlist.isEmpty {
+          Section {
+            Text("Save a place to start a group decision.").font(.headline)
+            Text("Browse Search or save a listing from Safari, then let everyone answer the same question.")
+              .foregroundStyle(HomeboardPalette.secondaryText)
+            Button("Go to Search") {
+              appModel.openBoardTab(.board)
+              dismiss()
+            }
+          }
+          .listRowBackground(HomeboardPalette.surface)
+        } else {
+          Section("Saved place") {
+            Picker("Listing", selection: $listingID) {
+              Text("Choose a saved place").tag("")
+              ForEach(appModel.board.shortlist) { listing in
+                Text("\(listing.title) · \(listing.priceLine)").tag(listing.id)
+              }
+            }
+            .pickerStyle(.menu)
+            .disabled(initialListingID != nil)
+          }
+          .listRowBackground(HomeboardPalette.surface)
+          if !canUseGroupDecision {
+            Section {
+              Label("Invite at least one other member", systemImage: "person.badge.plus")
+                .font(.subheadline.weight(.semibold))
+              Text("A group decision needs responses from at least two account-backed members, so one person cannot decide for everyone.")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            }
+            .listRowBackground(HomeboardPalette.surface)
+          }
+          Section("What should the group decide?") {
+            Picker("Next step", selection: $type) {
+              ForEach(ListingPollType.allCases) { type in Text(type.title).tag(type) }
+            }
+            .pickerStyle(.segmented)
+            Text(type.question).font(.headline)
+            if let decision {
+              SharedPollResults(decision: decision)
+            }
+          }
+          .listRowBackground(HomeboardPalette.surface)
+          Section {
+            SharedPollChoices(selected: choice) { choice = $0 }
+              .disabled(!canUseGroupDecision)
+          } header: {
+            Text("Your response")
+          } footer: {
+            Text(decision == nil
+              ? "Your response starts the decision in Group. It stays open until every member responds."
+              : "Your response counts toward Resolved \(decision?.groupResolvedCount ?? 0)/\(decision?.groupRequiredCount ?? max(2, groupMemberCount)). You can change it later; no one can close this alone.")
+          }
+          .listRowBackground(HomeboardPalette.surface)
+          if let error {
+            Text(error).foregroundStyle(HomeboardPalette.danger)
+              .listRowBackground(HomeboardPalette.surface)
+          }
+          Section {
+            Button {
+              guard let choice, let listing, !isSubmitting else { return }
+              isSubmitting = true
+              error = nil
+              Task {
+                let posted = await appModel.voteOnListingDecision(id: listing.id, type: type.rawValue, choice: choice)
+                isSubmitting = false
+                if posted { dismiss() }
+                else { error = appModel.boardError ?? "Couldn’t save your vote. Please try again." }
+              }
+            } label: {
+              HStack {
+                if isSubmitting { ProgressView() }
+                Text(decision == nil ? "Start decision & respond" : "Update my response").fontWeight(.semibold)
+              }
+              .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .disabled(listing == nil || choice == nil || isSubmitting || !canUseGroupDecision)
+          }
+          .listRowBackground(HomeboardPalette.surface)
+        }
+      }
+      .scrollContentBackground(.hidden)
+      .background(HomeboardPalette.background)
+      .foregroundStyle(HomeboardPalette.primaryText)
+      .tint(HomeboardPalette.accent)
+      .navigationTitle("Group decision")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(HomeboardPalette.background, for: .navigationBar)
+      .toolbarBackground(.visible, for: .navigationBar)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { dismiss() }.disabled(isSubmitting)
+        }
+      }
+      .disabled(isSubmitting)
+    }
+    .onAppear {
+      listingID = initialListingID ?? ""
+      type = initialType
+      choice = decision?.choice(for: appModel.account?.id)
+    }
+    .onChange(of: listingID) { _, _ in resetVote() }
+    .onChange(of: type) { _, _ in resetVote() }
+    .interactiveDismissDisabled(isSubmitting)
+  }
+
+  private func resetVote() {
+    choice = decision?.choice(for: appModel.account?.id)
+    error = nil
+  }
+}
+
+private struct SharedPollChoices: View {
+  let selected: String?
+  let onSelect: (String) -> Void
+
+  var body: some View {
+    HStack(spacing: 8) {
+      ForEach([("yes", "Yes"), ("no", "No"), ("abstain", "Not sure")], id: \.0) { value, title in
+        Button { onSelect(value) } label: {
+          Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(selected == value ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(selected == value ? HomeboardPalette.accent : Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .accessibilityAddTraits(selected == value ? [.isSelected] : [])
+      }
+    }
+  }
+}
+
+private struct SharedPollResults: View {
+  let decision: ListingDecisionSummary
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 6) {
+        Text("Resolved \(decision.groupResolvedCount)/\(decision.groupRequiredCount)")
+          .font(.subheadline.weight(.bold))
+        if decision.isGroupResolved {
+          Image(systemName: "checkmark.circle.fill")
+        }
+      }
+      .foregroundStyle(decision.isGroupResolved ? HomeboardPalette.success : HomeboardPalette.accent)
+
+      Text("\(count("yes")) yes · \(count("no")) no · \(count("abstain")) not sure")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+
+      if !decision.isGroupResolved {
+        Text(waitingLine)
+          .font(.caption)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+      }
+
+      DisclosureGroup("See group responses") {
+        ForEach(Array(decision.votes.enumerated()), id: \.offset) { _, vote in
+          HStack {
+            Text(vote.name)
+            Spacer()
+            Text(vote.choice == "abstain" ? "Not sure" : vote.choice.capitalized)
+          }
+          .font(.caption)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+      }
+      .font(.caption)
+      .tint(HomeboardPalette.accent)
+    }
+  }
+
+  private func count(_ choice: String) -> Int {
+    decision.votes.filter { $0.choice == choice }.count
+  }
+
+  private var waitingLine: String {
+    let names = decision.remainingMemberNames ?? []
+    if names.isEmpty { return "Waiting for the rest of the group" }
+    return "Waiting on \(names.joined(separator: ", "))"
+  }
+}
+
 struct SharedSetupView: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
   @State private var showsBriefEditor = false
-  @State private var showsAddListing = false
-  @State private var showsSafariGuide = false
+  @State private var showsSafariSetup = false
+  @State private var showsHelp = false
   @State private var showsMacPairing = false
   @State private var showsJoinBoard = false
   @State private var showsGroup = false
+  @State private var showsRecentlyDeleted = false
   @State private var titleDraft = ""
   @State private var showsBoardExitConfirmation = false
   @State private var showsAccountDeletionConfirmation = false
-  @State private var showsReplayGuidesConfirmation = false
-  @State private var showsBetaFeedback = false
+  @State private var showsBugReport = false
 
   private var isCurrentUserOwner: Bool {
     guard let userId = appModel.account?.id else { return false }
@@ -2999,20 +4262,33 @@ struct SharedSetupView: View {
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "slider.horizontal.3", title: "Edit search brief", subtitle: "Your budget, commute, neighborhoods, and limits") {
+            SharedSettingsRow(icon: "slider.horizontal.3", title: "Edit search brief", subtitle: "Your city, timing, budget, commute, and priorities") {
+              appModel.prepareSearchBriefEditing()
               showsBriefEditor = true
             }
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "plus.rectangle.on.rectangle", title: "Add an offline listing", subtitle: "Last resort for a place with no listing page") {
-              showsAddListing = true
+            SharedSettingsRow(icon: "safari.fill", title: "Safari capture", subtitle: "Enable once, then listing pills appear automatically") {
+              showsSafariSetup = true
             }
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "square.and.arrow.up", title: "Sharing from Safari", subtitle: "Use the familiar Share button to scan a rental page") {
-              showsSafariGuide = true
+            SharedSettingsRow(
+              icon: "trash.fill",
+              title: "Recently Deleted",
+              subtitle: appModel.recentlyDeletedListings.isEmpty
+                ? "Deleted listings stay here for seven days"
+                : "\(appModel.recentlyDeletedListings.count) recoverable for seven days"
+            ) {
+              showsRecentlyDeleted = true
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "questionmark.circle.fill", title: "Help & tutorials", subtitle: "Save listings, learn each page, or replay the guides") {
+              showsHelp = true
             }
 
             SharedDivider()
@@ -3029,15 +4305,10 @@ struct SharedSetupView: View {
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "questionmark.circle", title: "Replay page guides", subtitle: "Show the first-visit tips again") {
-              showsReplayGuidesConfirmation = true
+            SharedSettingsRow(icon: "ladybug.fill", title: "Saw a bug?", subtitle: "Send the details and keep the tracking ID") {
+              showsBugReport = true
             }
 
-            SharedDivider()
-
-            SharedSettingsRow(icon: "exclamationmark.bubble", title: "Share beta feedback", subtitle: "Include optional, privacy-safe diagnostics") {
-              showsBetaFeedback = true
-            }
           }
           .sharedSurface(cornerRadius: 20)
 
@@ -3074,7 +4345,7 @@ struct SharedSetupView: View {
                   .padding(.vertical, 13)
                   .sharedSurface(cornerRadius: 15)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               }
             }
           }
@@ -3093,7 +4364,7 @@ struct SharedSetupView: View {
             .frame(height: 52)
             .sharedSurface(cornerRadius: 16)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
           VStack(alignment: .leading, spacing: 12) {
             SharedSectionTitle(title: "Board name", trailing: nil)
@@ -3115,7 +4386,7 @@ struct SharedSetupView: View {
               .frame(width: 72, height: 48)
               .background(HomeboardPalette.accent)
               .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
 
@@ -3133,7 +4404,7 @@ struct SharedSetupView: View {
             .frame(height: 52)
             .sharedSurface(cornerRadius: 16)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
           Button(role: .destructive) {
             showsAccountDeletionConfirmation = true
@@ -3149,7 +4420,7 @@ struct SharedSetupView: View {
             .frame(height: 52)
             .sharedSurface(cornerRadius: 16)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
         .padding(.horizontal, 16)
         .padding(.top, 30)
@@ -3162,19 +4433,29 @@ struct SharedSetupView: View {
       titleDraft = appModel.board.title
     }
     .sheet(isPresented: $showsBriefEditor) {
-      SharedBriefEditorSheet()
+      OnboardingView(
+        purpose: .editSearchBrief,
+        onComplete: { showsBriefEditor = false },
+        onCancel: { showsBriefEditor = false }
+      )
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
-    .sheet(isPresented: $showsAddListing) {
-      AddSharedListingSheet()
+    .sheet(isPresented: $showsHelp) {
+      SharedHelpTutorialsSheet(onReplayPageGuides: replayPageGuides)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
-    .sheet(isPresented: $showsSafariGuide) {
+    .sheet(isPresented: $showsSafariSetup) {
       SharedSafariSaveGuideSheet()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsRecentlyDeleted) {
+      SharedRecentlyDeletedSheet()
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
@@ -3197,34 +4478,13 @@ struct SharedSetupView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
-    .sheet(isPresented: $showsBetaFeedback) {
-      SharedBetaFeedbackSheet(
-        boardLoaded: appModel.board.id != nil,
-        boardCount: appModel.availableBoards.count,
-        memberCount: appModel.board.members.count,
-        savedListingCount: appModel.board.shortlist.count,
+    .sheet(isPresented: $showsBugReport) {
+      SharedBugReportSheet(
         currentScreen: appModel.boardTab.rawValue
       )
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
       .presentationBackground(HomeboardPalette.background)
-    }
-    .confirmationDialog(
-      "Replay all page guides?",
-      isPresented: $showsReplayGuidesConfirmation,
-      titleVisibility: .visible
-    ) {
-      Button("Replay guides") {
-        UserDefaults.standard.set(false, forKey: "homeboard.guide.search.dismissed")
-        UserDefaults.standard.set(false, forKey: "homeboard.guide.shortlist.dismissed")
-        UserDefaults.standard.set(false, forKey: "homeboard.guide.updates.dismissed")
-        appModel.boardFeedback = "Page guides restarted."
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        dismiss()
-      }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("Settings will close and the guide for the current tab will appear immediately. The other guides appear when you open their tabs.")
     }
     .confirmationDialog(
       isCurrentUserOwner ? "Delete this board for everyone?" : "Leave this board?",
@@ -3250,19 +4510,281 @@ struct SharedSetupView: View {
       Text("This removes your account, owned boards, memberships, saved listings, and shared profile data. This cannot be undone.")
     }
   }
+
+  private func replayPageGuides() {
+    UserDefaults.standard.set(false, forKey: "homeboard.guide.search.dismissed")
+    UserDefaults.standard.set(false, forKey: "homeboard.guide.shortlist.dismissed")
+    UserDefaults.standard.set(false, forKey: "homeboard.guide.updates.dismissed")
+    appModel.boardFeedback = "Page guides restarted."
+    UINotificationFeedbackGenerator().notificationOccurred(.success)
+    showsHelp = false
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+      dismiss()
+    }
+  }
 }
 
-private struct SharedBetaFeedbackSheet: View {
+private enum SharedSafariExtensionSetupStatus: Equatable {
+  case checking
+  case enabled
+  case disabled
+  case manual
+}
+
+private struct SharedSafariExtensionSetupCard: View {
+  private static let extensionIdentifier = "com.homeboard.native.safari"
+
+  @Environment(\.scenePhase) private var scenePhase
+  @State private var status: SharedSafariExtensionSetupStatus = .checking
+  @State private var isOpeningSettings = false
+  @State private var setupError: String?
+  let compact: Bool
+
+  init(compact: Bool = false) {
+    self.compact = compact
+  }
+
+  private var supportsDirectSettings: Bool {
+    if #available(iOS 26.2, *) { return true }
+    return false
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+      HStack(spacing: 12) {
+        ZStack {
+          Circle()
+            .fill(status == .enabled ? HomeboardPalette.success.opacity(0.14) : HomeboardPalette.accent.opacity(0.12))
+          Image(systemName: status == .enabled ? "checkmark" : "puzzlepiece.extension")
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(status == .enabled ? HomeboardPalette.success : HomeboardPalette.accent)
+        }
+        .frame(width: 40, height: 40)
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text(status == .enabled ? "Safari extension is on" : "Enable Safari capture once")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text(statusMessage)
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .lineLimit(compact ? 2 : nil)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Spacer(minLength: 0)
+
+        if status == .checking {
+          ProgressView()
+            .tint(HomeboardPalette.accent)
+        }
+      }
+
+      if supportsDirectSettings {
+        Button {
+          Task { await openExtensionSettings() }
+        } label: {
+          HStack {
+            Text(
+              isOpeningSettings
+                ? "Opening Settings…"
+                : (status == .enabled ? "Review website access" : "Enable in Safari")
+            )
+            Spacer()
+            Image(systemName: "arrow.up.forward.app.fill")
+          }
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .padding(.horizontal, 15)
+          .frame(height: compact ? 44 : 48)
+          .background(HomeboardPalette.accent)
+          .clipShape(RoundedRectangle(cornerRadius: compact ? 14 : 15, style: .continuous))
+        }
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .disabled(isOpeningSettings || status == .checking)
+      } else if status != .enabled {
+        if compact {
+          Label("Settings → Safari → Extensions → Homeboard", systemImage: "gearshape.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        } else {
+          VStack(alignment: .leading, spacing: 7) {
+            Label("Open Settings → Apps → Safari", systemImage: "1.circle.fill")
+            Label("Tap Extensions → Save to Homeboard", systemImage: "2.circle.fill")
+            Label("Turn on Allow Extension and allow website access", systemImage: "3.circle.fill")
+          }
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+      }
+
+      if !compact {
+        SharedDivider()
+
+        VStack(alignment: .leading, spacing: 7) {
+          Label("Choose Allow under Website Access", systemImage: "lock.open.fill")
+          Label("Open a listing; its pill appears", systemImage: "sparkles")
+          Label("No pill? Use Page Menu → Save to Homeboard", systemImage: "hand.tap.fill")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+      }
+
+      if let setupError {
+        Text(setupError)
+          .font(.caption)
+          .foregroundStyle(HomeboardPalette.danger)
+      }
+    }
+    .padding(compact ? 13 : 16)
+    .sharedSurface(cornerRadius: compact ? 18 : 20)
+    .task {
+      await refreshStatus()
+    }
+    .onChange(of: scenePhase) { _, nextPhase in
+      guard nextPhase == .active else { return }
+      Task { await refreshStatus() }
+    }
+  }
+
+  private var statusMessage: String {
+    if compact {
+      switch status {
+      case .checking:
+        return "Checking Safari…"
+      case .enabled:
+        return "Ready. Keep Website Access set to Allow."
+      case .disabled:
+        return "Turn it on and choose Allow."
+      case .manual:
+        return "Use the short Settings path below."
+      }
+    }
+
+    switch status {
+    case .checking:
+      return "Checking Safari…"
+    case .enabled:
+      return "Set Website Access to Allow once. Homeboard will then recognize supported listing pages automatically."
+    case .disabled:
+      return "Homeboard is installed, but Safari still needs extension and website access approval."
+    case .manual:
+      return "This iOS version requires the short manual path below."
+    }
+  }
+
+  @MainActor
+  private func refreshStatus() async {
+    setupError = nil
+    guard #available(iOS 26.2, *) else {
+      status = .manual
+      return
+    }
+
+    status = .checking
+    do {
+      let extensionState = try await SFSafariExtensionManager.stateOfExtension(
+        withIdentifier: Self.extensionIdentifier
+      )
+      status = extensionState.isEnabled ? .enabled : .disabled
+    } catch {
+      status = .disabled
+      setupError = "Homeboard could not check Safari yet. You can still open Settings below."
+    }
+  }
+
+  @MainActor
+  private func openExtensionSettings() async {
+    guard #available(iOS 26.2, *) else { return }
+    isOpeningSettings = true
+    setupError = nil
+    defer { isOpeningSettings = false }
+    do {
+      try await SFSafariSettings.openExtensionsSettings(
+        forIdentifiers: [Self.extensionIdentifier]
+      )
+    } catch {
+      setupError = "Settings did not open. Keep Homeboard in the foreground and try again."
+    }
+  }
+}
+
+private struct SharedHelpTutorialsSheet: View {
+  @Environment(\.dismiss) private var dismiss
+
+  let onReplayPageGuides: () -> Void
+
+  var body: some View {
+    NavigationStack {
+      ScrollView(.vertical, showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 20) {
+          VStack(alignment: .leading, spacing: 7) {
+            Text("Help & tutorials")
+              .font(.title2.bold())
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Text("A quick guide to the shared search workflow.")
+              .font(.subheadline)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+          }
+
+          SharedSafariExtensionSetupCard()
+
+          VStack(alignment: .leading, spacing: 12) {
+            SharedSectionTitle(title: "Save a listing", trailing: nil)
+            Label("Open the exact listing page in Safari.", systemImage: "safari")
+            Label("Homeboard recognizes supported listing pages and shows the available pills.", systemImage: "sparkles")
+            Label("Tap the listing or unit pill that you want to save.", systemImage: "capsule")
+          }
+          .font(.subheadline)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .padding(16)
+          .sharedSurface(cornerRadius: 18)
+
+          VStack(alignment: .leading, spacing: 12) {
+            SharedSectionTitle(title: "Pages at a glance", trailing: nil)
+            Label("Search: find, filter, map, and compare homes.", systemImage: "map")
+            Label("Shortlist: review the places your group saved.", systemImage: "rectangle.stack")
+            Label("Group: talk together and answer decisions.", systemImage: "bubble.left.and.bubble.right")
+          }
+          .font(.subheadline)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .padding(16)
+          .sharedSurface(cornerRadius: 18)
+
+          Button {
+            onReplayPageGuides()
+          } label: {
+            Label("Replay page guides", systemImage: "arrow.counterclockwise")
+              .font(.headline)
+              .foregroundStyle(Color.black)
+              .frame(maxWidth: .infinity, minHeight: 52)
+              .background(HomeboardPalette.accent)
+              .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+        .padding(20)
+      }
+      .background(HomeboardPalette.background.ignoresSafeArea())
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+            .foregroundStyle(HomeboardPalette.accent)
+        }
+      }
+    }
+  }
+}
+
+private struct SharedBugReportSheet: View {
+  @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
   @State private var feedback = ""
+  @State private var isSubmitting = false
+  @State private var submission: MobileBugReportResponse?
+  @State private var errorMessage: String?
 
-  let boardLoaded: Bool
-  let boardCount: Int
-  let memberCount: Int
-  let savedListingCount: Int
   let currentScreen: String
-
-  private let createdAt = Date()
 
   private var trimmedFeedback: String {
     feedback.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3277,67 +4799,123 @@ private struct SharedBetaFeedbackSheet: View {
     }
   }
 
-  private var report: String {
-    """
-    Homeboard beta feedback
-
-    \(trimmedFeedback)
-
-    Diagnostics approved by the user:
-    App version: \(HomeboardConfig.appVersion)
-    Device: \(deviceKind)
-    OS version: \(UIDevice.current.systemVersion)
-    Current screen: \(currentScreen)
-    Board loaded: \(boardLoaded ? "yes" : "no")
-    Available boards: \(boardCount)
-    Current board members: \(memberCount)
-    Current saved listings: \(savedListingCount)
-    Created: \(ISO8601DateFormatter().string(from: createdAt))
-    """
+  private func receivedAtLine(_ rawValue: String) -> String {
+    guard let date = ISO8601DateFormatter().date(from: rawValue) else {
+      return "Report received"
+    }
+    return "Received \(date.formatted(date: .abbreviated, time: .omitted))"
   }
 
   var body: some View {
     NavigationStack {
-      VStack(alignment: .leading, spacing: 18) {
-        VStack(alignment: .leading, spacing: 6) {
-          Text("Tell us what happened")
-            .font(.title2.bold())
-            .foregroundStyle(HomeboardPalette.primaryText)
-          Text("Describe what you expected and what Homeboard did instead.")
-            .font(.subheadline)
-            .foregroundStyle(HomeboardPalette.secondaryText)
-        }
+      Group {
+        if let submission {
+          VStack(spacing: 18) {
+            Spacer(minLength: 24)
 
-        TextEditor(text: $feedback)
-          .font(.body)
-          .foregroundStyle(HomeboardPalette.primaryText)
-          .scrollContentBackground(.hidden)
-          .padding(12)
-          .frame(minHeight: 210)
-          .background(Color.white.opacity(0.06))
-          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 58, weight: .semibold))
+              .foregroundStyle(HomeboardPalette.success)
 
-        Label(
-          "The diagnostic summary includes only the version and item counts. It does not include your email, listing addresses, URLs, comments, or preferences. You can review it before sharing.",
-          systemImage: "hand.raised.fill"
-        )
-        .font(.caption)
-        .foregroundStyle(HomeboardPalette.secondaryText)
+            VStack(spacing: 8) {
+              Text("Bug report received")
+                .font(.title2.bold())
+                .foregroundStyle(HomeboardPalette.primaryText)
+              Text("Keep the tracking ID below if you need to follow up.")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            }
 
-        ShareLink(item: report) {
-          Label("Review and share report", systemImage: "square.and.arrow.up")
-            .font(.headline)
-            .foregroundStyle(Color.black)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(HomeboardPalette.accent)
+            VStack(spacing: 4) {
+              Text(receivedAtLine(submission.promisedBy))
+              Text("Tracking ID \(submission.reportId.suffix(8).uppercased())")
+            }
+            .font(.caption.monospaced())
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+
+            Button("Done") { dismiss() }
+              .font(.headline)
+              .foregroundStyle(Color.black)
+              .frame(maxWidth: .infinity, minHeight: 52)
+              .background(HomeboardPalette.accent)
+              .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+              .buttonStyle(HomeboardAreaButtonStyle())
+
+            Spacer()
+          }
+          .padding(20)
+        } else {
+          VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+              Text("Saw a bug?")
+                .font(.title2.bold())
+                .foregroundStyle(HomeboardPalette.primaryText)
+              Text("Leave the details here and Homeboard will attach a tracking ID.")
+                .font(.subheadline)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            }
+
+            ZStack(alignment: .topLeading) {
+              if feedback.isEmpty {
+                Text("What happened? What did you expect instead?")
+                  .font(.body)
+                  .foregroundStyle(HomeboardPalette.tertiaryText)
+                  .padding(.horizontal, 17)
+                  .padding(.vertical, 20)
+                  .allowsHitTesting(false)
+              }
+
+              TextEditor(text: $feedback)
+                .font(.body)
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .scrollContentBackground(.hidden)
+                .padding(12)
+            }
+            .frame(minHeight: 210)
+            .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .disabled(trimmedFeedback.isEmpty)
-        .opacity(trimmedFeedback.isEmpty ? 0.5 : 1)
 
-        Spacer(minLength: 0)
+            Label(
+              "Homeboard includes the app version, device, current screen, item counts, and a privacy-filtered share-extension trace. It does not send your email, listing addresses, page contents, comments, preferences, or access tokens.",
+              systemImage: "hand.raised.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+
+            if let errorMessage {
+              Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.danger)
+            }
+
+            Button {
+              submit()
+            } label: {
+              HStack(spacing: 9) {
+                if isSubmitting {
+                  ProgressView()
+                    .tint(Color.black)
+                } else {
+                  Image(systemName: "paperplane.fill")
+                }
+                Text(isSubmitting ? "Sending…" : "Send bug report")
+              }
+              .font(.headline)
+              .foregroundStyle(Color.black)
+              .frame(maxWidth: .infinity, minHeight: 52)
+              .background(HomeboardPalette.accent)
+              .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .disabled(trimmedFeedback.count < 5 || isSubmitting)
+            .opacity(trimmedFeedback.count < 5 || isSubmitting ? 0.5 : 1)
+
+            Spacer(minLength: 0)
+          }
+          .padding(20)
+        }
       }
-      .padding(20)
       .background(HomeboardPalette.background.ignoresSafeArea())
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
@@ -3347,136 +4925,78 @@ private struct SharedBetaFeedbackSheet: View {
       }
     }
   }
+
+  private func submit() {
+    guard trimmedFeedback.count >= 5, !isSubmitting else { return }
+    isSubmitting = true
+    errorMessage = nil
+
+    Task {
+      do {
+        submission = try await appModel.submitBugReport(
+          description: trimmedFeedback,
+          currentScreen: currentScreen,
+          deviceKind: deviceKind
+        )
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+      } catch {
+        errorMessage = error.localizedDescription
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+      }
+      isSubmitting = false
+    }
+  }
 }
 
 private struct SharedSafariSaveGuideSheet: View {
   @Environment(\.dismiss) private var dismiss
-
-  private let steps: [(icon: String, title: String, detail: String)] = [
-    (
-      "safari",
-      "Open the exact listing",
-      "In Safari, open the individual rental or unit page that you want to save. Do not use search results or a building-level recommendation card."
-    ),
-    (
-      "square.and.arrow.up",
-      "Share to Homeboard",
-      "Tap Safari’s Share button. It is the square with the upward arrow. Then choose Homeboard. The Share sheet closes immediately."
-    ),
-    (
-      "highlighter",
-      "Watch Follow mode",
-      "Safari returns to the normal listing and follows a blue reading line sentence by sentence. Touch scrolling unlocks as soon as the scan finishes."
-    ),
-    (
-      "arrow.clockwise",
-      "One automatic second look",
-      "If rent, address, bedrooms, or bathrooms are unclear, Homeboard performs one quick broader scan. It then tells you exactly which details are still missing."
-    ),
-    (
-      "building.2",
-      "Choose a home in the building",
-      "On a building page, Homeboard keeps the shared street address once and separates each unit's rent, beds, baths, size, and availability. Pick the exact option before saving."
-    ),
-    (
-      "checkmark.circle.fill",
-      "Review and save",
-      "When the scan finishes, tap Review details on the page. Confirm the full address and core facts, then save the source to the active board."
-    )
-  ]
+  @State private var practiceComplete = false
 
   var body: some View {
     NavigationStack {
       ZStack {
         WorkspaceBackgroundView()
 
-        ScrollView(.vertical, showsIndicators: false) {
-          VStack(alignment: .leading, spacing: 22) {
-            SharedPageHeader(
-              eyebrow: "Share from mobile Safari",
-              title: "Share once. Follow the blue reading line.",
-              subtitle: "Homeboard returns you to the listing, follows the scan on-page, and asks for review only when it is finished."
-            )
+        VStack(alignment: .leading, spacing: 14) {
+          SharedPageHeader(
+            eyebrow: "Safari capture",
+            title: "Enable once. Tap to save.",
+            subtitle: "Open a listing and Homeboard appears."
+          )
 
-            VStack(alignment: .leading, spacing: 0) {
-              SharedShareSheetPreview()
+          SharedSafariExtensionSetupCard(compact: true)
 
-              ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                SharedDivider()
+          SharedSafariActionPreview { practiceComplete = true }
 
-                HStack(alignment: .top, spacing: 14) {
-                  ZStack {
-                    Circle()
-                      .fill(Color.white.opacity(0.06))
-                    Image(systemName: step.icon)
-                      .font(.system(size: 15, weight: .bold))
-                      .foregroundStyle(HomeboardPalette.accent)
-                  }
-                  .frame(width: 36, height: 36)
+          Label("Scroll to tuck away · tap the tab to reopen", systemImage: "rectangle.compress.vertical")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.secondaryText)
 
-                  VStack(alignment: .leading, spacing: 5) {
-                    Text("\(index + 1). \(step.title)")
-                      .font(.subheadline.weight(.bold))
-                      .foregroundStyle(HomeboardPalette.primaryText)
-                    Text(step.detail)
-                      .font(.caption)
-                      .foregroundStyle(HomeboardPalette.secondaryText)
-                      .fixedSize(horizontal: false, vertical: true)
-                  }
-
-                  Spacer(minLength: 0)
-                }
-                .padding(16)
-              }
-            }
-            .sharedSurface(cornerRadius: 22)
-
-            VStack(alignment: .leading, spacing: 10) {
-              Label("What stays separated", systemImage: "rectangle.split.3x1")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(HomeboardPalette.primaryText)
-
-              Text("Building address")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(HomeboardPalette.accent)
-              Text("Read once from the page heading and reused for the selected unit.")
-                .font(.caption)
-                .foregroundStyle(HomeboardPalette.secondaryText)
-
-              Text("Unit facts")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(HomeboardPalette.accent)
-              Text("Rent, bedrooms, bathrooms, square footage, and availability must come from the same unit row. Homeboard will not borrow missing facts from the next option.")
-                .font(.caption)
-                .foregroundStyle(HomeboardPalette.secondaryText)
-            }
-            .padding(16)
-            .sharedSurface(cornerRadius: 18)
-
-            Button("Got it") {
-              dismiss()
-            }
-            .font(.headline)
-            .foregroundStyle(Color.black)
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(
-              LinearGradient(
-                colors: [HomeboardPalette.accent, HomeboardPalette.accentStrong],
-                startPoint: .leading,
-                endPoint: .trailing
-              )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .buttonStyle(.plain)
+          Button("Got it") {
+            dismiss()
           }
-          .padding(.horizontal, 16)
-          .padding(.top, 26)
-          .padding(.bottom, 36)
+          .font(.headline)
+          .foregroundStyle(Color.black)
+          .frame(maxWidth: .infinity)
+          .frame(height: 50)
+          .background(
+            LinearGradient(
+              colors: [HomeboardPalette.accent, HomeboardPalette.accentStrong],
+              startPoint: .leading,
+              endPoint: .trailing
+            )
+          )
+          .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+          .buttonStyle(HomeboardAreaButtonStyle())
+          .disabled(!practiceComplete)
+          .opacity(practiceComplete ? 1 : 0.4)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
       }
       .toolbar(.hidden, for: .navigationBar)
     }
+    .interactiveDismissDisabled(!practiceComplete)
   }
 }
 
@@ -3500,10 +5020,191 @@ private struct SharedSettingsSheet: View {
             Circle().stroke(HomeboardPalette.border, lineWidth: 1)
           }
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .padding(.top, 10)
       .padding(.trailing, 14)
     }
+  }
+}
+
+private struct SharedRecentlyDeletedSheet: View {
+  @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+  @State private var restoringListingID: ListingPreview.ID?
+  @State private var isClearing = false
+  @State private var confirmsClear = false
+
+  private var listings: [ListingPreview] {
+    appModel.recentlyDeletedListings
+  }
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        WorkspaceBackgroundView()
+
+        ScrollView(.vertical, showsIndicators: false) {
+          VStack(alignment: .leading, spacing: 16) {
+            SharedPageHeader(
+              eyebrow: "Recovery",
+              title: "Recently Deleted",
+              subtitle: "Listings stay here for seven days, then Homeboard removes them automatically. Restoring puts a listing back for the whole group."
+            )
+
+            if listings.isEmpty {
+              VStack(spacing: 12) {
+                Image(systemName: "trash.slash.fill")
+                  .font(.system(size: 28, weight: .semibold))
+                  .foregroundStyle(HomeboardPalette.accent)
+                Text("Nothing waiting to be deleted")
+                  .font(.headline)
+                  .foregroundStyle(HomeboardPalette.primaryText)
+                Text("Use Clean listings in Cards to move saved places here.")
+                  .font(.subheadline)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+                  .multilineTextAlignment(.center)
+              }
+              .frame(maxWidth: .infinity)
+              .padding(.horizontal, 24)
+              .padding(.vertical, 34)
+              .sharedSurface(cornerRadius: 20)
+            } else {
+              LazyVStack(spacing: 12) {
+                ForEach(listings) { listing in
+                  HStack(spacing: 12) {
+                    SharedListingArtwork(listing: listing, height: 82, cornerRadius: 14)
+                      .frame(width: 96)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                      Text(listing.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(HomeboardPalette.primaryText)
+                        .lineLimit(2)
+                      Text([listing.priceLine, SharedListingText.detailLine(listing)]
+                        .filter { !$0.isEmpty }
+                        .joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(HomeboardPalette.secondaryText)
+                        .lineLimit(2)
+                      Text(retentionLine(for: listing.deletedAt))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(HomeboardPalette.danger)
+                    }
+
+                    Spacer(minLength: 2)
+
+                    Button {
+                      restoringListingID = listing.id
+                      Task {
+                        _ = await appModel.restoreRecentlyDeletedListing(id: listing.id)
+                        restoringListingID = nil
+                      }
+                    } label: {
+                      if restoringListingID == listing.id {
+                        ProgressView()
+                          .tint(HomeboardPalette.buttonText)
+                          .frame(width: 68, height: 36)
+                      } else {
+                        Text("Restore")
+                          .font(.caption.weight(.bold))
+                          .foregroundStyle(HomeboardPalette.buttonText)
+                          .frame(width: 68, height: 36)
+                      }
+                    }
+                    .background(HomeboardPalette.accent)
+                    .clipShape(Capsule())
+                    .buttonStyle(HomeboardAreaButtonStyle())
+                    .disabled(restoringListingID != nil || isClearing)
+                  }
+                  .padding(12)
+                  .sharedSurface(cornerRadius: 18)
+                }
+              }
+
+              if appModel.canPermanentlyClearRecentlyDeleted {
+                Button(role: .destructive) {
+                  confirmsClear = true
+                } label: {
+                  HStack {
+                    if isClearing {
+                      ProgressView()
+                        .tint(HomeboardPalette.danger)
+                    } else {
+                      Image(systemName: "trash.fill")
+                    }
+                    Text(isClearing ? "Clearing…" : "Clear Recently Deleted now")
+                    Spacer()
+                  }
+                  .font(.subheadline.weight(.semibold))
+                  .foregroundStyle(HomeboardPalette.danger)
+                  .padding(.horizontal, 16)
+                  .frame(height: 52)
+                  .sharedSurface(cornerRadius: 16)
+                }
+                .buttonStyle(HomeboardAreaButtonStyle())
+                .disabled(isClearing || restoringListingID != nil)
+              } else {
+                Label(
+                  "Only the board owner can permanently clear these before seven days.",
+                  systemImage: "lock.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .sharedSurface(cornerRadius: 16)
+              }
+            }
+          }
+          .padding(.horizontal, 16)
+          .padding(.top, 18)
+          .padding(.bottom, 34)
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+      }
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(HomeboardPalette.accent)
+        }
+      }
+      .toolbarBackground(HomeboardPalette.background, for: .navigationBar)
+    }
+    .task {
+      await appModel.purgeExpiredRecentlyDeletedListings()
+    }
+    .confirmationDialog(
+      "Clear Recently Deleted?",
+      isPresented: $confirmsClear,
+      titleVisibility: .visible
+    ) {
+      Button("Clear permanently", role: .destructive) {
+        isClearing = true
+        Task {
+          _ = await appModel.clearRecentlyDeletedListings()
+          isClearing = false
+        }
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This permanently deletes every listing here, including its shared notes, votes, and decisions. It cannot be undone.")
+    }
+  }
+
+  private func retentionLine(for value: String?) -> String {
+    guard let value, let deletedAt = parsedDate(value) else {
+      return "Deletes within seven days"
+    }
+    let remaining = max(0, (7 * 24 * 60 * 60) - Date().timeIntervalSince(deletedAt))
+    let days = max(1, Int(ceil(remaining / (24 * 60 * 60))))
+    return days == 1 ? "Deletes in 1 day" : "Deletes in \(days) days"
+  }
+
+  private func parsedDate(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
   }
 }
 
@@ -3512,14 +5213,26 @@ private struct SharedSettingsSheet: View {
 private struct SharedWorkNodeMarker: View {
   let workNode: SharedWorkNode
 
+  private var markerTitle: String {
+    if workNode.isAdditionalPoint {
+      return workNode.memberNames.count == 1
+        ? workNode.memberNames[0]
+        : "\(workNode.memberNames.count) commute points"
+    }
+    return workNode.memberNames.count == 1
+      ? "\(workNode.memberNames[0])’s work"
+      : "\(workNode.memberNames.count) people’s work"
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 5) {
-        Image(systemName: "briefcase.fill")
+        Image(systemName: workNode.isAdditionalPoint ? "mappin.and.ellipse" : "briefcase.fill")
           .font(.system(size: 9, weight: .bold))
         VStack(alignment: .leading, spacing: 0) {
-          Text("Work")
+          Text(markerTitle)
             .font(.caption2.weight(.heavy))
+            .lineLimit(1)
           Text("\(workNode.preferredMinutes)–\(workNode.maximumMinutes) min")
             .font(.system(size: 8, weight: .semibold))
             .opacity(0.72)
@@ -3542,7 +5255,37 @@ private struct SharedWorkNodeMarker: View {
     .shadow(color: Color.black.opacity(0.28), radius: 5, x: 0, y: 3)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      "Work, \(workNode.destination), full commute score from \(workNode.preferredMinutes) to \(workNode.maximumMinutes) minutes"
+      "\(workNode.isAdditionalPoint ? "Additional commute point" : "Work") for \(workNode.memberNames.joined(separator: ", ")), \(workNode.destination), full commute score from \(workNode.preferredMinutes) to \(workNode.maximumMinutes) minutes"
+    )
+  }
+}
+
+private struct SharedRouteLegCallout: View {
+  let leg: SharedComparisonRouteLeg
+  let color: Color
+
+  var body: some View {
+    HStack(spacing: 4) {
+      Image(systemName: leg.transportIcon)
+        .font(.system(size: 8, weight: .heavy))
+      Text(leg.transportLabel)
+        .font(.system(size: 8, weight: .heavy))
+      Text("~\(leg.minutes)m")
+        .font(.system(size: 8, weight: .bold))
+        .monospacedDigit()
+    }
+    .foregroundStyle(Color.black)
+    .padding(.horizontal, 7)
+    .frame(height: 22)
+    .background(color)
+    .clipShape(Capsule())
+    .overlay {
+      Capsule().stroke(Color.white.opacity(0.64), lineWidth: 1)
+    }
+    .shadow(color: Color.black.opacity(0.28), radius: 4, x: 0, y: 2)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(
+      "\(leg.transportLabel) leg, approximately \(leg.minutes) minutes"
     )
   }
 }
@@ -3550,7 +5293,12 @@ private struct SharedWorkNodeMarker: View {
 private struct SharedComparisonTierLegend: View {
   let listingCount: Int
   let routedListingCount: Int
+  let routedWorkMemberCount: Int
   let isLoadingCommutes: Bool
+  let routingCompletedCount: Int
+  let routingTotalCount: Int
+  let routingFailedCount: Int
+  let commuteAvailable: Bool
 
   var body: some View {
     VStack(spacing: 7) {
@@ -3569,9 +5317,10 @@ private struct SharedComparisonTierLegend: View {
         Spacer(minLength: 2)
 
         if isLoadingCommutes {
-          ProgressView()
-            .controlSize(.mini)
-            .tint(HomeboardPalette.accent)
+          Text("\(routingCompletedCount)/\(routingTotalCount) checked")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(HomeboardPalette.accent)
+            .monospacedDigit()
         } else {
           Text("\(listingCount) scored")
             .font(.system(size: 9, weight: .bold))
@@ -3580,16 +5329,35 @@ private struct SharedComparisonTierLegend: View {
       }
 
       HStack(spacing: 7) {
-        Text("\(routedListingCount)/\(listingCount) routed")
-          .foregroundStyle(HomeboardPalette.primaryText)
-        Capsule()
-          .fill(HomeboardPalette.accent)
-          .frame(width: 16, height: 3)
-        Text("Each line matches its listing node")
-          .foregroundStyle(HomeboardPalette.secondaryText)
+        if commuteAvailable {
+          Text(
+            isLoadingCommutes
+              ? "\(routedListingCount) live routes ready · requesting the rest"
+              : "\(routedListingCount)/\(max(routingTotalCount, listingCount)) homes · \(routedWorkMemberCount) commute route\(routedWorkMemberCount == 1 ? "" : "s") each"
+          )
+            .foregroundStyle(HomeboardPalette.primaryText)
+        } else {
+          Image(systemName: "tram.fill")
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+          Text("Commute excluded · add an office neighborhood to enable routes")
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+        }
         Spacer(minLength: 0)
       }
       .font(.caption2.weight(.semibold))
+
+      if isLoadingCommutes, routingTotalCount > 0 {
+        ProgressView(
+          value: Double(routingCompletedCount),
+          total: Double(routingTotalCount)
+        )
+        .tint(HomeboardPalette.accent)
+      } else if routingFailedCount > 0 {
+        Text("\(routingFailedCount) home\(routingFailedCount == 1 ? "" : "s") had no live Apple route after retries")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
@@ -3601,7 +5369,7 @@ private struct SharedComparisonTierLegend: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      "Comparison tiers from green best fit to red weakest fit. \(listingCount) listings scored and \(routedListingCount) listings routed. Every route line matches the color of its listing node."
+      "Comparison tiers from green best fit to red weakest fit. \(listingCount) listings scored and \(routedListingCount) listings routed."
     )
   }
 }
@@ -3692,7 +5460,7 @@ private struct SharedComparisonNodeRouteCard: View {
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .accessibilityLabel("Open score explanation for \(listing.title)")
 
         if isLoading {
@@ -3709,7 +5477,7 @@ private struct SharedComparisonNodeRouteCard: View {
             .background(Color.white.opacity(0.08))
             .clipShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .accessibilityLabel("Dismiss route details")
       }
 
@@ -3772,7 +5540,7 @@ private struct SharedComparisonNodeRouteCard: View {
             }
 
             if let recommended = group.recommendedRoute {
-              Text("Best usable route: \(recommended.mode.label) · \(formattedMinutes(recommended.minutes))")
+              Text("Best usable route: \(recommended.transportLabel) · \(formattedMinutes(recommended.minutes))")
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(HomeboardPalette.success)
             }
@@ -3806,9 +5574,9 @@ private struct SharedComparisonNodeRouteCard: View {
         Image(systemName: "checkmark")
           .font(.system(size: 8, weight: .heavy))
       }
-      Image(systemName: route.mode.icon)
+      Image(systemName: route.transportIcon)
         .font(.system(size: 9, weight: .bold))
-      Text(route.mode.label)
+      Text(route.transportLabel)
         .font(.system(size: 9, weight: .bold))
       Text(formattedMinutes(route.minutes))
         .font(.system(size: 9, weight: .heavy))
@@ -3830,7 +5598,7 @@ private struct SharedComparisonNodeRouteCard: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      "\(route.mode.label), \(route.minutes) minutes, \(isRecommended ? "best usable route" : route.tier.accessibilityLabel)"
+      "\(route.transportLabel), \(route.minutes) minutes, \(isRecommended ? "best usable route" : route.tier.accessibilityLabel)"
     )
   }
 
@@ -4012,7 +5780,7 @@ private struct SharedComparisonNodeDetailSheet: View {
     let routeID = "\(route.targetID)|\(route.mode.rawValue)"
     let contributed = scoredRouteIDs.contains(routeID)
     return HStack(spacing: 10) {
-      Image(systemName: route.mode.icon)
+      Image(systemName: route.transportIcon)
         .font(.subheadline.weight(.bold))
         .foregroundStyle(route.tier.color)
         .frame(width: 26, height: 26)
@@ -4020,7 +5788,7 @@ private struct SharedComparisonNodeDetailSheet: View {
         .clipShape(Circle())
 
       VStack(alignment: .leading, spacing: 2) {
-        Text("\(route.mode.label) to \(route.destination)")
+        Text("\(route.transportLabel) to \(route.destination)")
           .font(.caption.weight(.bold))
           .foregroundStyle(HomeboardPalette.primaryText)
           .lineLimit(2)
@@ -4080,8 +5848,10 @@ private struct SharedSearchControlBar: View {
   let drawingArea: Bool
   let comparisonActive: Bool
   let comparisonReady: Bool
+  let cleanableCount: Int
+  let isCleaning: Bool
   let onFilter: () -> Void
-  let onCompare: () -> Void
+  let onClean: () -> Void
   let onDraw: () -> Void
   let onClearArea: () -> Void
 
@@ -4099,7 +5869,7 @@ private struct SharedSearchControlBar: View {
               .background(presentation == option ? HomeboardPalette.accent : Color.clear)
               .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
       .padding(3)
@@ -4142,56 +5912,53 @@ private struct SharedSearchControlBar: View {
           .background(filterCount > 0 ? HomeboardPalette.accent : HomeboardPalette.surfaceDeep.opacity(0.88))
           .clipShape(Capsule())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .layoutPriority(2)
 
       if presentation == .map {
-        if comparisonActive {
-          Button(action: onCompare) {
-            Label("Priorities", systemImage: "slider.horizontal.3")
-              .font(.caption.weight(.bold))
-              .lineLimit(1)
-              .foregroundStyle(HomeboardPalette.buttonText)
-              .padding(.horizontal, 11)
-              .frame(height: 36)
-              .background(HomeboardPalette.accent)
-              .clipShape(Capsule())
-          }
-          .buttonStyle(.plain)
-          .layoutPriority(2)
-          .accessibilityLabel("Tune comparison map priorities")
-        } else {
-          Button(action: onCompare) {
-            Image(systemName: "chart.bar.fill")
-              .font(.caption.weight(.bold))
-              .foregroundStyle(HomeboardPalette.primaryText)
-              .frame(width: 38, height: 36)
-              .background(HomeboardPalette.surfaceDeep.opacity(0.88))
-              .clipShape(Circle())
-          }
-          .buttonStyle(.plain)
-          .layoutPriority(2)
-          .accessibilityLabel("Open comparison map")
-
-          Button(action: hasArea ? onClearArea : onDraw) {
-            Label(
-              hasArea ? "Clear" : "Area",
-              systemImage: hasArea ? "xmark" : drawingArea ? "pencil.and.outline" : "square.dashed"
-            )
+        Button(action: hasArea ? onClearArea : onDraw) {
+          Label(
+            hasArea ? "Clear" : "Area",
+            systemImage: hasArea ? "xmark" : drawingArea ? "pencil.and.outline" : "square.dashed"
+          )
+          .font(.caption.weight(.bold))
+          .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
+          .foregroundStyle((hasArea || drawingArea) ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
+          .padding(.horizontal, 9)
+          .frame(width: 76)
+          .frame(height: 36)
+          .background((hasArea || drawingArea) ? HomeboardPalette.accent : HomeboardPalette.surfaceDeep.opacity(0.88))
+          .clipShape(Capsule())
+        }
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .layoutPriority(2)
+        .accessibilityLabel(hasArea ? "Clear drawn search area" : "Draw a search area")
+      } else {
+        Button(action: onClean) {
+          Text("Clean listings")
             .font(.caption.weight(.bold))
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .foregroundStyle((hasArea || drawingArea) ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
-            .padding(.horizontal, 9)
-            .frame(width: 76)
-            .frame(height: 36)
-            .background((hasArea || drawingArea) ? HomeboardPalette.accent : HomeboardPalette.surfaceDeep.opacity(0.88))
+            .minimumScaleFactor(0.82)
+            .foregroundStyle(
+              isCleaning ? HomeboardPalette.buttonText : HomeboardPalette.primaryText
+            )
+            .padding(.horizontal, 10)
+            .frame(width: 104, height: 36)
+            .background(
+              isCleaning ? HomeboardPalette.accent : HomeboardPalette.surfaceDeep.opacity(0.88)
+            )
             .clipShape(Capsule())
-          }
-          .buttonStyle(.plain)
-          .layoutPriority(2)
-          .accessibilityLabel(hasArea ? "Clear drawn search area" : "Draw a search area")
         }
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .disabled(cleanableCount == 0)
+        .opacity(cleanableCount == 0 ? 0.46 : 1)
+        .layoutPriority(2)
+        .accessibilityHint(
+          cleanableCount == 0
+            ? "Save a listing before cleaning the shared board."
+            : "Choose saved listings to move to Recently Deleted."
+        )
       }
     }
     .padding(.horizontal, 6)
@@ -4206,12 +5973,84 @@ private struct SharedSearchControlBar: View {
   }
 }
 
+private struct SharedCleanListingsActionBar: View {
+  let selectedCount: Int
+  let onCancel: () -> Void
+  let onMove: () -> Void
+
+  var body: some View {
+    HStack(spacing: 10) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(selectedCount == 0 ? "Choose saved listings" : "\(selectedCount) selected")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Text("Only listings already on this board can be moved.")
+          .font(.caption2)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .lineLimit(1)
+      }
+
+      Spacer(minLength: 4)
+
+      Button("Cancel", action: onCancel)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+        .buttonStyle(HomeboardAreaButtonStyle())
+
+      Button(action: onMove) {
+        Label("Move", systemImage: "trash")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .padding(.horizontal, 12)
+          .frame(height: 36)
+          .background(HomeboardPalette.accent)
+          .clipShape(Capsule())
+      }
+      .buttonStyle(HomeboardAreaButtonStyle())
+      .disabled(selectedCount == 0)
+      .opacity(selectedCount == 0 ? 0.42 : 1)
+    }
+    .padding(.horizontal, 12)
+    .frame(height: 54)
+    .background(HomeboardPalette.surface.opacity(0.97))
+    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 15, style: .continuous)
+        .stroke(HomeboardPalette.border, lineWidth: 1)
+    }
+  }
+}
+
+private struct SharedGroupCommuteComparisonButton: View {
+  let isActive: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Label("Compare group commutes", systemImage: "arrow.triangle.branch")
+        .font(.caption.weight(.bold))
+        .foregroundStyle(Color.black)
+        .padding(.horizontal, 13)
+        .frame(height: 36)
+        .background(HomeboardPalette.accent)
+        .clipShape(Capsule())
+        .contentShape(Capsule())
+    }
+    .buttonStyle(HomeboardAreaButtonStyle())
+    .frame(maxWidth: .infinity, alignment: .trailing)
+    .accessibilityLabel(
+      isActive ? "Adjust the group commute comparison map" : "Open the group commute comparison map"
+    )
+  }
+}
+
 private struct SharedComparisonPrioritySheet: View {
   @Environment(\.dismiss) private var dismiss
   @Binding var ranks: [SharedComparisonCriterion: Int]
   @Binding var cityQuery: String
   let isActive: Bool
   let listingCount: Int
+  let commuteAvailable: Bool
   let onActivate: () -> Void
   let onDisable: () -> Void
 
@@ -4222,7 +6061,11 @@ private struct SharedComparisonPrioritySheet: View {
   }
 
   private func percentage(for criterion: SharedComparisonCriterion) -> Int {
-    let totalWeight = SharedComparisonCriterion.allCases.reduce(0) {
+    guard criterion != .commute || commuteAvailable else { return 0 }
+    let activeCriteria = SharedComparisonCriterion.allCases.filter {
+      $0 != .commute || commuteAvailable
+    }
+    let totalWeight = activeCriteria.reduce(0) {
       $0 + SharedComparisonMath.priorityWeight(for: ranks[$1] ?? 4)
     }
     let criterionWeight = SharedComparisonMath.priorityWeight(for: ranks[criterion] ?? 4)
@@ -4269,6 +6112,19 @@ private struct SharedComparisonPrioritySheet: View {
             Capsule()
               .stroke(Color.white.opacity(0.08), lineWidth: 1)
           }
+
+          if !commuteAvailable {
+            Label(
+              "Commute is off because everyone skipped it or no office area is saved. Add an office neighborhood to enable commute grading.",
+              systemImage: "tram.fill"
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(11)
+            .background(HomeboardPalette.surfaceDeep.opacity(0.42))
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+          }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18)
@@ -4305,19 +6161,20 @@ private struct SharedComparisonPrioritySheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 } else {
                   ForEach(criteria(at: rank)) { criterion in
+                    let commuteDisabled = criterion == .commute && !commuteAvailable
                     HStack(spacing: 11) {
                       Image(systemName: criterion.icon)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(HomeboardPalette.buttonText)
+                        .foregroundStyle(commuteDisabled ? HomeboardPalette.tertiaryText : HomeboardPalette.buttonText)
                         .frame(width: 34, height: 34)
-                        .background(HomeboardPalette.accent)
+                        .background(commuteDisabled ? HomeboardPalette.surfaceDeep : HomeboardPalette.accent)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                       VStack(alignment: .leading, spacing: 2) {
                         Text(criterion.label)
                           .font(.subheadline.weight(.bold))
                           .foregroundStyle(HomeboardPalette.primaryText)
-                        Text(criterion.explanation)
+                        Text(commuteDisabled ? "Unavailable until an office area is saved" : criterion.explanation)
                           .font(.caption2)
                           .foregroundStyle(HomeboardPalette.secondaryText)
                           .lineLimit(1)
@@ -4326,7 +6183,7 @@ private struct SharedComparisonPrioritySheet: View {
                       Spacer(minLength: 4)
 
                       VStack(spacing: 5) {
-                        Text("\(percentage(for: criterion))%")
+                        Text(commuteDisabled ? "Off" : "\(percentage(for: criterion))%")
                           .font(.caption2.weight(.heavy))
                           .foregroundStyle(HomeboardPalette.accent)
 
@@ -4334,7 +6191,7 @@ private struct SharedComparisonPrioritySheet: View {
                           priorityMoveButton(
                             icon: "chevron.up",
                             label: "Move \(criterion.label) up",
-                            disabled: rank == 1
+                            disabled: rank == 1 || commuteDisabled
                           ) {
                             move(criterion, to: rank - 1)
                           }
@@ -4342,7 +6199,7 @@ private struct SharedComparisonPrioritySheet: View {
                           priorityMoveButton(
                             icon: "chevron.down",
                             label: "Move \(criterion.label) down",
-                            disabled: rank == 4
+                            disabled: rank == 4 || commuteDisabled
                           ) {
                             move(criterion, to: rank + 1)
                           }
@@ -4357,6 +6214,12 @@ private struct SharedComparisonPrioritySheet: View {
                       RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(HomeboardPalette.border, lineWidth: 1)
                     }
+                    .opacity(commuteDisabled ? 0.46 : 1)
+                    .accessibilityHint(
+                      commuteDisabled
+                        ? "Add an office neighborhood or address in Edit search brief to enable commute grading."
+                        : criterion.explanation
+                    )
                   }
                 }
               }
@@ -4371,7 +6234,9 @@ private struct SharedComparisonPrioritySheet: View {
           }
 
           Text(
-            "Weights are normalized to 100%. Comparison mode calculates a realistic usable route for every listing, then keeps drive, transit, and walking details available on each node. Missing facts stay unknown."
+            commuteAvailable
+              ? "Weights are normalized to 100%. Comparison mode queues live Apple routes for every listing and saved workplace, retries failures, and keeps completed routes cached until an endpoint changes. Other missing facts stay unknown."
+              : "Weights are normalized to 100% without commute. Commute stays excluded until someone saves an office neighborhood or address and does not skip matching."
           )
           .font(.caption2)
           .foregroundStyle(HomeboardPalette.secondaryText)
@@ -4403,7 +6268,7 @@ private struct SharedComparisonPrioritySheet: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
           .disabled(
             listingCount == 0
               || cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -4451,7 +6316,7 @@ private struct SharedComparisonPrioritySheet: View {
         .background(HomeboardPalette.surfaceDeep.opacity(disabled ? 0.30 : 0.82))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
     .disabled(disabled)
     .accessibilityLabel(label)
   }
@@ -4493,7 +6358,7 @@ private struct SharedSearchFilterSheet: View {
             .background(HomeboardPalette.accent)
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
       .padding(18)
       .navigationTitle("Search filters")
@@ -4529,10 +6394,16 @@ private struct SharedFilterField: View {
 
 private struct SharedSearchListSurface: View {
   let listings: [ListingPreview]
+  let comparisonScores: [String: SharedListingComparisonScore]
+  let topListingIDs: Set<String>
   let selectedListingID: String?
+  let cleanableListingIDs: Set<ListingPreview.ID>
+  let cleanSelection: Set<ListingPreview.ID>
+  let isCleaning: Bool
   let isLoading: Bool
   let hasMore: Bool
   let onOpen: (ListingPreview) -> Void
+  let onToggleCleanSelection: (ListingPreview) -> Void
   let onBrowse: () -> Void
   let onLoadMore: () -> Void
 
@@ -4560,10 +6431,26 @@ private struct SharedSearchListSurface: View {
         ScrollView(.vertical, showsIndicators: false) {
           LazyVStack(spacing: 12) {
             ForEach(listings) { listing in
-              Button { onOpen(listing) } label: {
+              let canClean = cleanableListingIDs.contains(listing.id)
+              let isSelectedForCleaning = cleanSelection.contains(listing.id)
+              Button {
+                if isCleaning {
+                  if canClean { onToggleCleanSelection(listing) }
+                } else {
+                  onOpen(listing)
+                }
+              } label: {
                 HStack(spacing: 13) {
-                  SharedListingArtwork(listing: listing, height: 106, cornerRadius: 16)
-                    .frame(width: 118)
+                  if let score = comparisonScores[listing.id] {
+                    SharedComparisonScoreArtwork(
+                      score: score,
+                      isTopResult: topListingIDs.contains(listing.id)
+                    )
+                    .frame(width: 118, height: 106)
+                  } else {
+                    SharedListingArtwork(listing: listing, height: 106, cornerRadius: 16)
+                      .frame(width: 118)
+                  }
 
                   VStack(alignment: .leading, spacing: 6) {
                     Text(listing.priceLine)
@@ -4581,22 +6468,48 @@ private struct SharedSearchListSurface: View {
                       .font(.caption2.weight(.semibold))
                       .foregroundStyle(HomeboardPalette.accent)
                       .lineLimit(1)
+                    if let offer = listing.activeOffer {
+                      SharedActiveOfferBanner(offer: offer, compact: true)
+                    }
                   }
                   Spacer(minLength: 0)
-                  Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(HomeboardPalette.tertiaryText)
+                  if isCleaning {
+                    if canClean {
+                      Image(systemName: isSelectedForCleaning ? "checkmark.circle.fill" : "circle")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(
+                          isSelectedForCleaning ? HomeboardPalette.accent : HomeboardPalette.secondaryText
+                        )
+                    } else {
+                      Text("Not saved")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(HomeboardPalette.tertiaryText)
+                    }
+                  } else {
+                    Image(systemName: "chevron.right")
+                      .font(.caption.weight(.bold))
+                      .foregroundStyle(HomeboardPalette.tertiaryText)
+                  }
                 }
                 .padding(12)
                 .sharedSurface(cornerRadius: 20)
                 .overlay {
-                  if selectedListingID == listing.id {
+                  if isSelectedForCleaning || (!isCleaning && selectedListingID == listing.id) {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                       .stroke(HomeboardPalette.accent, lineWidth: 2)
                   }
                 }
+                .opacity(isCleaning && !canClean ? 0.56 : 1)
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
+              .disabled(isCleaning && !canClean)
+              .accessibilityLabel(
+                isCleaning
+                  ? canClean
+                    ? "\(listing.title), \(isSelectedForCleaning ? "selected" : "not selected")"
+                    : "\(listing.title), not saved to this board"
+                  : listing.title
+              )
             }
 
             if isLoading {
@@ -4624,18 +6537,77 @@ private struct SharedSearchListSurface: View {
   }
 }
 
-private struct SharedExpandedClusterBar: View {
+private struct SharedComparisonScoreArtwork: View {
+  let score: SharedListingComparisonScore
+  let isTopResult: Bool
+
+  var body: some View {
+    ZStack {
+      LinearGradient(
+        colors: [
+          score.color.opacity(isTopResult ? 0.42 : 0.26),
+          HomeboardPalette.surfaceDeep
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+
+      VStack(spacing: 3) {
+        if isTopResult {
+          Label("TOP MATCH", systemImage: "sparkles")
+            .font(.system(size: 8, weight: .heavy))
+            .tracking(0.6)
+        } else {
+          Text("MATCH")
+            .font(.system(size: 8, weight: .heavy))
+            .tracking(0.8)
+        }
+
+        Text(score.total.formatted())
+          .font(.system(size: 34, weight: .black, design: .rounded))
+          .monospacedDigit()
+
+        Text(score.label)
+          .font(.system(size: 9, weight: .bold))
+      }
+      .foregroundStyle(score.color)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .stroke(score.color.opacity(isTopResult ? 0.9 : 0.42), lineWidth: 2)
+    }
+    .shadow(
+      color: isTopResult ? score.color.opacity(0.28) : .clear,
+      radius: 8,
+      x: 0,
+      y: 3
+    )
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(
+      "\(isTopResult ? "Top match" : "Comparison score"), \(score.total) out of 100"
+    )
+  }
+}
+
+private struct SharedClusterCardFilterBar: View {
   let count: Int
-  let onCollapse: () -> Void
+  let onClear: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
       Image(systemName: "point.3.connected.trianglepath.dotted")
-      Text("\(count) listings expanded")
+      Text("Filtered to selected cluster · \(count)")
       Spacer(minLength: 0)
-      Button("Collapse", action: onCollapse)
-        .foregroundStyle(HomeboardPalette.accent)
-        .buttonStyle(.plain)
+      Button(action: onClear) {
+        Image(systemName: "xmark")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+          .frame(width: 36, height: 36)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(HomeboardAreaButtonStyle())
+      .accessibilityLabel("Clear selected cluster filter")
     }
     .font(.caption.weight(.bold))
     .foregroundStyle(HomeboardPalette.primaryText)
@@ -4647,6 +6619,7 @@ private struct SharedExpandedClusterBar: View {
       RoundedRectangle(cornerRadius: 13, style: .continuous)
         .stroke(HomeboardPalette.border, lineWidth: 1)
     }
+    .accessibilityLabel("Cards filtered to \(count) listings from the selected map cluster")
   }
 }
 
@@ -4731,7 +6704,10 @@ private struct SharedSearchHeader: View {
 
       Spacer(minLength: 6)
 
-      SharedAvatarStack(members: board.members, size: 27)
+      SharedAvatarStack(
+        members: board.members.filter { $0.status != "commute point" },
+        size: 27
+      )
 
       Button(action: onSettings) {
         Image(systemName: "gearshape.fill")
@@ -4741,7 +6717,7 @@ private struct SharedSearchHeader: View {
           .background(Color.white.opacity(0.06))
           .clipShape(Circle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
 
       Button(action: onAdd) {
         Image(systemName: "plus")
@@ -4751,7 +6727,7 @@ private struct SharedSearchHeader: View {
           .background(HomeboardPalette.accent)
           .clipShape(Circle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .sharedCoachmarkTarget("search-add")
     }
     .padding(.leading, 16)
@@ -4767,11 +6743,85 @@ private struct SharedSearchHeader: View {
   }
 }
 
+private struct SharedSelectedTransportPopup: View {
+  private struct Badge: Identifiable {
+    let icon: String
+    let label: String
+
+    var id: String { "\(icon)|\(label)" }
+  }
+
+  let routes: [SharedComparisonCommuteCorridor]
+  let isLoading: Bool
+
+  private var badges: [Badge] {
+    var seen = Set<String>()
+    return routes
+      .sorted {
+        if $0.mode.cardOrder == $1.mode.cardOrder {
+          return $0.transportLabel < $1.transportLabel
+        }
+        return $0.mode.cardOrder < $1.mode.cardOrder
+      }
+      .compactMap { route in
+        let badge = Badge(icon: route.transportIcon, label: route.transportLabel)
+        return seen.insert(badge.id).inserted ? badge : nil
+      }
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: 7) {
+        if badges.isEmpty {
+          if isLoading {
+            ProgressView()
+              .controlSize(.mini)
+              .tint(HomeboardPalette.primaryText)
+            Text("Finding route")
+              .font(.system(size: 9, weight: .bold))
+          } else {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .font(.system(size: 9, weight: .bold))
+            Text("Route unavailable")
+              .font(.system(size: 9, weight: .bold))
+          }
+        } else {
+          ForEach(Array(badges.prefix(3))) { badge in
+            Label(badge.label, systemImage: badge.icon)
+              .font(.system(size: 9, weight: .heavy))
+              .lineLimit(1)
+          }
+        }
+      }
+      .foregroundStyle(HomeboardPalette.primaryText)
+      .padding(.horizontal, 9)
+      .frame(height: 25)
+      .background(HomeboardPalette.surface.opacity(0.98))
+      .clipShape(Capsule())
+      .overlay {
+        Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1)
+      }
+      .shadow(color: Color.black.opacity(0.28), radius: 5, x: 0, y: 2)
+
+      Triangle()
+        .fill(HomeboardPalette.surface.opacity(0.98))
+        .frame(width: 10, height: 6)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(
+      badges.isEmpty
+        ? (isLoading ? "Finding transport type" : "Route unavailable")
+        : "Transport: \(badges.map(\.label).joined(separator: ", "))"
+    )
+  }
+}
+
 private struct SharedPriceMarker: View {
   let text: String
   let isSelected: Bool
   let comparisonScore: SharedListingComparisonScore?
   let comparisonColor: Color?
+  let isHighlighted: Bool
 
   private var markerColor: Color {
     comparisonColor
@@ -4781,18 +6831,32 @@ private struct SharedPriceMarker: View {
 
   var body: some View {
     if comparisonScore != nil {
-      Text(text)
-        .font(.caption.weight(.heavy))
-        .monospacedDigit()
-        .foregroundStyle(Color.black)
-        .frame(width: 34, height: 34)
-        .background(markerColor)
-        .clipShape(Circle())
-        .overlay {
-          Circle().stroke(Color.white.opacity(0.55), lineWidth: 1)
+      ZStack {
+        if isHighlighted {
+          Circle()
+            .fill(markerColor.opacity(0.20))
+            .frame(width: 48, height: 48)
+          Circle()
+            .stroke(markerColor.opacity(0.92), lineWidth: 2)
+            .frame(width: 43, height: 43)
         }
-        .scaleEffect(isSelected ? 1.1 : 1)
-        .shadow(color: Color.black.opacity(0.26), radius: 4, x: 0, y: 2)
+
+        Text(text)
+          .font(.caption.weight(.heavy))
+          .monospacedDigit()
+          .foregroundStyle(Color.black)
+          .frame(width: isHighlighted ? 37 : 34, height: isHighlighted ? 37 : 34)
+          .background(markerColor)
+          .clipShape(Circle())
+      }
+      .scaleEffect(isSelected ? 1.1 : 1)
+      .shadow(
+        color: isHighlighted ? markerColor.opacity(0.46) : Color.black.opacity(0.26),
+        radius: isHighlighted ? 9 : 4,
+        x: 0,
+        y: isHighlighted ? 4 : 2
+      )
+      .accessibilityHint(isHighlighted ? "One of the five highest comparison scores" : "")
     } else {
       VStack(spacing: 0) {
         Text(text)
@@ -4863,6 +6927,10 @@ private struct SharedMapPreviewCard: View {
           }
           .font(.caption2.weight(.semibold))
           .foregroundStyle(HomeboardPalette.accent)
+
+          if let offer = listing.activeOffer {
+            SharedActiveOfferBanner(offer: offer, compact: true)
+          }
         }
 
         Image(systemName: "chevron.right")
@@ -4878,7 +6946,7 @@ private struct SharedMapPreviewCard: View {
       }
       .shadow(color: Color.black.opacity(0.38), radius: 20, x: 0, y: 10)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 }
 
@@ -4899,7 +6967,7 @@ private struct SharedMapEmptyCard: View {
         Text("No listings match this view")
           .font(.subheadline.weight(.bold))
           .foregroundStyle(HomeboardPalette.primaryText)
-        Text("Find a real listing on any rental website or app, then use Share → Homeboard to bring it into \(city.isEmpty ? "this search" : city).")
+        Text("Try a wider map area, or browse in Safari and tap a listing pill to save a place in \(city.isEmpty ? "this search" : city).")
           .font(.caption)
           .foregroundStyle(HomeboardPalette.secondaryText)
           .fixedSize(horizontal: false, vertical: true)
@@ -4914,7 +6982,7 @@ private struct SharedMapEmptyCard: View {
         .frame(height: 36)
         .background(HomeboardPalette.accent)
         .clipShape(Capsule())
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
     }
     .padding(12)
     .background(.ultraThinMaterial)
@@ -4938,6 +7006,8 @@ private struct SharedRentalSource: Identifiable {
 private struct SharedListingDiscoverySheet: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.openURL) private var openURL
+  @State private var showsLinkEntry = false
+  @State private var showsSafariSetup = false
   let city: String
 
   private var destinationLabel: String {
@@ -5003,10 +7073,19 @@ private struct SharedListingDiscoverySheet: View {
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
           SharedPageHeader(
-            eyebrow: "Find a real listing",
-            title: "Search wherever you already look",
-            subtitle: "Choose a rental website or app for \(destinationLabel). Open the exact listing, then use Share → Homeboard."
+            eyebrow: destinationLabel,
+            title: "Add a place",
+            subtitle: "Open a listing in Safari, then tap its Homeboard pill to save."
           )
+
+          Button { showsLinkEntry = true } label: {
+            Label("Paste a listing link", systemImage: "link.badge.plus")
+              .font(.subheadline.weight(.bold))
+              .foregroundStyle(HomeboardPalette.buttonText)
+              .frame(maxWidth: .infinity, minHeight: 50)
+              .background(HomeboardPalette.accent, in: RoundedRectangle(cornerRadius: 16))
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
 
           VStack(spacing: 0) {
             ForEach(Array(sources.enumerated()), id: \.element.id) { index, source in
@@ -5040,7 +7119,7 @@ private struct SharedListingDiscoverySheet: View {
                 .padding(.horizontal, 13)
                 .frame(minHeight: 62)
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
 
               if index < sources.count - 1 {
                 SharedDivider()
@@ -5049,18 +7128,26 @@ private struct SharedListingDiscoverySheet: View {
           }
           .sharedSurface(cornerRadius: 19)
 
-          HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "square.and.arrow.up")
-              .foregroundStyle(HomeboardPalette.accent)
-            Text("On the listing page, tap the familiar Share button and choose Homeboard. Homeboard will scan the source and ask you to confirm anything missing.")
-              .font(.caption)
-              .foregroundStyle(HomeboardPalette.secondaryText)
-              .fixedSize(horizontal: false, vertical: true)
+          Button { showsSafariSetup = true } label: {
+            HStack(spacing: 12) {
+              Image(systemName: "puzzlepiece.extension")
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Set up Safari capture").font(.subheadline.weight(.semibold))
+                Text("Enable once. Save with a tap.")
+                  .font(.caption)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+              }
+              Spacer()
+              Image(systemName: "chevron.right").font(.caption.weight(.bold))
+            }
+            .foregroundStyle(HomeboardPalette.accent)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(14)
+            .sharedSurface(cornerRadius: 16)
           }
-          .padding(14)
-          .sharedSurface(cornerRadius: 16)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
-          Text("If a place truly has no page online, use Settings → Add an offline listing as the last-resort fallback.")
+          Text("Homeboard keeps the original source attached so everyone can verify the listing before the group acts on it.")
             .font(.caption2)
             .foregroundStyle(HomeboardPalette.tertiaryText)
             .fixedSize(horizontal: false, vertical: true)
@@ -5069,7 +7156,7 @@ private struct SharedListingDiscoverySheet: View {
         .padding(.bottom, 20)
       }
       .background(WorkspaceBackgroundView())
-      .navigationTitle("Find listings")
+      .navigationTitle("Add a listing")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
@@ -5080,12 +7167,24 @@ private struct SharedListingDiscoverySheet: View {
       .toolbarBackground(HomeboardPalette.background, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
     }
+    .sheet(isPresented: $showsLinkEntry) {
+      AddSharedListingSheet()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsSafariSetup) {
+      SharedSafariSaveGuideSheet()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
   }
 }
 
 // MARK: - Shared list components
 
-private enum SharedListingFilter: String, CaseIterable, Identifiable {
+enum SharedListingFilter: String, CaseIterable, Identifiable {
   case active
   case touring
   case applied
@@ -5094,6 +7193,19 @@ private enum SharedListingFilter: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
   var title: String { rawValue.capitalized }
+
+  func includes(_ listing: ListingPreview) -> Bool {
+    let status = listing.status.lowercased()
+    let workflow = listing.workflowStatus.lowercased()
+    let passed = ["passed", "rejected"].contains(status)
+    switch self {
+    case .active: return !passed && workflow != "decided"
+    case .touring: return !passed && (status == "toured" || workflow == "viewing")
+    case .applied: return !passed && (status == "applied" || workflow == "applying")
+    case .passed: return passed
+    case .all: return true
+    }
+  }
 }
 
 private struct SharedFilterBar: View {
@@ -5121,7 +7233,7 @@ private struct SharedFilterBar: View {
             .background(selection == filter ? HomeboardPalette.accent : Color.white.opacity(0.055))
             .clipShape(Capsule())
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
     }
@@ -5179,7 +7291,13 @@ private struct SharedShortlistRow: View {
         }
         .padding(12)
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
+
+      if let offer = listing.activeOffer {
+        SharedActiveOfferBanner(offer: offer, compact: true)
+          .padding(.horizontal, 12)
+          .padding(.bottom, 8)
+      }
 
       Divider()
         .overlay(Color.white.opacity(0.07))
@@ -5200,7 +7318,7 @@ private struct SharedShortlistRow: View {
           .font(.caption.weight(.bold))
           .foregroundStyle(isSelectedForComparison ? HomeboardPalette.success : HomeboardPalette.accent)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
       .padding(.horizontal, 14)
       .frame(height: 42)
@@ -5223,14 +7341,14 @@ private struct SharedShortlistEmptyState: View {
         Text("Nothing shortlisted yet")
           .font(.headline)
           .foregroundStyle(HomeboardPalette.primaryText)
-        Text("Find a place on any rental website or app, then share its listing page to Homeboard. Places appear here after someone keeps them in play.")
+        Text("Browse in Safari and tap a Homeboard listing pill to save a place here. You can also add a listing link.")
           .font(.subheadline)
           .foregroundStyle(HomeboardPalette.secondaryText)
           .multilineTextAlignment(.center)
       }
 
       HStack(spacing: 10) {
-        Button("Browse Search") {
+        Button("Search") {
           appModel.openBoardTab(.board)
         }
         .font(.subheadline.weight(.bold))
@@ -5239,16 +7357,16 @@ private struct SharedShortlistEmptyState: View {
         .frame(height: 44)
         .background(HomeboardPalette.accent)
         .clipShape(Capsule())
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
 
-        Button("Find listings", action: onBrowse)
+        Button("Add a listing", action: onBrowse)
           .font(.subheadline.weight(.bold))
           .foregroundStyle(HomeboardPalette.primaryText)
           .padding(.horizontal, 18)
           .frame(height: 44)
           .background(Color.white.opacity(0.07))
           .clipShape(Capsule())
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
       }
     }
     .frame(maxWidth: .infinity)
@@ -5299,7 +7417,7 @@ struct SharedListingDetailView: View {
                 .background(.ultraThinMaterial)
                 .clipShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
 
             Spacer()
 
@@ -5312,14 +7430,14 @@ struct SharedListingDetailView: View {
                   .background(.ultraThinMaterial)
                   .clipShape(Circle())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
 
             Menu {
               Button(role: .destructive) {
                 confirmsRemoval = true
               } label: {
-                Label("Remove from board", systemImage: "trash")
+                Label("Move to Recently Deleted", systemImage: "trash")
               }
             } label: {
               Image(systemName: "ellipsis")
@@ -5329,7 +7447,7 @@ struct SharedListingDetailView: View {
                 .background(.ultraThinMaterial)
                 .clipShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
           .padding(.horizontal, 16)
           .padding(.top, 12)
@@ -5357,9 +7475,16 @@ struct SharedListingDetailView: View {
         .frame(height: 318)
 
         VStack(alignment: .leading, spacing: 22) {
+          if let offer = liveListing.activeOffer {
+            SharedActiveOfferBanner(offer: offer)
+          }
+
           HStack(spacing: 10) {
             SharedDetailMetric(icon: "tram.fill", value: listing.commuteLine)
-            SharedDetailMetric(icon: "person.3.fill", value: "\(max(appModel.board.members.count, 1)) weighing in")
+            SharedDetailMetric(
+              icon: "person.3.fill",
+              value: "\(max(appModel.board.members.filter { $0.status != "commute point" }.count, 1)) weighing in"
+            )
           }
 
           if let analysis = liveListing.analysis {
@@ -5398,7 +7523,7 @@ struct SharedListingDetailView: View {
                   .background(Color.white.opacity(0.055))
                   .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               }
             }
 
@@ -5475,7 +7600,7 @@ struct SharedListingDetailView: View {
                   .background(HomeboardPalette.accent)
                   .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
               .disabled(commentDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
           }
@@ -5529,7 +7654,7 @@ struct SharedListingDetailView: View {
                     .foregroundStyle(HomeboardPalette.accent)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               }
 
               if !listing.highlights.isEmpty {
@@ -5543,7 +7668,7 @@ struct SharedListingDetailView: View {
               Button(role: .destructive) {
                 confirmsRemoval = true
               } label: {
-                Text("Remove from board")
+                Text("Move to Recently Deleted")
                   .font(.subheadline.weight(.semibold))
                   .foregroundStyle(HomeboardPalette.danger)
                   .frame(maxWidth: .infinity)
@@ -5551,7 +7676,7 @@ struct SharedListingDetailView: View {
                   .background(Color.white.opacity(0.045))
                   .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
             .padding(.top, 16)
           } label: {
@@ -5584,14 +7709,14 @@ struct SharedListingDetailView: View {
         ratingDraft = SharedRatingDimension.normalized(current.values)
       }
     }
-    .alert("Remove this listing?", isPresented: $confirmsRemoval) {
+    .alert("Move this listing?", isPresented: $confirmsRemoval) {
       Button("Cancel", role: .cancel) {}
-      Button("Remove", role: .destructive) {
+      Button("Move", role: .destructive) {
         appModel.removeManualListing(id: listing.id)
         dismiss()
       }
     } message: {
-      Text("It will be removed from this board for everyone.")
+      Text("It will leave the shared board for everyone and can be restored from Settings for seven days.")
     }
   }
 }
@@ -5644,7 +7769,7 @@ private struct SharedListingSourcePanel: View {
               .background(HomeboardPalette.accent.opacity(0.09))
               .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       } else {
         ForEach(listing.exactSources) { source in
@@ -5671,7 +7796,7 @@ private struct SharedListingSourcePanel: View {
                 }
                 .contentShape(Rectangle())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
 
               if let warning = source.warning, !warning.isEmpty {
                 Text(warning)
@@ -5687,7 +7812,7 @@ private struct SharedListingSourcePanel: View {
                   } label: {
                     Label("Exact listing", systemImage: "checkmark")
                   }
-                  .buttonStyle(.plain)
+                  .buttonStyle(HomeboardAreaButtonStyle())
 
                   Menu {
                     Button("Wrong unit", role: .destructive) {
@@ -5914,7 +8039,7 @@ private struct SharedListingQuickReviewPanel: View {
       .frame(height: 46)
       .background(HomeboardPalette.accent)
       .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
     }
     .padding(16)
     .sharedSurface(cornerRadius: 20)
@@ -5924,46 +8049,81 @@ private struct SharedListingQuickReviewPanel: View {
 private struct SharedListingDecisionPanel: View {
   let listing: ListingPreview
   @Environment(AppModel.self) private var appModel
-  @State private var decisionType = "request_viewing"
+  @State private var decisionType = ListingPollType.requestViewing
+  @State private var isSubmitting = false
+  @State private var error: String?
+  @State private var didSaveVote = false
 
   private var latestDecision: ListingDecisionSummary? {
-    listing.decisions.first(where: { $0.type == decisionType })
+    listing.openDecision(for: decisionType)
+  }
+
+  private var groupMemberCount: Int {
+    appModel.board.members.filter { !$0.userId.isEmpty && $0.status != "commute point" }.count
+  }
+
+  private var canUseGroupDecision: Bool { groupMemberCount >= 2 }
+
+  private var decisionStatus: String {
+    guard let latestDecision else { return "Start together" }
+    return "Resolved \(latestDecision.groupResolvedCount)/\(latestDecision.groupRequiredCount)"
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 13) {
-      SharedSectionTitle(title: "Next group decision", trailing: listing.workflowStatus.replacingOccurrences(of: "_", with: " ").capitalized)
+      SharedSectionTitle(title: "Group decision", trailing: decisionStatus)
 
       Picker("Decision", selection: $decisionType) {
-        Text("Shortlist").tag("shortlist")
-        Text("View").tag("request_viewing")
-        Text("Apply").tag("apply")
+        ForEach(ListingPollType.allCases) { type in Text(type.title).tag(type) }
       }
       .pickerStyle(.segmented)
 
-      if let decision = latestDecision, !decision.votes.isEmpty {
-        Text(decision.votes.map { "\($0.name): \($0.choice)" }.joined(separator: " · "))
+      Text(decisionType.question)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+
+      if let decision = latestDecision {
+        SharedPollResults(decision: decision)
+      } else {
+        Text("Tap your response to start. Everyone else answers from Group.")
           .font(.caption)
           .foregroundStyle(HomeboardPalette.secondaryText)
-      } else {
-        Text("No votes yet. This vote is about one concrete next step, not a permanent ranking.")
+        if let previous = listing.decisions.first(where: { $0.type == decisionType.rawValue && $0.closedAt != nil }) {
+          DisclosureGroup("Previous poll · closed") {
+            SharedPollResults(decision: previous)
+          }
           .font(.caption)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .tint(HomeboardPalette.accent)
+        }
+      }
+
+      if !canUseGroupDecision {
+        Label("Invite another member before deciding", systemImage: "person.badge.plus")
+          .font(.caption.weight(.semibold))
           .foregroundStyle(HomeboardPalette.secondaryText)
       }
 
-      HStack(spacing: 9) {
-        ForEach([("yes", "Yes"), ("no", "No"), ("abstain", "Not sure")], id: \.0) { choice, label in
-          Button(label) {
-            appModel.voteOnListingDecision(id: listing.id, type: decisionType, choice: choice)
-          }
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(choice == "yes" ? Color.black : HomeboardPalette.primaryText)
-          .frame(maxWidth: .infinity)
-          .frame(height: 44)
-          .background(choice == "yes" ? HomeboardPalette.accent : Color.white.opacity(0.06))
-          .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-          .buttonStyle(.plain)
+      SharedPollChoices(selected: latestDecision?.choice(for: appModel.account?.id)) { choice in
+        guard !isSubmitting else { return }
+        isSubmitting = true
+        error = nil
+        didSaveVote = false
+        Task {
+          didSaveVote = await appModel.voteOnListingDecision(id: listing.id, type: decisionType.rawValue, choice: choice)
+          if !didSaveVote { error = appModel.boardError ?? "Couldn’t save your vote. Please try again." }
+          isSubmitting = false
         }
+      }
+      .disabled(!canUseGroupDecision)
+
+      if isSubmitting {
+        ProgressView("Sharing your vote…").font(.caption).tint(HomeboardPalette.accent)
+      } else if let error {
+        Text(error).font(.caption).foregroundStyle(HomeboardPalette.danger)
+      } else if didSaveVote {
+        Label("Vote saved", systemImage: "checkmark.circle.fill")
+          .font(.caption).foregroundStyle(HomeboardPalette.success)
       }
 
       Menu {
@@ -5971,15 +8131,14 @@ private struct SharedListingDecisionPanel: View {
           ("considering", "Considering"),
           ("shortlisted", "Shortlisted"),
           ("viewing", "Viewing"),
-          ("applying", "Applying"),
-          ("decided", "Decision made")
+          ("applying", "Applying")
         ], id: \.0) { status, label in
           Button(label) {
             appModel.moveListing(id: listing.id, to: status)
           }
         }
       } label: {
-        Label("Move through workflow", systemImage: "arrow.triangle.branch")
+        Label("Stage: \(listing.workflowStatus.replacingOccurrences(of: "_", with: " ").capitalized)", systemImage: "arrow.triangle.branch")
           .font(.subheadline.weight(.bold))
           .foregroundStyle(HomeboardPalette.primaryText)
           .frame(maxWidth: .infinity)
@@ -5990,6 +8149,11 @@ private struct SharedListingDecisionPanel: View {
     }
     .padding(16)
     .sharedSurface(cornerRadius: 20)
+    .disabled(isSubmitting)
+    .onChange(of: decisionType) { _, _ in
+      error = nil
+      didSaveVote = false
+    }
   }
 }
 
@@ -6170,7 +8334,7 @@ private struct SharedListingRatingsPanel: View {
                   .background(draft[dimension.id] == value ? HomeboardPalette.accent : Color.white.opacity(0.055))
                   .clipShape(Circle())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
         }
@@ -6185,7 +8349,7 @@ private struct SharedListingRatingsPanel: View {
           .background(HomeboardPalette.accent)
           .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
     }
     .padding(16)
     .sharedSurface(cornerRadius: 22)
@@ -6405,10 +8569,10 @@ struct AddSharedListingSheet: View {
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
           SharedPageHeader(
-            eyebrow: initialImport == nil ? "Offline fallback" : "Collected from Safari",
-            title: initialImport == nil ? "Add a place with no listing page" : "Save this rental",
+            eyebrow: initialImport == nil ? "Shared listing" : "Collected from Safari",
+            title: initialImport == nil ? "Review this rental" : "Save this rental",
             subtitle: initialImport == nil
-              ? "Use this only for an off-market place that cannot be shared from a rental website or app."
+              ? "Confirm the core facts Homeboard received from the original listing page."
               : "Homeboard brought over everything the source exposed. Confirm only what is still missing."
           )
 
@@ -6433,7 +8597,7 @@ struct AddSharedListingSheet: View {
               .frame(height: 42)
               .sharedSurface(cornerRadius: 14)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
 
           SharedField(title: "Exact street address", prompt: "219 Kent Ave", text: $title)
@@ -6521,7 +8685,7 @@ struct AddSharedListingSheet: View {
                 .padding(13)
                 .sharedSurface(cornerRadius: 14)
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
               .disabled(isInspectingLink)
             }
 
@@ -6563,7 +8727,7 @@ struct AddSharedListingSheet: View {
                 title: title,
                 location: location,
                 priceLine: price,
-                commuteLine: "Compare group commutes",
+                commuteLine: "See comparison map",
                 summary: summary,
                 fitLabel: "Group contender",
                 sourceURL: sourceURL,
@@ -6572,6 +8736,8 @@ struct AddSharedListingSheet: View {
                 unit: unit,
                 bedrooms: bedrooms,
                 bathrooms: bathrooms,
+                squareFeet: initialImport?.squareFeet,
+                availableDate: initialImport?.availableDate,
                 amenities: importedAmenities,
                 modelInsights: importedModelInsights,
                 address: title,
@@ -6579,7 +8745,10 @@ struct AddSharedListingSheet: View {
                 longitude: coordinate?.longitude
               )
               isSaving = false
-              if appModel.boardError == nil { dismiss() }
+              if appModel.boardError == nil {
+                appModel.resolvePendingSharedListingImport()
+                dismiss()
+              }
             }
           } label: {
             HStack(spacing: 9) {
@@ -6593,12 +8762,12 @@ struct AddSharedListingSheet: View {
               .background(HomeboardPalette.accent)
               .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
           .disabled(!hasRequiredFacts || isSaving)
           .opacity(hasRequiredFacts ? 1 : 0.55)
 
           if !hasRequiredFacts {
-            Text("An address, rent, bedroom count, and bathroom count are required. The link and unit can stay blank for a genuinely offline place.")
+            Text("An address, rent, bedroom count, and bathroom count are required before this listing can be saved.")
               .font(.caption)
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
@@ -6707,6 +8876,10 @@ private struct SharedComparisonSheet: View {
             VStack(alignment: .leading, spacing: 13) {
               SharedListingArtwork(listing: listing, height: 150, cornerRadius: 16)
 
+              if let offer = listing.activeOffer {
+                SharedActiveOfferBanner(offer: offer, compact: true)
+              }
+
               Text(listing.priceLine)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(HomeboardPalette.primaryText)
@@ -6762,7 +8935,7 @@ private struct SharedInviteCard: View {
   let copied: Bool
   let onCopy: () -> Void
   let onInvite: () -> Void
-  let onAddManually: () -> Void
+  let onAddCommutePoint: () -> Void
 
   private var inviteURL: URL {
     HomeboardConfig.publicWebBaseURL.appending(path: "invite/\(board.inviteCode)")
@@ -6797,7 +8970,7 @@ private struct SharedInviteCard: View {
               .background(Color.black.opacity(0.1))
               .clipShape(Circle())
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
           .accessibilityLabel("Invite roommate")
         } else {
           VStack(spacing: 9) {
@@ -6819,7 +8992,7 @@ private struct SharedInviteCard: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.black.opacity(0.7))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
         }
       }
@@ -6833,12 +9006,12 @@ private struct SharedInviteCard: View {
         )
           .font(.caption.weight(.bold))
           .foregroundStyle(Color.black)
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
-        Button("Capture a profile manually", action: onAddManually)
+        Button("Add commute point", action: onAddCommutePoint)
           .font(.caption.weight(.semibold))
           .foregroundStyle(Color.black.opacity(0.62))
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
       }
     }
     .padding(18)
@@ -6903,7 +9076,7 @@ private struct InviteSharedMemberSheet: View {
           .background(HomeboardPalette.accent)
           .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(appModel.isBoardLoading)
 
         Spacer()
@@ -6963,14 +9136,112 @@ private struct SharedMemberRow: View {
   }
 }
 
-private enum SharedMemberDetailPresentation {
-  case overview
-  case personalPreferences
+private struct SharedCommutePointRow: View {
+  let point: MemberPreferenceCard
+
+  var body: some View {
+    HStack(spacing: 13) {
+      Image(systemName: "mappin.and.ellipse")
+        .font(.headline.weight(.bold))
+        .foregroundStyle(HomeboardPalette.accent)
+        .frame(width: 46, height: 46)
+        .background(HomeboardPalette.surfaceDeep.opacity(0.78))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(point.name)
+          .font(.headline)
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Text(point.commuteDestination ?? SharedListingText.commuteDestination(point.commuteLine))
+          .font(.subheadline)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .lineLimit(2)
+        Text(point.commuteLine.components(separatedBy: " · ").dropFirst().joined(separator: " · "))
+          .font(.caption)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+          .lineLimit(1)
+      }
+
+      Spacer(minLength: 6)
+      Image(systemName: "chevron.right")
+        .font(.caption.weight(.bold))
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+    }
+    .padding(14)
+    .sharedSurface(cornerRadius: 18)
+  }
+}
+
+private struct SharedCommutePointExplanation: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      Label("Your main commute belongs to you", systemImage: "person.crop.circle.fill")
+        .font(.subheadline.weight(.bold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+
+      Text("It comes from your onboarding profile. Add a separate point for a child's school neighborhood, another regular destination, or a roommate stand-in before they join the board.")
+        .font(.caption)
+        .foregroundStyle(HomeboardPalette.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Label(
+        "Use a nearby neighborhood instead of an exact address whenever that feels safer.",
+        systemImage: "hand.raised.fill"
+      )
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.accent)
+    }
+    .padding(14)
+    .sharedSurface(cornerRadius: 18)
+  }
+}
+
+private struct SharedCommutePointTutorialCard: View {
+  let onDismiss: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+          .font(.headline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.buttonText)
+          .frame(width: 38, height: 38)
+          .background(HomeboardPalette.accent)
+          .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text("How commute points work")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text("Your onboarding commute is yours. Extra points let every home account for school, another frequent stop, or a roommate stand-in too.")
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Spacer(minLength: 4)
+        Button(action: onDismiss) {
+          Image(systemName: "xmark")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .frame(width: 36, height: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .accessibilityLabel("Dismiss commute point tutorial")
+      }
+
+      Text("A neighborhood is enough; exact addresses are optional.")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.accent)
+    }
+    .padding(14)
+    .sharedSurface(cornerRadius: 19)
+  }
 }
 
 private struct SharedMemberDetailSheet: View {
   let member: MemberPreferenceCard
-  var presentation: SharedMemberDetailPresentation = .overview
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
   @State private var budgetMin = ""
@@ -6988,76 +9259,42 @@ private struct SharedMemberDetailSheet: View {
   @State private var dealbreakers = ""
   @State private var petsRequired = false
   @State private var accessibilityNeeds = ""
-  @State private var moveInTime = ""
   @State private var validationError: String?
-  @State private var isSaving = false
 
   private var canEdit: Bool {
     member.userId.isEmpty || member.userId == appModel.account?.id
-  }
-
-  private var editsPersonalPreferences: Bool {
-    switch presentation {
-    case .overview: return false
-    case .personalPreferences: return true
-    }
   }
 
   var body: some View {
     NavigationStack {
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
-          if editsPersonalPreferences {
-            SharedPageHeader(
-              eyebrow: "Personal preferences",
-              title: "Edit search brief",
-              subtitle: "These changes only apply to your personal preferences. The shared move-in time is labeled separately."
-            )
-
-            VStack(alignment: .leading, spacing: 12) {
-              SharedSectionTitle(title: "Shared move-in time", trailing: "Whole board")
-              Text("Change the target date or timeframe for this board. Leave it blank if the timing is open.")
+          HStack(spacing: 14) {
+            SharedAvatar(name: member.name, size: 62)
+            VStack(alignment: .leading, spacing: 4) {
+              Text(member.name)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+              Text(member.status.capitalized)
                 .font(.subheadline)
-                .foregroundStyle(HomeboardPalette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-              SharedField(
-                title: "Move-in date or timeframe",
-                prompt: "August 15 or early fall",
-                text: $moveInTime
-              )
+                .foregroundStyle(HomeboardPalette.success)
             }
-            .padding(16)
-            .sharedSurface(cornerRadius: 20)
-          } else {
-            HStack(spacing: 14) {
-              SharedAvatar(name: member.name, size: 62)
-              VStack(alignment: .leading, spacing: 4) {
-                Text(member.name)
-                  .font(.title2.weight(.bold))
-                  .foregroundStyle(HomeboardPalette.primaryText)
-                Text(member.status.capitalized)
-                  .font(.subheadline)
-                  .foregroundStyle(HomeboardPalette.success)
-              }
-            }
-
-            SharedDetailSection(title: "Budget", body: member.budgetLine)
-            SharedDetailSection(title: "Commute", body: member.commuteLine)
-            SharedTokenSection(title: "Priorities", tokens: member.priorities)
-            SharedTokenSection(title: "Neighborhoods", tokens: member.neighborhoods)
-            SharedTokenSection(title: "Dealbreakers", tokens: member.dealbreakers)
           }
+
+          SharedDetailSection(title: "Budget", body: member.budgetLine)
+          SharedDetailSection(title: "Commute", body: member.commuteLine)
+          SharedTokenSection(title: "Priorities", tokens: member.priorities)
+          SharedTokenSection(title: "Neighborhoods", tokens: member.neighborhoods)
+          SharedTokenSection(title: "Dealbreakers", tokens: member.dealbreakers)
 
           if canEdit {
             VStack(alignment: .leading, spacing: 14) {
               SharedSectionTitle(
-                title: editsPersonalPreferences ? "Budget and commute" : "Your affordability",
-                trailing: editsPersonalPreferences ? "Only yours" : "Private to this board"
+                title: "Your affordability",
+                trailing: "Private to this board"
               )
 
-              Text(editsPersonalPreferences
-                   ? "Keep your own budget, commute, neighborhoods, priorities, and hard limits current here."
-                   : "Set the monthly share you can personally carry. Homeboard adds everyone’s limits together and suggests splits that use the same percentage of each person’s comfortable maximum.")
+              Text("Set the monthly share you can personally carry. Homeboard adds everyone’s limits together and suggests splits that use the same percentage of each person’s comfortable maximum.")
                 .font(.subheadline)
                 .foregroundStyle(HomeboardPalette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -7084,11 +9321,16 @@ private struct SharedMemberDetailSheet: View {
               .tint(HomeboardPalette.accent)
 
               if includesCommute {
-                SharedField(
-                  title: "Work or school address",
-                  prompt: "350 5th Ave, New York, NY",
-                  text: $commuteAddress
+                SharedAddressAutocompleteField(
+                  title: "Office neighborhood or address",
+                  prompt: "Midtown East, New York, NY",
+                  text: $commuteAddress,
+                  city: appModel.board.city
                 )
+                Text("A nearby neighborhood is enough if you would rather not save your exact workplace.")
+                  .font(.caption)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+                  .fixedSize(horizontal: false, vertical: true)
                 Picker("Commute access", selection: $commuteAccess) {
                   Text("Car / ride").tag("car")
                   Text("Transit").tag("transit")
@@ -7142,7 +9384,7 @@ private struct SharedMemberDetailSheet: View {
                   .foregroundStyle(HomeboardPalette.danger)
               }
 
-              Button(editsPersonalPreferences ? "Save changes" : "Save my limits") {
+              Button("Save my limits") {
                 save()
               }
               .font(.headline.weight(.bold))
@@ -7151,9 +9393,9 @@ private struct SharedMemberDetailSheet: View {
               .frame(height: 52)
               .background(HomeboardPalette.accent)
               .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-              .buttonStyle(.plain)
-              .disabled(isSaving || appModel.isBoardLoading)
-              .opacity(isSaving || appModel.isBoardLoading ? 0.58 : 1)
+              .buttonStyle(HomeboardAreaButtonStyle())
+              .disabled(appModel.isBoardLoading)
+              .opacity(appModel.isBoardLoading ? 0.58 : 1)
             }
             .padding(16)
             .sharedSurface(cornerRadius: 20)
@@ -7164,7 +9406,7 @@ private struct SharedMemberDetailSheet: View {
       .background(WorkspaceBackgroundView())
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
-          Button(editsPersonalPreferences ? "Cancel" : "Done") { dismiss() }
+          Button("Done") { dismiss() }
             .foregroundStyle(HomeboardPalette.accent)
         }
       }
@@ -7191,7 +9433,6 @@ private struct SharedMemberDetailSheet: View {
         dealbreakers = member.dealbreakers.joined(separator: ", ")
         petsRequired = member.petsRequired ?? false
         accessibilityNeeds = (member.accessibilityNeeds ?? []).joined(separator: ", ")
-        moveInTime = appModel.profile.moveInDate
       }
     }
   }
@@ -7222,7 +9463,7 @@ private struct SharedMemberDetailSheet: View {
       return
     }
     if includesCommute && commuteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      validationError = "Add a full address to include your commute."
+      validationError = "Add an office neighborhood or address to include your commute."
       return
     }
     var updated = member
@@ -7247,28 +9488,9 @@ private struct SharedMemberDetailSheet: View {
     updated.petsRequired = petsRequired
     updated.accessibilityNeeds = SharedListingText.csv(accessibilityNeeds)
     updated.status = "profile complete"
-    if editsPersonalPreferences {
-      let nextMoveInTime = moveInTime.trimmingCharacters(in: .whitespacesAndNewlines)
-      appModel.profile.moveInDate = nextMoveInTime
-      isSaving = true
-      Task {
-        await appModel.saveBoardBrief()
-        guard appModel.boardError == nil else {
-          validationError = appModel.boardError
-          isSaving = false
-          return
-        }
-        appModel.updateManualMember(updated)
-        isSaving = false
-        if appModel.boardError == nil {
-          dismiss()
-        }
-      }
-    } else {
-      appModel.updateManualMember(updated)
-      if appModel.boardError == nil {
-        dismiss()
-      }
+    appModel.updateManualMember(updated)
+    if appModel.boardError == nil {
+      dismiss()
     }
   }
 
@@ -7282,48 +9504,69 @@ private struct SharedMemberDetailSheet: View {
   }
 }
 
-private struct AddSharedMemberSheet: View {
+private struct AddSharedCommutePointSheet: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
-  @State private var name = ""
-  @State private var priorities = ""
-  @State private var neighborhoods = ""
-  @State private var dealbreakers = ""
+  @State private var label = ""
+  @State private var destination = ""
+  @State private var access = "flexible"
+  @State private var preferredMinutes = 5
+  @State private var maximumMinutes = 45
 
   var body: some View {
     NavigationStack {
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
           SharedPageHeader(
-            eyebrow: "New member",
-            title: "Add their point of view",
-            subtitle: "Invites are best, but you can capture a roommate profile manually while they join."
+            eyebrow: "Additional route",
+            title: "Add a commute point",
+            subtitle: "Every listing will be routed and graded against this destination too."
           )
 
-          SharedField(title: "Name", prompt: "Maya", text: $name)
-          Text("This creates a placeholder only. When this person joins, they set their own contribution and optionally add a commute address.")
-            .font(.subheadline)
+          SharedCommutePointExplanation()
+
+          SharedField(
+            title: "Label",
+            prompt: "Kid's school or roommate stand-in",
+            text: $label
+          )
+          SharedAddressAutocompleteField(
+            title: "Neighborhood or address",
+            prompt: "Midtown East, New York, NY",
+            text: $destination,
+            city: appModel.board.city
+          )
+
+          Text("A neighborhood is enough. You never need to enter an exact school, home, or office address if that feels too specific.")
+            .font(.caption)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
-          SharedField(title: "Priorities", prompt: "nightlife, natural light", text: $priorities)
-          SharedField(title: "Neighborhoods", prompt: "Williamsburg, Fort Greene", text: $neighborhoods)
-          SharedField(title: "Dealbreakers", prompt: "over $1,800, poor train access", text: $dealbreakers)
+
+          Picker("Travel mode", selection: $access) {
+            Text("Car / ride").tag("car")
+            Text("Transit").tag("transit")
+            Text("Either").tag("flexible")
+          }
+          .pickerStyle(.segmented)
+
+          HomeboardCommuteRangeControl(
+            minimumMinutes: $preferredMinutes,
+            maximumMinutes: $maximumMinutes
+          )
 
           Button {
-            appModel.addManualMember(
-              name: name,
-              budgetLine: "",
-              commuteLine: "",
-              priorities: SharedListingText.csv(priorities),
-              dealbreakers: SharedListingText.csv(dealbreakers),
-              neighborhoods: SharedListingText.csv(neighborhoods),
-              status: "profile captured"
+            appModel.addCommutePoint(
+              label: label,
+              destination: destination,
+              access: access,
+              preferredMinutes: preferredMinutes,
+              maximumMinutes: maximumMinutes
             )
             if appModel.boardError == nil {
               dismiss()
             }
           } label: {
-            Text("Add member")
+            Text("Add to every comparison")
               .font(.headline.weight(.bold))
               .foregroundStyle(Color.black)
               .frame(maxWidth: .infinity)
@@ -7331,9 +9574,17 @@ private struct AddSharedMemberSheet: View {
               .background(HomeboardPalette.accent)
               .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
           }
-          .buttonStyle(.plain)
-          .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          .opacity(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
+          .buttonStyle(HomeboardAreaButtonStyle())
+          .disabled(
+            label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              || destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          )
+          .opacity(
+            label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              || destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              ? 0.55
+              : 1
+          )
         }
         .padding(18)
       }
@@ -7350,67 +9601,124 @@ private struct AddSharedMemberSheet: View {
   }
 }
 
-// MARK: - Setup sheets
-
-private struct SharedBriefEditorSheet: View {
+private struct SharedCommutePointDetailSheet: View {
+  let point: MemberPreferenceCard
   @Environment(AppModel.self) private var appModel
-
-  private var currentMember: MemberPreferenceCard? {
-    if let userId = appModel.account?.id,
-       let linkedMember = appModel.board.members.first(where: { $0.userId == userId }) {
-      return linkedMember
-    }
-
-    return appModel.board.members.first(where: {
-      $0.userId.isEmpty && $0.role == "owner"
-    })
-  }
-
-  var body: some View {
-    if let currentMember {
-      SharedMemberDetailSheet(
-        member: currentMember,
-        presentation: .personalPreferences
-      )
-    } else {
-      SharedBriefEditorUnavailableView()
-    }
-  }
-}
-
-private struct SharedBriefEditorUnavailableView: View {
   @Environment(\.dismiss) private var dismiss
+  @State private var label = ""
+  @State private var destination = ""
+  @State private var access = "flexible"
+  @State private var preferredMinutes = 5
+  @State private var maximumMinutes = 45
+  @State private var showsDeleteConfirmation = false
+
+  private var canEdit: Bool {
+    guard let userId = appModel.account?.id else { return false }
+    return appModel.board.members.first(where: { $0.userId == userId })?.role == "owner"
+  }
 
   var body: some View {
     NavigationStack {
-      VStack(alignment: .leading, spacing: 16) {
-        SharedPageHeader(
-          eyebrow: "Personal preferences",
-          title: "Your profile is still connecting",
-          subtitle: "Refresh the board, then reopen Edit search brief. Your roommates’ settings have not been changed."
-        )
+      ScrollView(.vertical, showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 18) {
+          SharedPageHeader(
+            eyebrow: "Commute point",
+            title: point.name,
+            subtitle: "This is a destination used for routing, not another person's profile."
+          )
 
-        Button("Close") { dismiss() }
-          .font(.headline.weight(.bold))
-          .foregroundStyle(HomeboardPalette.buttonText)
-          .frame(maxWidth: .infinity)
-          .frame(height: 52)
-          .background(HomeboardPalette.accentGradient)
-          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-          .buttonStyle(.plain)
+          SharedCommutePointExplanation()
+          SharedField(title: "Label", prompt: "Kid's school", text: $label)
+            .disabled(!canEdit)
+          SharedAddressAutocompleteField(
+            title: "Neighborhood or address",
+            prompt: "Midtown East, New York, NY",
+            text: $destination,
+            city: appModel.board.city
+          )
+          .disabled(!canEdit)
 
-        Spacer()
+          Picker("Travel mode", selection: $access) {
+            Text("Car / ride").tag("car")
+            Text("Transit").tag("transit")
+            Text("Either").tag("flexible")
+          }
+          .pickerStyle(.segmented)
+          .disabled(!canEdit)
+
+          HomeboardCommuteRangeControl(
+            minimumMinutes: $preferredMinutes,
+            maximumMinutes: $maximumMinutes
+          )
+          .disabled(!canEdit)
+
+          if canEdit {
+            Button("Save commute point") {
+              var updated = point
+              updated.name = label.trimmingCharacters(in: .whitespacesAndNewlines)
+              updated.commuteDestination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+              updated.commuteAccess = access
+              updated.preferredCommuteMinutes = preferredMinutes
+              updated.maxCommuteMinutes = maximumMinutes
+              updated.commuteLine = "\(updated.commuteDestination ?? "") · ideal \(preferredMinutes)–\(maximumMinutes) min"
+              updated.priorities = ["commute"]
+              updated.status = "commute point"
+              appModel.updateManualMember(updated)
+              if appModel.boardError == nil { dismiss() }
+            }
+            .font(.headline.weight(.bold))
+            .foregroundStyle(Color.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(HomeboardPalette.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .disabled(
+              label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+
+            Button("Remove commute point", role: .destructive) {
+              showsDeleteConfirmation = true
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .buttonStyle(HomeboardAreaButtonStyle())
+          }
+        }
+        .padding(18)
       }
-      .padding(18)
       .background(WorkspaceBackgroundView())
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
-          Button("Cancel") { dismiss() }
+          Button("Done") { dismiss() }
             .foregroundStyle(HomeboardPalette.accent)
         }
       }
       .toolbarBackground(HomeboardPalette.background, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
+      .onAppear {
+        label = point.name
+        destination = point.commuteDestination ?? SharedListingText.commuteDestination(point.commuteLine)
+        access = ["car", "transit", "flexible"].contains(point.commuteAccess ?? "")
+          ? point.commuteAccess ?? "flexible"
+          : "flexible"
+        preferredMinutes = point.preferredCommuteMinutes ?? 5
+        maximumMinutes = max(point.maxCommuteMinutes ?? 45, preferredMinutes + 5)
+      }
+      .confirmationDialog(
+        "Remove this commute point?",
+        isPresented: $showsDeleteConfirmation,
+        titleVisibility: .visible
+      ) {
+        Button("Remove commute point", role: .destructive) {
+          appModel.removeManualMember(id: point.id)
+          dismiss()
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("Listings will no longer route or grade against this destination.")
+      }
     }
   }
 }
@@ -7446,7 +9754,7 @@ private struct SharedJoinBoardSheet: View {
           .background(HomeboardPalette.accent)
           .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
 
       if let error = appModel.boardError {
         Text(error)
@@ -7541,22 +9849,23 @@ private struct SharedSectionTitle: View {
 
 private struct SharedListingShareWorkflowGuide: View {
   let onDismiss: () -> Void
+  @State private var practiceComplete = false
 
   var body: some View {
     ZStack {
       Color.black.opacity(0.78)
         .ignoresSafeArea()
 
-      VStack(alignment: .leading, spacing: 16) {
-        HStack(alignment: .top, spacing: 12) {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 12) {
           ZStack(alignment: .bottomTrailing) {
-            SharedHomeboardAppIcon(size: 46)
+            SharedHomeboardAppIcon(size: 42)
 
-            Image(systemName: "square.and.arrow.up")
-              .font(.system(size: 10, weight: .bold))
-              .foregroundStyle(Color.white)
-              .frame(width: 20, height: 20)
-              .background(Color.blue)
+            Image(systemName: "puzzlepiece.extension.fill")
+              .font(.system(size: 9, weight: .bold))
+              .foregroundStyle(HomeboardPalette.buttonText)
+              .frame(width: 18, height: 18)
+              .background(HomeboardPalette.accent)
               .clipShape(Circle())
               .overlay {
                 Circle().stroke(HomeboardPalette.surface, lineWidth: 2)
@@ -7564,57 +9873,38 @@ private struct SharedListingShareWorkflowGuide: View {
               .offset(x: 3, y: 3)
           }
 
-          VStack(alignment: .leading, spacing: 4) {
-            Text("Share a listing to Homeboard")
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Save from Safari")
               .font(.title3.weight(.bold))
               .foregroundStyle(HomeboardPalette.primaryText)
-              .fixedSize(horizontal: false, vertical: true)
-
-            Text("Zillow, StreetEasy, Apartments.com, Realtor, Safari, and other rental apps or websites.")
+            Text("Enable once. Open a listing. Tap its pill.")
               .font(.caption)
               .foregroundStyle(HomeboardPalette.secondaryText)
-              .fixedSize(horizontal: false, vertical: true)
           }
         }
 
-        VStack(spacing: 0) {
-          workflowStep(
-            number: 1,
-            title: "Open the exact listing",
-            detail: "Use the individual home or unit page. Do not use search results or a nearby-listings card."
-          )
-          SharedDivider()
-          SharedShareSheetPreview()
-          SharedDivider()
-          workflowStep(
-            number: 3,
-            title: "Review what Homeboard found",
-            detail: "Confirm the full address, rent, bedrooms, and bathrooms. Correct anything missing, then save it to the board."
-          )
-        }
-        .homeboardInsetSurface(cornerRadius: 18)
-
-        Label("The + button is only a manual backup.", systemImage: "info.circle.fill")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(HomeboardPalette.secondaryText)
+        SharedSafariExtensionSetupCard(compact: true)
+        SharedSafariActionPreview { practiceComplete = true }
 
         Button(action: onDismiss) {
           HStack {
-            Text("Start browsing")
+            Text("Got it")
             Spacer()
-            Image(systemName: "arrow.right")
+            Image(systemName: "checkmark")
           }
           .font(.subheadline.weight(.bold))
           .foregroundStyle(HomeboardPalette.buttonText)
           .padding(.horizontal, 16)
-          .frame(height: 48)
+          .frame(height: 46)
           .background(HomeboardPalette.accent)
-          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .disabled(!practiceComplete)
+        .opacity(practiceComplete ? 1 : 0.4)
       }
-      .padding(18)
-      .frame(maxWidth: 370)
+      .padding(16)
+      .frame(maxWidth: 390)
       .background(HomeboardPalette.surface.opacity(0.99))
       .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
       .overlay {
@@ -7623,132 +9913,165 @@ private struct SharedListingShareWorkflowGuide: View {
       }
       .shadow(color: Color.black.opacity(0.50), radius: 28, x: 0, y: 16)
       .padding(.horizontal, 18)
+      .padding(.vertical, 20)
     }
     .transition(.opacity.combined(with: .scale(scale: 0.97)))
     .zIndex(110)
   }
+}
 
-  private func workflowStep(number: Int, title: String, detail: String) -> some View {
-    HStack(alignment: .top, spacing: 12) {
-      Text("\(number)")
-        .font(.caption.weight(.heavy))
-        .foregroundStyle(HomeboardPalette.buttonText)
-        .frame(width: 28, height: 28)
-        .background(HomeboardPalette.accent)
-        .clipShape(Circle())
+enum SafariGesturePracticeStep: Int {
+  case swipeLeft, swipeRight, swipeDown, complete
 
-      VStack(alignment: .leading, spacing: 3) {
-        Text(title)
-          .font(.subheadline.weight(.bold))
-          .foregroundStyle(HomeboardPalette.primaryText)
-        Text(detail)
-          .font(.caption)
-          .foregroundStyle(HomeboardPalette.secondaryText)
-          .fixedSize(horizontal: false, vertical: true)
-      }
+  enum Gesture { case left, right, down }
 
-      Spacer(minLength: 0)
+  var instruction: String {
+    switch self {
+    case .swipeLeft: "Swipe left to the next unit"
+    case .swipeRight: "Swipe right to go back"
+    case .swipeDown: "Swipe down to dismiss"
+    case .complete: "You're ready. Tap a pill to save."
     }
-    .padding(12)
+  }
+
+  mutating func record(_ gesture: Gesture) {
+    switch (self, gesture) {
+    case (.swipeLeft, .left): self = .swipeRight
+    case (.swipeRight, .right): self = .swipeDown
+    case (.swipeDown, .down): self = .complete
+    default: break
+    }
   }
 }
 
-private struct SharedShareSheetPreview: View {
+private struct SharedSafariActionPreview: View {
+  let onPracticeComplete: () -> Void
+  @State private var centeredUnit: String? = "4B"
+  @State private var practiceStep = SafariGesturePracticeStep.swipeLeft
+  @GestureState private var downwardOffset: CGFloat = 0
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 12) {
-        Text("2")
-          .font(.caption.weight(.heavy))
-          .foregroundStyle(HomeboardPalette.buttonText)
-          .frame(width: 28, height: 28)
-          .background(HomeboardPalette.accent)
-          .clipShape(Circle())
-
-        VStack(alignment: .leading, spacing: 3) {
-          Text("Tap Share, then tap Homeboard")
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(HomeboardPalette.primaryText)
-          Text("Safari uses this square-and-up-arrow. Rental apps may simply label it Share.")
-            .font(.caption)
-            .foregroundStyle(HomeboardPalette.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        Spacer(minLength: 4)
-
-        Image(systemName: "square.and.arrow.up")
-          .font(.system(size: 25, weight: .semibold))
-          .foregroundStyle(Color.blue)
-          .frame(width: 44, height: 44)
-          .background(Color.white.opacity(0.96))
-          .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+    VStack(alignment: .leading, spacing: 7) {
+      HStack {
+        Text("TRY IT")
+        Spacer()
+        Text(practiceStep == .complete ? "Complete" : "\(practiceStep.rawValue + 1) of 3")
       }
+      .font(.system(size: 9, weight: .bold))
+      .foregroundStyle(HomeboardPalette.tertiaryText)
+      .padding(.horizontal, 4)
 
-      VStack(spacing: 10) {
-        Capsule()
-          .fill(Color.white.opacity(0.22))
-          .frame(width: 34, height: 4)
+      GeometryReader { proxy in
+        let pillWidth = min(280, max(224, proxy.size.width - 52))
+        let units = [
+          (id: "4B", title: "Unit 4B", facts: "3 beds · 1 bath", price: "$4,850"),
+          (id: "7A", title: "Unit 7A", facts: "2 beds · 2 baths", price: "$4,400"),
+          (id: "edit", title: "Edit details", facts: "Change anything", price: "Edit →")
+        ]
 
-        HStack(alignment: .center, spacing: 18) {
-          VStack(spacing: 5) {
-            ZStack(alignment: .topTrailing) {
-              SharedHomeboardAppIcon(size: 54)
-                .overlay {
-                  RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(HomeboardPalette.accent, lineWidth: 3)
-                }
-
-              Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(HomeboardPalette.accent)
-                .background(HomeboardPalette.surface, in: Circle())
-                .offset(x: 4, y: -4)
+        ScrollView(.horizontal, showsIndicators: false) {
+          LazyHStack(spacing: 10) {
+            ForEach(units, id: \.id) { item in
+              safariListingPill(
+                place: item.title,
+                facts: item.facts,
+                price: item.price,
+                isCentered: centeredUnit == item.id
+              )
+              .frame(width: pillWidth)
+              .id(item.id)
             }
-
-            Text("Homeboard")
-              .font(.caption2.weight(.bold))
-              .foregroundStyle(HomeboardPalette.primaryText)
-              .lineLimit(1)
           }
-          .accessibilityElement(children: .combine)
-          .accessibilityLabel("Homeboard, choose this app")
-
-          VStack(spacing: 5) {
-            Image(systemName: "ellipsis")
-              .font(.system(size: 21, weight: .bold))
-              .foregroundStyle(Color.black.opacity(0.72))
-              .frame(width: 54, height: 54)
-              .background(Color.white)
-              .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-
-            Text("More")
-              .font(.caption2.weight(.medium))
-              .foregroundStyle(HomeboardPalette.secondaryText)
-          }
-
-          VStack(alignment: .leading, spacing: 3) {
-            Text("Look for this exact icon")
-              .font(.caption.weight(.bold))
-              .foregroundStyle(HomeboardPalette.primaryText)
-            Text("Tap Homeboard when it appears in the Share sheet.")
-              .font(.caption2)
-              .foregroundStyle(HomeboardPalette.secondaryText)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-
-          Spacer(minLength: 0)
+          .scrollTargetLayout()
+          .padding(.horizontal, max(0, (proxy.size.width - pillWidth) / 2))
         }
-
-        Text("If Homeboard is off-screen, swipe the app row left or tap More.")
-          .font(.caption2.weight(.semibold))
-          .foregroundStyle(HomeboardPalette.secondaryText)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $centeredUnit, anchor: .center)
+        .onChange(of: centeredUnit) { oldValue, newValue in
+          let ids = units.map(\.id)
+          guard let oldValue, let newValue,
+                let oldIndex = ids.firstIndex(of: oldValue),
+                let newIndex = ids.firstIndex(of: newValue), oldIndex != newIndex else { return }
+          practiceStep.record(newIndex > oldIndex ? .left : .right)
+        }
+        .simultaneousGesture(
+          DragGesture(minimumDistance: 16)
+            .updating($downwardOffset) { value, state, _ in
+              if practiceStep == .swipeDown,
+                 value.translation.height > abs(value.translation.width) * 1.15 {
+                state = max(0, value.translation.height)
+              }
+            }
+            .onEnded { value in
+              if value.translation.height > 56,
+                 value.translation.height > abs(value.translation.width) * 1.15 {
+                finishDismissPractice()
+              }
+            }
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Practice unit carousel")
+        .accessibilityHint(practiceStep.instruction)
+        .accessibilityAction(named: Text("Next unit")) { centeredUnit = "7A" }
+        .accessibilityAction(named: Text("Previous unit")) { centeredUnit = "4B" }
+        .accessibilityAction(named: Text("Dismiss preview")) { finishDismissPractice() }
+        .offset(y: practiceStep == .complete ? 75 : downwardOffset)
+        .opacity(practiceStep == .complete ? 0 : 1)
+        .allowsHitTesting(practiceStep != .complete)
+        .accessibilityHidden(practiceStep == .complete)
+        .animation(.easeOut(duration: 0.2), value: practiceStep)
       }
-      .padding(12)
-      .background(Color.black.opacity(0.22))
-      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .frame(height: 60)
+      .clipped()
+
+      Label(practiceStep.instruction, systemImage: practiceStep == .complete ? "checkmark.circle.fill" : "hand.draw.fill")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
     }
-    .padding(12)
+    .padding(10)
+    .background(Color.black.opacity(0.10))
+    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+  }
+
+  private func finishDismissPractice() {
+    guard practiceStep == .swipeDown else { return }
+    practiceStep.record(.down)
+    onPracticeComplete()
+  }
+
+  private func safariListingPill(
+    place: String,
+    facts: String,
+    price: String,
+    isCentered: Bool
+  ) -> some View {
+    HStack(spacing: 10) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(place)
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+        Text(facts)
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+      }
+
+      Text(price)
+        .font(.caption.weight(.heavy))
+        .foregroundStyle(HomeboardPalette.primaryText)
+    }
+    .padding(.horizontal, 14)
+    .frame(height: 56)
+    .background(HomeboardPalette.surfaceDeep.opacity(0.98))
+    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
+        .stroke(HomeboardPalette.accent.opacity(isCentered ? 0.55 : 0.25), lineWidth: 1)
+    }
+    .shadow(color: Color.black.opacity(isCentered ? 0.22 : 0.08), radius: 10, x: 0, y: 5)
+    .scaleEffect(isCentered ? 1 : 0.94)
+    .opacity(isCentered ? 1 : 0.58)
+    .animation(.easeOut(duration: 0.16), value: isCentered)
   }
 }
 
@@ -7918,7 +10241,7 @@ private struct SharedCoachmarkOverlay: View {
                 .background(Color.white.opacity(0.05))
                 .clipShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
 
           Button(action: onDismiss) {
@@ -7934,7 +10257,7 @@ private struct SharedCoachmarkOverlay: View {
             .background(HomeboardPalette.accent)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
         .padding(17)
         .frame(width: min(geometry.size.width - 32, 380))
@@ -8001,46 +10324,13 @@ private struct SharedListingArtwork: View {
   var body: some View {
     GeometryReader { proxy in
       ZStack {
+        artwork
+
         LinearGradient(
-          colors: [
-            Color(red: 0.055, green: 0.085, blue: 0.12),
-            Color(red: 0.08, green: 0.16, blue: 0.21),
-            HomeboardPalette.accentStrong.opacity(0.42)
-          ],
-          startPoint: .topLeading,
-          endPoint: .bottomTrailing
+          colors: [Color.black.opacity(0.18), .clear, Color.black.opacity(0.64)],
+          startPoint: .top,
+          endPoint: .bottom
         )
-
-        Canvas { context, size in
-          let spacing = max(min(size.width / 7, 58), 28)
-          var grid = Path()
-          stride(from: -spacing, through: size.width + spacing, by: spacing).forEach { x in
-            grid.move(to: CGPoint(x: x, y: 0))
-            grid.addLine(to: CGPoint(x: x + spacing * 0.7, y: size.height))
-          }
-          stride(from: CGFloat.zero, through: size.height + spacing, by: spacing).forEach { y in
-            grid.move(to: CGPoint(x: 0, y: y))
-            grid.addLine(to: CGPoint(x: size.width, y: y - spacing * 0.35))
-          }
-          context.stroke(
-            grid,
-            with: .color(Color.white.opacity(0.075)),
-            lineWidth: 1
-          )
-
-          var route = Path()
-          route.move(to: CGPoint(x: -8, y: size.height * 0.74))
-          route.addCurve(
-            to: CGPoint(x: size.width + 8, y: size.height * 0.28),
-            control1: CGPoint(x: size.width * 0.28, y: size.height * 0.82),
-            control2: CGPoint(x: size.width * 0.58, y: size.height * 0.16)
-          )
-          context.stroke(
-            route,
-            with: .color(HomeboardPalette.accent.opacity(0.62)),
-            style: StrokeStyle(lineWidth: 3, lineCap: .round)
-          )
-        }
 
         VStack {
           HStack {
@@ -8062,15 +10352,6 @@ private struct SharedListingArtwork: View {
           Spacer()
 
           HStack(alignment: .bottom) {
-            ZStack {
-              Circle()
-                .fill(HomeboardPalette.accent.opacity(0.18))
-                .frame(width: min(height * 0.36, 74), height: min(height * 0.36, 74))
-              Image(systemName: "building.2.crop.circle.fill")
-                .font(.system(size: min(height * 0.23, 46), weight: .medium))
-                .foregroundStyle(HomeboardPalette.accent)
-            }
-
             Spacer()
 
             Text([
@@ -8090,6 +10371,99 @@ private struct SharedListingArtwork: View {
     .frame(height: height)
     .clipped()
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+  }
+
+  @ViewBuilder
+  private var artwork: some View {
+    if let remotePhotoURL {
+      AsyncImage(
+        url: remotePhotoURL,
+        transaction: Transaction(animation: .easeInOut(duration: 0.2))
+      ) { phase in
+        switch phase {
+        case .empty:
+          placeholderArtwork
+            .overlay {
+              ProgressView()
+                .tint(Color.white.opacity(0.82))
+            }
+        case .success(let image):
+          image
+            .resizable()
+            .scaledToFill()
+        case .failure:
+          placeholderArtwork
+        @unknown default:
+          placeholderArtwork
+        }
+      }
+      .accessibilityLabel("Listing photo")
+    } else {
+      placeholderArtwork
+    }
+  }
+
+  private var remotePhotoURL: URL? {
+    let value = listing.photoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard
+      let url = URL(string: value),
+      ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+    else { return nil }
+    return url
+  }
+
+  private var placeholderArtwork: some View {
+    ZStack {
+      LinearGradient(
+        colors: [
+          Color(red: 0.055, green: 0.085, blue: 0.12),
+          Color(red: 0.08, green: 0.16, blue: 0.21),
+          HomeboardPalette.accentStrong.opacity(0.42)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+
+      Canvas { context, size in
+        let spacing = max(min(size.width / 7, 58), 28)
+        var grid = Path()
+        stride(from: -spacing, through: size.width + spacing, by: spacing).forEach { x in
+          grid.move(to: CGPoint(x: x, y: 0))
+          grid.addLine(to: CGPoint(x: x + spacing * 0.7, y: size.height))
+        }
+        stride(from: CGFloat.zero, through: size.height + spacing, by: spacing).forEach { y in
+          grid.move(to: CGPoint(x: 0, y: y))
+          grid.addLine(to: CGPoint(x: size.width, y: y - spacing * 0.35))
+        }
+        context.stroke(
+          grid,
+          with: .color(Color.white.opacity(0.075)),
+          lineWidth: 1
+        )
+
+        var route = Path()
+        route.move(to: CGPoint(x: -8, y: size.height * 0.74))
+        route.addCurve(
+          to: CGPoint(x: size.width + 8, y: size.height * 0.28),
+          control1: CGPoint(x: size.width * 0.28, y: size.height * 0.82),
+          control2: CGPoint(x: size.width * 0.58, y: size.height * 0.16)
+        )
+        context.stroke(
+          route,
+          with: .color(HomeboardPalette.accent.opacity(0.62)),
+          style: StrokeStyle(lineWidth: 3, lineCap: .round)
+        )
+      }
+
+      ZStack {
+        Circle()
+          .fill(HomeboardPalette.accent.opacity(0.18))
+          .frame(width: min(height * 0.36, 74), height: min(height * 0.36, 74))
+        Image(systemName: "building.2.crop.circle.fill")
+          .font(.system(size: min(height * 0.23, 46), weight: .medium))
+          .foregroundStyle(HomeboardPalette.accent)
+      }
+    }
   }
 }
 
@@ -8292,7 +10666,7 @@ private struct SharedSettingsRow: View {
       .padding(.horizontal, 14)
       .frame(height: 66)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 }
 
@@ -8301,6 +10675,139 @@ private struct SharedDivider: View {
     Divider()
       .overlay(Color.white.opacity(0.07))
       .padding(.leading, 63)
+  }
+}
+
+private struct SharedAddressAutocompleteField: View {
+  let title: String
+  let prompt: String
+  @Binding var text: String
+  let city: String
+
+  @StateObject private var addressSearch = OnboardingAddressSearch()
+  @FocusState private var isFocused: Bool
+  @State private var isResolving = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Text(title)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+
+      HStack(spacing: 8) {
+        TextField(prompt, text: $text)
+          .textContentType(.fullStreetAddress)
+          .textInputAutocapitalization(.words)
+          .autocorrectionDisabled()
+          .focused($isFocused)
+          .font(.subheadline)
+          .foregroundStyle(HomeboardPalette.primaryText)
+
+        if isResolving {
+          ProgressView()
+            .controlSize(.small)
+            .tint(HomeboardPalette.accent)
+        } else {
+          Image(systemName: "apple.logo")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+            .accessibilityHidden(true)
+        }
+      }
+      .padding(.horizontal, 12)
+      .frame(height: 46)
+      .background(Color.white.opacity(0.06))
+      .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+          .stroke(
+            isFocused ? HomeboardPalette.accent.opacity(0.72) : Color.white.opacity(0.07),
+            lineWidth: isFocused ? 1.5 : 1
+          )
+      }
+
+      if isFocused && !addressSearch.suggestions.isEmpty {
+        VStack(spacing: 0) {
+          ForEach(Array(addressSearch.suggestions.enumerated()), id: \.offset) { index, suggestion in
+            Button {
+              select(suggestion)
+            } label: {
+              HStack(spacing: 11) {
+                Image(systemName: "mappin.circle.fill")
+                  .foregroundStyle(HomeboardPalette.accent)
+
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(suggestion.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(HomeboardPalette.primaryText)
+                    .lineLimit(1)
+                  if !suggestion.subtitle.isEmpty {
+                    Text(suggestion.subtitle)
+                      .font(.caption)
+                      .foregroundStyle(HomeboardPalette.secondaryText)
+                      .lineLimit(1)
+                  }
+                }
+
+                Spacer(minLength: 4)
+              }
+              .padding(.horizontal, 12)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .frame(height: 54)
+              .contentShape(Rectangle())
+            }
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .frame(maxWidth: .infinity)
+
+            if index < addressSearch.suggestions.count - 1 {
+              Rectangle()
+                .fill(HomeboardPalette.border)
+                .frame(height: 1)
+                .padding(.leading, 44)
+            }
+          }
+        }
+        .homeboardInsetSurface(cornerRadius: 16)
+      }
+
+      Label("Suggestions from Apple Maps", systemImage: "map.fill")
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .onAppear {
+      addressSearch.primeRegion(city: city)
+    }
+    .onChange(of: city) { _, nextCity in
+      addressSearch.primeRegion(city: nextCity)
+      if isFocused {
+        addressSearch.update(query: text, city: nextCity)
+      }
+    }
+    .onChange(of: text) { _, value in
+      guard isFocused else { return }
+      addressSearch.update(query: value, city: city)
+    }
+    .onChange(of: isFocused) { _, focused in
+      if focused {
+        addressSearch.update(query: text, city: city)
+      } else {
+        addressSearch.clear()
+      }
+    }
+    .onDisappear {
+      addressSearch.clear()
+    }
+  }
+
+  private func select(_ suggestion: MKLocalSearchCompletion) {
+    isFocused = false
+    isResolving = true
+    addressSearch.clear()
+    Task {
+      text = await addressSearch.resolvedAddress(for: suggestion)
+      isResolving = false
+    }
   }
 }
 
@@ -8542,9 +11049,17 @@ private struct SharedListingMapCluster: Identifiable {
 
   static func build(
     items: [SharedListingMapItem],
-    region: MKCoordinateRegion
+    region: MKCoordinateRegion,
+    priorityListingIDs: Set<String> = []
   ) -> [SharedListingMapCluster] {
     guard !items.isEmpty else { return [] }
+
+    let priorityItems = items.filter {
+      priorityListingIDs.contains($0.listing.id)
+    }
+    let clusteredItems = items.filter {
+      !priorityListingIDs.contains($0.listing.id)
+    }
 
     let latitudeCell = max(region.span.latitudeDelta / 8, 0.00035)
     let longitudeCell = max(region.span.longitudeDelta / 6, 0.00035)
@@ -8552,13 +11067,14 @@ private struct SharedListingMapCluster: Identifiable {
     let minimumLongitude = region.center.longitude - region.span.longitudeDelta / 2
 
     var buckets: [String: [SharedListingMapItem]] = [:]
-    for item in items {
+    for item in clusteredItems {
       let row = Int(floor((item.coordinate.latitude - minimumLatitude) / latitudeCell))
       let column = Int(floor((item.coordinate.longitude - minimumLongitude) / longitudeCell))
       buckets["\(row):\(column)", default: []].append(item)
     }
 
-    return buckets.keys.sorted().compactMap { key in
+    let clusters: [SharedListingMapCluster] = buckets.keys.sorted().compactMap {
+      key -> SharedListingMapCluster? in
       guard let bucket = buckets[key], !bucket.isEmpty else { return nil }
       let latitude = bucket.reduce(0) { $0 + $1.coordinate.latitude } / Double(bucket.count)
       let longitude = bucket.reduce(0) { $0 + $1.coordinate.longitude } / Double(bucket.count)
@@ -8568,11 +11084,13 @@ private struct SharedListingMapCluster: Identifiable {
         items: bucket
       )
     }
+    return clusters + priorityItems.map { expanded($0) }
   }
 }
 
 private struct SharedListingClusterMarker: View {
   let count: Int
+  let isSelected: Bool
   let comparisonScore: SharedListingComparisonScore?
   let comparisonColor: Color?
 
@@ -8594,7 +11112,10 @@ private struct SharedListingClusterMarker: View {
       .background(markerColor)
       .clipShape(Circle())
       .overlay {
-        Circle().stroke(Color.white.opacity(0.45), lineWidth: 1)
+        Circle().stroke(
+          isSelected ? HomeboardPalette.success : Color.white.opacity(0.45),
+          lineWidth: isSelected ? 3 : 1
+        )
       }
       .shadow(color: Color.black.opacity(0.24), radius: 4, x: 0, y: 2)
     } else {
@@ -8611,7 +11132,10 @@ private struct SharedListingClusterMarker: View {
       .background(markerColor)
       .clipShape(Capsule())
       .overlay {
-        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1)
+        Capsule().stroke(
+          isSelected ? HomeboardPalette.success : Color.white.opacity(0.22),
+          lineWidth: isSelected ? 3 : 1
+        )
       }
       .shadow(color: markerColor.opacity(0.34), radius: 8, x: 0, y: 4)
     }

@@ -52,9 +52,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       },
       { headers },
     );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to check device pairing.";
-    return NextResponse.json({ error: message }, { status: 500, headers });
+  } catch {
+    return NextResponse.json({ error: "Unable to check device pairing." }, { status: 500, headers });
   }
 }
 
@@ -74,8 +73,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
       });
     }
     return NextResponse.json({ ok: true }, { headers });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to cancel device pairing.";
-    return NextResponse.json({ error: message }, { status: 500, headers });
+  } catch {
+    return NextResponse.json({ error: "Unable to cancel device pairing." }, { status: 500, headers });
   }
 }

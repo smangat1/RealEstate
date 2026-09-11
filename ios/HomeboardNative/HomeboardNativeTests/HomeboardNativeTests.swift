@@ -2,6 +2,83 @@ import XCTest
 @testable import HomeboardNative
 
 final class HomeboardNativeTests: XCTestCase {
+  func testPollVoteIdentityDoesNotConfuseMembersWithTheSameName() throws {
+    let decision = ListingDecisionSummary(id: "tour", type: "request_viewing", votes: [
+      ListingDecisionVote(name: "Sam", choice: "no", userId: "first-sam"),
+      ListingDecisionVote(name: "Sam", choice: "yes", userId: "second-sam")
+    ])
+    XCTAssertEqual(decision.choice(for: "second-sam"), "yes")
+    XCTAssertNil(decision.choice(for: nil))
+    XCTAssertNil(decision.choice(for: "unknown"))
+
+    let legacy = try JSONDecoder().decode(ListingDecisionVote.self, from: Data(#"{"name":"Sam","choice":"yes"}"#.utf8))
+    XCTAssertNil(legacy.userId)
+    XCTAssertEqual(legacy.choice, "yes")
+  }
+
+  func testGroupDecisionProgressRequiresEveryoneAndDecodesLegacyPayloads() throws {
+    let pending = ListingDecisionSummary(
+      id: "tour",
+      type: "request_viewing",
+      votes: [ListingDecisionVote(name: "Sam", choice: "yes", userId: "sam")],
+      resolvedCount: 1,
+      requiredCount: 3,
+      remainingMemberNames: ["Maya", "Alex"]
+    )
+    XCTAssertEqual(pending.groupResolvedCount, 1)
+    XCTAssertEqual(pending.groupRequiredCount, 3)
+    XCTAssertFalse(pending.isGroupResolved)
+
+    let complete = ListingDecisionSummary(
+      id: "apply",
+      type: "apply",
+      votes: [],
+      resolvedCount: 3,
+      requiredCount: 3
+    )
+    XCTAssertTrue(complete.isGroupResolved)
+
+    let legacy = try JSONDecoder().decode(
+      ListingDecisionSummary.self,
+      from: Data(#"{"id":"old","type":"shortlist","closedAt":null,"votes":[]}"#.utf8)
+    )
+    XCTAssertEqual(legacy.groupResolvedCount, 0)
+    XCTAssertEqual(legacy.groupRequiredCount, 2)
+    XCTAssertFalse(legacy.isGroupResolved)
+  }
+
+  func testOpenPollLookupExcludesClosedDecisionsAndOtherPollTypes() {
+    var listing = ListingPreview(
+      title: "123 Example Street", location: "New York", priceLine: "$2,000",
+      commuteLine: "Compare routes", summary: "", fitLabel: "", highlights: [], openRisks: []
+    )
+    listing.decisions = [
+      ListingDecisionSummary(id: "closed-tour", type: "request_viewing", closedAt: "2026-09-04", votes: []),
+      ListingDecisionSummary(id: "apply", type: "apply", votes: []),
+      ListingDecisionSummary(id: "open-tour", type: "request_viewing", votes: [])
+    ]
+    XCTAssertEqual(listing.openDecision(for: .requestViewing)?.id, "open-tour")
+    XCTAssertNil(listing.openDecision(for: .shortlist))
+  }
+
+  func testPassedShortlistFilterHandlesBothStatusesAndDoesNotLeakIntoTouring() {
+    var listing = ListingPreview(
+      title: "123 Example Street", location: "New York", priceLine: "$2,000",
+      commuteLine: "Compare routes", summary: "", fitLabel: "", highlights: [], openRisks: []
+    )
+    listing.workflowStatus = "viewing"
+    for status in ["passed", "rejected", "REJECTED"] {
+      listing.status = status
+      XCTAssertTrue(SharedListingFilter.passed.includes(listing))
+      XCTAssertTrue(SharedListingFilter.all.includes(listing))
+      XCTAssertFalse(SharedListingFilter.active.includes(listing))
+      XCTAssertFalse(SharedListingFilter.touring.includes(listing))
+    }
+    listing.status = "interested"
+    XCTAssertTrue(SharedListingFilter.touring.includes(listing))
+    XCTAssertFalse(SharedListingFilter.passed.includes(listing))
+  }
+
   func testProfileCompletionTracksEveryRequiredField() {
     var profile = RentalProfile()
     XCTAssertEqual(profile.percentComplete, 0)
@@ -61,6 +138,25 @@ final class HomeboardNativeTests: XCTestCase {
         minutes: 45,
         preferredMinutes: 10,
         maximumMinutes: 35
+      ),
+      100
+    )
+  }
+
+  func testLongCommuteScoreRespectsTheChosenMaximum() {
+    XCTAssertEqual(
+      SharedComparisonMath.commuteScore(
+        minutes: 180,
+        preferredMinutes: 30,
+        maximumMinutes: 120
+      ),
+      0
+    )
+    XCTAssertEqual(
+      SharedComparisonMath.commuteScore(
+        minutes: 180,
+        preferredMinutes: 30,
+        maximumMinutes: 180
       ),
       100
     )
@@ -226,6 +322,77 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertEqual(analysis.options[0].price, 4_800)
     XCTAssertEqual(analysis.options[1].unit, "5C")
     XCTAssertEqual(analysis.options[1].price, 5_250)
+  }
+
+  func testSafariSharePipelineFindsTenUnitsFromTwoInitialCandidates() async {
+    let evidence = "Available units\nAll (10)\n" + (1...10).map { index in
+      "\(index)A\n2 beds, 1 bath\n850\nNow\n$\(3000 + (index - 1) * 100)"
+    }.joined(separator: "\n")
+    let scan = await HomeboardListingIntelligence.analyzeWithOneRescan(message: [
+      "listingScope": "building",
+      "address": "123 Main Street",
+      "availabilityPageEvidence": evidence,
+      "semanticPageEvidence": evidence,
+      "secondaryPageEvidence": evidence,
+      "unitOptions": [
+        ["unit": "1A", "label": "1A", "price": 3000, "bedrooms": 2, "bathrooms": 1],
+        ["unit": "2A", "label": "2A", "price": 3100, "bedrooms": 2, "bathrooms": 1]
+      ]
+    ], allowSystemModel: false)
+    XCTAssertEqual(scan.analysis.options.map(\.unit), (1...10).map { "\($0)A" })
+    XCTAssertEqual(scan.analysis.options.map(\.price), (0..<10).map { Double(3000 + $0 * 100) })
+    XCTAssertTrue(scan.analysis.options.allSatisfy { $0.bedrooms == 2 && $0.bathrooms == 1 && $0.squareFeet == 850 })
+  }
+
+  func testSafariSharePipelineRejectsExtraCandidatesAndUsesEachRowsPrice() async {
+    let evidence = "1A\n2 beds, 1 bath\n850\nNow\n$3000\n2A\n2 beds, 1 bath\n850\nNow\n$3100"
+    let candidates = (1...5).map { index -> [String: Any] in
+      ["unit": "\(index)A", "label": "\(index)A", "price": 3100, "bedrooms": 2, "bathrooms": 1]
+    }
+    let scan = await HomeboardListingIntelligence.analyzeWithOneRescan(message: [
+      "listingScope": "building", "address": "123 Main Street",
+      "availabilityPageEvidence": evidence,
+      "pageEvidence": "Recommended unit 3A 2 beds 1 bath $3100. Unavailable unit 4A 2 beds 1 bath $3100. Unit 5A 2 beds 1 bath $3100",
+      "unitOptions": candidates
+    ], allowSystemModel: false)
+    XCTAssertEqual(scan.analysis.options.map(\.unit), ["1A", "2A"])
+    XCTAssertEqual(scan.analysis.options.map(\.price), [3000, 3100])
+  }
+
+  func testSafariEmptyAvailabilityRejectsCandidatesFromGeneralPageCopy() async {
+    let scan = await HomeboardListingIntelligence.analyzeWithOneRescan(message: [
+      "listingScope": "building", "address": "123 Main Street",
+      "availabilityPageEvidence": "", "structuredUnitEvidence": "",
+      "pageEvidence": "Unit 3A 2 beds 1 bath $3100",
+      "unitOptions": [["unit": "3A", "label": "3A", "price": 3100, "bedrooms": 2, "bathrooms": 1]]
+    ], allowSystemModel: false)
+    XCTAssertTrue(scan.analysis.options.isEmpty)
+  }
+
+  func testPartialBuildingOptionsStillRequestResolution() async {
+    let evidence = "Available units\nAll (10)\n1A\n2 beds, 1 bath\n850\nNow\n$3000"
+    let message: [String: Any] = ["listingScope": "building", "address": "123 Main Street", "availabilityPageEvidence": evidence]
+    let analysis = await HomeboardListingIntelligence.analyze(message: message, allowSystemModel: false)
+    XCTAssertEqual(analysis.options.count, 1)
+    let plan = HomeboardListingIntelligence.systemModelResolutionPlan(message: message, facts: analysis.facts, options: analysis.options)
+    XCTAssertTrue(plan.fields.contains("options"))
+  }
+
+  func testSafariGesturePracticeRequiresLeftRightThenDown() {
+    var step = SafariGesturePracticeStep.swipeLeft
+    step.record(.down)
+    step.record(.right)
+    XCTAssertEqual(step, .swipeLeft)
+    step.record(.left)
+    XCTAssertEqual(step, .swipeRight)
+    step.record(.down)
+    XCTAssertEqual(step, .swipeRight)
+    step.record(.right)
+    XCTAssertEqual(step, .swipeDown)
+    step.record(.left)
+    XCTAssertEqual(step, .swipeDown)
+    step.record(.down)
+    XCTAssertEqual(step, .complete)
   }
 
   func testListingIntelligenceParsesZillowStyleAvailabilityRows() async {
@@ -785,7 +952,7 @@ final class HomeboardNativeTests: XCTestCase {
     model.removeManualListing(id: listing.id)
 
     XCTAssertTrue(model.board.shortlist.isEmpty)
-    XCTAssertEqual(model.boardFeedback, "Listing removed from the board.")
+    XCTAssertEqual(model.boardFeedback, "Listing moved to Recently Deleted.")
     XCTAssertNil(model.boardError)
   }
 
@@ -842,4 +1009,164 @@ final class HomeboardNativeTests: XCTestCase {
     let restoredAfterDelete = AppModel()
     XCTAssertTrue(restoredAfterDelete.board.shortlist.isEmpty)
   }
+
+  @MainActor
+  func testAppModelInitWithExistingLocalBoardsDoesNotTriggerExclusivityViolation() {
+    let persistenceKey = "homeboard.native.state"
+    let previousState = UserDefaults.standard.data(forKey: persistenceKey)
+    defer {
+      if let previousState {
+        UserDefaults.standard.set(previousState, forKey: persistenceKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: persistenceKey)
+      }
+    }
+
+    let model = AppModel()
+    var sampleBoard = MobileBoard.empty
+    sampleBoard.id = "local-exclusivity-test"
+    sampleBoard.recentlyDeleted = [
+      ListingPreview(
+        id: "del-1",
+        title: "Deleted Listing",
+        location: "NYC",
+        priceLine: "$2,000",
+        commuteLine: "15 min",
+        summary: "test",
+        fitLabel: "test",
+        highlights: [],
+        openRisks: [],
+        deletedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-10 * 24 * 60 * 60))
+      )
+    ]
+    model.localBoardsById["local-exclusivity-test"] = sampleBoard
+    model.persist()
+
+    let reinitialized = AppModel()
+    XCTAssertNotNil(reinitialized.localBoardsById["local-exclusivity-test"])
+    XCTAssertTrue(reinitialized.localBoardsById["local-exclusivity-test"]?.recentlyDeleted?.isEmpty ?? false)
+  }
+
+  func testSharedListingActiveOfferDetectionAndScaling() {
+    // 1 month free
+    let offer1 = SharedListingActiveOffer.detect(
+      highlights: ["1 month free on 12-month lease"],
+      summary: "",
+      fitLabel: "",
+      priceLine: "$3,000",
+      amenities: [],
+      title: "Nice apartment"
+    )
+    XCTAssertNotNil(offer1)
+    XCTAssertEqual(offer1?.bonusPoints, 10)
+    XCTAssertEqual(offer1?.title, "1 Month Free Special")
+    XCTAssertEqual(offer1?.badgeLabel, "1 Mo Free")
+
+    // 2 months free
+    let offer2 = SharedListingActiveOffer.detect(
+      highlights: [],
+      summary: "Move in now and receive 2 months free concession",
+      fitLabel: "",
+      priceLine: "$4,000",
+      amenities: [],
+      title: "Modern 2BR"
+    )
+    XCTAssertNotNil(offer2)
+    XCTAssertEqual(offer2?.bonusPoints, 18)
+    XCTAssertEqual(offer2?.title, "2 Months Free Special")
+
+    // No broker fee
+    let offerNoFee = SharedListingActiveOffer.detect(
+      highlights: [],
+      summary: "",
+      fitLabel: "",
+      priceLine: "$2,800",
+      amenities: ["No broker fee", "Elevator"],
+      title: "Spacious studio"
+    )
+    XCTAssertNotNil(offerNoFee)
+    XCTAssertEqual(offerNoFee?.bonusPoints, 8)
+    XCTAssertEqual(offerNoFee?.title, "No Broker Fee")
+
+    // Cash credit $1500
+    let offerCredit = SharedListingActiveOffer.detect(
+      highlights: ["$1,500 move-in bonus for immediate move-ins"],
+      summary: "",
+      fitLabel: "",
+      priceLine: "$3,500",
+      amenities: [],
+      title: "Luxury unit"
+    )
+    XCTAssertNotNil(offerCredit)
+    XCTAssertEqual(offerCredit?.bonusPoints, 8)
+
+    // Waived deposit
+    let offerDeposit = SharedListingActiveOffer.detect(
+      highlights: [],
+      summary: "Zero deposit required on approved credit",
+      fitLabel: "",
+      priceLine: "$2,500",
+      amenities: [],
+      title: "Cozy 1BR"
+    )
+    XCTAssertNotNil(offerDeposit)
+    XCTAssertEqual(offerDeposit?.bonusPoints, 5)
+
+    // Stacking: 1 month free + no broker fee -> 10 + 8 = 18 pts
+    let offerStacked = SharedListingActiveOffer.detect(
+      highlights: ["1 month free", "No fee"],
+      summary: "",
+      fitLabel: "",
+      priceLine: "$3,200",
+      amenities: [],
+      title: "Great deal"
+    )
+    XCTAssertNotNil(offerStacked)
+    XCTAssertEqual(offerStacked?.bonusPoints, 18)
+    XCTAssertEqual(offerStacked?.title, "1 Month Free + No Broker Fee")
+
+    // Cap at 25 points maximum
+    let offerCapped = SharedListingActiveOffer.detect(
+      highlights: ["3 months free", "No broker fee", "$2,000 move-in credit"],
+      summary: "",
+      fitLabel: "",
+      priceLine: "$5,000",
+      amenities: [],
+      title: "Penthouse"
+    )
+    XCTAssertNotNil(offerCapped)
+    XCTAssertEqual(offerCapped?.bonusPoints, 25)
+  }
+
+  func testSharedComparisonMathOfferBonusAndPriceAdjustment() {
+    let offer = SharedListingActiveOffer(kinds: [.monthsFree(count: 1.0)], rawEvidence: "1 month free")
+    let bonus = SharedComparisonMath.offerBonusPoints(for: offer)
+    XCTAssertEqual(bonus, 10)
+
+    // Base score 75 boosted by 10 points -> 85
+    let adjusted = SharedComparisonMath.adjustedPriceScore(baseScore: 75, bonusPoints: bonus)
+    XCTAssertEqual(adjusted, 85)
+
+    // Score clamped at 100
+    let clamped = SharedComparisonMath.adjustedPriceScore(baseScore: 96, bonusPoints: bonus)
+    XCTAssertEqual(clamped, 100)
+  }
+
+  func testListingPreviewActiveOfferIntegration() {
+    let listing = ListingPreview(
+      id: "test-offer",
+      title: "Offer listing",
+      location: "New York",
+      priceLine: "$3,000",
+      commuteLine: "20 min",
+      summary: "Sample summary",
+      fitLabel: "Great fit",
+      highlights: ["1 month free on 12-month lease"],
+      openRisks: []
+    )
+    XCTAssertNotNil(listing.activeOffer)
+    XCTAssertEqual(listing.activeOffer?.bonusPoints, 10)
+    XCTAssertEqual(listing.activeOffer?.badgeLabel, "1 Mo Free")
+  }
+
 }

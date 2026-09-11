@@ -3,11 +3,7 @@ import { redirect } from "next/navigation";
 
 import { signInAction } from "@/app/actions";
 import { getCurrentAppUser } from "@/lib/auth";
-
-function safeNextPath(value: string | undefined) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
-  return value;
-}
+import { safeRelativePath } from "@/lib/input-safety";
 
 export default async function SignInPage({
   searchParams,
@@ -15,7 +11,7 @@ export default async function SignInPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const next = safeNextPath(typeof params.next === "string" ? params.next : undefined);
+  const next = safeRelativePath(typeof params.next === "string" ? params.next : undefined);
   const email = typeof params.email === "string" ? params.email : "";
   const error = typeof params.error === "string" ? params.error : null;
   const notice = typeof params.notice === "string" ? params.notice : null;
@@ -52,6 +48,7 @@ export default async function SignInPage({
                   placeholder="you@example.com"
                   autoComplete="email"
                   defaultValue={email}
+                  maxLength={254}
                   required
                 />
               </label>
@@ -62,6 +59,7 @@ export default async function SignInPage({
                   type="password"
                   placeholder="Your password"
                   autoComplete="current-password"
+                  maxLength={128}
                   required
                 />
               </label>

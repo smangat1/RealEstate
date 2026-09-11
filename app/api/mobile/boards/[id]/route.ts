@@ -79,7 +79,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "load_board", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to load board." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }
 
@@ -125,7 +128,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "save_board_brief", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to save board brief.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to save board brief." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }
 
@@ -150,6 +156,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "rename_board", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to rename board.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to rename board." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }

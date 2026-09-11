@@ -1,10 +1,13 @@
 node_modules
 node_modules.dataless-old
 # Keep environment variables out of version control
-.env
-.env.local
-.env*.icloud-placeholder-*
+.env*
+!.env.example
 *.icloud-placeholder-*
+.vercel/
+coverage/
+/output/
+/*.pdf
 
 .next
 *.tsbuildinfo
@@ -17,7 +20,10 @@ data/*.db-wal
 # Xcode local state and build products
 .xcodebuildmcp/
 DerivedData/
+ios/HomeboardNative/build/
+tmp/
 *.xcuserstate
+*.xcresult/
 xcuserdata/
 *.xcscmblueprint
 *.xccheckout
@@ -25,3 +31,7 @@ xcuserdata/
 
 # Accidental local duplicate; RootView.swift is the active source.
 ios/HomeboardNative/HomeboardNative/Sources/RootView 2.swift
+
+# Local personal scratch files
+382hw/
+/logo*.png

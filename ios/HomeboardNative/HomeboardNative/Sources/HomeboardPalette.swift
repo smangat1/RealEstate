@@ -507,6 +507,16 @@ extension View {
   }
 }
 
+/// Keeps plain-looking controls visually unchanged while making the full label
+/// rectangle interactive, including padding, spacers, and empty row space.
+struct HomeboardAreaButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .contentShape(Rectangle())
+      .opacity(configuration.isPressed ? 0.84 : 1)
+  }
+}
+
 // MARK: - Raised Inner Surfaces
 
 struct HomeboardInsetSurfaceModifier: ViewModifier {

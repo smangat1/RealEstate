@@ -24,7 +24,10 @@ export type AnalyticsEventName =
   | "listing_reviewed"
   | "listing_rated"
   | "listing_status_changed"
+  | "listing_moved_to_recently_deleted"
   | "preferences_completed"
+  | "bug_report_submitted"
+  | "native_diagnostic_uploaded"
   | "analytics_exported"
   | "runtime_status_viewed";
 

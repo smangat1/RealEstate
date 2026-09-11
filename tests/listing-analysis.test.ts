@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeListingForGroup } from "@/lib/listing-analysis";
+import { analyzeListingForGroup, detectListingActiveOffer } from "@/lib/listing-analysis";
 import type { ListingRecord, RoommateRecord } from "@/lib/types";
 
 const now = "2026-07-24T12:00:00.000Z";
@@ -129,4 +129,91 @@ test("one roommate's hard budget failure prevents a misleading group recommendat
   assert.ok(analysis.hardFailureCount > 0);
   assert.match(analysis.verdict, /hard constraint/i);
   assert.ok(analysis.members.find((entry) => entry.name === "Sam")?.hardFailures.length);
+});
+
+test("detectListingActiveOffer correctly identifies various rental concessions and bonuses", () => {
+  const oneMonthFree = detectListingActiveOffer({
+    description: "Special deal: 1 month free on a 12-month lease!",
+    amenities: [],
+  });
+  assert.equal(oneMonthFree?.kind, "months_free");
+  assert.equal(oneMonthFree?.bonusPoints, 10);
+  assert.equal(oneMonthFree?.label, "1 Month Free");
+
+  const twoMonthsFree = detectListingActiveOffer({
+    description: "2 months free move-in concession",
+    amenities: [],
+  });
+  assert.equal(twoMonthsFree?.kind, "months_free");
+  assert.equal(twoMonthsFree?.bonusPoints, 18);
+
+  const sixWeeksFree = detectListingActiveOffer({
+    description: "6 weeks free special offer",
+    amenities: [],
+  });
+  assert.equal(sixWeeksFree?.kind, "months_free");
+  assert.equal(sixWeeksFree?.bonusPoints, 14);
+
+  const noFee = detectListingActiveOffer({
+    description: "Beautiful renovated apartment",
+    amenities: ["No broker fee", "Elevator"],
+  });
+  assert.equal(noFee?.kind, "no_fee");
+  assert.equal(noFee?.bonusPoints, 8);
+
+  const cashCredit = detectListingActiveOffer({
+    description: "$1,500 move-in bonus for immediate move-ins",
+    amenities: [],
+  });
+  assert.equal(cashCredit?.kind, "move_in_credit");
+  assert.equal(cashCredit?.bonusPoints, 8);
+
+  const waivedDeposit = detectListingActiveOffer({
+    description: "Zero deposit required on approved credit",
+    amenities: [],
+  });
+  assert.equal(waivedDeposit?.kind, "waived_deposit");
+  assert.equal(waivedDeposit?.bonusPoints, 5);
+
+  const generalSpecial = detectListingActiveOffer({
+    description: "Inquire today for limited time move-in special!",
+    amenities: [],
+  });
+  assert.equal(generalSpecial?.kind, "special");
+  assert.equal(generalSpecial?.bonusPoints, 6);
+});
+
+test("active offer scales bonus points into roommate price score and mentions it in explanation", () => {
+  // Rent share: $3,200 / 2 = $1,600.
+  // Ideal: 1,500, Stretch: 1,800.
+  // Base score without offer: 88 - (100 / 300) * 28 = 78.67 -> clamp = 79.
+  const baseAnalysis = analyzeListingForGroup({
+    listing: listing({ price: 3_200, description: "Standard listing without offers." }),
+    members: [
+      member({ id: "sam", name: "Sam", idealBudget: 1_500, stretchBudget: 1_800 }),
+      member({ id: "maya", name: "Maya", idealBudget: 1_500, stretchBudget: 1_800 }),
+    ],
+    sourceConfirmed: true,
+    latestVerification: "active",
+  });
+  const basePriceScore = baseAnalysis.members[0]?.dimensions.price.score;
+  assert.equal(basePriceScore, 79);
+
+  // With 1 month free offer (+10 pts) -> 79 + 10 = 89
+  const offerAnalysis = analyzeListingForGroup({
+    listing: listing({
+      price: 3_200,
+      description: "Standard listing with 1 month free concession on a 12-month lease.",
+    }),
+    members: [
+      member({ id: "sam", name: "Sam", idealBudget: 1_500, stretchBudget: 1_800 }),
+      member({ id: "maya", name: "Maya", idealBudget: 1_500, stretchBudget: 1_800 }),
+    ],
+    sourceConfirmed: true,
+    latestVerification: "active",
+  });
+  const offerPriceScore = offerAnalysis.members[0]?.dimensions.price.score;
+  assert.equal(offerPriceScore, 89);
+  assert.match(offerAnalysis.members[0]?.dimensions.price.explanation ?? "", /Includes \+10 bonus points/);
+  assert.match(offerAnalysis.members[0]?.dimensions.price.explanation ?? "", /1 Month Free/);
 });

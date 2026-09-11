@@ -48,6 +48,7 @@ final class AppModel {
     var boardTab: BoardTab?
     var board: MobileBoard
     var account: LocalAccount?
+    var authenticatedAuthUserID: String?
     var availableBoards: [MobileBoardSummary]
     var pendingInviteCode: String
     var pendingConfirmationEmail: String?
@@ -81,7 +82,11 @@ final class AppModel {
   @ObservationIgnored private var serverListingIDByLocalID: [String: String] = [:]
   @ObservationIgnored private var removedServerListingIDsByBoard: [String: Set<String>] = [:]
   @ObservationIgnored private var removedListingIdentityKeysByBoard: [String: Set<String>] = [:]
+  @ObservationIgnored private var recentlyDeletedPurgeBoardIDs = Set<String>()
+  @ObservationIgnored private var restoredAuthUserID: String?
+  @ObservationIgnored private var sessionEpoch = UUID()
   private let persistenceKey = "homeboard.native.state"
+  private let pushTokenKey = "homeboard.native.push-device-token"
 
   var currentScreen: Screen = .welcome
   var authMode: AuthMode = .createAccount
@@ -126,6 +131,21 @@ final class AppModel {
   var listingInventoryError: String?
   var pendingSharedListingImport: HomeboardSharedImportStore.PendingImport?
   var pendingMacPairingRequest: MacDevicePairingRequest?
+  var recentlyDeletedListings: [ListingPreview] {
+    (board.recentlyDeleted ?? []).filter { listing in
+      guard let deletedAt = listing.deletedAt,
+            let date = recentlyDeletedDate(from: deletedAt)
+      else { return true }
+      return date > Date().addingTimeInterval(-7 * 24 * 60 * 60)
+    }
+  }
+  var canPermanentlyClearRecentlyDeleted: Bool {
+    if board.id?.hasPrefix("local-") == true || board.id?.hasPrefix("preview-") == true {
+      return true
+    }
+    guard let userId = account?.id else { return false }
+    return board.members.first(where: { $0.userId == userId })?.role == "owner"
+  }
   var isGuestPreview: Bool {
     authSession == nil && board.id?.hasPrefix("preview-") == true && currentScreen == .board
   }
@@ -154,7 +174,45 @@ final class AppModel {
       NativeAuthSessionStore.delete()
     }
     restore()
+    removePersistedStressTestListings()
+    purgeExpiredLocalRecentlyDeletedListings()
+    let restoredAppUserID = account?.id
     authSession = NativeAuthSessionStore.load()
+    let restoredIdentityMismatch = authSession.map { session in
+      if let restoredAuthUserID {
+        return restoredAuthUserID != session.userId
+      }
+
+      // Snapshots written before authenticatedAuthUserID was introduced only
+      // have the application user ID. Use the account email for this one-time
+      // migration instead of comparing IDs from two different namespaces.
+      let restoredEmail = account?.email
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased() ?? ""
+      let sessionEmail = session.email
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+      return restoredEmail.isEmpty || restoredEmail != sessionEmail
+    } ?? false
+    let restoredRemoteBoardLacksMembership = authSession.map { _ in
+      board.id.map { boardID in
+        !boardID.hasPrefix("local-")
+          && !boardID.hasPrefix("preview-")
+          && restoredAppUserID.map { appUserID in
+            !board.members.contains(where: { $0.userId == appUserID })
+          } ?? true
+      } ?? false
+    } ?? false
+    if let session = authSession,
+       restoredIdentityMismatch || restoredRemoteBoardLacksMembership {
+      clearWorkspaceStateForAccountTransition()
+      account = LocalAccount(
+        id: nil,
+        name: session.displayName,
+        email: session.email
+      )
+      currentScreen = .welcome
+    }
     if authSession == nil {
       clearGuestPreviewState(preservingNonPreviewBoard: true)
       opensWelcomeOnAccessPage = false
@@ -194,7 +252,7 @@ final class AppModel {
 
     do {
       let response = try await api.fetchBootstrapSession(accessToken: session.accessToken)
-      applySessionResponse(response, session: session)
+      guard applySessionResponse(response, session: session) else { return }
       if let firstBoard = response.boards.first {
         if let activeBoard = response.activeBoard,
            activeBoard.board.id == firstBoard.id {
@@ -209,10 +267,11 @@ final class AppModel {
     } catch HomeboardAPIError.unauthorized {
       do {
         let refreshed = try await api.refreshSession(refreshToken: session.refreshToken)
+        guard authSession?.userId == session.userId else { return }
         authSession = refreshed
         NativeAuthSessionStore.save(refreshed)
         let response = try await api.fetchBootstrapSession(accessToken: refreshed.accessToken)
-        applySessionResponse(response, session: refreshed)
+        guard applySessionResponse(response, session: refreshed) else { return }
         if let firstBoard = response.boards.first {
           if let activeBoard = response.activeBoard,
              activeBoard.board.id == firstBoard.id {
@@ -359,11 +418,6 @@ final class AppModel {
       }
 
       authSession = session
-      account = LocalAccount(
-        id: session.userId,
-        name: session.displayName,
-        email: session.email
-      )
       NativeAuthSessionStore.save(session)
 
       let normalizedInvite = inviteCode
@@ -374,7 +428,7 @@ final class AppModel {
       }
 
       let response = try await api.fetchSession(accessToken: session.accessToken)
-      applySessionResponse(response, session: session)
+      guard applySessionResponse(response, session: session) else { return }
       pendingConfirmationEmail = ""
       await preparePostAuthenticationPrompts()
     } catch {
@@ -442,7 +496,6 @@ final class AppModel {
       }
 
       authSession = session
-      account = LocalAccount(id: session.userId, name: session.displayName, email: session.email)
       NativeAuthSessionStore.save(session)
 
       let normalizedInvite = inviteCode
@@ -453,7 +506,7 @@ final class AppModel {
       }
 
       let response = try await api.fetchSession(accessToken: session.accessToken)
-      applySessionResponse(response, session: session)
+      guard applySessionResponse(response, session: session) else { return }
       pendingConfirmationEmail = ""
       await preparePostAuthenticationPrompts()
     } catch {
@@ -500,13 +553,14 @@ final class AppModel {
     do {
       do {
         let response = try await api.fetchSession(accessToken: session.accessToken)
-        applySessionResponse(response, session: session)
+        guard applySessionResponse(response, session: session) else { return }
       } catch HomeboardAPIError.unauthorized {
         let refreshed = try await api.refreshSession(refreshToken: session.refreshToken)
+        guard authSession?.userId == session.userId else { return }
         authSession = refreshed
         NativeAuthSessionStore.save(refreshed)
         let response = try await api.fetchSession(accessToken: refreshed.accessToken)
-        applySessionResponse(response, session: refreshed)
+        guard applySessionResponse(response, session: refreshed) else { return }
       }
       pendingConfirmationEmail = ""
       await preparePostAuthenticationPrompts()
@@ -696,6 +750,7 @@ final class AppModel {
     } catch HomeboardAPIError.unauthorized {
       do {
         let refreshed = try await api.refreshSession(refreshToken: session.refreshToken)
+        guard authSession?.userId == session.userId, board.id == boardId else { return }
         authSession = refreshed
         NativeAuthSessionStore.save(refreshed)
         try await loadBoard(id: boardId)
@@ -778,6 +833,7 @@ final class AppModel {
       boardError = "Open a real board before sending messages."
       return
     }
+    let requestEpoch = sessionEpoch
 
     boardError = nil
     boardFeedback = nil
@@ -794,17 +850,32 @@ final class AppModel {
         boardId: boardId,
         content: message
       )
+      guard requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return }
       board = response.board
       profile = RentalProfile(remote: response.profile)
     } catch {
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       boardMessageDraft = message
     }
   }
 
   func signOut() {
+    let session = authSession
+    let pushToken = UserDefaults.standard.string(forKey: pushTokenKey)
+    let apiClient = api
     clearSessionState()
     persist()
+    if let session, let pushToken {
+      Task {
+        try? await apiClient.unregisterPushDevice(
+          accessToken: session.accessToken,
+          token: pushToken
+        )
+      }
+    }
   }
 
   @discardableResult
@@ -857,6 +928,8 @@ final class AppModel {
     Task {
       do {
         try await api.deleteAccount(accessToken: session.accessToken)
+        HomeboardShareDiagnosticStore.clear()
+        HomeboardShareBootDiagnosticStore.clear()
         clearSessionState()
         boardFeedback = "Your account and Homeboard data were deleted."
       } catch {
@@ -871,8 +944,10 @@ final class AppModel {
     guard let session = authSession else {
       throw HomeboardAPIError.missingSession
     }
+    let requestEpoch = sessionEpoch
 
     let response = try await api.acceptInvitation(accessToken: session.accessToken, inviteCode: inviteCode)
+    guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
     board = boardByApplyingRemovalTombstones(response.board, storageKey: response.boardId)
     HomeboardSharedImportStore.setActiveBoard(response.boardId)
     consumeSharedListingImport()
@@ -927,6 +1002,7 @@ final class AppModel {
       onboardingError = "Sign in again before creating the shared board."
       return
     }
+    let requestEpoch = sessionEpoch
 
     flushOnboardingDraft()
     let creationRequestId = onboardingCreationRequestId ?? UUID().uuidString
@@ -948,6 +1024,7 @@ final class AppModel {
         )
       } catch HomeboardAPIError.unauthorized {
         let refreshed = try await api.refreshSession(refreshToken: session.refreshToken)
+        guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
         authSession = refreshed
         NativeAuthSessionStore.save(refreshed)
         response = try await api.confirmOnboarding(
@@ -956,8 +1033,10 @@ final class AppModel {
           creationRequestId: creationRequestId
         )
       }
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       applyOnboardingConfirmation(response)
     } catch {
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       onboardingError = "\(readable(error)) Your answers are saved. Tap below to try again."
     }
   }
@@ -1087,6 +1166,7 @@ final class AppModel {
       boardFeedback = "Board brief updated locally."
       return
     }
+    let requestEpoch = sessionEpoch
 
     isBoardLoading = true
     defer {
@@ -1096,13 +1176,103 @@ final class AppModel {
 
     do {
       let response = try await api.saveBoardProfile(accessToken: session.accessToken, boardId: boardId, profile: profile)
+      guard requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return }
       board = response.board
       profile = RentalProfile(remote: response.profile)
       storeCurrentBoardSnapshot()
       boardFeedback = "Board brief saved."
     } catch {
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
+  }
+
+  func prepareSearchBriefEditing() {
+    onboardingError = nil
+    guard let member = currentAccountMemberForSearchBrief else { return }
+
+    if !member.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      profile.name = member.name
+    }
+    profile.budgetMin = member.budgetMin.map { String(Int($0.rounded())) } ?? ""
+    profile.budgetMax = (member.budgetMax ?? member.idealBudget)
+      .map { String(Int($0.rounded())) } ?? ""
+    profile.commuteTarget = member.commuteDestination ?? ""
+    profile.commuteAccess = member.commuteAccess
+    profile.minCommuteMinutes = member.preferredCommuteMinutes.map(String.init) ?? ""
+    profile.maxCommuteMinutes = member.maxCommuteMinutes.map(String.init) ?? ""
+    profile.neighborhoods = member.neighborhoods
+    profile.mustHaves = member.mustHaves ?? []
+    profile.dealbreakers = member.dealbreakers
+    profile.priorities = member.priorities
+    flushOnboardingDraft()
+  }
+
+  func saveSearchBriefEdits() async -> Bool {
+    onboardingError = nil
+    await saveBoardBrief()
+
+    if let boardError {
+      onboardingError = boardError
+      return false
+    }
+
+    if var member = currentAccountMemberForSearchBrief {
+      let minimum = Double(profile.budgetMin)
+      let maximum = Double(profile.budgetMax)
+      let previousIdeal = member.idealBudget
+      member.budgetMin = minimum
+      member.idealBudget = previousIdeal.flatMap { ideal in
+        let clearsMinimum = minimum.map { ideal >= $0 } ?? true
+        let clearsMaximum = maximum.map { ideal <= $0 } ?? true
+        return clearsMinimum && clearsMaximum ? ideal : maximum
+      } ?? maximum
+      member.budgetMax = maximum
+      member.budgetLine = searchBriefBudgetSummary(minimum: minimum, maximum: maximum)
+      member.commuteDestination = profile.commuteTarget.isEmpty ? nil : profile.commuteTarget
+      member.commuteAccess = profile.commuteAccess
+      member.preferredCommuteMinutes = Int(profile.minCommuteMinutes)
+      member.maxCommuteMinutes = Int(profile.maxCommuteMinutes)
+      member.commuteLine = searchBriefCommuteSummary()
+      member.priorities = profile.priorities.map { $0.lowercased() }
+      member.neighborhoods = profile.neighborhoods
+      member.mustHaves = profile.mustHaves
+      member.dealbreakers = profile.dealbreakers
+      member.status = "profile complete"
+      updateManualMember(member)
+    }
+
+    boardFeedback = "Search brief updated."
+    return true
+  }
+
+  private var currentAccountMemberForSearchBrief: MemberPreferenceCard? {
+    if let userId = account?.id,
+       let linkedMember = board.members.first(where: { $0.userId == userId }) {
+      return linkedMember
+    }
+    return board.members.first(where: { $0.userId.isEmpty && $0.role == "owner" })
+  }
+
+  private func searchBriefBudgetSummary(minimum: Double?, maximum: Double?) -> String {
+    guard let maximum else { return "Budget still open" }
+    if let minimum, minimum > 0 {
+      return "$\(Int(minimum).formatted())–$\(Int(maximum).formatted()) / month"
+    }
+    return "Up to $\(Int(maximum).formatted()) / month"
+  }
+
+  private func searchBriefCommuteSummary() -> String {
+    if profile.commuteAccess == "remote" { return "Works remotely · not scored" }
+    if profile.commuteAccess == "skip" { return "Commute not included" }
+    guard !profile.commuteTarget.isEmpty else { return "Commute not included" }
+    if let minimum = Int(profile.minCommuteMinutes),
+       let maximum = Int(profile.maxCommuteMinutes) {
+      return "\(profile.commuteTarget) · ideal \(minimum)–\(maximum) min"
+    }
+    return profile.commuteTarget
   }
 
   func returnHome() {
@@ -1127,6 +1297,7 @@ final class AppModel {
       persist()
       return
     }
+    let requestEpoch = sessionEpoch
 
     isOnboardingLoading = true
     defer {
@@ -1141,9 +1312,11 @@ final class AppModel {
         profile: profile,
         messages: onboardingMessages
       )
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       profile = RentalProfile(remote: response.profile)
       onboardingMessages.append(.init(remote: response.assistantMessage))
     } catch {
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       onboardingError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       processOnboardingLocally(message)
     }
@@ -1174,8 +1347,10 @@ final class AppModel {
     guard let session = authSession else {
       throw HomeboardAPIError.missingSession
     }
+    let requestEpoch = sessionEpoch
 
     let response = try await api.fetchBoard(accessToken: session.accessToken, boardId: id)
+    guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
     applyBoardLoadResponse(response, id: id)
   }
 
@@ -1194,15 +1369,32 @@ final class AppModel {
     storeCurrentBoardSnapshot()
     currentScreen = .board
     resumePendingListingMutations(boardId: id)
+    scheduleRecentlyDeletedPurge(boardId: id)
   }
 
-  private func applySessionResponse(_ response: MobileSessionResponse, session: NativeAuthSession) {
+  @discardableResult
+  private func applySessionResponse(_ response: MobileSessionResponse, session: NativeAuthSession) -> Bool {
+    guard authSession?.userId == session.userId else { return false }
+    let responseBoardIDs = Set(response.boards.map(\.id))
+    let currentRemoteBoardIsUnauthorized = board.id.map { boardID in
+      !boardID.hasPrefix("local-")
+        && !boardID.hasPrefix("preview-")
+        && !responseBoardIDs.contains(boardID)
+    } ?? false
+    let authenticatedAccountChanged = account?.id.map { $0 != response.user.id }
+      ?? (board.id != nil)
+
+    if authenticatedAccountChanged || currentRemoteBoardIsUnauthorized {
+      clearWorkspaceStateForAccountTransition()
+    }
+
     authSession = session
     account = LocalAccount(id: response.user.id, name: response.user.displayName, email: response.user.email)
     availableBoards = response.boards
     if profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       profile.name = response.user.displayName
     }
+    return true
   }
 
   private func seedOnboardingMessagesIfNeeded() {
@@ -1217,6 +1409,12 @@ final class AppModel {
   }
 
   private func clearSessionState() {
+    sessionEpoch = UUID()
+    activeListingInventoryRequestID = nil
+    listingUploadTask?.cancel()
+    listingUploadTask = nil
+    onboardingPersistenceTask?.cancel()
+    onboardingPersistenceTask = nil
     authSession = nil
     account = nil
     availableBoards = []
@@ -1238,11 +1436,13 @@ final class AppModel {
     serverListingIDByLocalID = [:]
     removedServerListingIDsByBoard = [:]
     removedListingIdentityKeysByBoard = [:]
+    recentlyDeletedPurgeBoardIDs = []
     listingInventory = []
     listingInventoryNextCursor = nil
     listingInventoryHasMore = false
     listingInventoryError = nil
     pendingSharedListingImport = nil
+    HomeboardSharedImportStore.clearAccountData()
     UserDefaults.standard.set(false, forKey: "homeboard.guide.first-listing.pending")
     authError = nil
     authFeedback = nil
@@ -1255,6 +1455,45 @@ final class AppModel {
     inviteFeedback = nil
     boardError = nil
     currentScreen = .welcome
+  }
+
+  /// Board snapshots and optimistic member data are device-local conveniences,
+  /// not authorization. They must never survive a change in authenticated user.
+  private func clearWorkspaceStateForAccountTransition() {
+    sessionEpoch = UUID()
+    activeListingInventoryRequestID = nil
+    listingUploadTask?.cancel()
+    listingUploadTask = nil
+    onboardingPersistenceTask?.cancel()
+    onboardingPersistenceTask = nil
+    availableBoards = []
+    onboardingCreationRequestId = nil
+    board = .empty
+    profile = RentalProfile()
+    onboardingMessages = []
+    localShortlistsByBoard = [:]
+    localQuestionsByBoard = [:]
+    localActivityByBoard = [:]
+    localMembersByBoard = [:]
+    localBoardsById = [:]
+    localProfilesByBoard = [:]
+    pendingListingCreatesByBoard = [:]
+    pendingLocalListingRemovalIDs = []
+    pendingServerListingRemovalIDsByBoard = [:]
+    serverListingIDByLocalID = [:]
+    removedServerListingIDsByBoard = [:]
+    removedListingIdentityKeysByBoard = [:]
+    recentlyDeletedPurgeBoardIDs = []
+    listingInventory = []
+    listingInventoryNextCursor = nil
+    listingInventoryHasMore = false
+    listingInventoryError = nil
+    pendingSharedListingImport = nil
+    HomeboardSharedImportStore.clearAccountData()
+    boardTab = .board
+    boardError = nil
+    boardFeedback = nil
+    inviteFeedback = nil
   }
 
   func markLegacyProjectIgnored() {
@@ -1275,6 +1514,7 @@ final class AppModel {
     bedrooms: String = "",
     bathrooms: String = "",
     squareFeet: Int? = nil,
+    availableDate: String? = nil,
     amenities: [String] = [],
     modelInsights: [HomeboardListingInsight] = [],
     address: String = "",
@@ -1317,19 +1557,67 @@ final class AppModel {
       commuteLine: cleanedCommute.isEmpty ? "Commute still being verified" : cleanedCommute,
       summary: cleanedSummary.isEmpty ? "The group saved this as a live contender and still needs to inspect the details." : cleanedSummary,
       fitLabel: cleanedFit.isEmpty ? "Board pick" : cleanedFit,
-      highlights: Array((
-        cleanedAmenities
-          + [
-            cleanedPrice.isEmpty ? "Saved for follow-up." : "Budget note: \(cleanedPrice).",
-            cleanedCommute.isEmpty ? "Commute still needs checking." : cleanedCommute
-          ]
-      ).prefix(4)),
+      highlights: {
+        var groupHighlights: [String] = []
+        if let offer = SharedListingActiveOffer.detect(
+          highlights: cleanedAmenities,
+          summary: cleanedSummary,
+          fitLabel: cleanedFit,
+          priceLine: cleanedPrice,
+          amenities: cleanedAmenities,
+          title: cleanedTitle,
+          modelInsights: modelInsights
+        ) {
+          groupHighlights.append("\(offer.title) reduces monthly rent across the group")
+        }
+        if !cleanedBedrooms.isEmpty, cleanedBedrooms != "0" {
+          groupHighlights.append("\(cleanedBedrooms) separate bedrooms for roommate privacy")
+        }
+        if !cleanedBathrooms.isEmpty, (Double(cleanedBathrooms) ?? 0) >= 2.0 {
+          groupHighlights.append("\(cleanedBathrooms) bathrooms make shared morning routines easier")
+        }
+        for amenity in cleanedAmenities {
+          let lower = amenity.lowercased()
+          if lower.contains("laundry") || lower.contains("washer") || lower.contains("dryer") {
+            if !groupHighlights.contains(where: { $0.contains("laundry") }) {
+              groupHighlights.append("In-unit laundry for easy shared living")
+            }
+          } else if lower.contains("dish") {
+            if !groupHighlights.contains(where: { $0.contains("Dishwasher") }) {
+              groupHighlights.append("Dishwasher included in common kitchen")
+            }
+          } else if lower.contains("balcony") || lower.contains("terrace") || lower.contains("patio") || lower.contains("outdoor") {
+            if !groupHighlights.contains(where: { $0.contains("outdoor") }) {
+              groupHighlights.append("Private outdoor space for roommates to share")
+            }
+          } else if groupHighlights.count < 4 {
+            groupHighlights.append(amenity)
+          }
+        }
+        if !cleanedPrice.isEmpty, groupHighlights.count < 3 {
+          groupHighlights.append("Target rent fits group budget (\(cleanedPrice))")
+        }
+        if groupHighlights.isEmpty {
+          groupHighlights.append("Saved as an active contender for the group")
+        }
+        return Array(groupHighlights.prefix(4))
+      }(),
       amenities: cleanedAmenities,
       modelInsights: modelInsights,
-      openRisks: [
-        "Verify fees, condition, and exact availability.",
-        cleanedSummary.isEmpty ? "The group still needs a stronger reason to keep or reject it." : "Pressure-test whether the summary actually holds up in the listing details."
-      ],
+      openRisks: {
+        var groupChecks: [String] = []
+        if cleanedBathrooms == "1" || (Double(cleanedBathrooms) ?? 0) == 1.0 {
+          groupChecks.append("Single bathroom shared across roommates — align on morning routines")
+        }
+        groupChecks.append("Compare bedroom sizes to agree on an equitable rent split")
+        groupChecks.append("Confirm total monthly share (including utilities) fits everyone's budget")
+        if let availableDate, !availableDate.isEmpty {
+          groupChecks.append("Check that \(availableDate) move-in fits everyone's current lease end dates")
+        } else {
+          groupChecks.append("Confirm target move-in date aligns with each roommate's schedule")
+        }
+        return Array(groupChecks.prefix(3))
+      }(),
       status: "saved",
       sourceURL: cleanedURL,
       groupNote: cleanedNote,
@@ -1338,6 +1626,7 @@ final class AppModel {
       bedrooms: cleanedBedrooms,
       bathrooms: cleanedBathrooms,
       squareFeet: squareFeet,
+      availableDate: availableDate,
       latitude: latitude,
       longitude: longitude
     )
@@ -1489,7 +1778,7 @@ final class AppModel {
     guard let session = authSession,
           let boardId = board.id,
           !boardId.hasPrefix("local-") else {
-      boardFeedback = "Board update added."
+      boardFeedback = "Message added."
       return true
     }
 
@@ -1506,12 +1795,12 @@ final class AppModel {
         content: message
       )
       applyRemoteMutation(response, clearing: [.activity])
-      boardFeedback = "Board update posted."
+      boardFeedback = "Message sent."
       return true
     } catch {
       board.chatMessages.removeAll { $0.id == temporaryID }
       storeCurrentBoardSnapshot()
-      boardError = "\(readable(error)) Your update was put back in the composer."
+      boardError = "\(readable(error)) Your message was put back in the composer."
       return false
     }
   }
@@ -1542,11 +1831,18 @@ final class AppModel {
       }
     }
 
+    var recentlyDeletedListing = listing
+    recentlyDeletedListing.deletedAt = ISO8601DateFormatter().string(from: Date())
+    var recentlyDeleted = board.recentlyDeleted ?? []
+    recentlyDeleted.removeAll { $0.id == resolvedID || $0.id == id }
+    recentlyDeleted.insert(recentlyDeletedListing, at: 0)
+    board.recentlyDeleted = recentlyDeleted
+
     board.shortlist.removeAll { $0.id == resolvedID || $0.id == id }
     localShortlistsByBoard[key]?.removeAll { $0.id == resolvedID || $0.id == id }
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
-    boardFeedback = "Listing removed from the board."
+    boardFeedback = "Listing moved to Recently Deleted."
     persist()
 
     guard authSession != nil, let boardId = remoteBoardID else { return }
@@ -1559,96 +1855,185 @@ final class AppModel {
     enqueueServerListingRemoval(listingID: resolvedID, boardId: boardId)
   }
 
-  func addOpenQuestion(_ question: String) {
-    let cleaned = question.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !cleaned.isEmpty else { return }
+  func moveListingsToRecentlyDeleted(ids: Set<ListingPreview.ID>) {
+    let existingIDs = Set(board.shortlist.map(\.id))
+    let targets = ids.intersection(existingIDs)
+    guard !targets.isEmpty else { return }
+    for id in targets {
+      removeManualListing(id: id)
+    }
+    boardFeedback = "Moved \(targets.count) listing\(targets.count == 1 ? "" : "s") to Recently Deleted."
+    persist()
+  }
 
-    boardError = nil
-    boardFeedback = nil
-
+  @discardableResult
+  func restoreRecentlyDeletedListing(id: ListingPreview.ID) async -> Bool {
+    guard let listing = (board.recentlyDeleted ?? []).first(where: { $0.id == id }) else {
+      boardError = "Homeboard could not find that recently deleted listing."
+      return false
+    }
     let key = boardStorageKey()
-    var items = localQuestionsByBoard[key] ?? []
-    if !items.contains(where: { $0.caseInsensitiveCompare(cleaned) == .orderedSame }) {
-      items.insert(cleaned, at: 0)
-      localQuestionsByBoard[key] = items
-      appendLocalActivity("\(account?.name ?? "A member") added a decision to settle: \(cleaned)")
+    var resolvedID = serverListingIDByLocalID[id] ?? id
+    let remoteBoardID = board.id.flatMap { boardId -> String? in
+      guard !boardId.hasPrefix("local-"), !boardId.hasPrefix("preview-") else { return nil }
+      return boardId
+    }
+
+    pendingLocalListingRemovalIDs.remove(id)
+    pendingServerListingRemovalIDsByBoard[remoteBoardID ?? key]?.remove(resolvedID)
+    removedServerListingIDsByBoard[remoteBoardID ?? key]?.remove(resolvedID)
+    removedListingIdentityKeysByBoard[remoteBoardID ?? key]?.remove(listingIdentityKey(listing))
+
+    guard let session = authSession, let boardId = remoteBoardID else {
+      var restored = listing
+      restored.deletedAt = nil
+      board.recentlyDeleted?.removeAll { $0.id == id }
+      if !board.shortlist.contains(where: { $0.id == id }) {
+        board.shortlist.insert(restored, at: 0)
+      }
+      var local = localShortlistsByBoard[key] ?? []
+      if !local.contains(where: { $0.id == id }) { local.insert(restored, at: 0) }
+      localShortlistsByBoard[key] = local
       applyLocalBoardContributions()
       storeCurrentBoardSnapshot()
-      boardFeedback = "Open decision added to the board."
+      boardFeedback = "Listing restored to the board."
+      boardError = nil
       persist()
+      return true
+    }
 
-      if let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") {
-        Task {
-          do {
-            let response = try await api.openDecision(accessToken: session.accessToken, boardId: boardId, question: cleaned)
-            applyRemoteMutation(response, clearing: [.questions, .activity])
-          } catch {
-            boardError = readable(error)
-          }
+    await listingUploadTask?.value
+    resolvedID = serverListingIDByLocalID[id] ?? resolvedID
+    do {
+      let response = try await api.restoreListing(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: resolvedID
+      )
+      guard authSession?.userId == session.userId, board.id == boardId else { return false }
+      applyRemoteMutation(response, clearing: [.shortlist])
+      boardFeedback = "Listing restored to the board."
+      boardError = nil
+      return true
+    } catch {
+      boardError = readable(error)
+      persist()
+      return false
+    }
+  }
+
+  @discardableResult
+  func clearRecentlyDeletedListings() async -> Bool {
+    guard !(board.recentlyDeleted ?? []).isEmpty else { return true }
+    let key = boardStorageKey()
+    guard let session = authSession,
+          let boardId = board.id,
+          !boardId.hasPrefix("local-"),
+          !boardId.hasPrefix("preview-")
+    else {
+      board.recentlyDeleted = []
+      localBoardsById[key]?.recentlyDeleted = []
+      boardFeedback = "Recently Deleted cleared."
+      boardError = nil
+      storeCurrentBoardSnapshot()
+      persist()
+      return true
+    }
+
+    await listingUploadTask?.value
+    do {
+      let response = try await api.clearRecentlyDeleted(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+      guard authSession?.userId == session.userId, board.id == boardId else { return false }
+      let clearedLocalIDs = Set((board.recentlyDeleted ?? []).map(\.id))
+      for listingID in clearedLocalIDs {
+        if let pending = pendingListingCreatesByBoard[key]?.first(where: { $0.id == listingID }),
+           let previewID = HomeboardSharedImportStore.previewImageID(from: pending.photoURL)
+        {
+          HomeboardSharedImportStore.discardPreviewImage(for: previewID)
         }
+        pendingLocalListingRemovalIDs.remove(listingID)
+        serverListingIDByLocalID.removeValue(forKey: listingID)
+      }
+      pendingListingCreatesByBoard[key]?.removeAll { clearedLocalIDs.contains($0.id) }
+      localShortlistsByBoard[key]?.removeAll { clearedLocalIDs.contains($0.id) }
+      removedServerListingIDsByBoard[boardId] = []
+      removedListingIdentityKeysByBoard[boardId] = []
+      applyRemoteMutation(response, clearing: [])
+      boardFeedback = "Recently Deleted cleared."
+      boardError = nil
+      return true
+    } catch {
+      boardError = readable(error)
+      persist()
+      return false
+    }
+  }
+
+  func purgeExpiredRecentlyDeletedListings() async {
+    purgeExpiredLocalRecentlyDeletedListings()
+    guard let session = authSession,
+          let boardId = board.id,
+          !boardId.hasPrefix("local-"),
+          !boardId.hasPrefix("preview-")
+    else {
+      persist()
+      return
+    }
+    try? await api.purgeExpiredRecentlyDeleted(
+      accessToken: session.accessToken,
+      boardId: boardId
+    )
+  }
+
+  private func scheduleRecentlyDeletedPurge(boardId: String) {
+    guard let session = authSession,
+          !boardId.hasPrefix("local-"),
+          !boardId.hasPrefix("preview-"),
+          recentlyDeletedPurgeBoardIDs.insert(boardId).inserted
+    else { return }
+
+    Task { [weak self] in
+      do {
+        try await self?.api.purgeExpiredRecentlyDeleted(
+          accessToken: session.accessToken,
+          boardId: boardId
+        )
+      } catch {
+        self?.recentlyDeletedPurgeBoardIDs.remove(boardId)
       }
     }
+  }
+
+  func addOpenQuestion(_ question: String) {
+    _ = question
+    boardError = nil
+    boardFeedback = nil
+    boardError = "Start a group decision from a saved place. It completes only after every member responds."
+  }
+
+  func submitBoardDecision(question: String, resolution: String? = nil) async -> Bool {
+    _ = question
+    _ = resolution
+    boardError = nil
+    boardFeedback = nil
+    boardError = "Start a group decision from a saved place. It completes only after every member responds."
+    return false
   }
 
   func removeOpenQuestion(_ question: String) {
-    let key = boardStorageKey()
-    guard var items = localQuestionsByBoard[key] else { return }
-    items.removeAll { $0.caseInsensitiveCompare(question) == .orderedSame }
-    localQuestionsByBoard[key] = items
-    applyLocalBoardContributions()
-    storeCurrentBoardSnapshot()
-    boardFeedback = "Open decision removed."
-    persist()
-
-    if let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") {
-      Task {
-        do {
-          let response = try await api.resolveDecision(accessToken: session.accessToken, boardId: boardId, question: question, resolution: "Closed without a recorded resolution")
-          applyRemoteMutation(response, clearing: [.questions, .activity])
-        } catch {
-          boardError = readable(error)
-        }
-      }
-    }
+    _ = question
+    boardFeedback = nil
+    boardError = "Group decisions cannot be removed by one member."
   }
 
   func resolveOpenQuestion(_ question: String, resolution: String) {
-    let cleanedQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
-    let cleanedResolution = resolution.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !cleanedQuestion.isEmpty else { return }
-
-    let key = boardStorageKey()
-    var items = localQuestionsByBoard[key] ?? board.openQuestions
-    items.removeAll { $0.caseInsensitiveCompare(cleanedQuestion) == .orderedSame }
-    localQuestionsByBoard[key] = items
-
-    let actor = account?.name ?? "The group"
-    if cleanedResolution.isEmpty {
-      appendLocalActivity("\(actor) closed the decision: \(cleanedQuestion).")
-    } else {
-      appendLocalActivity("\(actor) resolved \"\(cleanedQuestion)\" with: \(cleanedResolution)")
-    }
-
-    applyLocalBoardContributions()
-    storeCurrentBoardSnapshot()
-    boardFeedback = "Decision resolved."
-    persist()
-
-    if let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") {
-      Task {
-        do {
-          let response = try await api.resolveDecision(
-            accessToken: session.accessToken,
-            boardId: boardId,
-            question: cleanedQuestion,
-            resolution: cleanedResolution
-          )
-          applyRemoteMutation(response, clearing: [.questions, .activity])
-        } catch {
-          boardError = readable(error)
-        }
-      }
-    }
+    _ = question
+    _ = resolution
+    boardFeedback = nil
+    boardError = "One member cannot resolve a group decision. Everyone must respond."
   }
 
   func addManualMember(
@@ -1715,6 +2100,79 @@ final class AppModel {
     }
   }
 
+  func addCommutePoint(
+    label: String,
+    destination: String,
+    access: String,
+    preferredMinutes: Int,
+    maximumMinutes: Int
+  ) {
+    let cleanedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanedDestination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !cleanedLabel.isEmpty else {
+      boardError = "Give this commute point a short label."
+      return
+    }
+    guard !cleanedDestination.isEmpty else {
+      boardError = "Add a neighborhood or address for this commute point."
+      return
+    }
+
+    let supportedAccess = ["car", "transit", "flexible"].contains(access)
+      ? access
+      : "flexible"
+    let minimum = max(preferredMinutes, 0)
+    let maximum = max(maximumMinutes, minimum + 5)
+    let point = MemberPreferenceCard(
+      name: cleanedLabel,
+      budgetLine: "Additional commute point",
+      commuteDestination: cleanedDestination,
+      commuteAccess: supportedAccess,
+      preferredCommuteMinutes: minimum,
+      maxCommuteMinutes: maximum,
+      commuteLine: "\(cleanedDestination) · ideal \(minimum)–\(maximum) min",
+      priorities: ["commute"],
+      dealbreakers: [],
+      neighborhoods: [],
+      status: "commute point"
+    )
+
+    boardError = nil
+    boardFeedback = nil
+    let key = boardStorageKey()
+    var members = localMembersByBoard[key] ?? board.members
+    members.append(point)
+    localMembersByBoard[key] = members
+    appendLocalActivity("\(cleanedLabel) was added as another commute point.")
+    applyLocalBoardContributions()
+    storeCurrentBoardSnapshot()
+    boardFeedback = "\(cleanedLabel) was added to every listing comparison."
+    persist()
+
+    if let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") {
+      Task {
+        do {
+          let response = try await api.addMember(
+            accessToken: session.accessToken,
+            boardId: boardId,
+            name: cleanedLabel,
+            budgetMin: nil,
+            budgetMax: nil,
+            stretchBudget: nil,
+            commuteDestination: cleanedDestination,
+            maxCommuteMinutes: maximum,
+            roleLabel: "commute point",
+            commuteAccess: supportedAccess,
+            preferredCommuteMinutes: minimum
+          )
+          applyRemoteMutation(response, clearing: [.members, .activity])
+        } catch {
+          boardError = readable(error)
+        }
+      }
+    }
+  }
+
   func removeManualMember(id: MemberPreferenceCard.ID) {
     let key = boardStorageKey()
     var members = localMembersByBoard[key] ?? board.members
@@ -1723,7 +2181,9 @@ final class AppModel {
     localMembersByBoard[key] = members
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
-    boardFeedback = "Member removed from the board."
+    boardFeedback = removedMember?.status == "commute point"
+      ? "Commute point removed from the board."
+      : "Member removed from the board."
     persist()
 
     if let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") {
@@ -1748,10 +2208,16 @@ final class AppModel {
     guard let index = members.firstIndex(where: { $0.id == updatedMember.id }) else { return }
     members[index] = updatedMember
     localMembersByBoard[key] = members
-    appendLocalActivity("\(updatedMember.name) updated their board preferences.")
+    appendLocalActivity(
+      updatedMember.status == "commute point"
+        ? "\(updatedMember.name) commute point was updated."
+        : "\(updatedMember.name) updated their board preferences."
+    )
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
-    boardFeedback = "\(updatedMember.name)’s preferences were updated."
+    boardFeedback = updatedMember.status == "commute point"
+      ? "\(updatedMember.name) now updates every listing comparison."
+      : "\(updatedMember.name)’s preferences were updated."
     persist()
 
     if let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-"), let roommateId = updatedMember.roommateId {
@@ -2064,25 +2530,37 @@ final class AppModel {
     }
   }
 
-  func voteOnListingDecision(id: ListingPreview.ID, type: String, choice: String) {
+  func voteOnListingDecision(id: ListingPreview.ID, type: String, choice: String) async -> Bool {
+    boardError = nil
+    boardFeedback = nil
+    guard let listing = board.shortlist.first(where: { $0.id == id }) else {
+      boardError = "Save this place to the shortlist before starting a poll."
+      return false
+    }
+    guard !listing.listingId.isEmpty else {
+      boardError = "This place is still syncing. Try your vote again in a moment."
+      return false
+    }
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
       boardError = "Sign in to vote on this decision."
-      return
+      return false
     }
-    Task {
-      do {
-        let response = try await api.voteOnListingDecision(
-          accessToken: session.accessToken,
-          boardId: boardId,
-          listingId: id,
-          type: type,
-          choice: choice
-        )
-        applyRemoteMutation(response, clearing: [.shortlist, .activity])
-        boardFeedback = "Your decision vote was shared."
-      } catch {
-        boardError = readable(error)
-      }
+    do {
+      let response = try await api.voteOnListingDecision(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: id,
+        type: type,
+        choice: choice
+      )
+      guard board.id == boardId else { return false }
+      applyRemoteMutation(response, clearing: [.shortlist, .activity])
+      boardFeedback = "Your vote was shared."
+      return true
+    } catch {
+      guard board.id == boardId else { return false }
+      boardError = readable(error)
+      return false
     }
   }
 
@@ -2126,12 +2604,14 @@ final class AppModel {
     Task {
       do {
         try await api.leaveBoard(accessToken: session.accessToken, boardId: boardId)
+        guard authSession?.userId == session.userId, board.id == boardId else { return }
         availableBoards.removeAll { $0.id == boardId }
         board = .empty
         if let next = availableBoards.first { await openBoard(id: next.id) }
         else { currentScreen = .onboarding }
         persist()
       } catch {
+        guard authSession?.userId == session.userId else { return }
         boardError = readable(error)
       }
     }
@@ -2142,12 +2622,14 @@ final class AppModel {
     Task {
       do {
         try await api.deleteBoard(accessToken: session.accessToken, boardId: boardId)
+        guard authSession?.userId == session.userId, board.id == boardId else { return }
         availableBoards.removeAll { $0.id == boardId }
         board = .empty
         if let next = availableBoards.first { await openBoard(id: next.id) }
         else { currentScreen = .onboarding }
         persist()
       } catch {
+        guard authSession?.userId == session.userId else { return }
         boardError = readable(error)
       }
     }
@@ -2156,19 +2638,24 @@ final class AppModel {
   func uploadListingImage(_ data: Data) async -> String? {
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else { return nil }
     do {
-      return try await api.uploadListingImage(accessToken: session.accessToken, boardId: boardId, data: data)
+      let url = try await api.uploadListingImage(accessToken: session.accessToken, boardId: boardId, data: data)
+      guard authSession?.userId == session.userId, board.id == boardId else { return nil }
+      return url
     } catch {
+      guard authSession?.userId == session.userId else { return nil }
       boardError = readable(error)
       return nil
     }
   }
 
   func registerPushToken(_ token: String) {
+    UserDefaults.standard.set(token, forKey: pushTokenKey)
     guard let session = authSession else { return }
     Task {
       do {
         try await api.registerPushDevice(accessToken: session.accessToken, token: token)
       } catch {
+        guard authSession?.userId == session.userId else { return }
         boardError = readable(error)
       }
     }
@@ -2189,6 +2676,29 @@ final class AppModel {
     }
   }
 
+  func submitBugReport(
+    description: String,
+    currentScreen: String,
+    deviceKind: String
+  ) async throws -> MobileBugReportResponse {
+    guard let session = authSession else {
+      throw HomeboardAPIError.missingSession
+    }
+
+    return try await api.submitBugReport(
+      accessToken: session.accessToken,
+      description: description,
+      currentScreen: currentScreen,
+      boardId: board.id,
+      deviceKind: deviceKind,
+      boardLoaded: board.id != nil,
+      boardCount: availableBoards.count,
+      memberCount: board.members.count,
+      savedListingCount: board.shortlist.count,
+      shareDiagnostics: HomeboardShareReportDiagnostics.exportText()
+    )
+  }
+
   func openBoardChatNotification(boardId: String) async {
     guard authSession != nil else { return }
     await openBoard(id: boardId)
@@ -2202,12 +2712,19 @@ final class AppModel {
       .first(where: { $0.name == "invite" || $0.name == "code" })?
       .value
 
-    #if DEBUG
-    if url.scheme == "homeboard", url.host == "debug" {
-      handleDebugURL(components)
+    if url.scheme == "homeboard", url.host == "preview" || url.host == "debug" {
+      openPreviewBoard()
+      let tab = (url.host == "preview" ? components.first : components.dropFirst().first) ?? "shortlist"
+      switch tab {
+      case "shortlist":
+        openBoardTab(.shortlist)
+      case "updates":
+        openBoardTab(.updates)
+      default:
+        openBoardTab(.board)
+      }
       return
     }
-    #endif
 
     if let pairing = MacDevicePairingRequest(url: url) {
       pendingMacPairingRequest = pairing
@@ -2270,12 +2787,11 @@ final class AppModel {
   }
 
   func consumeSharedListingImport() {
-    let imports = HomeboardSharedImportStore.consumeAll()
+    let imports = HomeboardSharedImportStore.all()
     guard !imports.isEmpty else { return }
 
     guard let currentBoardId = board.id else {
       pendingSharedListingImport = imports.first
-      HomeboardSharedImportStore.prepend(Array(imports.dropFirst()))
       return
     }
 
@@ -2289,7 +2805,13 @@ final class AppModel {
 
       currentScreen = .board
       boardTab = .board
-      if !commitSharedListingImportIfComplete(shared) {
+      if commitSharedListingImportIfComplete(shared) {
+        let keepsCapturedPreview = HomeboardSharedImportStore.hasPreviewImage(for: shared.id)
+        HomeboardSharedImportStore.remove(
+          id: shared.id,
+          preservingPreviewImage: keepsCapturedPreview
+        )
+      } else {
         if needsReview == nil {
           needsReview = shared
         } else {
@@ -2300,18 +2822,26 @@ final class AppModel {
     pendingSharedListingImport = needsReview
 
     if !deferred.isEmpty {
-      HomeboardSharedImportStore.prepend(deferred)
       if needsReview == nil,
          let destinationBoardId = deferred.first?.boardId,
-         destinationBoardId != currentBoardId
+         destinationBoardId != currentBoardId,
+         availableBoards.contains(where: { $0.id == destinationBoardId })
       {
         Task {
           await openBoard(id: destinationBoardId)
+          guard board.id == destinationBoardId else { return }
           boardTab = .board
           consumeSharedListingImport()
         }
       }
     }
+  }
+
+  func resolvePendingSharedListingImport() {
+    if let pendingSharedListingImport {
+      HomeboardSharedImportStore.remove(id: pendingSharedListingImport.id)
+    }
+    pendingSharedListingImport = nil
   }
 
   private func applyListingCreateResponse(
@@ -2383,12 +2913,39 @@ final class AppModel {
     else { return }
 
     do {
+      var listingForUpload = listing
+      if let previewID = HomeboardSharedImportStore.previewImageID(from: listing.photoURL) {
+        if let previewData = HomeboardSharedImportStore.previewImageData(for: previewID) {
+          let uploadedURL = try await api.uploadListingImage(
+            accessToken: session.accessToken,
+            boardId: boardId,
+            data: previewData
+          )
+          listingForUpload.photoURL = uploadedURL
+          replacePendingListingPhoto(
+            localListingID: localListingID,
+            storageKey: storageKey,
+            photoURL: uploadedURL
+          )
+          HomeboardSharedImportStore.discardPreviewImage(for: previewID)
+        } else {
+          listingForUpload.photoURL = ""
+          replacePendingListingPhoto(
+            localListingID: localListingID,
+            storageKey: storageKey,
+            photoURL: ""
+          )
+        }
+      }
       let response = try await api.addListing(
         accessToken: session.accessToken,
         boardId: boardId,
-        listing: listing
+        listing: listingForUpload
       )
-      guard let serverListingID = matchingServerListingID(for: listing, in: response.board) else {
+      guard !Task.isCancelled, authSession?.userId == session.userId, board.id == boardId else {
+        return
+      }
+      guard let serverListingID = matchingServerListingID(for: listingForUpload, in: response.board) else {
         boardError = "The listing reached the board, but Homeboard could not reconcile its saved copy. It will retry safely."
         persist()
         return
@@ -2415,7 +2972,7 @@ final class AppModel {
           pendingServerListingRemovalIDsByBoard[boardId]?.remove(serverListingID)
           if board.id == boardId {
             applyRemoteMutation(removalResponse, clearing: [.shortlist])
-            boardFeedback = "Listing removed from the board."
+            boardFeedback = "Listing moved to Recently Deleted."
           } else {
             persist()
           }
@@ -2444,6 +3001,9 @@ final class AppModel {
 
       pendingListingCreatesByBoard[storageKey]?.removeAll { $0.id == localListingID }
       removedServerListingIDsByBoard[boardId]?.remove(serverListingID)
+      removedListingIdentityKeysByBoard[boardId]?.remove(
+        listingIdentityKey(listingForUpload)
+      )
       applyListingCreateResponse(
         reconciledResponse,
         localListingID: localListingID,
@@ -2452,9 +3012,32 @@ final class AppModel {
       )
       boardFeedback = "\(listing.title) is shared with the board."
     } catch {
+      guard !Task.isCancelled, authSession?.userId == session.userId else { return }
       boardError = "\(readable(error)) The listing is still saved on this device and will retry."
       persist()
     }
+  }
+
+  private func replacePendingListingPhoto(
+    localListingID: ListingPreview.ID,
+    storageKey: String,
+    photoURL: String
+  ) {
+    if let index = pendingListingCreatesByBoard[storageKey]?.firstIndex(where: {
+      $0.id == localListingID
+    }) {
+      pendingListingCreatesByBoard[storageKey]?[index].photoURL = photoURL
+    }
+    if let index = localShortlistsByBoard[storageKey]?.firstIndex(where: {
+      $0.id == localListingID
+    }) {
+      localShortlistsByBoard[storageKey]?[index].photoURL = photoURL
+    }
+    if let index = board.shortlist.firstIndex(where: { $0.id == localListingID }) {
+      board.shortlist[index].photoURL = photoURL
+    }
+    storeCurrentBoardSnapshot()
+    persist()
   }
 
   private func enqueueServerListingRemoval(listingID: String, boardId: String) {
@@ -2471,6 +3054,9 @@ final class AppModel {
           boardId: boardId,
           listingId: listingID
         )
+        guard !Task.isCancelled,
+              self.authSession?.userId == session.userId,
+              self.board.id == boardId else { return }
         self.pendingServerListingRemovalIDsByBoard[boardId]?.remove(listingID)
         if self.board.id == boardId {
           self.applyRemoteMutation(response, clearing: [.shortlist])
@@ -2478,6 +3064,7 @@ final class AppModel {
           self.persist()
         }
       } catch {
+        guard !Task.isCancelled, self.authSession?.userId == session.userId else { return }
         self.boardError = "\(self.readable(error)) Homeboard kept it hidden and will retry the removal."
         self.persist()
       }
@@ -2513,6 +3100,7 @@ final class AppModel {
         && existingUnit == normalizedUnit
     }
     if alreadySaved {
+      HomeboardSharedImportStore.discardPreviewImage(for: shared.id)
       boardFeedback = "That exact source is already on this board."
       pendingSharedListingImport = nil
       return true
@@ -2534,6 +3122,11 @@ final class AppModel {
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let displayTitle = capturedPageTitle.isEmpty ? address : capturedPageTitle
     let unit = shared.unit?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let remoteImage = shared.imageURL?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let photoURL = HomeboardSharedImportStore.hasPreviewImage(for: shared.id)
+        ? HomeboardSharedImportStore.previewImageReference(for: shared.id)
+        : remoteImage
 
     addManualListing(
       title: displayTitle,
@@ -2543,11 +3136,12 @@ final class AppModel {
       summary: shared.summary ?? "Collected from \(shared.sourceName ?? "the original listing source").",
       fitLabel: "New from \(shared.sourceName ?? "shared link")",
       sourceURL: sourceURL,
-      photoURL: shared.imageURL ?? "",
+      photoURL: photoURL,
       unit: unit,
       bedrooms: formatted(bedrooms),
       bathrooms: formatted(bathrooms),
       squareFeet: shared.squareFeet,
+      availableDate: shared.availableDate,
       amenities: shared.amenities,
       modelInsights: shared.modelInsights,
       address: address,
@@ -2599,6 +3193,7 @@ final class AppModel {
   }
 
   private func applyRemoteMutation(_ response: MobileBoardLoadResponse, clearing kinds: Set<LocalContributionKind>) {
+    guard authSession != nil, response.board.id == board.id else { return }
     let key = boardStorageKey()
     board = boardByApplyingRemovalTombstones(response.board, storageKey: key)
     profile = RentalProfile(remote: response.profile)
@@ -2888,7 +3483,7 @@ final class AppModel {
 
     if next.isBoardReady {
       let changeLead = changes.isEmpty ? "The board brief is in good shape now." : "\(changes) "
-      return "\(changeLead)You’ve given me enough to open the shared board. From there the group can edit constraints, invite people in, and start pressure-testing real listings."
+      return "\(changeLead)You’ve given me enough to open the shared board. From there the group can edit constraints, invite people in, and start comparing real listings."
     }
 
     if changes.isEmpty {
@@ -3229,8 +3824,8 @@ final class AppModel {
       commuteLine: "Compare 3 work routes on the map",
       summary: "Preview data for testing Homeboard’s shared decision tools. This is not a live rental advertisement.",
       fitLabel: "Strong shared fit",
-      highlights: ["Three bedrooms", "Near multiple train options", "Balanced location for the group"],
-      openRisks: ["Availability and fees are not verified"],
+      highlights: ["3 bedrooms and 2 full bathrooms for all roommates", "Near N/W trains with direct access to Midtown", "Balanced neighborhood vibe for the whole group"],
+      openRisks: ["Pushes Jordan to the top of their $1,550 budget cap", "Compare bedroom sizes to agree on an even rent split"],
       status: "interested",
       bedrooms: "3",
       bathrooms: "2",
@@ -3252,9 +3847,9 @@ final class AppModel {
       priceLine: "$4,350",
       commuteLine: "Compare 3 work routes on the map",
       summary: "Preview data for testing filters, group ratings, and commute routes. This is not a live rental advertisement.",
-      fitLabel: "Best value conversation",
-      highlights: ["Lower group rent", "Direct train access", "More interior space"],
-      openRisks: ["Longer Brooklyn commute", "Laundry is unverified"],
+      fitLabel: "Best value conversation · 1 mo free",
+      highlights: ["1 month free lowers effective rent to $1,329/person", "Well within Jordan and Sam's budget goals", "1 train stop is a short walk away"],
+      openRisks: ["Only 1 bathroom shared between 3 roommates", "Longer morning commute for Maya's downtown route"],
       status: "maybe",
       bedrooms: "3",
       bathrooms: "1",
@@ -3277,8 +3872,8 @@ final class AppModel {
       commuteLine: "Compare 3 work routes on the map",
       summary: "Preview data for testing Homeboard’s shared workspace. This is not a live rental advertisement.",
       fitLabel: "Lifestyle-led option",
-      highlights: ["Bright common area", "Social neighborhood", "Good local amenities"],
-      openRisks: ["Stretches Jordan’s budget", "Midtown commute needs review"],
+      highlights: ["Large open living room for shared socializing", "2 full bathrooms make morning routines seamless", "Top neighborhood pick for weekend culture"],
+      openRisks: ["$1,650/person exceeds Jordan's $1,550 budget cap", "Longer 45+ min commute to Midtown for Sam"],
       status: "new",
       bedrooms: "3",
       bathrooms: "2",
@@ -3315,7 +3910,7 @@ final class AppModel {
       chatMessages: [],
       openQuestions: ["Which tradeoff matters more: the Brooklyn location or the lower Hamilton Heights rent?"],
       members: members,
-      shortlist: [astoria, hamilton, brooklyn],
+      shortlist: [hamilton, astoria, brooklyn],
       invitations: []
     )
     localShortlistsByBoard["preview-workspace"] = board.shortlist
@@ -3377,13 +3972,14 @@ final class AppModel {
     }
   }
 
-  private func persist() {
+  func persist() {
     let snapshot = PersistedState(
       currentScreen: currentScreen,
       authMode: authMode,
       boardTab: boardTab,
       board: board,
       account: account,
+      authenticatedAuthUserID: authSession?.userId,
       availableBoards: availableBoards,
       // Invite links are bearer credentials. Keep the pending token in memory
       // for the current auth flow instead of writing it to UserDefaults.
@@ -3422,6 +4018,7 @@ final class AppModel {
     boardTab = snapshot.boardTab ?? .board
     board = snapshot.board
     account = snapshot.account
+    restoredAuthUserID = snapshot.authenticatedAuthUserID
     availableBoards = snapshot.availableBoards
     pendingInviteCode = ""
     pendingConfirmationEmail = snapshot.pendingConfirmationEmail ?? ""
@@ -3463,6 +4060,17 @@ final class AppModel {
 
   private func applyLocalBoardContributions() {
     let key = boardStorageKey()
+    let isDeviceLocalBoard = board.id.map {
+      $0.hasPrefix("local-") || $0.hasPrefix("preview-")
+    } ?? true
+
+    if !isDeviceLocalBoard {
+      board.members.removeAll {
+        $0.userId.isEmpty
+          && $0.roommateId == nil
+          && $0.status != "commute point"
+      }
+    }
 
     let localShortlist = localShortlistsByBoard[key] ?? []
     if !localShortlist.isEmpty {
@@ -3493,16 +4101,77 @@ final class AppModel {
       board.recentActivity = merged
     }
 
-    let localMembers = localMembersByBoard[key] ?? []
+    let localMembers = (localMembersByBoard[key] ?? []).filter {
+      isDeviceLocalBoard || $0.status == "commute point"
+    }
     if !localMembers.isEmpty {
-      var merged = localMembers
-      for item in board.members where !merged.contains(where: { $0.id == item.id }) {
+      var merged = board.members
+      for item in localMembers where !merged.contains(where: {
+        $0.id == item.id
+          || (!item.userId.isEmpty && $0.userId == item.userId)
+          || ($0.name.caseInsensitiveCompare(item.name) == .orderedSame
+              && $0.status == item.status)
+      }) {
         merged.append(item)
       }
       board.members = merged
     }
 
     ensureCurrentAccountMemberPresence()
+  }
+
+  private func recentlyDeletedDate(from value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = fractional.date(from: value) { return date }
+    return ISO8601DateFormatter().date(from: value)
+  }
+
+  private func purgeExpiredLocalRecentlyDeletedListings() {
+    let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+    let retained: ([ListingPreview]?) -> [ListingPreview] = { listings in
+      (listings ?? []).filter { listing in
+        guard let deletedAt = listing.deletedAt,
+              let date = self.recentlyDeletedDate(from: deletedAt)
+        else { return true }
+        return date > cutoff
+      }
+    }
+    let currentBoardRecentlyDeleted = board.recentlyDeleted
+    board.recentlyDeleted = retained(currentBoardRecentlyDeleted)
+
+    var updatedBoards = localBoardsById
+    for (key, var targetBoard) in updatedBoards {
+      targetBoard.recentlyDeleted = retained(targetBoard.recentlyDeleted)
+      updatedBoards[key] = targetBoard
+    }
+    localBoardsById = updatedBoards
+  }
+
+  private func removePersistedStressTestListings() {
+    let prefix = "debug-stress-listing-"
+    board.shortlist.removeAll { $0.id.hasPrefix(prefix) }
+
+    var updatedShortlists = localShortlistsByBoard
+    for (key, var list) in updatedShortlists {
+      list.removeAll { $0.id.hasPrefix(prefix) }
+      updatedShortlists[key] = list
+    }
+    localShortlistsByBoard = updatedShortlists
+
+    var updatedBoards = localBoardsById
+    for (key, var targetBoard) in updatedBoards {
+      targetBoard.shortlist.removeAll { $0.id.hasPrefix(prefix) }
+      updatedBoards[key] = targetBoard
+    }
+    localBoardsById = updatedBoards
+
+    var updatedCreates = pendingListingCreatesByBoard
+    for (key, var list) in updatedCreates {
+      list.removeAll { $0.id.hasPrefix(prefix) }
+      updatedCreates[key] = list
+    }
+    pendingListingCreatesByBoard = updatedCreates
   }
 
   private func storeCurrentBoardSnapshot() {
@@ -3512,6 +4181,11 @@ final class AppModel {
   }
 
   private func ensureCurrentAccountMemberPresence() {
+    let canSynthesizeLocalMember = board.id.map {
+      $0.hasPrefix("local-") || $0.hasPrefix("preview-")
+    } ?? true
+    guard canSynthesizeLocalMember else { return }
+
     let resolvedName = profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       ? account?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       : profile.name.trimmingCharacters(in: .whitespacesAndNewlines)

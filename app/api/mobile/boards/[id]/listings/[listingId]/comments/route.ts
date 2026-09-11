@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { addBoardListingComment, getBoardPageData } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
@@ -11,6 +12,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireMobileAppUser(request);
     const { id, listingId } = await context.params;
+    assertThrottle({
+      scope: "mobile-listing-comment",
+      key: `${user.id}:${id}`,
+      limit: 60,
+      windowMs: 10 * 60 * 1_000,
+      message: "Too many comments were added recently. Please wait before trying again.",
+    });
     const data = await getBoardPageData(id, user.id);
     if (!data) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     if (!data.boardListings.some((entry) => entry.id === listingId)) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
@@ -24,6 +32,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ board: buildMobileBoardPayload(next), profile: next.profile, missingFields: next.missingFields });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to add comment.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      {
+        error: message === "MOBILE_AUTH_REQUIRED"
+          ? "Unauthorized"
+          : isThrottleError(error)
+            ? message
+            : "Unable to add comment.",
+      },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : isThrottleError(error) ? 429 : 500 },
+    );
   }
 }

@@ -23,7 +23,7 @@ jobs:
             --retry 2 --retry-delay 5 --max-time 20 \
             https://real-estate-samyanmangat-6662s-projects.vercel.app/api/health \
             | tee /tmp/homeboard-health.json
-          node -e 'const fs=require("fs"); const body=JSON.parse(fs.readFileSync("/tmp/homeboard-health.json","utf8")); if(body.ok!==true) process.exit(1)'
+          node -e 'const fs=require("fs"); const body=JSON.parse(fs.readFileSync("/tmp/homeboard-health.json","utf8")); if(body.ok!==true || body.betaReady!==true) { console.error("Production is live but not beta-ready:", body); process.exit(1) }'
 
       - name: Send optional outage alert
         if: failure()

@@ -59,7 +59,7 @@ The finished product should turn that process into a shared, auditable workspace
    - Must-haves, nice-to-haves, and dealbreakers.
    - Priorities and readiness information.
 5. Homeboard generates a transparent group brief that shows agreement and conflicts.
-6. Members add exact listing links through the app, Safari, Zillow, StreetEasy, broker sites, or an iOS Share Extension.
+6. Members open exact listings on supported Safari sites, where Homeboard scans automatically and saves only after a listing or unit pill is tapped.
 7. Homeboard normalizes those links into one listing record when identity is exact.
 8. The group sees:
    - Listing facts.
@@ -103,7 +103,7 @@ The active native implementation includes:
 - Member commute anchors and MapKit route rendering.
 - Board updates, shared messages, reactions, comments, ratings, and decisions.
 - Exact listing-source submission and verification controls.
-- A Share Extension foundation for sending a URL into Homeboard.
+- A Safari Web Extension for supported-site automatic scanning and explicit pill-to-save capture, plus a compact Share Extension for listing links shared from native rental apps.
 - Push-device token registration.
 
 The two largest native files are:
@@ -716,7 +716,7 @@ The image/source issue is the primary product blocker. The remaining issues are 
 
 1. Keep RentCast candidates private.
 2. Make exact link submission the primary listing action.
-3. Complete the iOS Share Extension.
+3. Validate automatic Safari capture and the compact native-app Share flow across supported rental sites.
 4. Open sources in in-app Safari.
 5. Make source trust and report controls understandable.
 6. Add reliable refresh/realtime behavior.

@@ -32,7 +32,10 @@ export async function POST(request: Request) {
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "register_push_device", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to register device.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to register device." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }
 
@@ -46,6 +49,9 @@ export async function DELETE(request: Request) {
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "unregister_push_device", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to unregister device.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to unregister device." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }

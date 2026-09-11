@@ -2,7 +2,7 @@
 
 Homeboard is a shared rental workspace for groups searching for a home together. It keeps the group brief, member preferences, real listing links, reactions, comments, decisions, and activity in one place instead of scattering the search across texts and screenshots.
 
-The current beta path is deliberately non-AI. Onboarding is a deterministic set of focused questions, and every listing shown in the workspace must be added by a person or a future configured provider. Homeboard does not scrape sites or fabricate inventory.
+The current beta path is deliberately non-AI. Onboarding is a deterministic set of focused questions. New workspaces start empty: listings must be added by a person or a configured provider. Homeboard does not scrape sites or present fabricated inventory as real availability.
 
 ## Product surfaces
 
@@ -15,8 +15,8 @@ The current beta path is deliberately non-AI. Onboarding is a deterministic set 
 - Six-dimension group-fit ratings with overlapping member radar charts
 - Member preference cards and shared search-brief editing
 - Source-first listing collection with exact-unit links, trust state, confirmations, reports, notes, price history, reactions, and comments
-- Safari Web Extension that captures the open rental's source, thumbnail, address, price, beds, baths, and square footage when the page exposes them
-- iOS Share Extension for sending Zillow, StreetEasy, or broker-app links directly to the active board
+- Safari Web Extension that automatically recognizes supported rental pages, shows exact listing or unit pills, and saves only the pill the user taps
+- Compact iOS Share Extension for capturing listings shared from native rental apps
 - Private RentCast candidate catalog; candidates stay out of discovery until an exact source is community-supported or verified
 - Open decisions, board activity, multiple boards, board renaming, leave/delete board, and account deletion
 - OpenRouteService-ready commute architecture
@@ -64,16 +64,16 @@ For a physical iPhone or external beta, configure these Xcode build settings:
 
 Then select your Apple development team, choose the phone, and run. The Supabase publishable key is safe to ship in a client; service-role/database credentials must remain backend-only.
 
-Both `Save to Homeboard` extensions use the `group.com.homeboard.native` app group. Keep that app group enabled for the app, `HomeboardShareExtension`, and `HomeboardSafariExtension` targets when changing signing teams.
+Both extension targets use the `group.com.homeboard.native` app group. Keep that app group enabled for the app, `HomeboardShareExtension`, and `HomeboardSafariExtension` targets when changing signing teams. The Safari extension scans supported pages in Safari; the compact Share Extension accepts listing links from native rental apps.
 
 After installing the app, enable its Safari extension once:
 
-1. Open iPhone Settings, then Apps, Safari, Extensions.
-2. Turn on `Save to Homeboard` and allow access to the rental websites you use.
-3. Open an exact rental page in Safari, use Safari's page menu to open `Save to Homeboard`, review the captured preview, and tap `Save to Homeboard`.
-4. Tap `Open Homeboard` to confirm missing facts and add the rental to the active board.
+1. In Homeboard, open Workspace, Safari Capture, and tap `Enable in Safari` on iOS 26.2 or later. On older iOS versions, open Settings, Apps, Safari, Extensions.
+2. Turn on `Save to Homeboard` and set website access to Allow for the supported rental sites.
+3. Open an exact supported rental page in Safari. Homeboard scans it automatically and shows one pill for the listing or one pill per available unit.
+4. Tap the intended pill to save. Nothing saves merely because the page was opened. If required facts are missing, Homeboard opens its review form instead.
 
-From a native listing app, use its normal Share button and choose `Save to Homeboard`. Native apps usually share only a link and title, while the Safari path can capture the structured facts and social-preview thumbnail already exposed by the page.
+If automatic access is unavailable on a page, invoke `Save to Homeboard` from Safari's Page Menu as a manual fallback.
 
 Invite links can open the web acceptance flow or hand off to the installed app through `homeboard://invite/CODE`.
 

@@ -7,7 +7,7 @@ Current product version: 0.0.13
 
 Homeboard is a shared rental-search workspace for people choosing a home together. Its strongest idea is not “find every apartment.” It is “turn scattered listing links and roommate opinions into one understandable group decision.”
 
-The iPhone app is the main product. A marketing and account website supports it, a Safari share extension captures exact rental pages, and a Mac companion connects desktop Safari to the same board. The core workflow is unusually complete for a pre-beta product: a group can define its constraints, import a real listing, preserve the source facts, compare tradeoffs, discuss it, and move it through a decision.
+The iPhone app is the main product. A marketing and account website supports it, a Safari web extension captures exact rental pages, a compact share extension accepts listing links from native rental apps, and a Mac companion connects desktop Safari to the same board. The core workflow is unusually complete for a pre-beta product: a group can define its constraints, import a real listing, preserve the source facts, compare tradeoffs, discuss it, and move it through a decision.
 
 The app currently feels designed rather than assembled. It has a dark green-charcoal palette, cream typography, editorial serif headlines, framed surfaces, restrained accent color, deliberate haptics, and short guided moments. It feels calm and serious about a stressful decision. Once a user reaches a populated board, however, the capability density becomes high. Settings is long, comparison is sophisticated, and the distinction between hard facts, roommate input, route data, and model evidence still needs repeated real-user validation.
 
@@ -45,7 +45,7 @@ The comparison map is a differentiator. It brings listings, work destinations, c
 
 ### Saving a listing
 
-On iPhone, the user opens an exact rental page in Safari and shares it to Homeboard. The extension visually follows the relevant page text, rejects recommendation/similar-card substitutions, performs one deeper rescan when useful, and presents a review step for address, rent, beds, baths, and other facts. On Mac, the Safari extension uses the same authenticated board path after pairing or Apple sign-in.
+On iPhone, the user enables Safari capture and supported-site access once from Homeboard's guided setup. Opening an exact rental page on a supported site then starts a quiet scan automatically. A standalone pill above Safari's controls shows the address, unit, rent, bedrooms, and bathrooms; building pages show one pill per available unit. Nothing saves until the user taps a pill. The selected pill briefly confirms success and dismisses itself. A larger review appears only when required facts are missing, and the Page Menu action remains a manual fallback. On Mac, the Safari extension uses the same authenticated board path after pairing or Apple sign-in.
 
 This workflow feels careful and grounded. It also has the largest real-world reliability surface because listing sites vary constantly. The implementation is defensive, but the required 50-link device corpus has not yet been completed.
 
@@ -84,7 +84,7 @@ This workflow feels careful and grounded. It also has the largest real-world rel
 
 - **Public website:** branded, mobile-paged product story, install/beta information, route-specific share previews, Privacy, Contact, and custom 404 pages.
 - **iPhone app:** launch, welcome, Apple authentication, invite/board choice, onboarding, board/list, shortlist, compare/map, updates, members, setup, account deletion, notification registration, and beta feedback.
-- **iPhone Safari share extension:** exact-page scanning, evidence capture, review/correction, and authenticated board save.
+- **iPhone capture extensions:** guided one-time Safari enablement, supported-site automatic scanning, standalone listing/unit pills, and authenticated board save. Native rental apps use Share → Homeboard, which opens a compact centered pill carousel and saves only the option the user taps. The Page Menu action remains a manual Safari fallback.
 - **Mac setup app and Safari extension:** QR/Apple authentication, board selection, shared keychain/app-group state, and desktop listing capture.
 - **Backend:** Next.js mobile/web API, Prisma/PostgreSQL, Supabase Auth/admin integration, private data policies, invitation and pairing flows, listing analysis, route summaries, analytics, and a public readiness endpoint.
 

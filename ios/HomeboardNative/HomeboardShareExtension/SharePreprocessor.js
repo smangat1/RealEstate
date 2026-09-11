@@ -2,6 +2,18 @@ var HomeboardSharePreprocessor = function() {};
 
 HomeboardSharePreprocessor.prototype = {
   run: function(extensionArguments) {
+    const preprocessorStartedAtMS = Date.now();
+    let preprocessingCompleted = false;
+    const complete = (result) => {
+      if (preprocessingCompleted) return;
+      preprocessingCompleted = true;
+      result.preprocessorStartedAtMS = preprocessorStartedAtMS;
+      result.preprocessorFinishedAtMS = Date.now();
+      result.preprocessorDurationMS = result.preprocessorFinishedAtMS - preprocessorStartedAtMS;
+      extensionArguments.completionFunction(result);
+    };
+
+    try {
     const clean = (value) => {
       if (typeof value !== "string") return null;
       const result = value.replace(/\s+/g, " ").trim();
@@ -23,6 +35,26 @@ HomeboardSharePreprocessor.prototype = {
     };
     const first = (...values) => values.find((value) => value !== null && value !== undefined && value !== "");
     const meta = (selector) => clean(document.querySelector(selector)?.content);
+    const absoluteWebURL = (value) => {
+      const candidate = clean(value);
+      if (!candidate) return null;
+      try {
+        const url = new URL(candidate, document.baseURI || location.href);
+        return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+      } catch {
+        return null;
+      }
+    };
+    const structuredImageURL = (value) => {
+      if (typeof value === "string") return absoluteWebURL(value);
+      if (Array.isArray(value)) {
+        return value.map(structuredImageURL).find(Boolean) || null;
+      }
+      if (value && typeof value === "object") {
+        return absoluteWebURL(value.url || value.contentUrl || value.thumbnailUrl);
+      }
+      return null;
+    };
     const recommendationPattern =
       /similar homes|similar listings|similar results|recommended|you may also like|homes you may like|nearby homes|nearby rentals|other rentals|other available homes|more homes|homes for you/i;
     const recommendationRoots = new Set(document.querySelectorAll(
@@ -51,6 +83,55 @@ HomeboardSharePreprocessor.prototype = {
       + '[class*="property-card" i],[class*="listing-card" i],'
       + '[class*="recommend" i],[class*="similar" i]'
     ));
+    const visibleListingImageURL = () => {
+      const selectors = [
+        '[data-testid*="gallery" i] img',
+        '[data-testid*="hero" i] img',
+        '[data-testid*="media" i] img',
+        '[class*="gallery" i] img',
+        '[class*="hero" i] img',
+        'main picture img',
+        '[role="main"] picture img',
+        'main img',
+        '[role="main"] img'
+      ];
+      const images = new Set(document.querySelectorAll(selectors.join(',')));
+      let winner = null;
+      let winningScore = Number.NEGATIVE_INFINITY;
+      for (const image of images) {
+        if (isRecommendation(image) || isListingCard(image)) continue;
+        if (image.closest('nav,header,footer,[class*="map" i],[data-testid*="map" i]')) continue;
+        const url = first(
+          absoluteWebURL(image.currentSrc),
+          absoluteWebURL(image.src),
+          absoluteWebURL(image.getAttribute('data-src')),
+          absoluteWebURL(image.getAttribute('data-lazy-src')),
+          absoluteWebURL(image.getAttribute('data-original'))
+        );
+        if (!url || /(?:logo|favicon|avatar|sprite|map-marker|placeholder)/i.test(url)) continue;
+        const rect = image.getBoundingClientRect();
+        const width = image.naturalWidth || rect.width;
+        const height = image.naturalHeight || rect.height;
+        const ratio = height > 0 ? width / height : 0;
+        if (width < 220 || height < 140 || ratio < 0.65 || ratio > 2.8) continue;
+        const descriptor = [
+          image.alt,
+          image.id,
+          image.className,
+          image.closest('[data-testid]')?.getAttribute('data-testid'),
+          image.closest('[class]')?.className
+        ].filter((value) => typeof value === 'string').join(' ');
+        if (/logo|icon|avatar|map|street.?view|floor.?plan/i.test(descriptor)) continue;
+        const heroBonus = /gallery|hero|photo|media/i.test(descriptor) ? 1_000_000 : 0;
+        const viewportBonus = rect.bottom > 0 && rect.top < innerHeight ? 250_000 : 0;
+        const score = heroBonus + viewportBonus + Math.min(width * height, 900_000);
+        if (score > winningScore) {
+          winner = url;
+          winningScore = score;
+        }
+      }
+      return winner;
+    };
     const installScanOverlay = () => {
       const existing = document.querySelector("#homeboard-scan-tag");
       if (existing) existing.remove();
@@ -218,19 +299,24 @@ HomeboardSharePreprocessor.prototype = {
 
     const nodes = [];
     const seen = new Set();
-    const visit = (value, depth = 0) => {
+    const structuredParents = new WeakMap();
+    const structuredParentKeys = new WeakMap();
+    const visit = (value, depth = 0, parent = null, parentKey = "") => {
       if (!value || typeof value !== "object" || depth > 10 || seen.has(value) || nodes.length > 12_000) return;
       seen.add(value);
+      if (parent) {
+        structuredParents.set(value, parent);
+        structuredParentKeys.set(value, parentKey);
+      }
       if (Array.isArray(value)) {
-        value.forEach((item) => visit(item, depth + 1));
+        value.forEach((item) => visit(item, depth + 1, value, parentKey));
         return;
       }
       const type = Array.isArray(value["@type"])
         ? value["@type"].join(" ")
         : String(value["@type"] || "");
-      if (/ItemList/i.test(type)) return;
-      nodes.push(value);
-      Object.values(value).forEach((item) => visit(item, depth + 1));
+      if (!/ItemList/i.test(type)) nodes.push(value);
+      Object.entries(value).forEach(([key, item]) => visit(item, depth + 1, value, key));
     };
     roots.forEach((root) => visit(root));
 
@@ -742,22 +828,72 @@ HomeboardSharePreprocessor.prototype = {
     const unitOptions = () => {
       const result = [];
       const found = new Set();
+      const normalizedBuildingAddress = (value) => clean(value)
+        ?.toLowerCase()
+        .replace(/\b(?:apt|apartment|unit|suite)\s*#?\s*[a-z0-9-]+\b.*$/i, "")
+        .replace(/#\s*[a-z0-9-]+\b.*$/i, "")
+        .split(",")[0]
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim() || null;
+      const ancestorValue = (candidate, names) => {
+        let current = candidate;
+        for (let depth = 0; current && depth < 8; depth += 1) {
+          const value = keys(current, names);
+          if (value !== null) return value;
+          current = structuredParents.get(current);
+        }
+        return null;
+      };
+      const ancestorContext = (candidate) => {
+        const values = [];
+        let current = candidate;
+        for (let depth = 0; current && depth < 8; depth += 1) {
+          values.push(
+            structuredParentKeys.get(current),
+            current.name,
+            current["@type"],
+            current.status,
+            current.availability
+          );
+          current = structuredParents.get(current);
+        }
+        return values.filter(Boolean).join(" ");
+      };
+      const pagePath = location.pathname.replace(/\/+$/, "");
+      const matchesPageURL = (candidate) => {
+        const candidateURL = ancestorValue(candidate, ["url", "@id"]);
+        if (typeof candidateURL !== "string") return false;
+        try {
+          return new URL(candidateURL, location.href).pathname.replace(/\/+$/, "") === pagePath;
+        } catch {
+          return false;
+        }
+      };
       for (const candidate of nodes) {
         const unit = clean(keys(
           candidate,
           ["unit", "unitNumber", "apartmentNumber", "unitCode", "apartmentSuite", "floorPlanName"]
         ));
         const label = unit;
-        const price = number(keys(candidate, ["price", "rent", "monthlyRent", "minPrice", "lowPrice"]));
-        const bedrooms = number(keys(
+        const context = ancestorContext(candidate);
+        if (recommendationPattern.test(context) || /unavailable|off.?market|past.?listing|rented|leased|sold/i.test(context)) continue;
+        const pageAddressKey = normalizedBuildingAddress(address);
+        const candidateAddress = ancestorValue(candidate, ["streetAddress", "addressLine1", "formattedAddress"]);
+        const candidateAddressKey = normalizedBuildingAddress(candidateAddress);
+        if (pageAddressKey && candidateAddressKey && pageAddressKey !== candidateAddressKey) continue;
+        const hasAvailabilityContext = /available|availability|units?|floor.?plans?|apartments?/i.test(context);
+        if (candidate !== node && !matchesPageURL(candidate) && !candidateAddressKey && !hasAvailabilityContext) continue;
+
+        const price = number(ancestorValue(candidate, ["price", "rent", "monthlyRent", "baseRent", "minBaseRent", "minPrice", "lowPrice"]));
+        const bedrooms = number(ancestorValue(
           candidate,
           ["bedrooms", "beds", "bedCount", "minBeds", "numberOfBedrooms"]
         ));
-        const bathrooms = number(keys(
+        const bathrooms = number(ancestorValue(
           candidate,
           ["bathrooms", "baths", "bathCount", "minBaths", "numberOfBathrooms"]
         ));
-        const squareFeet = number(keys(candidate, ["squareFeet", "livingArea", "floorSize"]));
+        const squareFeet = number(ancestorValue(candidate, ["squareFeet", "sqft", "livingArea", "floorSize"]));
         const factCount = [price, bedrooms, bathrooms, squareFeet]
           .filter((value) => value !== null).length;
         if (!unit || !label || factCount < 2) continue;
@@ -772,12 +908,12 @@ HomeboardSharePreprocessor.prototype = {
           bedrooms,
           bathrooms,
           squareFeet,
-          availableDate: clean(keys(
+          availableDate: clean(ancestorValue(
             candidate,
-            ["availableDate", "availabilityDate", "dateAvailable"]
+            ["availableDate", "availabilityDate", "dateAvailable", "availableFrom"]
           ))
         });
-        if (result.length >= 12) break;
+        if (result.length >= 50) break;
       }
       return result;
     };
@@ -843,10 +979,31 @@ HomeboardSharePreprocessor.prototype = {
     );
     const bedMatch = text.match(/\b(\d+(?:\.\d+)?)\s*(?:bd|bed|beds|bedroom|bedrooms)\b/i);
     const bathMatch = text.match(/\b(\d+(?:\.\d+)?)\s*(?:ba|bath|baths|bathroom|bathrooms)\b/i);
-    const isBuildingPage =
+    let isBuildingPage =
       /\/apartments?\//i.test(location.pathname)
       || /\b(?:floor plans|available units|units available)\b/i.test(text.slice(0, 12_000));
     const highlightedEvidenceCount = 0;
+    const availabilityRoots = new Set(document.querySelectorAll([
+      '[data-testid*="available-units" i]', '[data-testid*="availability-list" i]',
+      '[data-testid*="unit-list" i]', '[data-testid*="floor-plans" i]',
+      '[data-testid*="floorplans" i]', '[id*="available-units" i]',
+      '[id*="floorplans" i]', '[class*="available-units" i]', '[class*="floorplans" i]'
+    ].join(',')));
+    for (const heading of document.querySelectorAll('h1,h2,h3,h4,[role="heading"]')) {
+      const headingText = clean(heading.innerText || heading.textContent);
+      if (!headingText || !/\b(?:available (?:apartments|homes|units)|availability|(?:apartment )?floor\s*plans?)\b/i.test(headingText)) continue;
+      const root = heading.closest('section,[role="region"]') || heading.parentElement;
+      if (root && !isRecommendation(root)) availabilityRoots.add(root);
+    }
+    isBuildingPage = isBuildingPage || availabilityRoots.size > 0;
+    const availabilityPageEvidence = [...availabilityRoots]
+      .filter((root) => !isRecommendation(root))
+      .map((root) => clean(root.innerText || root.textContent))
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(0, 32_000);
+    const extractedOptions = isBuildingPage ? unitOptions() : [];
+    const structuredUnitEvidence = extractedOptions.map((option) => JSON.stringify(option)).join("\n");
     const extractedUnit = clean(first(
       keys(node, ["unit", "unitNumber", "apartmentNumber", "unitCode", "apartmentSuite"]),
       unitMatch?.[1]
@@ -901,14 +1058,33 @@ HomeboardSharePreprocessor.prototype = {
         number(best(["bathrooms", "baths", "bathCount", "minBaths", "numberOfBathrooms"])),
         number(bathMatch?.[1])
       ),
-      imageURL: first(meta('meta[property="og:image"]'), meta('meta[name="twitter:image"]')),
+      imageURL: first(
+        absoluteWebURL(meta('meta[property="og:image:secure_url"]')),
+        absoluteWebURL(meta('meta[property="og:image"]')),
+        absoluteWebURL(meta('meta[name="twitter:image"]')),
+        absoluteWebURL(document.querySelector('link[rel~="image_src"]')?.href),
+        structuredImageURL(best(["image", "primaryImageOfPage", "thumbnailUrl"])),
+        visibleListingImageURL()
+      ),
       summary: first(meta('meta[property="og:description"]'), meta('meta[name="description"]')),
       listingScope: isBuildingPage ? "building" : "unit",
       pageEvidence: pageEvidence(),
-      secondaryPageEvidence: secondaryPageEvidence(),
-      unitOptions: isBuildingPage ? unitOptions() : []
+      availabilityPageEvidence,
+      structuredUnitEvidence,
+      secondaryPageEvidence: [secondaryPageEvidence(), availabilityPageEvidence]
+        .filter(Boolean).join("\n\n").slice(0, 32_000),
+      unitOptions: extractedOptions
     });
-    extensionArguments.completionFunction(result);
+    complete(result);
+    } catch (error) {
+      complete({
+        url: location.href,
+        canonicalURL: location.href,
+        pageTitle: document.title || null,
+        safariPageCapture: true,
+        preprocessorError: String(error?.message || error || "unknown").slice(0, 240)
+      });
+    }
   }
 };
 
@@ -1178,12 +1354,12 @@ var HomeboardRunFinalizedPageScan = function(payload) {
   run();
 };
 
-HomeboardSharePreprocessor.prototype.finalize = function(arguments) {
+HomeboardSharePreprocessor.prototype.finalize = function(finalizeArguments) {
   if (typeof window.__homeboardCleanupScanOverlay === "function") {
     window.__homeboardCleanupScanOverlay();
   }
-  if (arguments?.startPageScan) {
-    HomeboardRunFinalizedPageScan(arguments);
+  if (finalizeArguments?.startPageScan) {
+    HomeboardRunFinalizedPageScan(finalizeArguments);
   }
 };
 

@@ -69,7 +69,7 @@ function metadataString(value: unknown) {
 }
 
 export async function syncAuthUserToProfile(authUser: SupabaseAuthUser) {
-  if (!authUser.email) return null;
+  if (!authUser.email || authUser.app_metadata?.homeboard_deletion_pending === true) return null;
 
   const row = await prisma.user.upsert({
     where: { authUserId: authUser.id },

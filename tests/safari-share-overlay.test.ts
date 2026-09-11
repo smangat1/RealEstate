@@ -19,10 +19,34 @@ const shareExtensionInfoPlist = readFileSync(
   "utf8",
 ).replace(/\s+/g, "");
 
+const actionExtensionInfoPlist = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardActionExtension/Info.plist",
+  ),
+  "utf8",
+).replace(/\s+/g, "");
+
 const shareViewControllerSource = readFileSync(
   resolve(
     process.cwd(),
     "ios/HomeboardNative/HomeboardShareExtension/ShareViewController.swift",
+  ),
+  "utf8",
+);
+
+const compactShareViewControllerSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardShareExtension/CompactShareViewController.swift",
+  ),
+  "utf8",
+);
+
+const shareBootProbeSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardShareExtension/ShareBootProbe.m",
   ),
   "utf8",
 );
@@ -43,10 +67,42 @@ const extensionSyncSource = readFileSync(
   "utf8",
 );
 
+const sharedImportStoreSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardNative/Shared/HomeboardSharedImportStore.swift",
+  ),
+  "utf8",
+);
+
+const sharedWorkspaceSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift",
+  ),
+  "utf8",
+);
+
+const appModelSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift",
+  ),
+  "utf8",
+);
+
 const safariHandlerSource = readFileSync(
   resolve(
     process.cwd(),
     "ios/HomeboardNative/HomeboardSafariExtension/SafariWebExtensionHandler.swift",
+  ),
+  "utf8",
+);
+
+const safariContentSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardSafariExtension/Resources/content.js",
   ),
   "utf8",
 );
@@ -59,8 +115,29 @@ const macAppSource = readFileSync(
   "utf8",
 );
 
+const mobileListingRouteSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "app/api/mobile/boards/[id]/listings/route.ts",
+  ),
+  "utf8",
+);
+
+const boardDataSource = readFileSync(
+  resolve(process.cwd(), "lib/board-data.ts"),
+  "utf8",
+);
+
 const xcodeProjectSpec = readFileSync(
   resolve(process.cwd(), "ios/HomeboardNative/project.yml"),
+  "utf8",
+);
+
+const xcodeProjectSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardNative.xcodeproj/project.pbxproj",
+  ),
   "utf8",
 );
 
@@ -78,9 +155,29 @@ test("mobile Safari Share hands back to a sentence-following page scan", () => {
   assert.match(preprocessorSource, /longitude: coordinate\?\.longitude/);
   assert.match(preprocessorSource, /node\.location\?\.geo/);
   assert.match(preprocessorSource, /completionFunction\(result\)/);
+  assert.match(preprocessorSource, /og:image:secure_url/);
+  assert.match(preprocessorSource, /twitter:image/);
+  assert.match(preprocessorSource, /link\[rel~="image_src"\]/);
+  assert.match(preprocessorSource, /structuredImageURL\(best\(\["image"/);
+  assert.match(preprocessorSource, /visibleListingImageURL/);
+  assert.match(preprocessorSource, /data-testid\*="gallery"/);
+  assert.match(preprocessorSource, /image\.naturalWidth \|\| rect\.width/);
   assert.match(
     preprocessorSource,
     /HomeboardSharePreprocessor\.prototype\.finalize/,
+  );
+});
+
+test("the iPhone scanner preserves Safari's preview image through later model analysis", () => {
+  assert.match(shareViewControllerSource, /meta\('og:image:secure_url'\)/);
+  assert.match(shareViewControllerSource, /meta\('twitter:image'\)/);
+  assert.match(
+    shareViewControllerSource,
+    /if let imageURL = facts\.imageURL\?\.trimmingCharacters[\s\S]*?extractedValues\["imageURL"\] = imageURL/,
+  );
+  assert.doesNotMatch(
+    shareViewControllerSource,
+    /extractedValues\["imageURL"\] = facts\.imageURL/,
   );
 });
 
@@ -145,31 +242,112 @@ test("the on-device model uses frozen evidence independently from the animation"
   );
 });
 
-test("Safari preprocessing is configured inside the extension attributes", () => {
+test("iOS Share admits every nonempty host share item and validates its URL in Swift", () => {
   assert.match(
     shareExtensionInfoPlist,
-    /<\/dict><key>NSExtensionJavaScriptPreprocessingFile<\/key><string>SharePreprocessor<\/string><\/dict><key>NSExtensionPointIdentifier<\/key>/,
+    /NSExtensionActivationRule<\/key>[\s\S]*?<string>\$\(HOMEBOARD_EXTENSION_ACTIVATION_RULE\)<\/string>/,
   );
-  assert.doesNotMatch(
+  assert.doesNotMatch(shareExtensionInfoPlist, /TRUEPREDICATE/);
+  assert.match(
+    xcodeProjectSpec,
+    /HomeboardShareExtension:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*"extensionItems\.@count > 0"[\s\S]*?Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*TRUEPREDICATE/,
+  );
+  assert.match(
     shareExtensionInfoPlist,
-    /<\/dict><\/dict><key>NSExtensionJavaScriptPreprocessingFile<\/key>/,
+    /NSExtensionJavaScriptPreprocessingFile<\/key><string>SharePreprocessor<\/string>/,
+  );
+  assert.match(xcodeProjectSpec, /HomeboardShareExtension\/SharePreprocessor\.js[\s\S]*?buildPhase: resources/);
+  assert.match(xcodeProjectSource, /SharePreprocessor\.js in Resources/);
+  assert.match(compactShareViewControllerSource, /import LinkPresentation/);
+  assert.match(compactShareViewControllerSource, /com\.apple\.linkpresentation\.metadata/);
+  assert.match(compactShareViewControllerSource, /item as\? LPLinkMetadata/);
+  assert.match(compactShareViewControllerSource, /metadata\.originalURL/);
+  assert.match(compactShareViewControllerSource, /validatedWebURL/);
+  assert.match(compactShareViewControllerSource, /Homeboard needs the listing link from this app/);
+  assert.match(shareViewControllerSource, /private func startAutomaticPageScan\(\)/);
+  assert.match(shareViewControllerSource, /scan\.automaticStarted/);
+  assert.match(shareViewControllerSource, /await self\.runHighlightedPageScan\(\)/);
+  assert.match(shareViewControllerSource, /await self\.quickScanPage\(\)/);
+
+  const navigationFinishedFlow = shareViewControllerSource.slice(
+    shareViewControllerSource.indexOf("func webView(_ webView: WKWebView, didFinish"),
+    shareViewControllerSource.indexOf("didFailProvisionalNavigation"),
+  );
+  assert.match(navigationFinishedFlow, /startAutomaticPageScan\(\)/);
+});
+
+test("native apps also expose Homeboard in the vertical Edit Actions list", () => {
+  assert.match(
+    actionExtensionInfoPlist,
+    /NSExtensionPointIdentifier<\/key><string>com\.apple\.ui-services<\/string>/,
+  );
+  assert.match(
+    actionExtensionInfoPlist,
+    /NSExtensionPrincipalClass<\/key><string>\$\(PRODUCT_MODULE_NAME\)\.CompactShareViewController<\/string>/,
+  );
+  assert.match(
+    actionExtensionInfoPlist,
+    /NSExtensionActivationRule<\/key><string>\$\(HOMEBOARD_EXTENSION_ACTIVATION_RULE\)<\/string>/,
+  );
+  assert.match(
+    xcodeProjectSpec,
+    /HomeboardNative:[\s\S]*?dependencies:[\s\S]*?- target: HomeboardActionExtension/,
+  );
+  assert.match(
+    xcodeProjectSpec,
+    /HomeboardActionExtension:[\s\S]*?PRODUCT_BUNDLE_IDENTIFIER:\s*com\.homeboard\.native\.action[\s\S]*?Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*TRUEPREDICATE/,
+  );
+  assert.match(
+    xcodeProjectSource,
+    /HomeboardActionExtension\.appex in Embed Foundation Extensions/,
   );
 });
 
-test("the mobile share window is visible immediately and cannot wait forever", () => {
-  const startupFlow = shareViewControllerSource.slice(
+test("share diagnostics identify failures before Swift or the controller starts", () => {
+  assert.match(shareBootProbeSource, /__attribute__\(\(constructor\)\)/);
+  assert.match(shareBootProbeSource, /binary\.constructor/);
+  assert.match(shareBootProbeSource, /group\.com\.homeboard\.native/);
+  assert.match(shareBootProbeSource, /homeboard-share-boot-v1\.log/);
+  assert.match(xcodeProjectSpec, /HomeboardShareExtension\/ShareBootProbe\.m/);
+  assert.match(
+    xcodeProjectSpec,
+    /HomeboardShareExtension:[\s\S]*?configs:[\s\S]*?Debug:[\s\S]*?ENABLE_DEBUG_DYLIB: NO/,
+  );
+
+  assert.match(sharedImportStoreSource, /enum HomeboardShareBootDiagnosticStore/);
+  assert.match(sharedImportStoreSource, /static func entries\(\) -> \[HomeboardShareBootEntry\]/);
+  assert.match(shareViewControllerSource, /controller\.init\.nib/);
+  assert.match(shareViewControllerSource, /controller\.init\.coder/);
+  assert.match(shareViewControllerSource, /controller\.loadView\.begin/);
+  assert.match(shareViewControllerSource, /controller\.firstFrame\.ready/);
+  assert.match(shareViewControllerSource, /payload\.loadStarted/);
+  assert.match(shareViewControllerSource, /payload\.deadlineReached/);
+  assert.match(shareViewControllerSource, /payload\.preprocessorReport/);
+
+  assert.match(sharedImportStoreSource, /HomeboardShareReportDiagnostics/);
+  assert.doesNotMatch(sharedWorkspaceSource, /Share diagnostics|Low-level boot trail/);
+});
+
+test("share diagnostics have no tester-facing refresh or copy controls", () => {
+  assert.doesNotMatch(sharedWorkspaceSource, /Refresh trace|lastRefreshedAt/);
+  assert.doesNotMatch(sharedWorkspaceSource, /Copy full trace|screenshot this page/);
+});
+
+test("the mobile share window launches the compact pill controller", () => {
+  const launchFlow = shareViewControllerSource.slice(
     shareViewControllerSource.indexOf("override func viewDidLoad"),
     shareViewControllerSource.indexOf("deinit"),
   );
-  assert.match(
-    startupFlow,
-    /showInteractiveInterface\(\)[\s\S]*loadSharedURL\(\)/,
-  );
-  assert.doesNotMatch(
-    shareViewControllerSource,
-    /preferredContentSize\s*=\s*CGSize\(width:\s*0,\s*height:\s*1\)/,
-  );
+  assert.match(launchFlow, /showInteractiveInterface\(\)/);
+  assert.match(launchFlow, /override func viewDidAppear/);
+  assert.match(launchFlow, /hasStartedShareFlow/);
   assert.match(shareViewControllerSource, /sharedPayloadDeadline/);
+  assert.doesNotMatch(launchFlow, /HomeboardSharedAuthStore\.load/);
+  assert.doesNotMatch(shareViewControllerSource, /class ShareEntryViewController/);
+  assert.match(
+    shareExtensionInfoPlist,
+    /NSExtensionPrincipalClass<\/key><string>\$\(PRODUCT_MODULE_NAME\)\.CompactShareViewController/,
+  );
   assert.match(
     shareViewControllerSource,
     /else if[\s\S]*let sharedURL[\s\S]*openSharedPage\(\)/,
@@ -178,6 +356,183 @@ test("the mobile share window is visible immediately and cannot wait forever", (
     xcodeProjectSpec,
     /SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD:\s*NO/,
   );
+});
+
+test("native-app Zillow shares reveal exact units while the model confirms each field", () => {
+  assert.match(compactShareViewControllerSource, /NSCollectionLayoutGroup\.vertical/);
+  assert.doesNotMatch(compactShareViewControllerSource, /groupPagingCentered/);
+  assert.match(compactShareViewControllerSource, /showsVerticalScrollIndicator = true/);
+  assert.match(compactShareViewControllerSource, /choicesBottomConstraint/);
+  assert.match(
+    compactShareViewControllerSource,
+    /choicesContainer\.bottomAnchor\.constraint\([\s\S]*?equalTo: view\.safeAreaLayoutGuide\.bottomAnchor/,
+  );
+  assert.doesNotMatch(compactShareViewControllerSource, /visibleRows \* 94/);
+  assert.doesNotMatch(compactShareViewControllerSource, /choicesHeightConstraint/);
+  assert.match(compactShareViewControllerSource, /height: 720/);
+  assert.match(compactShareViewControllerSource, /case edit/);
+  assert.match(compactShareViewControllerSource, /Edit details/);
+  assert.match(compactShareViewControllerSource, /Fix or add anything Homeboard missed/);
+  assert.match(compactShareViewControllerSource, /SharePreprocessor/);
+  assert.match(compactShareViewControllerSource, /analyzeWithOneRescan/);
+  assert.match(compactShareViewControllerSource, /HomeboardListingSavePipeline\.enqueue\(pending\)/);
+  assert.match(compactShareViewControllerSource, /deadline: \.now\(\) \+ 0\.9/);
+  assert.match(compactShareViewControllerSource, /webView\.stopLoading\(\)/);
+  assert.match(compactShareViewControllerSource, /webView\.navigationDelegate = nil/);
+  assert.match(compactShareViewControllerSource, /completeRequest\(returningItems: \[\]/);
+  assert.match(compactShareViewControllerSource, /completeRequest\(\)/);
+  assert.doesNotMatch(compactShareViewControllerSource, /browserContainer/);
+
+  const payloadFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func loadSharedPayload"),
+    compactShareViewControllerSource.indexOf("private func readableTypeIdentifiers"),
+  );
+  assert.match(payloadFlow, /payload\.url != nil \|\| payload\.preprocessedValues != nil/);
+  assert.match(payloadFlow, /deadline: \.now\(\) \+ 0\.12/);
+
+  const extractionFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func extractLoadedPage"),
+    compactShareViewControllerSource.indexOf("private func evaluatePageExtraction"),
+  );
+  assert.doesNotMatch(extractionFlow, /milliseconds\(550\)/);
+  assert.match(extractionFlow, /milliseconds\(350\)/);
+
+  const analysisFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func beginAnalysis"),
+    compactShareViewControllerSource.indexOf("private func show("),
+  );
+  assert.doesNotMatch(analysisFlow, /allowSystemModel: false/);
+  assert.match(analysisFlow, /allowSystemModel: true/);
+
+  assert.match(compactShareViewControllerSource, /CompactZillowSnapshotLoader\.load/);
+  assert.match(compactShareViewControllerSource, /URLSession\.shared\.data\(for: request\)/);
+  assert.match(compactShareViewControllerSource, /__NEXT_DATA__/);
+  assert.match(compactShareViewControllerSource, /rentalUnitsSummary/);
+  assert.match(compactShareViewControllerSource, /options\.count != declaredCount/);
+  assert.match(compactShareViewControllerSource, /hasStartedModelAnalysis/);
+  assert.match(compactShareViewControllerSource, /previewImageURL\(in: html, relativeTo: url\)/);
+  assert.match(compactShareViewControllerSource, /og:image/);
+  assert.match(compactShareViewControllerSource, /twitter:image/);
+  assert.match(compactShareViewControllerSource, /image_src/);
+  const snapshotFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func startFastZillowSnapshot"),
+    compactShareViewControllerSource.indexOf("private func extractLoadedPage"),
+  );
+  assert.ok(
+    snapshotFlow.indexOf("showPendingSnapshot(snapshot)")
+      < snapshotFlow.indexOf("beginAnalysis("),
+  );
+  assert.match(snapshotFlow, /if snapshot\.values\["imageURL"\] != nil/);
+  assert.match(snapshotFlow, /Confirming the homes and photo/);
+
+  assert.match(extractionFlow, /var values = self\.extractedValues/);
+  assert.match(extractionFlow, /let firstImageURL = best\?\["imageURL"\]/);
+  assert.match(extractionFlow, /firstImageURL \?\? second\["imageURL"\]/);
+  assert.match(extractionFlow, /snapshotUnitKeys/);
+  assert.match(extractionFlow, /values\[key\] = value/);
+
+  const pendingChoicesFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func showPendingSnapshot"),
+    compactShareViewControllerSource.indexOf("private func show(_ analysis"),
+  );
+  assert.match(pendingChoicesFlow, /pendingImport: nil/);
+  assert.match(pendingChoicesFlow, /isConfirmed: false/);
+  assert.match(pendingChoicesFlow, /Confirming \\\(snapshot\.unitCount\) homes/);
+
+  assert.match(compactShareViewControllerSource, /loadingFieldsStack/);
+  assert.match(compactShareViewControllerSource, /bedroomsLoadingView/);
+  assert.match(compactShareViewControllerSource, /bathroomsLoadingView/);
+  assert.match(compactShareViewControllerSource, /squareFeetLoadingView/);
+  assert.match(compactShareViewControllerSource, /priceLoadingView/);
+  assert.match(compactShareViewControllerSource, /if isLoading \{[\s\S]*loadingView\.startAnimating/);
+  assert.match(
+    compactShareViewControllerSource,
+    /guard choice\.isConfirmed, let pendingImport = choice\.pendingImport/,
+  );
+  assert.match(
+    safariContentSource,
+    /allowSystemModel: visualTracking \|\| mobilePillPicker/,
+  );
+
+  const compactSaveFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func save(_ pending:"),
+    compactShareViewControllerSource.indexOf("private func showSaved"),
+  );
+  assert.doesNotMatch(compactSaveFlow, /HomeboardExtensionSyncClient/);
+  assert.ok(
+    compactSaveFlow.indexOf("HomeboardListingSavePipeline.enqueue(pending)")
+      < compactSaveFlow.indexOf('self.showSaved(message: "Saved to Homeboard")'),
+  );
+});
+
+test("the compact chooser keeps bottom spacing inside its scrollable content", () => {
+  const chooserLayout = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func configureLayout()"),
+    compactShareViewControllerSource.indexOf("private func configureEditForm()"),
+  );
+  assert.match(
+    chooserLayout,
+    /rootStack\.bottomAnchor\.constraint\(\s*lessThanOrEqualTo: view\.safeAreaLayoutGuide\.bottomAnchor,\s*constant: 0\s*\)/,
+  );
+  assert.match(
+    chooserLayout,
+    /choicesContainer\.bottomAnchor\.constraint\(\s*equalTo: view\.safeAreaLayoutGuide\.bottomAnchor,\s*constant: 0\s*\)/,
+  );
+  assert.doesNotMatch(
+    chooserLayout,
+    /safeAreaLayoutGuide\.bottomAnchor,\s*constant: -12/,
+  );
+  assert.match(
+    compactShareViewControllerSource,
+    /section\.contentInsets = NSDirectionalEdgeInsets\(top: 2, leading: 0, bottom: 12, trailing: 0\)/,
+  );
+});
+
+test("native-app shares preserve a link preview image until the main app uploads it", () => {
+  assert.match(compactShareViewControllerSource, /metadata\.imageProvider/);
+  assert.match(compactShareViewControllerSource, /canLoadObject\(ofClass: UIImage\.self\)/);
+  assert.match(compactShareViewControllerSource, /normalizedPreviewJPEG/);
+  assert.match(compactShareViewControllerSource, /previewImageDataBeforeDismissal/);
+  assert.match(compactShareViewControllerSource, /queuedImportIDForPreview/);
+  assert.match(
+    compactShareViewControllerSource,
+    /hasItemConformingToTypeIdentifier\(UTType\.image\.identifier\)/,
+  );
+  assert.match(
+    compactShareViewControllerSource,
+    /HomeboardSharedImportStore\.savePreviewImage\([\s\S]*?receipt\.listing\.id/,
+  );
+  assert.match(sharedImportStoreSource, /maximumPreviewImageBytes = 2_000_000/);
+  assert.match(sharedImportStoreSource, /homeboard-share-preview/);
+  assert.match(sharedImportStoreSource, /data\.starts\(with: \[0xFF, 0xD8, 0xFF\]\)/);
+  assert.match(appModelSource, /HomeboardSharedImportStore\.previewImageReference/);
+  assert.match(appModelSource, /HomeboardSharedImportStore\.previewImageData/);
+  assert.match(appModelSource, /api\.uploadListingImage\(/);
+  assert.match(
+    appModelSource,
+    /removedListingIdentityKeysByBoard\[boardId\]\?\.remove/,
+  );
+  assert.ok(
+    appModelSource.indexOf("api.uploadListingImage(")
+      < appModelSource.indexOf("listing: listingForUpload"),
+  );
+});
+
+test("mobile saves are durable and keep share diagnostics internal", () => {
+  const saveFlow = shareViewControllerSource.slice(
+    shareViewControllerSource.indexOf("review.onSave ="),
+    shareViewControllerSource.indexOf("review.onRescan ="),
+  );
+  assert.match(saveFlow, /HomeboardListingSavePipeline\.enqueue\(pendingImport\)/);
+  assert.doesNotMatch(saveFlow, /HomeboardExtensionSyncClient/);
+  assert.match(saveFlow, /save\.queued/);
+  assert.match(sharedImportStoreSource, /enum HomeboardShareDiagnosticStore/);
+  assert.match(sharedImportStoreSource, /homeboard\.share\.diagnostic-entries-v1/);
+  assert.match(sharedImportStoreSource, /Bearer \[redacted\]/);
+  assert.match(sharedImportStoreSource, /enum HomeboardShareReportDiagnostics/);
+  assert.doesNotMatch(sharedWorkspaceSource, /title: "Share diagnostics"/);
+  assert.doesNotMatch(sharedWorkspaceSource, /SharedShareDiagnosticsSheet/);
+  assert.doesNotMatch(sharedWorkspaceSource, /Copy full trace|screenshot this page/);
 });
 
 test("Mac and iPhone Safari saves use the same authenticated board path", () => {
@@ -190,10 +545,43 @@ test("Mac and iPhone Safari saves use the same authenticated board path", () => 
   );
   assert.match(extensionSyncSource, /refresh_token/);
   assert.match(extensionSyncSource, /request\.timeoutInterval = 12/);
-  assert.match(safariHandlerSource, /HomeboardExtensionSyncClient\.saveListing/);
-  assert.match(safariHandlerSource, /"synced": true/);
+  assert.match(extensionSyncSource, /enum HomeboardListingSavePipeline/);
+  assert.match(extensionSyncSource, /X-Homeboard-Response/);
+  assert.match(safariHandlerSource, /HomeboardListingSavePipeline\.enqueue/);
+  assert.match(safariHandlerSource, /HomeboardListingSavePipeline\.synchronize/);
+  const safariSaveFlow = safariHandlerSource.slice(
+    safariHandlerSource.indexOf("let requestedBoardId"),
+    safariHandlerSource.indexOf("private func complete("),
+  );
+  assert.ok(
+    safariSaveFlow.indexOf('"queued": true')
+      < safariSaveFlow.indexOf("HomeboardListingSavePipeline.synchronize(receipt)"),
+  );
+  assert.match(safariHandlerSource, /"queued": true/);
   assert.match(xcodeProjectSpec, /HomeboardMac:/);
   assert.match(xcodeProjectSpec, /HomeboardMacSafariExtension:/);
+});
+
+test("extension sync returns a small acknowledgment and parallelizes post-save work", () => {
+  const extensionSaveRequest = extensionSyncSource.slice(
+    extensionSyncSource.indexOf("private static func requestSave("),
+    extensionSyncSource.indexOf("private static func refresh("),
+  );
+  assert.match(extensionSaveRequest, /"acknowledgment", forHTTPHeaderField: "X-Homeboard-Response"/);
+  const pairingRequest = extensionSyncSource.slice(
+    extensionSyncSource.indexOf("static func createDevicePairing("),
+    extensionSyncSource.indexOf("static func devicePairingStatus("),
+  );
+  assert.doesNotMatch(pairingRequest, /X-Homeboard-Response/);
+  assert.match(mobileListingRouteSource, /x-homeboard-response/);
+  assert.match(mobileListingRouteSource, /NextResponse\.json\(\{ saved: true, board: \{ id \} \}\)/);
+  const listingSave = boardDataSource.slice(
+    boardDataSource.indexOf("export async function addListingToBoard"),
+    boardDataSource.indexOf("export async function createBoardInvitation"),
+  );
+  assert.match(listingSave, /await Promise\.all\(\[/);
+  assert.match(listingSave, /submitSource\(\)/);
+  assert.match(listingSave, /trackEvent\("listing_imported"/);
 });
 
 test("Mac Safari shows grounded details before deeper SLM insights finish", () => {
@@ -207,7 +595,7 @@ test("Mac Safari shows grounded details before deeper SLM insights finish", () =
   assert.match(contentSource, /allowSystemModel:\s*visualTracking/);
   assert.match(
     contentSource,
-    /if \(!visualTracking\)[\s\S]*analyzePageCapture\(capture, \{ allowSystemModel: true \}\)/,
+    /if \(!visualTracking && !mobilePillPicker\)[\s\S]*analyzePageCapture\(capture, \{ allowSystemModel: true \}\)/,
   );
   assert.match(contentSource, /applyEnhancedAnalysis/);
   assert.match(contentSource, /resolvedFacts\.modelInsights = resolvedFacts\.insights/);
@@ -224,6 +612,7 @@ test("the connected Mac setup uses a compact self-contained panel", () => {
   assert.match(macAppSource, /Open Safari Settings/);
   assert.match(macAppSource, /getStateOfSafariExtension/);
   assert.match(macAppSource, /safariStatusMessage/);
+  assert.match(macAppSource, /syncPendingImports\(reportWhenEmpty: false\)/);
   assert.doesNotMatch(
     macAppSource,
     /refreshSafariExtensionState\(\)[\s\S]*self\.errorMessage = error\.localizedDescription/,

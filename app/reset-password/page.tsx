@@ -50,8 +50,8 @@ export default function ResetPasswordPage() {
     event.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Use at least 8 characters for your new password.");
+    if (password.length < 8 || password.length > 128) {
+      setError("Use a password between 8 and 128 characters.");
       return;
     }
     if (password !== confirmation) {
@@ -68,7 +68,7 @@ export default function ResetPasswordPage() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setIsSaving(false);
     if (updateError) {
-      setError(updateError.message);
+      setError("Homeboard could not update that password. Request a fresh recovery link and try again.");
       return;
     }
 
@@ -117,6 +117,7 @@ export default function ResetPasswordPage() {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     minLength={8}
+                    maxLength={128}
                     autoComplete="new-password"
                     required
                   />
@@ -128,6 +129,7 @@ export default function ResetPasswordPage() {
                     value={confirmation}
                     onChange={(event) => setConfirmation(event.target.value)}
                     minLength={8}
+                    maxLength={128}
                     autoComplete="new-password"
                     required
                   />

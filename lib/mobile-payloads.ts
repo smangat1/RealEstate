@@ -3,6 +3,7 @@ import "server-only";
 import type { BoardPageData, ListingModelInsight, ListingRecord, SearchProfileData, SearchBoardSummary } from "@/lib/types";
 import { getProfileCompletion } from "@/lib/rental-logic";
 import { allocateRentFairly } from "@/lib/group-affordability";
+import { pendingBoardQuestions } from "@/lib/board-decisions";
 
 export type MobileMemberCardPayload = {
   id: string;
@@ -110,7 +111,10 @@ export type MobileListingPreviewPayload = {
     id: string;
     type: "shortlist" | "request_viewing" | "apply";
     closedAt: string | null;
-    votes: { name: string; choice: "yes" | "no" | "abstain" }[];
+    resolvedCount: number;
+    requiredCount: number;
+    remainingMemberNames: string[];
+    votes: { name: string; userId?: string; choice: "yes" | "no" | "abstain" }[];
   }[];
   analysis: BoardPageData["listingAnalysisByBoardListingId"][string] | null;
   rentSplit: {
@@ -128,6 +132,7 @@ export type MobileListingPreviewPayload = {
       comfortableBudget: number;
     }[];
   } | null;
+  deletedAt?: string | null;
 };
 
 export type MobileBoardPayload = {
@@ -154,6 +159,7 @@ export type MobileBoardPayload = {
   members: MobileMemberCardPayload[];
   suggestions: MobileListingPreviewPayload[];
   shortlist: MobileListingPreviewPayload[];
+  recentlyDeleted: MobileListingPreviewPayload[];
   invitations: {
     id: string;
     email: string | null;
@@ -276,6 +282,12 @@ function listingDisplayTitle(listing: ListingRecord) {
     : listing.address || listing.neighborhood || "Untitled listing";
 }
 
+function listingPhotoUrl(listing: Pick<ListingRecord, "images">) {
+  return listing.images
+    .map((image) => image.trim())
+    .find(Boolean) ?? "";
+}
+
 function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {
   const value = listing.providerData.homeboardModelInsights;
   if (!Array.isArray(value)) return [];
@@ -297,18 +309,6 @@ function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {
       evidence: item.evidence,
     }];
   }).slice(0, 16);
-}
-
-function boardOpenDecisions(data: BoardPageData) {
-  const resolved = new Set(
-    data.activity
-      .filter((entry) => entry.eventType === "decision_resolved")
-      .map((entry) => entry.content.split(" || ")[0]?.trim().toLowerCase()),
-  );
-  return data.activity
-    .filter((entry) => entry.eventType === "decision_opened")
-    .map((entry) => entry.content.trim())
-    .filter((entry, index, all) => !resolved.has(entry.toLowerCase()) && all.indexOf(entry) === index);
 }
 
 function mapSuggestedListingForMobile(
@@ -366,7 +366,7 @@ function mapSuggestedListingForMobile(
       exactSourceConfirmedAt: null,
     },
     groupNote: "",
-    photoUrl: "",
+    photoUrl: listingPhotoUrl(listing),
     unit: listing.unit ?? "",
     bedrooms: typeof listing.bedrooms === "number" ? String(listing.bedrooms) : "",
     bathrooms: typeof listing.bathrooms === "number" ? String(listing.bathrooms) : "",
@@ -379,7 +379,10 @@ function mapSuggestedListingForMobile(
     reviews: [],
     decisions: [],
     analysis: entry.analysis ?? null,
-    rentSplit: allocateRentFairly(listing.price, data.roommates),
+    rentSplit: allocateRentFairly(
+      listing.price,
+      data.roommates.filter((roommate) => roommate.roleLabel !== "commute point"),
+    ),
   };
 }
 
@@ -454,7 +457,7 @@ export function mapListingInventoryForMobile(
       exactSourceConfirmedAt: null,
     },
     groupNote: "",
-    photoUrl: "",
+    photoUrl: listingPhotoUrl(listing),
     unit: listing.unit ?? "",
     bedrooms: typeof listing.bedrooms === "number" ? String(listing.bedrooms) : "",
     bathrooms: typeof listing.bathrooms === "number" ? String(listing.bathrooms) : "",
@@ -484,6 +487,11 @@ export function mapBoardSummaryForMobile(board: SearchBoardSummary) {
 export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload {
   const board = data.board;
   const profile = data.profile;
+  const householdRoommates = data.roommates.filter(
+    (roommate) => roommate.roleLabel !== "commute point",
+  );
+  const decisionMemberIds = new Set(data.members.map((member) => member.userId));
+  const decisionRequiredCount = Math.max(2, data.members.length);
 
   const ranked = data.boardListings
     .filter((entry) => entry.userStatus !== "rejected" && entry.workflowStatus !== "decided")
@@ -504,10 +512,57 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
     (entry) => (data.listingAnalysisByBoardListingId[entry.id]?.hardFailureCount ?? 0) > 0,
   );
   const firstReviewPending = activeListings.find(
-    (entry) => (data.listingReviewsByBoardListingId[entry.id] ?? []).length < data.roommates.length,
+    (entry) => (data.listingReviewsByBoardListingId[entry.id] ?? []).length < householdRoommates.length,
   );
   const listingLabel = (entry: (typeof activeListings)[number]) =>
     entry.listing.address || entry.listing.neighborhood || "the leading listing";
+  const recentlyDeleted: MobileListingPreviewPayload[] = data.recentlyDeletedBoardListings.map((entry) => ({
+    id: entry.id,
+    listingId: entry.listingId,
+    title: listingDisplayTitle(entry.listing),
+    address: entry.listing.address ?? "",
+    location: formatListingLocation(entry.listing),
+    priceLine: typeof entry.listing.price === "number" ? `$${entry.listing.price.toLocaleString()}` : "Price unclear",
+    commuteLine: "Recently deleted",
+    summary: entry.aiTradeoffAnalysis || entry.aiSummary || entry.listing.description || "This listing can be restored for seven days.",
+    fitLabel: "Recently deleted",
+    highlights: [],
+    amenities: entry.listing.amenities ?? [],
+    modelInsights: listingModelInsights(entry.listing),
+    openRisks: [],
+    status: entry.userStatus,
+    workflowStatus: entry.workflowStatus,
+    sourceUrl: entry.listing.sourceUrl ?? "",
+    exactSources: [],
+    generatedSearches: [],
+    verification: {
+      status: "unverified",
+      confirmedBy: null,
+      confirmedAt: null,
+      note: null,
+    },
+    freshness: {
+      providerLastSeenAt: entry.listing.providerLastSeenAt,
+      providerFetchedAt: entry.listing.providerFetchedAt,
+      exactSourceConfirmedAt: null,
+    },
+    groupNote: entry.userNotes || "",
+    photoUrl: listingPhotoUrl(entry.listing),
+    unit: entry.listing.unit ?? "",
+    bedrooms: typeof entry.listing.bedrooms === "number" ? String(entry.listing.bedrooms) : "",
+    bathrooms: typeof entry.listing.bathrooms === "number" ? String(entry.listing.bathrooms) : "",
+    squareFeet: entry.listing.squareFeet,
+    latitude: entry.listing.latitude,
+    longitude: entry.listing.longitude,
+    reactions: [],
+    comments: [],
+    ratings: [],
+    reviews: [],
+    decisions: [],
+    analysis: null,
+    rentSplit: null,
+    deletedAt: entry.deletedAt,
+  }));
 
   return {
     id: board.id,
@@ -544,19 +599,8 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
       content: message.content,
       createdAt: message.createdAt,
     })),
-    openQuestions: Array.from(
-      new Set([
-        ...boardOpenDecisions(data),
-        ...(data.missingFields.length > 0
-          ? data.missingFields.map((field) => `Still needed: ${field}.`)
-          : data.groupSynthesis.tensionFlags.length > 0
-            ? data.groupSynthesis.tensionFlags
-            : [
-                ...ranked.flatMap(({ analysis }) => analysis?.nextActions ?? []).slice(0, 3),
-                "Which listing deserves the first serious group read?",
-              ]),
-      ]),
-    ),
+    // Suggestions belong in guidance, not in the group's actionable questions.
+    openQuestions: data.pendingDecisionQuestions ?? pendingBoardQuestions(data.activity),
     members: [
       ...data.members.map((member) => {
       const linkedRoommate = data.roommates.find((roommate) => roommate.linkedUserId === member.userId);
@@ -624,7 +668,9 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
           accessibilityNeeds: roommate.accessibilityNeeds,
           neighborhoods: roommate.preferredNeighborhoods,
           status:
-            memberPreferenceMissing(roommate).length === 0
+            roommate.roleLabel === "commute point"
+              ? "commute point"
+              : memberPreferenceMissing(roommate).length === 0
               ? "profile complete"
               : `missing ${memberPreferenceMissing(roommate).join(", ")}`,
         })),
@@ -695,7 +741,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
               (data.listingSourcesByBoardListingId[entry.id] ?? []).find((source) => source.confirmedAt)?.confirmedAt ?? null,
           },
           groupNote: entry.userNotes || "",
-          photoUrl: "",
+          photoUrl: listingPhotoUrl(entry.listing),
           unit: entry.listing.unit ?? "",
           bedrooms: typeof entry.listing.bedrooms === "number" ? String(entry.listing.bedrooms) : "",
           bathrooms: typeof entry.listing.bathrooms === "number" ? String(entry.listing.bathrooms) : "",
@@ -732,19 +778,35 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
             mainConcern: review.mainConcern,
             updatedAt: review.updatedAt,
           })),
-          decisions: (data.listingDecisionsByBoardListingId[entry.id] ?? []).map((decision) => ({
-            id: decision.id,
-            type: decision.type,
-            closedAt: decision.closedAt,
-            votes: decision.votes.map((vote) => ({
-              name: vote.roommate.name,
-              choice: vote.choice,
-            })),
-          })),
+          decisions: (data.listingDecisionsByBoardListingId[entry.id] ?? []).map((decision) => {
+            const seenUserIds = new Set<string>();
+            const votes = decision.votes.filter((vote) => {
+              const userId = vote.roommate.linkedUserId;
+              if (!userId || !decisionMemberIds.has(userId) || seenUserIds.has(userId)) return false;
+              seenUserIds.add(userId);
+              return true;
+            });
+            return {
+              id: decision.id,
+              type: decision.type,
+              closedAt: decision.closedAt,
+              resolvedCount: seenUserIds.size,
+              requiredCount: decisionRequiredCount,
+              remainingMemberNames: data.members
+                .filter((member) => !seenUserIds.has(member.userId))
+                .map((member) => member.user.displayName),
+              votes: votes.map((vote) => ({
+                name: vote.roommate.name,
+                userId: vote.roommate.linkedUserId ?? "",
+                choice: vote.choice,
+              })),
+            };
+          }),
           analysis: data.listingAnalysisByBoardListingId[entry.id] ?? null,
-          rentSplit: allocateRentFairly(entry.listing.price, data.roommates),
+          rentSplit: allocateRentFairly(entry.listing.price, householdRoommates),
         };
       }),
+    recentlyDeleted,
     invitations: data.invitations.map((invitation) => ({
       id: invitation.id,
       email: invitation.email,

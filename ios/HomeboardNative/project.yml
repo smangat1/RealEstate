@@ -31,6 +31,7 @@ targets:
       - path: HomeboardNative/Sources/MacDevicePairingView.swift
       - path: HomeboardNative/Sources/BoardShellView.swift
       - path: HomeboardNative/Sources/SharedWorkspaceView.swift
+      - path: HomeboardNative/Sources/HomeboardActiveOffer.swift
       - path: HomeboardNative/Resources/Assets.xcassets
         buildPhase: resources
       - path: HomeboardNative/Resources/PrivacyInfo.xcprivacy
@@ -43,7 +44,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: HomeboardNative/Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.business
-        CURRENT_PROJECT_VERSION: 14
+        CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
@@ -57,21 +58,26 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: HomeboardNative/HomeboardNative.entitlements
     dependencies:
+      # Safari scans automatically. Native rental apps can expose Homeboard in
+      # either the destination row or the vertical action list.
       - target: HomeboardShareExtension
+      - target: HomeboardActionExtension
       - target: HomeboardSafariExtension
   HomeboardShareExtension:
     type: app-extension
     platform: iOS
     deploymentTarget: "17.0"
     sources:
+      - path: HomeboardShareExtension/ShareBootProbe.m
+      - path: HomeboardShareExtension/CompactShareViewController.swift
       - path: HomeboardShareExtension/ShareViewController.swift
+      - path: HomeboardShareExtension/SharePreprocessor.js
+        buildPhase: resources
       - path: SharedBrand/homeboard-mark.png
         buildPhase: resources
       - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
       - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
       - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
-      - path: HomeboardShareExtension/SharePreprocessor.js
-        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: HomeboardShareExtension
@@ -80,12 +86,54 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: HomeboardShareExtension/Info.plist
         CODE_SIGN_ENTITLEMENTS: HomeboardShareExtension/HomeboardShareExtension.entitlements
-        CURRENT_PROJECT_VERSION: 14
+        CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_EXTENSION_ACTIVATION_RULE: "extensionItems.@count > 0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        Debug:
+          # Keep extension code in the executable so PlugInKit does not have to
+          # load Xcode's auxiliary *.debug.dylib before our controller starts.
+          ENABLE_DEBUG_DYLIB: NO
+          # Apple recommends TRUEPREDICATE while diagnosing extension discovery.
+          # Release keeps the functional nonempty-item predicate above.
+          HOMEBOARD_EXTENSION_ACTIVATION_RULE: TRUEPREDICATE
+  HomeboardActionExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HomeboardShareExtension/ShareBootProbe.m
+      - path: HomeboardShareExtension/CompactShareViewController.swift
+      - path: HomeboardShareExtension/SharePreprocessor.js
+        buildPhase: resources
+      - path: SharedBrand/homeboard-mark.png
+        buildPhase: resources
+      - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
+      - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
+      - path: HomeboardNative/Shared/HomeboardExtensionSync.swift
+    settings:
+      base:
+        PRODUCT_NAME: HomeboardActionExtension
+        PRODUCT_MODULE_NAME: HomeboardActionExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.homeboard.native.action
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: HomeboardActionExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: HomeboardActionExtension/HomeboardActionExtension.entitlements
+        CURRENT_PROJECT_VERSION: 22
+        MARKETING_VERSION: 0.0.13
+        HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_EXTENSION_ACTIVATION_RULE: "extensionItems.@count > 0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 4SSAVHCM6U
+        TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        Debug:
+          ENABLE_DEBUG_DYLIB: NO
+          HOMEBOARD_EXTENSION_ACTIVATION_RULE: TRUEPREDICATE
   HomeboardSafariExtension:
     type: app-extension
     platform: iOS
@@ -105,7 +153,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: HomeboardSafariExtension/Info.plist
         CODE_SIGN_ENTITLEMENTS: HomeboardSafariExtension/HomeboardSafariExtension.entitlements
-        CURRENT_PROJECT_VERSION: 14
+        CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
@@ -134,7 +182,7 @@ targets:
         INFOPLIST_FILE: HomeboardMac/Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.business
         CODE_SIGN_ENTITLEMENTS: HomeboardMac/HomeboardMac.entitlements
-        CURRENT_PROJECT_VERSION: 14
+        CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic
@@ -164,7 +212,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: HomeboardMacSafariExtension/Info.plist
         CODE_SIGN_ENTITLEMENTS: HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements
-        CURRENT_PROJECT_VERSION: 14
+        CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         CODE_SIGN_STYLE: Automatic

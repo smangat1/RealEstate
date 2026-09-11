@@ -42,7 +42,7 @@ test("the welcome story keeps swipe entry and explains both account paths", () =
 
   assert.match(hero, /Swipe up to continue/);
   assert.doesNotMatch(hero, /homeboard\.welcome\.continue/);
-  assert.match(access, /Existing users: click the key\. New accounts: sign in with Apple\./);
+  assert.match(access, /If you already have a board code, tap the key\. Otherwise, sign in with Apple\./);
   assert.ok(access.indexOf("accessKeyButton") < access.indexOf("fullAccountButtons"));
 });
 

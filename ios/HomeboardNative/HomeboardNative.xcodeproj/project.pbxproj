@@ -10,19 +10,25 @@
 		08DEA609F65BC5294136823A /* HomeboardPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */; };
 		0AE54DFADC7B225F37F77150 /* homeboard-mark.png in Resources */ = {isa = PBXBuildFile; fileRef = 672F37334EE5BCC5C9714B2A /* homeboard-mark.png */; };
 		0DE567EDBBAAFE1B0B3651F9 /* HomeboardAppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */; };
+		0E16066A124A1CAAB52624D2 /* ShareBootProbe.m in Sources */ = {isa = PBXBuildFile; fileRef = 470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */; };
 		13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */; };
 		161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */; };
 		185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */; };
+		1EC933E2D2158B93F82E8994 /* HomeboardActionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */; };
 		2A5AF129395DD2397F963D4E /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		2B0B41E40E5521A48B544A95 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C193B56530767CD0B8E7D7F /* Assets.xcassets */; };
 		2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */; };
+		358AF2106356FAE938364071 /* homeboard-mark.png in Resources */ = {isa = PBXBuildFile; fileRef = 672F37334EE5BCC5C9714B2A /* homeboard-mark.png */; };
+		39052E4C828B1A5ED3BFD2F8 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		39D434A8051644723A6D379F /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		3B944F23DC6F266974409897 /* HomeboardAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F52927D18A60DB80024121 /* HomeboardAPI.swift */; };
+		42DD7CE594D25B9A4BDF45D4 /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		574FE78535771F9EBA7DCFC2 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		5A1BE148C7BC9B09EB658CD2 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
 		5B5E5368709897AAC0E90940 /* HomeboardConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6496F9883003DCBA86048476 /* HomeboardConfig.swift */; };
+		5D15921ED94024605A65B077 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		5DFEEEFF187B51E92D3ABC89 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		5E897B89E0B6F36099D889CD /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		686CAEBD6BC40E3F6C98457B /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */; };
@@ -37,6 +43,7 @@
 		7D8FF96A80E3C4413CACBDDC /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		8346273ABDE9177129F67321 /* HomeboardShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		88ABA6BF0ED57B8296B4D99B /* HomeboardMacSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8C09D3172CF919F5466E2033 /* ShareBootProbe.m in Sources */ = {isa = PBXBuildFile; fileRef = 470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */; };
 		8C797C5D6D06865FC6AF413D /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */; };
 		8D6928B3E220035C109D7683 /* HomeboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */; };
@@ -46,14 +53,18 @@
 		9ECE8063C952796CE3826F05 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		A07C44532C2D0AFAB30976F7 /* HomeboardNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */; };
 		A26416FBC11601A983FE0654 /* homeboard-mark.png in Resources */ = {isa = PBXBuildFile; fileRef = 672F37334EE5BCC5C9714B2A /* homeboard-mark.png */; };
+		AC4B34D5EFF2EDD5917D87FC /* SharePreprocessor.js in Resources */ = {isa = PBXBuildFile; fileRef = C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */; };
 		AC93FEA3832938FE343A2469 /* HomeboardAppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */; };
 		AD2DAE3F54FDC6E12EC53216 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 65FC9AAA1DE307DE8A4A3D50 /* content.js */; };
 		AE6C78096E09AE9AC6220663 /* HomeboardSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B127D29D704A6A6E994982E9 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
+		B1CCB61DBE1E92895581CC41 /* HomeboardActiveOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */; };
 		B5B500245ED71175ED5AD84C /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
+		B7855DB36D0A397147C979C8 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */; };
 		BB00C219498B248279BC3A3B /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
+		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
 		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		E5ADE81D14E97FFB8B2FAB6D /* SharePreprocessor.js in Resources */ = {isa = PBXBuildFile; fileRef = C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */; };
@@ -85,6 +96,13 @@
 			remoteGlobalIDString = B63F767E040CC42FC2E52195;
 			remoteInfo = HomeboardSafariExtension;
 		};
+		667037FF3092D675A17882A5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EB4A40CB7DEC960346BCBE79;
+			remoteInfo = HomeboardActionExtension;
+		};
 		BB54900C6EA5E567B590AC2A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8CD380EF1611310C99AA1F8A /* Project object */;
@@ -109,6 +127,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				8346273ABDE9177129F67321 /* HomeboardShareExtension.appex in Embed Foundation Extensions */,
+				1EC933E2D2158B93F82E8994 /* HomeboardActionExtension.appex in Embed Foundation Extensions */,
 				AE6C78096E09AE9AC6220663 /* HomeboardSafariExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
@@ -130,11 +149,13 @@
 /* Begin PBXFileReference section */
 		00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HomeboardMacSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardBackgroundView.swift; sourceTree = "<group>"; };
+		06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardActionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeApp.swift; sourceTree = "<group>"; };
 		2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeTests.swift; sourceTree = "<group>"; };
 		3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDevicePairingView.swift; sourceTree = "<group>"; };
 		3C193B56530767CD0B8E7D7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountOnboardingView.swift; sourceTree = "<group>"; };
+		470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ShareBootProbe.m; sourceTree = "<group>"; };
 		498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardPalette.swift; sourceTree = "<group>"; };
 		4AB61DA2FD0EAA808AE128B6 /* HomeboardNativeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C7722106E8643B35B4B2A69 /* HomeboardMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeboardMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -152,11 +173,13 @@
 		6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardSharedImportStore.swift; sourceTree = "<group>"; };
 		75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardModels.swift; sourceTree = "<group>"; };
 		7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthView.swift; sourceTree = "<group>"; };
+		81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactShareViewController.swift; sourceTree = "<group>"; };
 		896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		92AD297999D5B2DCD97EE617 /* HomeboardNativeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		958E86AF374173284BD9D79E /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardActiveOffer.swift; sourceTree = "<group>"; };
 		A69FCB73F4C2B9E99A5B401A /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardListingIntelligence.swift; sourceTree = "<group>"; };
 		AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAppleSignIn.swift; sourceTree = "<group>"; };
@@ -186,6 +209,8 @@
 		24D0DFE06F1207EB04A02F7C /* HomeboardShareExtension */ = {
 			isa = PBXGroup;
 			children = (
+				81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */,
+				470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */,
 				C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */,
 				52BC4419FB3FD9C9031892FD /* ShareViewController.swift */,
 			);
@@ -225,6 +250,7 @@
 		B4EBDCF9F5C9DA446E68381F /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */,
 				4C7722106E8643B35B4B2A69 /* HomeboardMac.app */,
 				00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */,
 				D2CF740AFC2099E6B35681BD /* HomeboardNative.app */,
@@ -269,6 +295,7 @@
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
 				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
+				9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */,
 				C9F52927D18A60DB80024121 /* HomeboardAPI.swift */,
 				033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */,
 				6496F9883003DCBA86048476 /* HomeboardConfig.swift */,
@@ -425,6 +452,7 @@
 			);
 			dependencies = (
 				014117D3103AEE60F389FB72 /* PBXTargetDependency */,
+				A323D0969FAECF88B86FE1E5 /* PBXTargetDependency */,
 				D8AAEA224D4859E357E065FE /* PBXTargetDependency */,
 			);
 			name = HomeboardNative;
@@ -433,6 +461,24 @@
 			productName = HomeboardNative;
 			productReference = D2CF740AFC2099E6B35681BD /* HomeboardNative.app */;
 			productType = "com.apple.product-type.application";
+		};
+		EB4A40CB7DEC960346BCBE79 /* HomeboardActionExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BAEFC7F27655FBC7BF5CA436 /* Build configuration list for PBXNativeTarget "HomeboardActionExtension" */;
+			buildPhases = (
+				D2DC5412C5C83C4EC16451A2 /* Sources */,
+				2C387C3868D1C1162873EA61 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeboardActionExtension;
+			packageProductDependencies = (
+			);
+			productName = HomeboardActionExtension;
+			productReference = 06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		EED59AAC337296881A6CB796 /* HomeboardMacSafariExtension */ = {
 			isa = PBXNativeTarget;
@@ -486,6 +532,10 @@
 						DevelopmentTeam = 4SSAVHCM6U;
 						ProvisioningStyle = Automatic;
 					};
+					EB4A40CB7DEC960346BCBE79 = {
+						DevelopmentTeam = 4SSAVHCM6U;
+						ProvisioningStyle = Automatic;
+					};
 					EED59AAC337296881A6CB796 = {
 						DevelopmentTeam = 4SSAVHCM6U;
 						ProvisioningStyle = Automatic;
@@ -506,6 +556,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				EB4A40CB7DEC960346BCBE79 /* HomeboardActionExtension */,
 				B0F887A3E4CC5BEEE037B64C /* HomeboardMac */,
 				EED59AAC337296881A6CB796 /* HomeboardMacSafariExtension */,
 				B981AD18EFA6ABD0109E9F8A /* HomeboardNative */,
@@ -518,6 +569,15 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		2C387C3868D1C1162873EA61 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC4B34D5EFF2EDD5917D87FC /* SharePreprocessor.js in Resources */,
+				358AF2106356FAE938364071 /* homeboard-mark.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		403384A673FE13C255C61089 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -615,9 +675,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				42DD7CE594D25B9A4BDF45D4 /* CompactShareViewController.swift in Sources */,
 				E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */,
 				6A91FA585D28736B4E8E78AE /* HomeboardListingIntelligence.swift in Sources */,
 				9ECE8063C952796CE3826F05 /* HomeboardSharedImportStore.swift in Sources */,
+				0E16066A124A1CAAB52624D2 /* ShareBootProbe.m in Sources */,
 				D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -631,6 +693,7 @@
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
 				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,
 				3B944F23DC6F266974409897 /* HomeboardAPI.swift in Sources */,
+				B1CCB61DBE1E92895581CC41 /* HomeboardActiveOffer.swift in Sources */,
 				AC93FEA3832938FE343A2469 /* HomeboardAppleSignIn.swift in Sources */,
 				B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */,
 				5B5E5368709897AAC0E90940 /* HomeboardConfig.swift in Sources */,
@@ -656,6 +719,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D2DC5412C5C83C4EC16451A2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */,
+				5D15921ED94024605A65B077 /* HomeboardExtensionSync.swift in Sources */,
+				39052E4C828B1A5ED3BFD2F8 /* HomeboardListingIntelligence.swift in Sources */,
+				B7855DB36D0A397147C979C8 /* HomeboardSharedImportStore.swift in Sources */,
+				8C09D3172CF919F5466E2033 /* ShareBootProbe.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -668,6 +743,11 @@
 			isa = PBXTargetDependency;
 			target = EED59AAC337296881A6CB796 /* HomeboardMacSafariExtension */;
 			targetProxy = E550511C61EE262E59D91D97 /* PBXContainerItemProxy */;
+		};
+		A323D0969FAECF88B86FE1E5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EB4A40CB7DEC960346BCBE79 /* HomeboardActionExtension */;
+			targetProxy = 667037FF3092D675A17882A5 /* PBXContainerItemProxy */;
 		};
 		BB4580A9C22AECF7CC7CA06B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -692,7 +772,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -718,10 +798,11 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "extensionItems.@count > 0";
 				INFOPLIST_FILE = HomeboardShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -766,7 +847,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -791,10 +872,12 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = TRUEPREDICATE;
 				INFOPLIST_FILE = HomeboardShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -873,12 +956,13 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNative.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -920,7 +1004,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1032,12 +1116,13 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNativeDebug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1052,6 +1137,32 @@
 			};
 			name = Debug;
 		};
+		DA86DC30B79B6E9F81081DA5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardActionExtension/HomeboardActionExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "extensionItems.@count > 0";
+				INFOPLIST_FILE = HomeboardActionExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.13;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.action;
+				PRODUCT_MODULE_NAME = HomeboardActionExtension;
+				PRODUCT_NAME = HomeboardActionExtension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		DAC21B8034BC3416A25C5604 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1059,11 +1170,12 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				INFOPLIST_FILE = HomeboardMac/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1105,11 +1217,12 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMacDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				INFOPLIST_FILE = HomeboardMac/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1122,13 +1235,40 @@
 			};
 			name = Debug;
 		};
+		F4167D963DDA55714B58BCAA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HomeboardActionExtension/HomeboardActionExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 4SSAVHCM6U;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = TRUEPREDICATE;
+				INFOPLIST_FILE = HomeboardActionExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.0.13;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeboard.native.action;
+				PRODUCT_MODULE_NAME = HomeboardActionExtension;
+				PRODUCT_NAME = HomeboardActionExtension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
 		F91AF7A0D51A87FECE69527C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1210,6 +1350,15 @@
 			buildConfigurations = (
 				F91AF7A0D51A87FECE69527C /* Debug */,
 				52B9045B5BEB7A815D17AB1A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BAEFC7F27655FBC7BF5CA436 /* Build configuration list for PBXNativeTarget "HomeboardActionExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F4167D963DDA55714B58BCAA /* Debug */,
+				DA86DC30B79B6E9F81081DA5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

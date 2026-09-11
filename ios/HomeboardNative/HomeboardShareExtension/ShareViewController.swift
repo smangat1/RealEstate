@@ -42,6 +42,7 @@ final class ShareViewController: UIViewController {
   private let moreButton = UIButton(type: .system)
   private let scannerFrame = UIView()
   private let loadingView = UIActivityIndicatorView(style: .medium)
+  private let diagnosticSessionID = String(UUID().uuidString.prefix(8)).uppercased()
 
   private lazy var webView: WKWebView = {
     let configuration = WKWebViewConfiguration()
@@ -80,6 +81,7 @@ final class ShareViewController: UIViewController {
   private var scanCount = 0
   private var pageFinishedLoading = false
   private var hasConfiguredLayout = false
+  private var hasStartedShareFlow = false
   private var hasResolvedSharedPayload = false
   private var browserMinimumHeightConstraint: NSLayoutConstraint?
   private let deliberateScanDelay: TimeInterval = 0.75
@@ -89,20 +91,131 @@ final class ShareViewController: UIViewController {
   private let surfaceColor = HomeboardSharePalette.surface
   private let accentColor = HomeboardSharePalette.accent
 
+  override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.init.nib",
+      detail: "ShareViewController init(nibName:bundle:) entered"
+    )
+    super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+  }
+
+  required init?(coder: NSCoder) {
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.init.coder",
+      detail: "ShareViewController init(coder:) entered"
+    )
+    super.init(coder: coder)
+  }
+
+  override func loadView() {
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.loadView.begin",
+      detail: "UIKit requested the share controller view"
+    )
+    super.loadView()
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.loadView.end",
+      detail: "UIKit created the base share controller view"
+    )
+  }
+
   override func viewDidLoad() {
     super.viewDidLoad()
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.viewDidLoad.begin",
+      detail: "Share controller entered viewDidLoad"
+    )
+    // Match the original, proven launch path: UIKit constructs this controller
+    // directly and the first frame contains no app-group or keychain work.
     showInteractiveInterface()
-    loadSharedURL()
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.firstFrame.ready",
+      detail: "Homeboard controls are configured before provider loading"
+    )
+    startShareFlowIfNeeded()
+  }
+
+  override func viewWillAppear(_ animated: Bool) {
+    super.viewWillAppear(animated)
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.viewWillAppear",
+      detail: "Extension host is about to present Homeboard"
+    )
+  }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.viewDidAppear",
+      detail: "Extension host presented Homeboard"
+    )
+    startShareFlowIfNeeded()
+  }
+
+  private func startShareFlowIfNeeded() {
+    guard !hasStartedShareFlow else { return }
+    hasStartedShareFlow = true
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "shareFlow.scheduled",
+      detail: "Provider inspection queued after the first frame"
+    )
+
+    // Let the extension host paint a real Homeboard frame before WebKit or a
+    // slow share provider can do any work. This keeps the share-sheet action
+    // from looking like a disabled icon while the listing is handed over.
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      _ = HomeboardShareBootDiagnosticStore.append(
+        stage: "shareFlow.started",
+        detail: "Provider inspection started on the main queue"
+      )
+      self.trace("extension.interactiveUI", "Starting the interactive listing scanner")
+      self.loadSharedURL()
+    }
   }
 
   deinit {
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: "controller.deinit",
+      detail: "ShareViewController was released"
+    )
+    trace("extension.deinit", "Share controller released")
     scanWorkItem?.cancel()
     quickScanTask?.cancel()
     modelAnalysisTask?.cancel()
     highlightAnimationTask?.cancel()
   }
 
+  private func trace(
+    _ stage: String,
+    _ detail: String,
+    level: String = "info"
+  ) {
+    switch level {
+    case "error":
+      logger.error("[\(self.diagnosticSessionID, privacy: .public)] \(stage, privacy: .public): \(detail, privacy: .public)")
+    case "warning":
+      logger.warning("[\(self.diagnosticSessionID, privacy: .public)] \(stage, privacy: .public): \(detail, privacy: .public)")
+    default:
+      logger.notice("[\(self.diagnosticSessionID, privacy: .public)] \(stage, privacy: .public): \(detail, privacy: .public)")
+    }
+    _ = HomeboardShareBootDiagnosticStore.append(
+      stage: stage,
+      detail: "session=\(diagnosticSessionID) \(detail)"
+    )
+    let sessionID = diagnosticSessionID
+    DispatchQueue.global(qos: .utility).async {
+      _ = HomeboardShareDiagnosticStore.append(
+        sessionID: sessionID,
+        stage: stage,
+        detail: detail,
+        level: level
+      )
+    }
+  }
+
   private func configureLayout() {
+    trace("extension.configureLayout", "Building scanner controls and WebKit view")
     let header = makeHeader()
     configureBrowser()
     let controls = makeControls()
@@ -129,6 +242,7 @@ final class ShareViewController: UIViewController {
       rootStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
       rootStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8)
     ])
+    trace("extension.layoutReady", "Scanner controls and WebKit view are ready")
   }
 
   private func makeHeader() -> UIView {
@@ -302,10 +416,15 @@ final class ShareViewController: UIViewController {
   }
 
   private func loadSharedURL() {
+    let contextAvailable = extensionContext != nil
     let inputItems = extensionContext?
       .inputItems
       .compactMap { $0 as? NSExtensionItem } ?? []
     let providers = inputItems.flatMap { $0.attachments ?? [] }
+    trace(
+      "payload.begin",
+      "Extension context \(contextAvailable ? "available" : "missing"); received \(inputItems.count) extension item(s) and \(providers.count) attachment provider(s)"
+    )
 
     let itemText = inputItems.flatMap {
       [$0.attributedContentText?.string, $0.attributedTitle?.string].compactMap { $0 }
@@ -316,6 +435,7 @@ final class ShareViewController: UIViewController {
     sharedURL = itemText.compactMap(firstWebURL).first
 
     guard !providers.isEmpty else {
+      trace("payload.missing", "Safari supplied no readable attachment providers", level: "error")
       showShareInputFailure()
       return
     }
@@ -324,10 +444,18 @@ final class ShareViewController: UIViewController {
     let lock = NSLock()
     for provider in providers {
       let typeIdentifiers = readableTypeIdentifiers(for: provider)
+      trace(
+        "payload.provider",
+        "Trying \(typeIdentifiers.count) readable type(s): \(typeIdentifiers.joined(separator: ", "))"
+      )
       logger.debug(
         "Share provider types: \(provider.registeredTypeIdentifiers.joined(separator: ", "), privacy: .public)"
       )
       for typeIdentifier in typeIdentifiers {
+        trace(
+          "payload.loadStarted",
+          "Calling NSItemProvider.loadItem for \(typeIdentifier)"
+        )
         group.enter()
         provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) {
           [weak self] item, error in
@@ -337,9 +465,18 @@ final class ShareViewController: UIViewController {
             self.logger.error(
               "Could not load shared type \(typeIdentifier, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
+            self.trace(
+              "payload.loadFailed",
+              "\(typeIdentifier): \((error as NSError).domain) \((error as NSError).code) \(error.localizedDescription)",
+              level: "warning"
+            )
             return
           }
           let payload = self.decodeSharePayload(item)
+          self.trace(
+            "payload.loaded",
+            "\(typeIdentifier): object \(String(describing: type(of: item as Any))), URL \(payload.url == nil ? "missing" : "available"), title \(payload.title == nil ? "missing" : "available"), Safari page data \(payload.preprocessedValues == nil ? "missing" : "available")"
+          )
           lock.lock()
           if self.sharedURL == nil {
             self.sharedURL = payload.url
@@ -349,6 +486,14 @@ final class ShareViewController: UIViewController {
           }
           if let preprocessedValues = payload.preprocessedValues {
             self.safariPreprocessedValues = preprocessedValues
+            let duration = (preprocessedValues["preprocessorDurationMS"] as? NSNumber)?
+              .doubleValue
+            let error = preprocessedValues["preprocessorError"] as? String
+            self.trace(
+              "payload.preprocessorReport",
+              "Safari page preprocessor duration \(duration.map { String(format: "%.0f ms", $0) } ?? "missing"); fallback error \(error ?? "none")",
+              level: error == nil ? "info" : "warning"
+            )
           }
           lock.unlock()
           if payload.preprocessedValues != nil {
@@ -361,18 +506,33 @@ final class ShareViewController: UIViewController {
     }
 
     group.notify(queue: .main) { [weak self] in
-      self?.finishLoadingSharedPayload()
+      guard let self else { return }
+      self.trace(
+        "payload.allLoadsFinished",
+        "Every requested NSItemProvider load callback returned"
+      )
+      self.finishLoadingSharedPayload()
     }
     DispatchQueue.main.asyncAfter(
       deadline: .now() + sharedPayloadDeadline
     ) { [weak self] in
-      self?.finishLoadingSharedPayload()
+      guard let self, !self.hasResolvedSharedPayload else { return }
+      self.trace(
+        "payload.deadlineReached",
+        "Provider payload was still unresolved after \(self.sharedPayloadDeadline) seconds",
+        level: "warning"
+      )
+      self.finishLoadingSharedPayload()
     }
   }
 
   private func finishLoadingSharedPayload() {
     guard !hasResolvedSharedPayload else { return }
     hasResolvedSharedPayload = true
+    trace(
+      "payload.resolved",
+      "URL \(sharedURL == nil ? "missing" : "available"), Safari page data \(safariPreprocessedValues == nil ? "missing" : "available")"
+    )
 
     if let safariPreprocessedValues {
       openPreprocessedSafariPage(safariPreprocessedValues)
@@ -541,6 +701,7 @@ final class ShareViewController: UIViewController {
       let url = URL(string: rawURL),
       ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     else {
+      trace("payload.invalidSafariPage", "Safari page data did not contain a valid HTTP URL", level: "error")
       showFailure("Safari did not provide a valid listing page.")
       return
     }
@@ -558,6 +719,7 @@ final class ShareViewController: UIViewController {
       let sharedURL,
       ["http", "https"].contains(sharedURL.scheme?.lowercased() ?? "")
     else {
+      trace("page.invalidURL", "The resolved share payload had no valid HTTP URL", level: "error")
       showFailure("Share the listing page itself so Homeboard can open it.")
       return
     }
@@ -569,6 +731,10 @@ final class ShareViewController: UIViewController {
     }
     providerLabel.text = providerName(sharedURL.host) ?? sharedURL.host ?? "Shared listing"
     progressLabel.text = "Opening the page for visual scan…"
+    trace(
+      "page.loadStarted",
+      "Loading provider \(providerName(sharedURL.host) ?? sharedURL.host ?? "unknown")"
+    )
 
     var request = URLRequest(url: sharedURL)
     request.timeoutInterval = 18
@@ -597,6 +763,35 @@ final class ShareViewController: UIViewController {
       } else {
         await self.quickScanPage()
       }
+    }
+  }
+
+  private func startAutomaticPageScan() {
+    quickScanTask?.cancel()
+    let usesSafariSnapshot = safariPreprocessedValues != nil
+    trace(
+      "scan.automaticStarted",
+      usesSafariSnapshot
+        ? "Starting automatically from Safari's current-page snapshot"
+        : "Starting automatically from the URL-only fallback page"
+    )
+    progressLabel.text = usesSafariSnapshot
+      ? "Scanning the page you shared…"
+      : "Scanning the loaded listing page…"
+
+    quickScanTask = Task { [weak self] in
+      guard let self else { return }
+      if usesSafariSnapshot {
+        await self.runHighlightedPageScan()
+      } else {
+        await self.quickScanPage()
+      }
+      self.trace(
+        Task.isCancelled ? "scan.automaticCancelled" : "scan.automaticFinished",
+        Task.isCancelled
+          ? "The automatic page scan was cancelled"
+          : "The automatic page scan finished"
+      )
     }
   }
 
@@ -1246,7 +1441,10 @@ final class ShareViewController: UIViewController {
     extractedValues["bedrooms"] = facts.bedrooms
     extractedValues["bathrooms"] = facts.bathrooms
     extractedValues["squareFeet"] = facts.squareFeet
-    extractedValues["imageURL"] = facts.imageURL
+    if let imageURL = facts.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !imageURL.isEmpty {
+      extractedValues["imageURL"] = imageURL
+    }
     extractedValues["summary"] = facts.summary
     extractedValues["amenities"] = facts.amenities
     extractedValues["modelInsights"] = facts.insights.map {
@@ -1554,6 +1752,15 @@ final class ShareViewController: UIViewController {
         );
         return node ? node.content : null;
       };
+      const absoluteWebURL = (value) => {
+        if (typeof value !== 'string' || !value.trim()) return null;
+        try {
+          const url = new URL(value.trim(), document.baseURI || location.href);
+          return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+        } catch (_) {
+          return null;
+        }
+      };
       const canonical = document.querySelector('link[rel="canonical"]');
       const addressCandidates = [];
       const coordinateCandidates = [];
@@ -1742,7 +1949,12 @@ final class ShareViewController: UIViewController {
         captureIsRecommendation,
         pageTitle: document.title || meta('og:title'),
         canonicalURL: canonical ? canonical.href : location.href,
-        imageURL: meta('og:image'),
+        imageURL: absoluteWebURL(
+          meta('og:image:secure_url')
+          || meta('og:image')
+          || meta('twitter:image')
+          || document.querySelector('link[rel~="image_src"]')?.href
+        ),
         latitude: coordinate ? coordinate.latitude : null,
         longitude: coordinate ? coordinate.longitude : null
       };
@@ -2045,6 +2257,10 @@ final class ShareViewController: UIViewController {
 
   @objc private func reviewDetails() {
     guard let sharedURL else { return }
+    trace(
+      "review.opened",
+      "Opening review with \(extractedValues.keys.count) captured field(s)"
+    )
     if let completedSafariAnalysis {
       presentReview(analysis: completedSafariAnalysis, url: sharedURL)
       return
@@ -2087,16 +2303,25 @@ final class ShareViewController: UIViewController {
       backgroundColor: backgroundColor,
       surfaceColor: surfaceColor
     )
-    review.onSave = { [weak self] pendingImport in
-      Task { [weak self] in
-        do {
-          try await HomeboardExtensionSyncClient.saveListing(pendingImport)
-        } catch {
-          HomeboardSharedImportStore.save(pendingImport)
+    review.onSave = { [weak self, weak review] pendingImport in
+      guard let self else { return }
+      Task { @MainActor [weak self, weak review] in
+        guard let self else { return }
+        let receipt = await HomeboardListingSavePipeline.enqueue(pendingImport)
+        self.trace(
+          "save.queued",
+          receipt.savedLocally
+            ? "Reviewed listing is durable; the main app will synchronize it"
+            : "Shared app-group storage rejected the reviewed listing",
+          level: receipt.savedLocally ? "info" : "error"
+        )
+        guard receipt.savedLocally else {
+          review?.showSaveFailure(
+            "Homeboard could not safely queue this listing. Try again, then send a bug report from Settings if the problem continues."
+          )
+          return
         }
-        await MainActor.run {
-          self?.completeShareRequest()
-        }
+        self.completeShareRequest()
       }
     }
     review.onRescan = { [weak self] in
@@ -2108,7 +2333,12 @@ final class ShareViewController: UIViewController {
       sheet.prefersGrabberVisible = true
       sheet.preferredCornerRadius = 22
     }
-    present(review, animated: true)
+    present(review, animated: true) { [weak self] in
+      self?.trace(
+        "review.presented",
+        "Listing review sheet finished presenting"
+      )
+    }
   }
 
   private func showShareInputFailure() {
@@ -2118,7 +2348,7 @@ final class ShareViewController: UIViewController {
     }
     hasConfiguredLayout = true
     view.backgroundColor = backgroundColor
-    preferredContentSize = CGSize(width: 0, height: 260)
+    preferredContentSize = CGSize(width: max(view.bounds.width, 390), height: 300)
 
     let brandIcon = UIImageView(image: UIImage(named: "homeboard-mark"))
     brandIcon.contentMode = .scaleAspectFit
@@ -2180,6 +2410,7 @@ final class ShareViewController: UIViewController {
   }
 
   private func showFailure(_ message: String) {
+    trace("extension.failureUI", message, level: "error")
     showInteractiveInterface()
     loadingView.stopAnimating()
     progressLabel.text = message
@@ -2195,7 +2426,10 @@ final class ShareViewController: UIViewController {
       hasConfiguredLayout = true
     }
     view.backgroundColor = backgroundColor
-    preferredContentSize = CGSize(width: 0, height: 720)
+    view.isHidden = false
+    view.alpha = 1
+    preferredContentSize = CGSize(width: max(view.bounds.width, 390), height: 720)
+
   }
 
   private func scanSummary(_ facts: HomeboardListingFacts) -> String {
@@ -2224,6 +2458,10 @@ final class ShareViewController: UIViewController {
   private func completeShareRequest(
     finalizeArguments: [String: Any] = ["cleanup": true]
   ) {
+    trace(
+      "extension.completeRequested",
+      "Asking Safari to close the share extension after a completed or queued save"
+    )
     let propertyList = [
       NSExtensionJavaScriptFinalizeArgumentKey: finalizeArguments as NSDictionary
     ] as NSDictionary
@@ -2241,6 +2479,11 @@ final class ShareViewController: UIViewController {
       completionHandler: { [weak self] expired in
         self?.logger.notice(
           "Safari finalize handoff completed; expired=\(expired, privacy: .public)"
+        )
+        self?.trace(
+          "extension.completeFinished",
+          "Safari completion callback returned; expired=\(expired)",
+          level: expired ? "warning" : "info"
         )
       }
     )
@@ -2331,19 +2574,17 @@ final class ShareViewController: UIViewController {
 
 extension ShareViewController: WKNavigationDelegate {
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    trace(
+      "page.loadFinished",
+      "WebKit finished loading \(providerName(webView.url?.host) ?? webView.url?.host ?? "unknown")"
+    )
     pageFinishedLoading = true
     loadingView.stopAnimating()
     providerLabel.text = providerName(webView.url?.host) ?? webView.title ?? "Shared listing"
     progressLabel.text = "Preparing the Homeboard page scan…"
     moreButton.isEnabled = true
     quickScanButton.isEnabled = true
-    if safariPreprocessedValues != nil {
-      quickScanTask = Task { [weak self] in
-        await self?.runHighlightedPageScan()
-      }
-    } else {
-      scheduleScan(force: true)
-    }
+    startAutomaticPageScan()
   }
 
   func webView(
@@ -2352,6 +2593,11 @@ extension ShareViewController: WKNavigationDelegate {
     withError error: Error
   ) {
     logger.error("Shared page failed to load: \(error.localizedDescription, privacy: .public)")
+    trace(
+      "page.provisionalLoadFailed",
+      "\((error as NSError).domain) \((error as NSError).code): \(error.localizedDescription)",
+      level: "error"
+    )
     showFailure("This source would not open inside Homeboard.")
   }
 
@@ -2361,6 +2607,11 @@ extension ShareViewController: WKNavigationDelegate {
     withError error: Error
   ) {
     logger.error("Shared page navigation failed: \(error.localizedDescription, privacy: .public)")
+    trace(
+      "page.navigationFailed",
+      "\((error as NSError).domain) \((error as NSError).code): \(error.localizedDescription)",
+      level: "error"
+    )
     showFailure("This source stopped loading before it could be scanned.")
   }
 }
@@ -2761,6 +3012,13 @@ private final class ListingReviewViewController: UIViewController, UITextFieldDe
     saveButton.isEnabled = false
     saveButton.setTitle("Saving to Homeboard…", for: .normal)
     onSave?(pending)
+  }
+
+  func showSaveFailure(_ message: String) {
+    statusLabel.text = message
+    statusLabel.textColor = HomeboardSharePalette.danger
+    saveButton.setTitle("Try saving again", for: .normal)
+    updateSaveState()
   }
 
   @objc private func rescan() {

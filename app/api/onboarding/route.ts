@@ -126,9 +126,9 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(result);
-    } catch (error) {
+    } catch {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Unable to continue onboarding right now." },
+        { error: "Unable to continue onboarding right now." },
         { status: 500 },
       );
     }
@@ -163,9 +163,9 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ boardId });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to create the workspace right now." },
+      { error: "Unable to create the workspace right now." },
       { status: 500 },
     );
   }

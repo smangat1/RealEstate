@@ -12,7 +12,7 @@ const workspace = read(
   "ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift",
 );
 
-test("board update text is persisted in the same timeline the Updates screen renders", () => {
+test("group messages are persisted in the same timeline the Group screen renders", () => {
   const updateWrite = boardData.slice(
     boardData.indexOf("export async function addManualBoardUpdate"),
     boardData.indexOf("export async function addBoardDecision"),
@@ -24,11 +24,11 @@ test("board update text is persisted in the same timeline the Updates screen ren
   assert.match(updateRoute, /\{ userId: user\.id, authorName: user\.displayName \}/);
 });
 
-test("native updates post optimistically and restore failed text", () => {
+test("native group messages post optimistically and restore failed text", () => {
   assert.match(appModel, /var isPostingBoardUpdate = false/);
   assert.match(appModel, /id: temporaryID[\s\S]*content: message/);
   assert.match(appModel, /board\.chatMessages\.removeAll \{ \$0\.id == temporaryID \}/);
-  assert.match(appModel, /Your update was put back in the composer/);
+  assert.match(appModel, /Your message was put back in the composer/);
   assert.match(workspace, /let posted = await appModel\.addBoardUpdate\(message\)/);
   assert.match(workspace, /if !posted \{[\s\S]*updateDraft = message/);
   assert.match(workspace, /if appModel\.isPostingBoardUpdate[\s\S]*ProgressView\(\)/);

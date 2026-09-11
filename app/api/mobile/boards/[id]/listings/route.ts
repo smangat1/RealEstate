@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { addListingToBoard, getBoardPageData } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload, mapListingInventoryForMobile } from "@/lib/mobile-payloads";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { previewListingImport } from "@/lib/listing-sources";
 import { listingSourceTrustWarning } from "@/lib/listing-source-policy";
+import { isSafeHttpUrl } from "@/lib/input-safety";
 import { prisma } from "@/lib/prisma";
 import type { ListingRecord } from "@/lib/types";
 
@@ -34,11 +36,12 @@ const listingSchema = z.object({
   bedrooms: z.number().finite().nonnegative().max(50).nullable().optional(),
   bathrooms: z.number().finite().nonnegative().max(50).nullable().optional(),
   squareFeet: z.number().int().positive().max(100_000).nullable().optional(),
+  availableDate: z.string().trim().max(80).optional(),
   amenities: z.array(z.string().trim().min(1).max(120)).max(40).optional(),
   modelInsights: z.array(modelInsightSchema).max(16).optional(),
   description: z.string().trim().max(10_000).optional(),
-  sourceUrl: z.string().url().max(2_000).or(z.literal("")).optional(),
-  imageUrl: z.string().url().max(2_000).or(z.literal("")).optional(),
+  sourceUrl: z.string().trim().max(2_000).refine(isSafeHttpUrl).or(z.literal("")).optional(),
+  imageUrl: z.string().trim().max(2_000).refine(isSafeHttpUrl).or(z.literal("")).optional(),
   groupNote: z.string().trim().max(5_000).optional(),
 });
 
@@ -177,7 +180,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       select: {
         id: true,
         searchProfile: { select: { locations: true } },
-        boardListings: { select: { listingId: true } },
+        boardListings: {
+          where: {
+            OR: [
+              { deletedAt: null },
+              { deletedAt: { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+            ],
+          },
+          select: { listingId: true },
+        },
       },
     });
     if (!board) return NextResponse.json({ error: "Board not found." }, { status: 404 });
@@ -291,7 +302,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     await sendOperationalAlert(error, { area: "mobile_api", operation: "load_listing_inventory", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to load listings.";
     return NextResponse.json(
-      { error: message },
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to load listings." },
       { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
     );
   }
@@ -301,6 +312,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireMobileAppUser(request);
     const { id } = await context.params;
+    assertThrottle({
+      scope: "mobile-listing-create",
+      key: `${user.id}:${id}`,
+      limit: 60,
+      windowMs: 60 * 60 * 1_000,
+      message: "Too many listings were added recently. Please wait before trying again.",
+    });
     const existing = await getBoardPageData(id, user.id);
     if (!existing) return NextResponse.json({ error: "Board not found." }, { status: 404 });
 
@@ -349,6 +367,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       bedrooms: parsed.data.bedrooms === null || parsed.data.bedrooms === undefined ? undefined : String(parsed.data.bedrooms),
       bathrooms: parsed.data.bathrooms === null || parsed.data.bathrooms === undefined ? undefined : String(parsed.data.bathrooms),
       squareFeet: parsed.data.squareFeet === null || parsed.data.squareFeet === undefined ? undefined : String(parsed.data.squareFeet),
+      availableDate: parsed.data.availableDate,
       amenities: parsed.data.amenities,
       modelInsights: parsed.data.modelInsights,
       description: parsed.data.description,
@@ -358,12 +377,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       actorUserId: user.id,
     });
 
+    if (request.headers.get("x-homeboard-response") === "acknowledgment") {
+      return NextResponse.json({ saved: true, board: { id } });
+    }
+
     const data = await getBoardPageData(id, user.id);
     if (!data) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     return response(data);
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "add_listing", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to add listing.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      {
+        error: message === "MOBILE_AUTH_REQUIRED"
+          ? "Unauthorized"
+          : isThrottleError(error)
+            ? message
+            : "Unable to add listing.",
+      },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : isThrottleError(error) ? 429 : 500 },
+    );
   }
 }

@@ -440,6 +440,7 @@ enum HomeboardExtensionSyncClient {
       accessToken: accessToken
     )
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("acknowledgment", forHTTPHeaderField: "X-Homeboard-Response")
     request.httpBody = try JSONEncoder().encode(
       ListingRequest(
         title: listing.pageTitle ?? listing.address ?? "Rental listing",
@@ -453,6 +454,8 @@ enum HomeboardExtensionSyncClient {
         price: listing.price,
         bedrooms: listing.bedrooms,
         bathrooms: listing.bathrooms,
+        squareFeet: listing.squareFeet,
+        availableDate: listing.availableDate,
         amenities: listing.amenities,
         modelInsights: listing.modelInsights,
         description: listing.summary,
@@ -634,6 +637,64 @@ enum HomeboardExtensionSyncClient {
   }
 }
 
+struct HomeboardListingSaveReceipt: Sendable {
+  let listing: HomeboardSharedImportStore.PendingImport
+  let savedLocally: Bool
+
+  var hasDestinationBoard: Bool {
+    listing.boardId?.isEmpty == false
+  }
+}
+
+/// One save contract for Safari and Share extensions: make the tap durable
+/// before acknowledging it, then synchronize without holding the interface open.
+enum HomeboardListingSavePipeline {
+  static func enqueue(
+    _ listing: HomeboardSharedImportStore.PendingImport,
+    boardId: String? = nil
+  ) async -> HomeboardListingSaveReceipt {
+    var prepared = listing
+    let requestedBoard = boardId?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if let requestedBoard, !requestedBoard.isEmpty {
+      prepared.boardId = requestedBoard
+    } else if prepared.boardId?.isEmpty != false {
+      prepared.boardId = HomeboardSharedImportStore.activeBoardId
+    }
+    let queuedListing = prepared
+    let savedLocally = await Task.detached(priority: .userInitiated) {
+      HomeboardSharedImportStore.save(queuedListing)
+    }.value
+    return HomeboardListingSaveReceipt(
+      listing: queuedListing,
+      savedLocally: savedLocally
+    )
+  }
+
+  static func synchronize(
+    _ receipt: HomeboardListingSaveReceipt
+  ) async throws {
+    guard receipt.savedLocally else {
+      throw HomeboardExtensionSyncError.invalidListing
+    }
+    try await synchronizeQueued(
+      receipt.listing,
+      boardId: receipt.listing.boardId
+    )
+  }
+
+  static func synchronizeQueued(
+    _ listing: HomeboardSharedImportStore.PendingImport,
+    boardId: String? = nil
+  ) async throws {
+    try await HomeboardExtensionSyncClient.saveListing(
+      listing,
+      boardId: boardId
+    )
+    HomeboardSharedImportStore.remove(id: listing.id)
+  }
+}
+
 private struct SignInRequest: Encodable {
   var email: String
   var password: String
@@ -720,6 +781,8 @@ private struct ListingRequest: Encodable {
   var price: Double?
   var bedrooms: Double?
   var bathrooms: Double?
+  var squareFeet: Int?
+  var availableDate: String?
   var amenities: [String]
   var modelInsights: [HomeboardListingInsight]
   var description: String?

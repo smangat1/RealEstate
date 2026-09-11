@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 
 import {
   addListingAction,
+  clearRecentlyDeletedBoardListingsAction,
   completeJoinedMemberSetupAction,
   confirmBoardProfileAction,
   createBoardInvitationAction,
   deleteBoardAction,
+  deleteBoardListingAction,
+  restoreBoardListingAction,
   sendChatAction,
 } from "@/app/actions";
 import { BrandMark } from "@/components/brand-mark";
@@ -217,7 +220,7 @@ function buildNextAction(
   }
 
   return {
-    title: "Pressure-test the shortlist",
+    title: "Review the shortlist together",
     detail: "Ask the group to react to the saved listings, then compare the strongest practical option against the lifestyle-forward one.",
     action: "chat" as const,
     label: "Continue in chat",
@@ -390,7 +393,7 @@ function buildCompareSummary(selectedListings: BoardListingRecord[], data: Board
 
   if (topPriority) {
     summaryParts.push(
-      `Since the workspace is currently leaning hardest on ${topPriority}, the best choice should probably be the listing that survives that pressure without creating too many unknowns for the rest of the group.`,
+      `Since the workspace is currently leaning hardest on ${topPriority}, the best choice should probably be the listing that aligns with that priority without creating too many tradeoffs for the rest of the group.`,
     );
   }
 
@@ -438,7 +441,13 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
   const isDemoMode = data.isDemoMode;
   const currentRoommateId = data.roommates.find((roommate) => roommate.linkedUserId === currentUser?.id)?.id ?? data.roommates[0]?.id ?? "";
   const shortlistCountLabel = shortlistItems.length === 1 ? "1 active listing" : `${shortlistItems.length} active listings`;
-  const focusedListing = shortlistItems.find((item) => item.id === focusedListingId) ?? null;
+  const focusedListing = useMemo(() => {
+    return (
+      shortlistItems.find((item) => item.id === focusedListingId) ??
+      data.recentlyDeletedBoardListings.find((item) => item.id === focusedListingId) ??
+      null
+    );
+  }, [shortlistItems, data.recentlyDeletedBoardListings, focusedListingId]);
   const compareSummary = useMemo(() => buildCompareSummary(shortlistItems.slice(0, 3), data), [shortlistItems, data]);
   const cityLabel = data.profile.city || data.profile.locations[0] || data.board.city || "City still open";
   const moveInLabel = data.profile.moveInDate || data.profile.moveInTimeframe || "Move-in still open";
@@ -548,7 +557,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
 
     const interval = window.setInterval(() => {
       void refreshBoard();
-    }, 15000);
+    }, 10000);
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
@@ -704,7 +713,39 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
         <section className="board-home-shell">
           <header className="board-home-header rail-card">
             <div className="board-home-header-copy">
-              <div className="home-badge">Shared workspace</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <div className="home-badge">Shared workspace</div>
+                <div
+                  className="live-sync-indicator"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                    fontSize: "0.76rem",
+                    fontWeight: 600,
+                    letterSpacing: "0.04em",
+                    background: isRefreshingBoard ? "rgba(96, 165, 250, 0.12)" : "rgba(74, 222, 128, 0.12)",
+                    color: isRefreshingBoard ? "#60a5fa" : "#4ade80",
+                    border: isRefreshingBoard ? "1px solid rgba(96, 165, 250, 0.25)" : "1px solid rgba(74, 222, 128, 0.25)",
+                    transition: "all 0.2s ease",
+                  }}
+                  title="Live collaboration sync active (10s refresh)"
+                >
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      backgroundColor: isRefreshingBoard ? "#60a5fa" : "#4ade80",
+                      display: "inline-block",
+                      boxShadow: isRefreshingBoard ? "0 0 6px #60a5fa" : "0 0 6px #4ade80",
+                    }}
+                  />
+                  <span>{isRefreshingBoard ? "Syncing..." : "Live"}</span>
+                </div>
+              </div>
               <h1>{data.board.title}</h1>
               <p>{data.groupSynthesis.summary}</p>
               <div className="board-readiness-bar">
@@ -1045,6 +1086,117 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : (
                   <p>Nothing is on the shortlist yet. Import an exact listing link so the group can react to a real source.</p>
                 )}
+
+                {data.recentlyDeletedBoardListings.length > 0 ? (
+                  <div
+                    className="recently-deleted-box"
+                    style={{
+                      marginTop: "16px",
+                      padding: "16px",
+                      borderRadius: "14px",
+                      border: "1px dashed rgba(255, 255, 255, 0.15)",
+                      background: "rgba(255, 255, 255, 0.02)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "12px",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                      }}
+                    >
+                      <div>
+                        <strong style={{ fontSize: "0.92rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>🗑️</span>
+                          <span>Recently Deleted ({data.recentlyDeletedBoardListings.length})</span>
+                        </strong>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", opacity: 0.7 }}>
+                          Recoverable for 7 days before permanent purge. Any roommate can restore.
+                        </p>
+                      </div>
+                      {currentUser?.id === data.board.userId ? (
+                        <form action={clearRecentlyDeletedBoardListingsAction}>
+                          <input type="hidden" name="boardId" value={data.board.id} />
+                          <button
+                            type="submit"
+                            style={{
+                              padding: "5px 10px",
+                              fontSize: "0.78rem",
+                              borderRadius: "8px",
+                              border: "1px solid rgba(255, 90, 95, 0.35)",
+                              background: "rgba(255, 90, 95, 0.1)",
+                              color: "#ff7a7e",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Clear all
+                          </button>
+                        </form>
+                      ) : null}
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {data.recentlyDeletedBoardListings.map((deletedItem) => (
+                        <div
+                          key={deletedItem.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "10px 14px",
+                            borderRadius: "10px",
+                            background: "rgba(255, 255, 255, 0.03)",
+                            border: "1px solid rgba(255, 255, 255, 0.06)",
+                            gap: "12px",
+                          }}
+                        >
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <strong
+                              style={{
+                                display: "block",
+                                fontSize: "0.88rem",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {compareLocationLabel(deletedItem)}
+                            </strong>
+                            <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>
+                              {deletedItem.listing.price ? `$${deletedItem.listing.price.toLocaleString()}/mo` : "Unknown rent"}
+                              {deletedItem.listing.bedrooms ? ` · ${deletedItem.listing.bedrooms} bed` : ""}
+                              {deletedItem.listing.bathrooms ? ` · ${deletedItem.listing.bathrooms} bath` : ""}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{ padding: "5px 10px", fontSize: "0.78rem", cursor: "pointer" }}
+                              onClick={() => setFocusedListingId(deletedItem.id)}
+                            >
+                              Details
+                            </button>
+                            <form action={restoreBoardListingAction}>
+                              <input type="hidden" name="boardId" value={data.board.id} />
+                              <input type="hidden" name="boardListingId" value={deletedItem.id} />
+                              <button
+                                type="submit"
+                                className="secondary-button"
+                                style={{ padding: "5px 12px", fontSize: "0.78rem", cursor: "pointer", color: "var(--accent)" }}
+                              >
+                                Restore
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
               <section className="rail-card board-home-section">
@@ -1239,6 +1391,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
 
       {focusedListing ? (
         <ListingDetailModal
+          boardId={data.board.id}
           boardListing={focusedListing}
           commute={data.boardListingCommutesByBoardListingId[focusedListing.id]}
           votes={data.listingVotesByBoardListingId[focusedListing.id] ?? []}
@@ -1289,12 +1442,14 @@ function CommentFeed({ comments }: { comments: BoardListingCommentRecord[] }) {
 }
 
 function ListingDetailModal({
+  boardId,
   boardListing,
   commute,
   votes,
   comments,
   onClose,
 }: {
+  boardId: string;
   boardListing: BoardListingRecord;
   commute: BoardPageData["boardListingCommutesByBoardListingId"][string] | undefined;
   votes: BoardListingVoteRecord[];
@@ -1389,6 +1544,52 @@ function ListingDetailModal({
             <CommentFeed comments={comments} />
             <strong>Listing note</strong>
             <p>{listing.description ?? "No description saved for this listing yet."}</p>
+          </div>
+
+          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
+            {boardListing.deletedAt ? (
+              <form action={restoreBoardListingAction} onSubmit={onClose}>
+                <input type="hidden" name="boardId" value={boardId} />
+                <input type="hidden" name="boardListingId" value={boardListing.id} />
+                <button
+                  type="submit"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid rgba(74, 222, 128, 0.35)",
+                    background: "rgba(74, 222, 128, 0.12)",
+                    color: "#4ade80",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Restore to Shortlist
+                </button>
+              </form>
+            ) : (
+              <form action={deleteBoardListingAction} onSubmit={onClose}>
+                <input type="hidden" name="boardId" value={boardId} />
+                <input type="hidden" name="boardListingId" value={boardListing.id} />
+                <button
+                  type="submit"
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid rgba(255, 90, 95, 0.35)",
+                    background: "rgba(255, 90, 95, 0.08)",
+                    color: "#ff7a7e",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Move to Recently Deleted
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

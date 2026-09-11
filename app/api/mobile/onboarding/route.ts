@@ -86,6 +86,9 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to continue onboarding.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to continue onboarding." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }

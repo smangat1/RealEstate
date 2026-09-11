@@ -115,7 +115,7 @@ enum HomeboardListingIntelligence {
     var analysis = HomeboardListingAnalysis(
       scope: cleaned(message["listingScope"]) ?? "unknown",
       facts: deterministic,
-      options: deterministicOptions(from: message, evidence: evidence),
+      options: deterministicOptions(from: message, evidence: unitEvidenceText(from: message)),
       missingFields: missingFields(in: deterministic),
       message: "",
       usedOnDeviceModel: false
@@ -144,6 +144,7 @@ enum HomeboardListingIntelligence {
         into: analysis,
         evidence: evidence,
         primaryEvidence: primaryEvidence,
+        unitEvidence: unitEvidenceText(from: message),
         resolutionFields: modelPlan.fields
       )
       analysis.usedOnDeviceModel = true
@@ -423,7 +424,12 @@ enum HomeboardListingIntelligence {
       )
       return grounded(option: option, in: evidence) ? option : nil
     }
-    return suppliedOptions + parsedUnitOptions(in: evidence)
+    let parsed = parsedUnitOptions(in: evidence)
+    let parsedIdentities = Set(parsed.compactMap(\.unit).map(normalized))
+    return parsed + suppliedOptions.filter { option in
+      guard let unit = option.unit else { return true }
+      return !parsedIdentities.contains(normalized(unit))
+    }
   }
 
   private static func parsedUnitOptions(in evidence: String) -> [HomeboardUnitOption] {
@@ -712,6 +718,8 @@ enum HomeboardListingIntelligence {
   private static func evidenceText(from message: [String: Any]) -> String {
     [
       cleaned(message["pageTitle"]),
+      cleaned(message["availabilityPageEvidence"]),
+      cleaned(message["structuredUnitEvidence"]),
       cleaned(message["sharedPageEvidence"]),
       cleaned(message["summary"]),
       cleaned(message["primaryFactEvidence"]),
@@ -723,6 +731,16 @@ enum HomeboardListingIntelligence {
       .joined(separator: "\n")
       .prefix(24_000)
       .description
+  }
+
+  private static func unitEvidenceText(from message: [String: Any]) -> String {
+    // The Safari collector supplies current-building availability separately from
+    // general page copy. Do not ground unit identities in recommendations or summaries.
+    if message["availabilityPageEvidence"] != nil || message["structuredUnitEvidence"] != nil {
+      return [cleaned(message["availabilityPageEvidence"]), cleaned(message["structuredUnitEvidence"])]
+        .compactMap { $0 }.joined(separator: "\n\n")
+    }
+    return evidenceText(from: message)
   }
 
   private static func primaryEvidenceText(from message: [String: Any]) -> String {
@@ -962,11 +980,26 @@ enum HomeboardListingIntelligence {
         of: #"\b(?:floor plans|available units|units available)\b"#,
         options: [.regularExpression, .caseInsensitive]
       ) != nil
-    if looksLikeBuildingPage, options.isEmpty {
+    let availableEvidence = unitEvidenceText(from: message)
+    let parsedIdentities = Set(parsedUnitOptions(in: availableEvidence).compactMap(\.unit).map(normalized))
+    let resolvedIdentities = Set(options.compactMap(\.unit).map(normalized))
+    let declaredCount = declaredAvailableUnitCount(in: availableEvidence)
+    let incompleteOptions = !parsedIdentities.isSubset(of: resolvedIdentities)
+      || declaredCount.map { $0 > options.count } == true
+    if looksLikeBuildingPage, options.isEmpty || incompleteOptions {
       fields.insert("options")
     }
 
     return HomeboardModelResolutionPlan(fields: fields)
+  }
+
+  private static func declaredAvailableUnitCount(in evidence: String) -> Int? {
+    let patterns = [
+      #"\b(\d{1,3})\s+(?:available\s+)?units?\s+(?:available|for rent)\b"#,
+      #"\bavailable\s+units?\s*[:(]?\s*(\d{1,3})\b"#,
+      #"\bAll\s*\((\d{1,3})\)"#
+    ]
+    return numericCaptures(in: evidence, patterns: patterns).compactMap { Int(exactly: $0) }.max()
   }
 
   private static func conflictingCoreFields(
@@ -1094,9 +1127,12 @@ enum HomeboardListingIntelligence {
 
   private static func grounded(option: HomeboardUnitOption, in evidence: String) -> Bool {
     let identifier = option.unit ?? option.label
+    let identifierPattern = #"(?<![A-Za-z0-9-])"#
+      + NSRegularExpression.escapedPattern(for: identifier)
+      + #"(?![A-Za-z0-9-])"#
     guard let identifierRange = evidence.range(
-      of: identifier,
-      options: [.caseInsensitive, .diacriticInsensitive]
+      of: identifierPattern,
+      options: [.regularExpression, .caseInsensitive]
     ) else {
       return false
     }
@@ -1111,6 +1147,7 @@ enum HomeboardListingIntelligence {
       limitedBy: evidence.endIndex
     ) ?? evidence.endIndex
     let localEvidence = String(evidence[lowerBound..<upperBound])
+    if let price = option.price, !evidenceContains(number: price, in: localEvidence) { return false }
 
     var groundedFactCount = 0
     if let price = option.price, evidenceContains(number: price, in: localEvidence) {
@@ -1137,6 +1174,7 @@ enum HomeboardListingIntelligence {
     into base: HomeboardListingAnalysis,
     evidence: String,
     primaryEvidence: String,
+    unitEvidence: String,
     resolutionFields: Set<String>
   ) -> HomeboardListingAnalysis {
     var result = base
@@ -1230,7 +1268,7 @@ enum HomeboardListingIntelligence {
         availableDate: cleaned(generatedOption.availableDate),
         evidenceSummary: cleaned(generatedOption.evidenceSummary)
       )
-      return grounded(option: option, in: evidence) ? option : nil
+      return grounded(option: option, in: unitEvidence) ? option : nil
     }
       : []
     result.options.append(contentsOf: options)

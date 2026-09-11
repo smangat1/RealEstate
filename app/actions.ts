@@ -11,14 +11,18 @@ import {
   acceptBoardInvitation,
   addBoardListingComment,
   addListingToBoard,
+  clearRecentlyDeletedBoardListings,
   completeJoinedMemberSetup,
   confirmBoardProfileForUser,
   createBoardAndReturnId,
   createBoardInvitation,
   deleteBoardForUser,
+  getBoardPageData,
   getInvitationByCode,
   leaveBoard,
   getUserById,
+  moveBoardListingToRecentlyDeleted,
+  restoreRecentlyDeletedBoardListing,
   revokeBoardInvitation,
   removeBoardMember,
   saveBoardListingVote,
@@ -33,18 +37,13 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { assertThrottle } from "@/lib/action-throttle";
 import { sendOperationalAlert } from "@/lib/monitoring";
+import { readFormIdentifier, readFormText, safeRelativePath } from "@/lib/input-safety";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function redirectWithMessage(path: string, key: "error" | "notice", message: string): never {
   const search = new URLSearchParams();
   search.set(key, message);
   redirect(`${path}${path.includes("?") ? "&" : "?"}${search.toString()}`);
-}
-
-function getSafeNextPath(nextValue: string) {
-  if (!nextValue.startsWith("/")) return "/";
-  if (nextValue.startsWith("//")) return "/";
-  return nextValue;
 }
 
 function getInviteCodeFromNextPath(nextPath: string) {
@@ -86,14 +85,18 @@ export async function signUpAction(formData: FormData) {
     redirectWithMessage("/", "notice", "Homeboard is currently disabled.");
   }
 
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const password = String(formData.get("password") || "").trim();
-  const displayName = String(formData.get("displayName") || "").trim();
-  const next = getSafeNextPath(String(formData.get("next") || "/"));
+  const email = readFormText(formData, "email", 254).toLowerCase();
+  const passwordValue = formData.get("password");
+  const password = typeof passwordValue === "string" ? passwordValue : "";
+  const displayName = readFormText(formData, "displayName", 160);
+  const next = safeRelativePath(formData.get("next"));
   const registerPath = `/register?next=${encodeURIComponent(next)}${email ? `&email=${encodeURIComponent(email)}` : ""}`;
 
   if (!email || !password || !displayName) {
     redirectWithMessage(registerPath, "error", "Name, email, and password are required.");
+  }
+  if (password.length < 8 || password.length > 128) {
+    redirectWithMessage(registerPath, "error", "Use a password between 8 and 128 characters.");
   }
 
   const inviteCode = getInviteCodeFromNextPath(next);
@@ -131,7 +134,7 @@ export async function signUpAction(formData: FormData) {
   });
 
   if (error) {
-    redirectWithMessage(registerPath, "error", error.message);
+    redirectWithMessage(registerPath, "error", "Unable to create that account. Check your details or try signing in.");
   }
 
   await trackEvent("sign_up_completed", {
@@ -147,13 +150,17 @@ export async function signInAction(formData: FormData) {
   if (!isAppEnabled()) {
     redirectWithMessage("/", "notice", "Homeboard is currently disabled.");
   }
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const password = String(formData.get("password") || "").trim();
-  const next = getSafeNextPath(String(formData.get("next") || "/"));
+  const email = readFormText(formData, "email", 254).toLowerCase();
+  const passwordValue = formData.get("password");
+  const password = typeof passwordValue === "string" ? passwordValue : "";
+  const next = safeRelativePath(formData.get("next"));
   const signInPath = `/sign-in?next=${encodeURIComponent(next)}&email=${encodeURIComponent(email)}`;
 
   if (!email || !password) {
     redirectWithMessage(signInPath, "error", "Email and password are required.");
+  }
+  if (password.length > 128) {
+    redirectWithMessage(signInPath, "error", "Unable to sign in with those credentials.");
   }
 
   try {
@@ -172,7 +179,7 @@ export async function signInAction(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error || !data.user) {
-    redirectWithMessage(signInPath, "error", error?.message || "Unable to sign in.");
+    redirectWithMessage(signInPath, "error", "Unable to sign in with those credentials.");
   }
 
   const authUser = data.user;
@@ -205,8 +212,8 @@ export async function createBoardAction(formData: FormData) {
   }
   const authUser = await getCurrentAuthUser();
 
-  const initialPrompt = String(formData.get("initialPrompt") || "").trim();
-  const titleInput = String(formData.get("title") || "").trim();
+  const initialPrompt = readFormText(formData, "initialPrompt", 2_000, { multiline: true });
+  const titleInput = readFormText(formData, "title", 160);
   const title =
     titleInput || (initialPrompt ? `${initialPrompt.slice(0, 42)}${initialPrompt.length > 42 ? "..." : ""}` : "New workspace");
   await trackEvent("onboarding_started", {
@@ -227,8 +234,8 @@ export async function createBoardAction(formData: FormData) {
 
 export async function deleteBoardAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
-  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || "/"));
+  const boardId = readFormIdentifier(formData, "boardId");
+  const redirectTo = safeRelativePath(formData.get("redirectTo"));
 
   if (!currentUser || !boardId) {
     redirect("/");
@@ -246,8 +253,8 @@ export async function deleteBoardAction(formData: FormData) {
 export async function sendChatAction(formData: FormData) {
   if (!isAppEnabled()) return;
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
-  const content = String(formData.get("content") || "").trim();
+  const boardId = readFormIdentifier(formData, "boardId");
+  const content = readFormText(formData, "content", 4_000, { multiline: true });
   if (!currentUser || !boardId || !content) return;
 
   try {
@@ -284,25 +291,40 @@ export async function sendChatAction(formData: FormData) {
 }
 
 export async function addListingAction(formData: FormData) {
-  const boardId = String(formData.get("boardId") || "");
-  const method = String(formData.get("method") || "manual") as "pasted_link" | "pasted_text" | "manual";
+  const boardId = readFormIdentifier(formData, "boardId");
+  const rawMethod = readFormText(formData, "method", 20);
+  const method = (["pasted_link", "pasted_text", "manual"] as const).includes(
+    rawMethod as "pasted_link" | "pasted_text" | "manual",
+  ) ? rawMethod as "pasted_link" | "pasted_text" | "manual" : "manual";
   const currentUser = await getCurrentAppUser();
   if (!boardId || !currentUser) return;
 
+  const boardData = await getBoardPageData(boardId, currentUser.id, {
+    includeCommutes: false,
+  });
+  if (!boardData) return;
+
   try {
+    assertThrottle({
+      scope: "web-listing-create",
+      key: `${currentUser.id}:${boardId}`,
+      limit: 60,
+      windowMs: 60 * 60 * 1_000,
+      message: "Too many listings were added recently. Please wait before trying again.",
+    });
     await addListingToBoard(boardId, {
       method,
-      sourceUrl: String(formData.get("sourceUrl") || ""),
-      pastedText: String(formData.get("pastedText") || ""),
-      address: String(formData.get("address") || ""),
-      unit: String(formData.get("unit") || ""),
-      city: String(formData.get("city") || ""),
-      neighborhood: String(formData.get("neighborhood") || ""),
-      price: String(formData.get("price") || ""),
-      bedrooms: String(formData.get("bedrooms") || ""),
-      bathrooms: String(formData.get("bathrooms") || ""),
-      squareFeet: String(formData.get("squareFeet") || ""),
-      description: String(formData.get("description") || ""),
+      sourceUrl: readFormText(formData, "sourceUrl", 2_000),
+      pastedText: readFormText(formData, "pastedText", 20_000, { multiline: true }),
+      address: readFormText(formData, "address", 300),
+      unit: readFormText(formData, "unit", 50),
+      city: readFormText(formData, "city", 160),
+      neighborhood: readFormText(formData, "neighborhood", 160),
+      price: readFormText(formData, "price", 40),
+      bedrooms: readFormText(formData, "bedrooms", 40),
+      bathrooms: readFormText(formData, "bathrooms", 40),
+      squareFeet: readFormText(formData, "squareFeet", 40),
+      description: readFormText(formData, "description", 10_000, { multiline: true }),
       actorUserId: currentUser.id,
     });
   } catch (error) {
@@ -318,44 +340,82 @@ export async function addListingAction(formData: FormData) {
 }
 
 export async function updateListingStatusAction(formData: FormData) {
-  const boardId = String(formData.get("boardId") || "");
-  const boardListingId = String(formData.get("boardListingId") || "");
-  const status = String(formData.get("status") || "new") as
-    | "new"
-    | "interested"
-    | "maybe"
-    | "rejected"
-    | "toured"
-    | "applied";
+  const currentUser = await getCurrentAppUser();
+  const boardId = readFormIdentifier(formData, "boardId");
+  const boardListingId = readFormIdentifier(formData, "boardListingId");
+  const rawStatus = readFormText(formData, "status", 20) || "new";
+  const allowedStatuses = ["new", "interested", "maybe", "rejected", "toured", "applied"] as const;
 
-  if (!boardId || !boardListingId) return;
+  if (!currentUser || !boardId || !boardListingId || !allowedStatuses.some((value) => value === rawStatus)) return;
+  const boardData = await getBoardPageData(boardId, currentUser.id, {
+    includeCommutes: false,
+  });
+  if (!boardData?.boardListings.some((entry) => entry.id === boardListingId)) return;
 
-  await updateBoardListingStatus(boardListingId, status);
+  await updateBoardListingStatus(
+    boardListingId,
+    rawStatus as (typeof allowedStatuses)[number],
+    currentUser.id,
+  );
   revalidatePath(`/boards/${boardId}`);
 }
 
 export async function saveSuggestedListingAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
-  const listingId = String(formData.get("listingId") || "");
-  const status = String(formData.get("status") || "maybe") as
-    | "new"
-    | "interested"
-    | "maybe"
-    | "rejected"
-    | "toured"
-    | "applied";
+  const boardId = readFormIdentifier(formData, "boardId");
+  const listingId = readFormIdentifier(formData, "listingId");
+  const rawStatus = readFormText(formData, "status", 20) || "maybe";
+  const allowedStatuses = ["new", "interested", "maybe", "rejected", "toured", "applied"] as const;
 
-  if (!currentUser || !boardId || !listingId) return;
+  if (!currentUser || !boardId || !listingId || !allowedStatuses.some((value) => value === rawStatus)) return;
 
-  await saveSuggestedListingToBoard(boardId, listingId, status, currentUser.id);
+  await saveSuggestedListingToBoard(
+    boardId,
+    listingId,
+    rawStatus as (typeof allowedStatuses)[number],
+    currentUser.id,
+  );
+  revalidatePath(`/boards/${boardId}`);
+}
+
+export async function deleteBoardListingAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = readFormIdentifier(formData, "boardId");
+  const boardListingId = readFormIdentifier(formData, "boardListingId");
+  if (!currentUser || !boardId || !boardListingId) return;
+
+  const boardData = await getBoardPageData(boardId, currentUser.id, {
+    includeCommutes: false,
+  });
+  if (!boardData?.boardListings.some((entry) => entry.id === boardListingId)) return;
+
+  await moveBoardListingToRecentlyDeleted(boardListingId, currentUser.id);
+  revalidatePath(`/boards/${boardId}`);
+}
+
+export async function restoreBoardListingAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = readFormIdentifier(formData, "boardId");
+  const boardListingId = readFormIdentifier(formData, "boardListingId");
+  if (!currentUser || !boardId || !boardListingId) return;
+
+  await restoreRecentlyDeletedBoardListing(boardListingId, currentUser.id);
+  revalidatePath(`/boards/${boardId}`);
+}
+
+export async function clearRecentlyDeletedBoardListingsAction(formData: FormData) {
+  const currentUser = await getCurrentAppUser();
+  const boardId = readFormIdentifier(formData, "boardId");
+  if (!currentUser || !boardId) return;
+
+  await clearRecentlyDeletedBoardListings(boardId, currentUser.id);
   revalidatePath(`/boards/${boardId}`);
 }
 
 export async function createBoardInvitationAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
-  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
+  const boardId = readFormIdentifier(formData, "boardId");
+  const redirectTo = safeRelativePath(formData.get("redirectTo"), `/settings?boardId=${boardId}`);
   if (!currentUser || !boardId) {
     redirectWithMessage(redirectTo, "error", "A workspace is required to create an invite.");
   }
@@ -390,7 +450,7 @@ export async function createBoardInvitationAction(formData: FormData) {
 
 export async function acceptBoardInvitationAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const inviteCode = String(formData.get("inviteCode") || "");
+  const inviteCode = readFormIdentifier(formData, "inviteCode");
   if (!currentUser || !inviteCode) {
     redirect("/");
   }
@@ -410,23 +470,23 @@ export async function acceptBoardInvitationAction(formData: FormData) {
 
 export async function completeJoinedMemberSetupAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
+  const boardId = readFormIdentifier(formData, "boardId");
   if (!currentUser || !boardId) {
     redirect("/");
   }
 
   try {
     await completeJoinedMemberSetup(boardId, currentUser.id, {
-      workAddress: String(formData.get("workAddress") || ""),
-      budgetMin: String(formData.get("budgetMin") || ""),
-      budgetMax: String(formData.get("budgetMax") || ""),
-      stretchBudget: String(formData.get("stretchBudget") || ""),
-      commuteDestination: String(formData.get("commuteDestination") || ""),
-      maxCommuteMinutes: String(formData.get("maxCommuteMinutes") || ""),
-      preferredNeighborhoods: String(formData.get("preferredNeighborhoods") || ""),
-      mustHaves: String(formData.get("mustHaves") || ""),
-      dealbreakers: String(formData.get("dealbreakers") || ""),
-      notes: String(formData.get("notes") || ""),
+      workAddress: readFormText(formData, "workAddress", 300),
+      budgetMin: readFormText(formData, "budgetMin", 40),
+      budgetMax: readFormText(formData, "budgetMax", 40),
+      stretchBudget: readFormText(formData, "stretchBudget", 40),
+      commuteDestination: readFormText(formData, "commuteDestination", 300),
+      maxCommuteMinutes: readFormText(formData, "maxCommuteMinutes", 40),
+      preferredNeighborhoods: readFormText(formData, "preferredNeighborhoods", 2_000),
+      mustHaves: readFormText(formData, "mustHaves", 2_000),
+      dealbreakers: readFormText(formData, "dealbreakers", 2_000),
+      notes: readFormText(formData, "notes", 5_000, { multiline: true }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save your member setup.";
@@ -440,9 +500,9 @@ export async function completeJoinedMemberSetupAction(formData: FormData) {
 
 export async function revokeBoardInvitationAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const invitationId = String(formData.get("invitationId") || "");
-  const boardId = String(formData.get("boardId") || "");
-  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
+  const invitationId = readFormIdentifier(formData, "invitationId");
+  const boardId = readFormIdentifier(formData, "boardId");
+  const redirectTo = safeRelativePath(formData.get("redirectTo"), `/settings?boardId=${boardId}`);
 
   if (!currentUser || !invitationId || !boardId) {
     redirectWithMessage(redirectTo, "error", "Unable to revoke that invite.");
@@ -462,9 +522,9 @@ export async function revokeBoardInvitationAction(formData: FormData) {
 
 export async function removeBoardMemberAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
-  const memberUserId = String(formData.get("memberUserId") || "");
-  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || `/settings?boardId=${boardId}`));
+  const boardId = readFormIdentifier(formData, "boardId");
+  const memberUserId = readFormIdentifier(formData, "memberUserId");
+  const redirectTo = safeRelativePath(formData.get("redirectTo"), `/settings?boardId=${boardId}`);
 
   if (!currentUser || !boardId || !memberUserId) {
     redirectWithMessage(redirectTo, "error", "Missing collaborator details.");
@@ -484,8 +544,8 @@ export async function removeBoardMemberAction(formData: FormData) {
 
 export async function leaveBoardAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
-  const redirectTo = getSafeNextPath(String(formData.get("redirectTo") || "/"));
+  const boardId = readFormIdentifier(formData, "boardId");
+  const redirectTo = safeRelativePath(formData.get("redirectTo"));
 
   if (!currentUser || !boardId) {
     redirectWithMessage(redirectTo, "error", "Missing workspace details.");
@@ -510,9 +570,9 @@ export async function updateSettingsAction(formData: FormData) {
   }
 
   await updateUserProfile(currentUser.id, {
-    displayName: String(formData.get("displayName") || ""),
-    workAddress: String(formData.get("workAddress") || ""),
-    secondaryWorkAddress: String(formData.get("secondaryWorkAddress") || ""),
+    displayName: readFormText(formData, "displayName", 160),
+    workAddress: readFormText(formData, "workAddress", 300),
+    secondaryWorkAddress: readFormText(formData, "secondaryWorkAddress", 300),
   });
 
   const refreshedUser = await getUserById(currentUser.id);
@@ -533,14 +593,14 @@ export async function updateSettingsAction(formData: FormData) {
 
 export async function updateBoardMetadataAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
+  const boardId = readFormIdentifier(formData, "boardId");
   if (!currentUser || !boardId) {
     redirect("/");
   }
 
   try {
     await updateBoardMetadataForUser(boardId, currentUser.id, {
-      title: String(formData.get("title") || ""),
+      title: readFormText(formData, "title", 160),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update workspace details.";
@@ -554,21 +614,21 @@ export async function updateBoardMetadataAction(formData: FormData) {
 
 export async function updateBoardProfileSettingsAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
+  const boardId = readFormIdentifier(formData, "boardId");
   if (!currentUser || !boardId) {
     redirect("/");
   }
 
   await updateBoardProfileForUser(boardId, currentUser.id, {
-    name: String(formData.get("name") || ""),
-    city: String(formData.get("city") || ""),
-    moveInDate: String(formData.get("moveInDate") || ""),
+    name: readFormText(formData, "name", 160),
+    city: readFormText(formData, "city", 160),
+    moveInDate: readFormText(formData, "moveInDate", 120),
     budgetMin: parseOptionalNumber(formData.get("budgetMin")) ?? null,
     budgetMax: parseOptionalNumber(formData.get("budgetMax")) ?? null,
     stretchBudget: parseOptionalNumber(formData.get("stretchBudget")) ?? null,
     groupSize: parseOptionalNumber(formData.get("groupSize")) ?? null,
     hasRoommates: parseOptionalBoolean(formData.get("hasRoommates")) ?? null,
-    commuteTarget: String(formData.get("commuteTarget") || ""),
+    commuteTarget: readFormText(formData, "commuteTarget", 300),
     maxCommuteMinutes: parseOptionalNumber(formData.get("maxCommuteMinutes")) ?? null,
     neighborhoods: parseStringList(formData.get("neighborhoods")),
     mustHaves: parseStringList(formData.get("mustHaves")),
@@ -590,27 +650,27 @@ export async function updateBoardProfileSettingsAction(formData: FormData) {
 
 export async function updateLinkedMemberProfileAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
+  const boardId = readFormIdentifier(formData, "boardId");
   if (!currentUser || !boardId) {
     redirect("/");
   }
 
   try {
     await updateLinkedMemberProfile(boardId, currentUser.id, {
-      workAddress: String(formData.get("workAddress") || ""),
-      budgetMin: String(formData.get("budgetMin") || ""),
-      budgetMax: String(formData.get("budgetMax") || ""),
-      stretchBudget: String(formData.get("stretchBudget") || ""),
-      commuteDestination: String(formData.get("commuteDestination") || ""),
-      maxCommuteMinutes: String(formData.get("maxCommuteMinutes") || ""),
-      preferredNeighborhoods: String(formData.get("preferredNeighborhoods") || ""),
-      mustHaves: String(formData.get("mustHaves") || ""),
-      dealbreakers: String(formData.get("dealbreakers") || ""),
-      notes: String(formData.get("notes") || ""),
-      commutePriority: String(formData.get("commutePriority") || ""),
-      neighborhoodPriority: String(formData.get("neighborhoodPriority") || ""),
-      spacePriority: String(formData.get("spacePriority") || ""),
-      privacyPriority: String(formData.get("privacyPriority") || ""),
+      workAddress: readFormText(formData, "workAddress", 300),
+      budgetMin: readFormText(formData, "budgetMin", 40),
+      budgetMax: readFormText(formData, "budgetMax", 40),
+      stretchBudget: readFormText(formData, "stretchBudget", 40),
+      commuteDestination: readFormText(formData, "commuteDestination", 300),
+      maxCommuteMinutes: readFormText(formData, "maxCommuteMinutes", 40),
+      preferredNeighborhoods: readFormText(formData, "preferredNeighborhoods", 2_000),
+      mustHaves: readFormText(formData, "mustHaves", 2_000),
+      dealbreakers: readFormText(formData, "dealbreakers", 2_000),
+      notes: readFormText(formData, "notes", 5_000, { multiline: true }),
+      commutePriority: readFormText(formData, "commutePriority", 40),
+      neighborhoodPriority: readFormText(formData, "neighborhoodPriority", 40),
+      spacePriority: readFormText(formData, "spacePriority", 40),
+      privacyPriority: readFormText(formData, "privacyPriority", 40),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save your collaborator preferences.";
@@ -624,7 +684,7 @@ export async function updateLinkedMemberProfileAction(formData: FormData) {
 
 export async function confirmBoardProfileAction(formData: FormData) {
   const currentUser = await getCurrentAppUser();
-  const boardId = String(formData.get("boardId") || "");
+  const boardId = readFormIdentifier(formData, "boardId");
   if (!currentUser || !boardId) {
     redirect("/");
   }
@@ -635,23 +695,41 @@ export async function confirmBoardProfileAction(formData: FormData) {
 }
 
 export async function saveListingVoteAction(formData: FormData) {
-  const boardId = String(formData.get("boardId") || "");
-  const boardListingId = String(formData.get("boardListingId") || "");
-  const roommateId = String(formData.get("roommateId") || "");
-  const vote = String(formData.get("vote") || "maybe") as "love" | "like" | "maybe" | "pass" | "veto";
-  if (!boardId || !boardListingId || !roommateId) return;
+  const currentUser = await getCurrentAppUser();
+  const boardId = readFormIdentifier(formData, "boardId");
+  const boardListingId = readFormIdentifier(formData, "boardListingId");
+  const rawVote = readFormText(formData, "vote", 20) || "maybe";
+  const allowedVotes = ["love", "like", "maybe", "pass", "veto"] as const;
+  if (!currentUser || !boardId || !boardListingId || !allowedVotes.some((value) => value === rawVote)) return;
 
-  await saveBoardListingVote(boardListingId, roommateId, vote, String(formData.get("note") || ""));
+  const boardData = await getBoardPageData(boardId, currentUser.id, {
+    includeCommutes: false,
+  });
+  const roommate = boardData?.roommates.find((entry) => entry.linkedUserId === currentUser.id);
+  if (!roommate || !boardData?.boardListings.some((entry) => entry.id === boardListingId)) return;
+
+  await saveBoardListingVote(
+    boardListingId,
+    roommate.id,
+    rawVote as (typeof allowedVotes)[number],
+    readFormText(formData, "note", 1_000, { multiline: true }),
+  );
   revalidatePath(`/boards/${boardId}`);
 }
 
 export async function addListingCommentAction(formData: FormData) {
-  const boardId = String(formData.get("boardId") || "");
-  const boardListingId = String(formData.get("boardListingId") || "");
-  const roommateId = String(formData.get("roommateId") || "");
-  const content = String(formData.get("content") || "");
-  if (!boardId || !boardListingId || !roommateId || !content.trim()) return;
+  const currentUser = await getCurrentAppUser();
+  const boardId = readFormIdentifier(formData, "boardId");
+  const boardListingId = readFormIdentifier(formData, "boardListingId");
+  const content = readFormText(formData, "content", 2_000, { multiline: true });
+  if (!currentUser || !boardId || !boardListingId || !content) return;
 
-  await addBoardListingComment(boardListingId, roommateId, content);
+  const boardData = await getBoardPageData(boardId, currentUser.id, {
+    includeCommutes: false,
+  });
+  const roommate = boardData?.roommates.find((entry) => entry.linkedUserId === currentUser.id);
+  if (!roommate || !boardData?.boardListings.some((entry) => entry.id === boardListingId)) return;
+
+  await addBoardListingComment(boardListingId, roommate.id, content);
   revalidatePath(`/boards/${boardId}`);
 }

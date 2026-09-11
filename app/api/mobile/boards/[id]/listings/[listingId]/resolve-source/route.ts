@@ -73,7 +73,16 @@ export async function POST(
     const status =
       message === "MOBILE_AUTH_REQUIRED" ? 401
       : message.includes("not configured") ? 503
-      : 400;
-    return NextResponse.json({ error: message }, { status });
+      : 500;
+    return NextResponse.json(
+      {
+        error: status === 401
+          ? "Unauthorized"
+          : status === 503
+            ? "Listing source resolution is not configured."
+            : "Unable to resolve the listing source.",
+      },
+      { status },
+    );
   }
 }

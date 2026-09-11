@@ -14,6 +14,9 @@ export async function POST(request: Request, context: { params: Promise<{ code: 
     return NextResponse.json({ boardId, board: buildMobileBoardPayload(data), profile: data.profile, missingFields: data.missingFields });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to accept invitation.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 400 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "This invitation is no longer available." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 400 },
+    );
   }
 }

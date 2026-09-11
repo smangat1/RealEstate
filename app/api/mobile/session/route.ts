@@ -35,6 +35,9 @@ export async function GET(request: Request) {
       requestId: request.headers.get("x-homeboard-request-id"),
     });
     const message = error instanceof Error ? error.message : "Unauthorized";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to load session." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }

@@ -15,6 +15,7 @@ test("web and server failures are connected to privacy-safe Sentry monitoring", 
   const monitoring = read("lib/monitoring.ts");
   const globalError = read("app/global-error.tsx");
   const healthWorkflow = read(".github/workflows/production-health.yml");
+  const healthRoute = read("app/api/health/route.ts");
 
   assert.match(packageJson, /"@sentry\/nextjs"/);
   assert.match(instrumentation, /Sentry\.captureRequestError/);
@@ -28,6 +29,9 @@ test("web and server failures are connected to privacy-safe Sentry monitoring", 
   assert.match(globalError, /Sentry\.captureException\(error\)/);
   assert.match(healthWorkflow, /cron: "\*\/10 \* \* \* \*"/);
   assert.match(healthWorkflow, /\/api\/health/);
+  assert.match(healthWorkflow, /body\.betaReady!==true/);
+  assert.match(healthRoute, /const betaReady = ok/);
+  assert.match(healthRoute, /runtime\.boardChatPushConfigured/);
 });
 
 test("native crash and hang diagnostics are retained until authenticated upload", () => {
@@ -47,6 +51,32 @@ test("native crash and hang diagnostics are retained until authenticated upload"
   assert.doesNotMatch(route, /email|boardId|listing|comment|preference/);
 });
 
+test("settings sends authenticated bug reports and returns a tracking receipt", () => {
+  const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+  const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
+  const api = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardAPI.swift");
+  const route = read("app/api/mobile/bug-reports/route.ts");
+  const analytics = read("lib/analytics.ts");
+
+  assert.match(workspace, /title: "Saw a bug\?"/);
+  assert.match(workspace, /tracking ID/i);
+  assert.match(workspace, /appModel\.submitBugReport/);
+  assert.match(appModel, /func submitBugReport/);
+  assert.match(api, /\/api\/mobile\/bug-reports/);
+  assert.match(api, /shareDiagnostics: String/);
+  assert.match(appModel, /shareDiagnostics: HomeboardShareReportDiagnostics\.exportText\(\)/);
+  assert.match(route, /requireMobileAppUser/);
+  assert.match(route, /scope: "mobile-bug-report"/);
+  assert.match(route, /receivedAt: receivedAt\.toISOString\(\)/);
+  assert.doesNotMatch(`${workspace}\n${route}`, /within two days|2 \* 24 \* 60 \* 60 \* 1_000/i);
+  assert.match(route, /Sentry\.captureFeedback/);
+  assert.match(route, /sanitizeDiagnosticTrace/);
+  assert.match(route, /scope\.addAttachment/);
+  assert.match(route, /share-diagnostics\.txt/);
+  assert.match(route, /trackEvent\("bug_report_submitted"/);
+  assert.match(analytics, /"bug_report_submitted"/);
+});
+
 test("push delivery is limited to human board chat and excludes the sender", () => {
   const apns = read("lib/apns.ts");
   const apnsToken = read("lib/apns-token.ts");
@@ -63,7 +93,7 @@ test("push delivery is limited to human board chat and excludes the sender", () 
   assert.match(apns, /filter\(\(userId\) => userId !== input\.authorUserId\)/);
   assert.match(apns, /type: "board_chat"/);
   assert.match(messages, /notifyBoardChat/);
-  assert.match(updates, /parsed\.data\.action === "update"[\s\S]*notifyBoardChat/);
+  assert.match(updates, /action: z\.literal\("update"\)[\s\S]*notifyBoardChat/);
   assert.doesNotMatch(reactions, /notifyBoardChat/);
   assert.doesNotMatch(listings, /notifyBoardChat/);
   assert.match(rootView, /when a roommate posts a new message/);

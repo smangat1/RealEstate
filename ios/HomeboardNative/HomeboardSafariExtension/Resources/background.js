@@ -1,5 +1,69 @@
+const supportedListingPatterns = [
+  "*://*.zillow.com/*",
+  "*://*.streeteasy.com/*",
+  "*://*.realtor.com/*",
+  "*://*.apartments.com/*",
+  "*://*.redfin.com/*",
+  "*://*.rent.com/*",
+  "*://*.renthop.com/*",
+  "*://*.craigslist.org/*",
+  "*://*.compass.com/*",
+  "*://*.corcoran.com/*",
+  "*://*.elliman.com/*",
+  "*://*.serhant.com/*",
+  "*://*.sothebysrealty.com/*"
+];
+
+function isSupportedListingURL(value) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return [
+      "zillow.com", "streeteasy.com", "realtor.com", "apartments.com",
+      "redfin.com", "rent.com", "renthop.com", "craigslist.org",
+      "compass.com", "corcoran.com", "elliman.com", "serhant.com",
+      "sothebysrealty.com"
+    ].some((domain) => host === domain || host.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
+
+async function installScanner(tabId) {
+  if (!Number.isInteger(tabId)) return;
+  try {
+    await browser.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+  } catch {
+    // Safari blocks internal pages and tabs that are still changing documents.
+  }
+}
+
+async function installScannerInOpenTabs() {
+  let tabs = [];
+  try {
+    tabs = await browser.tabs.query({ url: supportedListingPatterns });
+  } catch {
+    // Some Safari versions do not implement URL-filtered tab queries.
+    try { tabs = await browser.tabs.query({}); } catch { return; }
+  }
+  await Promise.all(tabs
+    .filter((tab) => isSupportedListingURL(tab?.url))
+    .map((tab) => installScanner(tab.id)));
+}
+
 browser.runtime.onInstalled.addListener(() => {
-  console.info("Save to Homeboard is ready.");
+  installScannerInOpenTabs();
+});
+
+browser.runtime.onStartup?.addListener(() => {
+  installScannerInOpenTabs();
+});
+
+browser.tabs.onUpdated?.addListener((tabId, changeInfo, tab) => {
+  const url = changeInfo?.url || tab?.url;
+  if ((typeof changeInfo?.url === "string" || changeInfo?.status === "complete")
+      && isSupportedListingURL(url)) {
+    installScanner(tabId);
+  }
 });
 
 const nativeApplicationIds = [
@@ -7,12 +71,35 @@ const nativeApplicationIds = [
   "com.homeboard.native.mac",
   "com.homeboard.native.mac.dev"
 ];
+let successfulNativeApplicationId = null;
+
+async function orderedNativeApplicationIds() {
+  const preferred = successfulNativeApplicationId;
+  if (preferred) {
+    return [preferred, ...nativeApplicationIds.filter((id) => id !== preferred)];
+  }
+  try {
+    const platform = await browser.runtime.getPlatformInfo();
+    if (platform?.os === "mac") {
+      return [
+        "com.homeboard.native.mac",
+        "com.homeboard.native.mac.dev",
+        "com.homeboard.native"
+      ];
+    }
+  } catch {
+    // Fall back to the iPhone-first order when Safari omits platform details.
+  }
+  return nativeApplicationIds;
+}
 
 async function sendNativeMessage(message) {
   let lastError = null;
-  for (const applicationId of nativeApplicationIds) {
+  for (const applicationId of await orderedNativeApplicationIds()) {
     try {
-      return await browser.runtime.sendNativeMessage(applicationId, message);
+      const response = await browser.runtime.sendNativeMessage(applicationId, message);
+      successfulNativeApplicationId = applicationId;
+      return response;
     } catch (error) {
       lastError = error;
     }
@@ -53,10 +140,10 @@ async function startPageScan(tab) {
 
   let presentation = /mac/i.test(globalThis.navigator?.platform || "")
     ? "compact"
-    : "visual";
+    : "mobile-pills";
   try {
     const platform = await browser.runtime.getPlatformInfo();
-    if (platform?.os === "mac") presentation = "compact";
+    presentation = platform?.os === "mac" ? "compact" : "mobile-pills";
   } catch {
     // Older Safari versions can omit platform information. Navigator supplies the fallback.
   }
@@ -66,10 +153,7 @@ async function startPageScan(tab) {
   };
 
   try {
-    await browser.scripting.executeScript({
-      target: { tabId },
-      files: ["content.js"]
-    });
+    await installScanner(tabId);
   } catch {
     // The declared content script may already be installed on this page.
   }

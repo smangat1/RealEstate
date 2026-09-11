@@ -22,9 +22,14 @@ export async function GET() {
   }
 
   const ok = requiredConfigurationReady && databaseReady;
+  const betaReady = ok
+    && runtime.errorMonitoringConfigured
+    && runtime.operationalAlertsConfigured
+    && runtime.boardChatPushConfigured;
   return NextResponse.json(
     {
       ok,
+      betaReady,
       service: "homeboard",
       checks: {
         configuration: requiredConfigurationReady ? "ok" : "unavailable",

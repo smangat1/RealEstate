@@ -7,6 +7,7 @@ import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(160),
+  roleLabel: z.enum(["roommate", "commute point"]).nullable().optional(),
   budgetMin: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
   idealBudget: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
   budgetMax: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
@@ -27,8 +28,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!current) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid member profile." }, { status: 400 });
+    if (parsed.data.roleLabel === "commute point" && current.board.userId !== user.id) {
+      return NextResponse.json({ error: "Only the board owner can add shared commute points." }, { status: 403 });
+    }
     await addRoommateToBoard(id, {
       name: parsed.data.name,
+      roleLabel: parsed.data.roleLabel ?? undefined,
       budgetMin: parsed.data.budgetMin == null ? undefined : String(parsed.data.budgetMin),
       idealBudget: parsed.data.idealBudget == null ? undefined : String(parsed.data.idealBudget),
       budgetMax: parsed.data.budgetMax == null ? undefined : String(parsed.data.budgetMax),
@@ -51,6 +56,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ board: buildMobileBoardPayload(next), profile: next.profile, missingFields: next.missingFields });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to add member.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to add member." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }

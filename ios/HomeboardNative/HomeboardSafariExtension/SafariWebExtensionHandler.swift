@@ -16,13 +16,13 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
     if message["type"] as? String == "analyzeListing" {
       Task {
         let allowSystemModel = message["allowSystemModel"] as? Bool ?? true
-        let analysis = await HomeboardListingIntelligence.analyze(
+        let scan = await HomeboardListingIntelligence.analyzeWithOneRescan(
           message: message,
           allowSystemModel: allowSystemModel
         )
         complete(context, message: [
           "analyzed": true,
-          "analysis": analysis.dictionary
+          "analysis": scan.analysis.dictionary
         ])
       }
       return
@@ -84,25 +84,30 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
     }
 
     Task {
-      do {
-        try await HomeboardExtensionSyncClient.saveListing(
-          pendingImport,
-          boardId: requestedBoardId
-        )
+      let receipt = await HomeboardListingSavePipeline.enqueue(
+        pendingImport,
+        boardId: requestedBoardId
+      )
+      guard receipt.savedLocally else {
         complete(context, message: [
-          "saved": true,
-          "synced": true,
-          "hasActiveBoard": true
-        ])
-      } catch {
-        HomeboardSharedImportStore.save(pendingImport)
-        complete(context, message: [
-          "saved": true,
+          "saved": false,
           "synced": false,
-          "hasActiveBoard": pendingImport.boardId != nil,
-          "error": (error as? LocalizedError)?.errorDescription
-            ?? error.localizedDescription
+          "hasActiveBoard": receipt.hasDestinationBoard,
+          "error": "Homeboard could not safely queue this listing. Open the app and try again."
         ])
+        return
+      }
+
+      // Native messaging is complete as soon as the durable queue write lands.
+      // Server sync is opportunistic and never delays the website confirmation.
+      complete(context, message: [
+        "saved": true,
+        "synced": false,
+        "queued": true,
+        "hasActiveBoard": receipt.hasDestinationBoard
+      ])
+      Task.detached(priority: .utility) {
+        try? await HomeboardListingSavePipeline.synchronize(receipt)
       }
     }
   }

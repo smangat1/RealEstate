@@ -69,7 +69,7 @@ struct MacDevicePairingFlowView: View {
           .background(HomeboardPalette.surface)
           .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .accessibilityHint("Opens the share sheet so you can AirDrop or message the Safari setup page to your Mac")
 
       if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
@@ -170,7 +170,7 @@ struct MacDevicePairingFlowView: View {
         .background(HomeboardPalette.accent)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .disabled(isApproving)
 
       Button("Scan a different code") {

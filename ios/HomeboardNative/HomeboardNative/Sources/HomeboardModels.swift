@@ -259,6 +259,29 @@ struct ListingQuickReview: Identifiable, Hashable, Codable {
 struct ListingDecisionVote: Hashable, Codable {
   var name: String
   var choice: String
+  var userId: String? = nil
+}
+
+enum ListingPollType: String, CaseIterable, Identifiable {
+  case shortlist
+  case requestViewing = "request_viewing"
+  case apply
+
+  var id: String { rawValue }
+  var title: String {
+    switch self {
+    case .shortlist: return "Shortlist"
+    case .requestViewing: return "Tour"
+    case .apply: return "Apply"
+    }
+  }
+  var question: String {
+    switch self {
+    case .shortlist: return "Keep this place on the shortlist?"
+    case .requestViewing: return "Should we tour this place?"
+    case .apply: return "Should we apply for this place?"
+    }
+  }
 }
 
 struct ListingDecisionSummary: Identifiable, Hashable, Codable {
@@ -266,6 +289,24 @@ struct ListingDecisionSummary: Identifiable, Hashable, Codable {
   var type: String
   var closedAt: String?
   var votes: [ListingDecisionVote]
+  var resolvedCount: Int? = nil
+  var requiredCount: Int? = nil
+  var remainingMemberNames: [String]? = nil
+
+  var groupResolvedCount: Int { resolvedCount ?? votes.count }
+  var groupRequiredCount: Int { max(2, requiredCount ?? 2) }
+  var isGroupResolved: Bool { groupResolvedCount >= groupRequiredCount }
+
+  func choice(for userID: String?) -> String? {
+    guard let userID, !userID.isEmpty else { return nil }
+    return votes.first { $0.userId == userID }?.choice
+  }
+}
+
+extension ListingPreview {
+  func openDecision(for type: ListingPollType) -> ListingDecisionSummary? {
+    decisions.first { $0.type == type.rawValue && $0.closedAt == nil }
+  }
 }
 
 struct ListingDimensionAnalysis: Hashable, Codable {
@@ -326,6 +367,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
   var bedrooms: String = ""
   var bathrooms: String = ""
   var squareFeet: Int? = nil
+  var availableDate: String? = nil
   var latitude: Double? = nil
   var longitude: Double? = nil
   var reactions: [ListingReaction] = []
@@ -335,6 +377,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
   var decisions: [ListingDecisionSummary] = []
   var analysis: GroupListingAnalysis? = nil
   var rentSplit: RentSplitPreview? = nil
+  var deletedAt: String? = nil
 
   init(
     id: String = UUID().uuidString,
@@ -358,8 +401,10 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     bedrooms: String = "",
     bathrooms: String = "",
     squareFeet: Int? = nil,
+    availableDate: String? = nil,
     latitude: Double? = nil,
-    longitude: Double? = nil
+    longitude: Double? = nil,
+    deletedAt: String? = nil
   ) {
     self.id = id
     self.listingId = listingId
@@ -382,8 +427,22 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     self.bedrooms = bedrooms
     self.bathrooms = bathrooms
     self.squareFeet = squareFeet
+    self.availableDate = availableDate
     self.latitude = latitude
     self.longitude = longitude
+    self.deletedAt = deletedAt
+  }
+
+  var activeOffer: SharedListingActiveOffer? {
+    SharedListingActiveOffer.detect(
+      highlights: highlights,
+      summary: summary,
+      fitLabel: fitLabel,
+      priceLine: priceLine,
+      amenities: amenities,
+      title: title,
+      modelInsights: modelInsights
+    )
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -413,6 +472,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     case bedrooms
     case bathrooms
     case squareFeet
+    case availableDate
     case latitude
     case longitude
     case reactions
@@ -422,6 +482,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     case decisions
     case analysis
     case rentSplit
+    case deletedAt
   }
 
   init(from decoder: Decoder) throws {
@@ -452,6 +513,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     bedrooms = try container.decodeIfPresent(String.self, forKey: .bedrooms) ?? ""
     bathrooms = try container.decodeIfPresent(String.self, forKey: .bathrooms) ?? ""
     squareFeet = try container.decodeIfPresent(Int.self, forKey: .squareFeet)
+    availableDate = try container.decodeIfPresent(String.self, forKey: .availableDate)
     latitude = try container.decodeIfPresent(Double.self, forKey: .latitude)
     longitude = try container.decodeIfPresent(Double.self, forKey: .longitude)
     reactions = try container.decodeIfPresent([ListingReaction].self, forKey: .reactions) ?? []
@@ -461,6 +523,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     decisions = try container.decodeIfPresent([ListingDecisionSummary].self, forKey: .decisions) ?? []
     analysis = try container.decodeIfPresent(GroupListingAnalysis.self, forKey: .analysis)
     rentSplit = try container.decodeIfPresent(RentSplitPreview.self, forKey: .rentSplit)
+    deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
   }
 }
 
@@ -545,6 +608,7 @@ struct MobileBoard: Hashable, Codable {
   var members: [MemberPreferenceCard]
   var suggestions: [ListingPreview]? = nil
   var shortlist: [ListingPreview]
+  var recentlyDeleted: [ListingPreview]? = nil
   var invitations: [BoardInvitationSummary]
   var ranking: [MobileListingRanking]? = nil
 }

@@ -27,8 +27,9 @@ struct BoardShellView: View {
     }
     .task {
       while !Task.isCancelled {
-        try? await Task.sleep(nanoseconds: 12_000_000_000)
-        if !appModel.isGuestPreview {
+        do { try await Task.sleep(nanoseconds: 12_000_000_000) }
+        catch { break }
+        if scenePhase == .active && !appModel.isGuestPreview {
           await appModel.refreshCurrentBoardSilently()
         }
       }
@@ -53,16 +54,6 @@ struct BoardShellView: View {
       set: { appModel.openBoardTab($0) }
     )) {
       NavigationStack {
-        SharedSearchMapView()
-      }
-      .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
-      .toolbarBackground(.visible, for: .navigationBar)
-      .tabItem {
-        Label("Search", systemImage: "map.fill")
-      }
-      .tag(AppModel.BoardTab.board)
-
-      NavigationStack {
         SharedShortlistView()
       }
       .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
@@ -73,12 +64,27 @@ struct BoardShellView: View {
       .tag(AppModel.BoardTab.shortlist)
 
       NavigationStack {
+        SharedSearchMapView()
+      }
+      .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
+      .toolbarBackground(.visible, for: .navigationBar)
+      .tabItem {
+        Label {
+          Text("Search")
+        } icon: {
+          Image(uiImage: Self.searchTabIcon)
+            .renderingMode(.original)
+        }
+      }
+      .tag(AppModel.BoardTab.board)
+
+      NavigationStack {
         SharedUpdatesView()
       }
       .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
       .tabItem {
-        Label("Updates", systemImage: "bubble.left.and.bubble.right.fill")
+        Label("Group", systemImage: "bubble.left.and.bubble.right.fill")
       }
       .tag(AppModel.BoardTab.updates)
 
@@ -88,6 +94,29 @@ struct BoardShellView: View {
     .toolbarBackground(.visible, for: .tabBar)
     .background(HomeboardPalette.background)
   }
+
+  // Keep the native tab bar's layout, labels, and selection behavior. Only the
+  // original map symbol gets a beige backing; no replacement tab controls.
+  private static let searchTabIcon: UIImage = {
+    let size = CGSize(width: 36, height: 30)
+    return UIGraphicsImageRenderer(size: size).image { _ in
+      UIColor(HomeboardPalette.accent).setFill()
+      UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 9).fill()
+
+      if let symbol = UIImage(systemName: "map.fill")?.withTintColor(
+        UIColor(HomeboardPalette.buttonText), renderingMode: .alwaysOriginal
+      ) {
+        let scale = min(24 / symbol.size.width, 22 / symbol.size.height)
+        let symbolSize = CGSize(width: symbol.size.width * scale, height: symbol.size.height * scale)
+        symbol.draw(in: CGRect(
+          x: (size.width - symbolSize.width) / 2,
+          y: (size.height - symbolSize.height) / 2,
+          width: symbolSize.width,
+          height: symbolSize.height
+        ))
+      }
+    }.withRenderingMode(.alwaysOriginal)
+  }()
 }
 
 private struct GuestPreviewBoardView: View {
@@ -97,7 +126,11 @@ private struct GuestPreviewBoardView: View {
   var body: some View {
     ZStack {
       NavigationStack {
-        SharedSearchMapView()
+        if appModel.boardTab == .shortlist {
+          SharedShortlistView()
+        } else {
+          SharedSearchMapView()
+        }
       }
       .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
@@ -185,7 +218,7 @@ private struct GuestSignInPrompt: View {
           .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .accessibilityIdentifier("homeboard.preview.continue")
 
       Button(action: onDismiss) {
@@ -196,7 +229,7 @@ private struct GuestSignInPrompt: View {
           .frame(minHeight: 44)
           .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .accessibilityIdentifier("homeboard.preview.dismiss")
     }
     .padding(20)
@@ -408,7 +441,7 @@ private struct ShortlistWorkspaceView: View {
             .background(Color.white.opacity(0.06))
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
           .padding(16)
           .homeboardPanel(cornerRadius: 24)
@@ -469,7 +502,7 @@ private struct ShortlistWorkspaceView: View {
               .padding(16)
               .homeboardPanel(cornerRadius: 24)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
         }
       }
@@ -546,7 +579,7 @@ private struct CompareWorkspaceView: View {
             .background(Color.white.opacity(0.06))
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
           .padding(16)
           .homeboardPanel()
@@ -604,7 +637,7 @@ private struct CompareWorkspaceView: View {
                 .padding(16)
                 .homeboardInsetSurface(accent: HomeboardPalette.accentStrong)
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
           .padding(16)
@@ -616,7 +649,7 @@ private struct CompareWorkspaceView: View {
 
           if board.openQuestions.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-              Text("No unresolved decisions right now. The board can stay focused on shortlist pressure-testing.")
+              Text("No unresolved decisions right now. The board can stay focused on comparing shortlist contenders.")
                 .foregroundStyle(HomeboardPalette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -629,7 +662,7 @@ private struct CompareWorkspaceView: View {
               .background(Color.white.opacity(0.06))
               .foregroundStyle(HomeboardPalette.primaryText)
               .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           } else {
             ForEach(board.openQuestions, id: \.self) { question in
@@ -671,7 +704,7 @@ private struct CompareWorkspaceView: View {
                   .foregroundStyle(HomeboardPalette.primaryText)
                   .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               }
               .padding(12)
               .homeboardInsetSurface()
@@ -712,7 +745,7 @@ private struct CompareWorkspaceView: View {
       case 3...4:
         label = "Worth a real look"
       default:
-        label = "Needs pressure-testing"
+        label = "Needs group review"
       }
 
       return (listing, score, label, reason, concerns)
@@ -825,7 +858,7 @@ private struct CompareWorkspaceView: View {
       return "This one still fits enough of the group brief to keep alive, but it needs a sharper read before it becomes the default favorite."
     }
 
-    return "This listing is still on the board, but it is carrying visible tradeoff pressure against the current brief."
+    return "This listing is still on the board, but it has noticeable tradeoffs for some roommates."
   }
 
   private func firstCurrencyValue(in line: String) -> Int? {
@@ -916,7 +949,7 @@ private struct ConversationView: View {
                 .background(HomeboardPalette.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
             .disabled(appModel.isBoardLoading)
             .opacity(appModel.isBoardLoading ? 0.8 : 1)
           }
@@ -1063,6 +1096,17 @@ private struct BoardCompactNotice: View {
 
         Spacer(minLength: 4)
 
+        if isError {
+          Button("Retry") {
+            Task { await appModel.refreshCurrentBoard() }
+          }
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+          .disabled(appModel.isBoardLoading)
+          .buttonStyle(HomeboardAreaButtonStyle())
+          .accessibilityHint("Attempts to reconnect and reload the current board")
+        }
+
         Button {
           appModel.boardFeedback = nil
           appModel.boardError = nil
@@ -1072,7 +1116,7 @@ private struct BoardCompactNotice: View {
             .foregroundStyle(HomeboardPalette.tertiaryText)
             .frame(width: 28, height: 28)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .accessibilityLabel("Dismiss message")
       }
       .padding(.horizontal, 13)
@@ -1130,7 +1174,7 @@ private struct BoardMobileTopBar: View {
             .stroke(HomeboardPalette.border, lineWidth: 1)
         }
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .accessibilityLabel("Refresh board")
     }
   }
@@ -1250,7 +1294,7 @@ private struct BoardActionStrip: View {
       .padding(.vertical, 12)
       .homeboardInsetSurface(cornerRadius: 17)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 }
 
@@ -1294,7 +1338,7 @@ private struct BoardNextMoveCard: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .homeboardInsetSurface(cornerRadius: 19, accent: HomeboardPalette.accent)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 
   private var destination: AppModel.BoardTab {
@@ -1350,7 +1394,7 @@ private struct BoardShortlistPreview: View {
           .padding(14)
           .homeboardInsetSurface(cornerRadius: 17)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       } else {
         ForEach(board.shortlist.prefix(2)) { listing in
           Button {
@@ -1375,7 +1419,7 @@ private struct BoardShortlistPreview: View {
             .padding(14)
             .homeboardInsetSurface(cornerRadius: 17)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
     }
@@ -1399,7 +1443,7 @@ private struct BoardShortlistPreview: View {
       }
       .font(.caption.weight(.semibold))
       .foregroundStyle(HomeboardPalette.accent)
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
     }
   }
 
@@ -1431,7 +1475,7 @@ private struct BoardPeoplePreview: View {
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(HomeboardPalette.accent)
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
 
       ScrollView(.horizontal, showsIndicators: false) {
@@ -1462,7 +1506,7 @@ private struct BoardPeoplePreview: View {
               .padding(13)
               .homeboardInsetSurface(cornerRadius: 17)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
 
           Button {
@@ -1481,7 +1525,7 @@ private struct BoardPeoplePreview: View {
             .padding(13)
             .homeboardInsetSurface(cornerRadius: 17, accent: HomeboardPalette.accent)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
     }
@@ -1536,7 +1580,7 @@ private struct BoardDecisionsPreview: View {
             .padding(12)
             .homeboardInsetSurface(cornerRadius: 15)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
     }
@@ -1556,12 +1600,12 @@ private struct BoardActivityPreview: View {
           .font(.headline)
           .foregroundStyle(HomeboardPalette.primaryText)
         Spacer()
-        Button("Updates") {
+        Button("Group") {
           appModel.openBoardTab(.updates)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(HomeboardPalette.accent)
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
 
       if board.recentActivity.isEmpty {
@@ -1662,7 +1706,7 @@ private struct MembersView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
         .padding(16)
         .homeboardPanel()
@@ -1674,7 +1718,7 @@ private struct MembersView: View {
             } label: {
               MemberCard(member: member)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
 
             if appModel.board.members.count > 1 {
               Button {
@@ -1692,7 +1736,7 @@ private struct MembersView: View {
                 .foregroundStyle(HomeboardPalette.secondaryText)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
         }
@@ -1812,7 +1856,7 @@ private struct BoardSettingsView: View {
                     .foregroundStyle(HomeboardPalette.primaryText)
                     .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               } else {
                 ShareLink(
                   item: inviteLink,
@@ -1826,7 +1870,7 @@ private struct BoardSettingsView: View {
                     .foregroundStyle(HomeboardPalette.primaryText)
                     .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1856,7 +1900,7 @@ private struct BoardSettingsView: View {
                 .background(HomeboardPalette.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
 
@@ -1876,7 +1920,7 @@ private struct BoardSettingsView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
           if let invite = board.invitations.first(where: { $0.status == "pending" }) {
             VStack(alignment: .leading, spacing: 6) {
@@ -1952,7 +1996,7 @@ private struct BoardSettingsView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
           Divider()
             .overlay(HomeboardPalette.cardStroke.opacity(0.35))
@@ -1983,7 +2027,7 @@ private struct BoardSettingsView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
         .padding(16)
         .homeboardPanel()
@@ -2010,7 +2054,7 @@ private struct BoardSettingsView: View {
                 .background(HomeboardPalette.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -2048,7 +2092,7 @@ private struct BoardSettingsView: View {
                     .padding(14)
                     .homeboardInsetSurface(accent: appModel.board.id == summary.id ? HomeboardPalette.accentStrong : nil)
                   }
-                  .buttonStyle(.plain)
+                  .buttonStyle(HomeboardAreaButtonStyle())
                   .disabled(appModel.isBoardLoading)
                 }
               }
@@ -2138,7 +2182,7 @@ private struct BoardSettingsView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
 
         }
         .padding(16)
@@ -2158,7 +2202,7 @@ private struct BoardSettingsView: View {
 
             setupShortcutButton(
               title: "Open compare",
-              subtitle: "Pressure-test tradeoffs",
+              subtitle: "Compare group tradeoffs",
               systemName: "arrow.left.arrow.right.circle.fill"
             ) {
               appModel.openBoardTab(.compare)
@@ -2239,7 +2283,7 @@ private struct BoardSettingsView: View {
               .foregroundStyle(HomeboardPalette.primaryText)
               .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
 
             if !appModel.board.shortlist.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
@@ -2289,7 +2333,7 @@ private struct BoardSettingsView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(HomeboardPalette.tertiaryText)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(HomeboardAreaButtonStyle())
                       }
 
                       Button {
@@ -2299,7 +2343,7 @@ private struct BoardSettingsView: View {
                           .foregroundStyle(HomeboardPalette.tertiaryText)
                           .padding(8)
                       }
-                      .buttonStyle(.plain)
+                      .buttonStyle(HomeboardAreaButtonStyle())
                     }
 
                     if !listing.groupNote.isEmpty {
@@ -2346,7 +2390,7 @@ private struct BoardSettingsView: View {
                   .background(HomeboardPalette.surfaceMuted)
                   .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
 
             if !appModel.board.openQuestions.isEmpty {
@@ -2367,7 +2411,7 @@ private struct BoardSettingsView: View {
                         .foregroundStyle(HomeboardPalette.tertiaryText)
                         .padding(8)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HomeboardAreaButtonStyle())
                   }
 
                   HStack(spacing: 10) {
@@ -2392,7 +2436,7 @@ private struct BoardSettingsView: View {
                         .background(Color.white.opacity(0.06))
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(HomeboardAreaButtonStyle())
                   }
                 }
                 .padding(12)
@@ -2430,7 +2474,7 @@ private struct BoardSettingsView: View {
                   .background(HomeboardPalette.surfaceMuted)
                   .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
         }
@@ -2468,7 +2512,7 @@ private struct BoardSettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .shadow(color: Color.black.opacity(0.24), radius: 12, x: 0, y: 8)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
       .padding(16)
       .padding(.bottom, 44)
@@ -2564,7 +2608,7 @@ private struct BoardSettingsView: View {
                 .foregroundStyle(HomeboardPalette.primaryText)
                 .clipShape(Capsule())
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
         }
@@ -2590,7 +2634,7 @@ private struct BoardSettingsView: View {
             .background(HomeboardPalette.surfaceMuted)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
     }
   }
@@ -2654,7 +2698,7 @@ private struct BoardSettingsView: View {
       .padding(14)
       .homeboardInsetSurface()
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 }
 
@@ -2900,7 +2944,7 @@ private struct BoardQuickActionsCard: View {
       .padding(12)
       .homeboardInsetSurface()
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 }
 
@@ -2955,7 +2999,7 @@ private struct BoardStarterChecklistCard: View {
           .padding(12)
           .homeboardInsetSurface()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
     }
     .padding(16)
@@ -3061,7 +3105,7 @@ private struct MembersStarterCard: View {
       .padding(.horizontal, 12)
       .homeboardInsetSurface()
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 }
 
@@ -3119,7 +3163,7 @@ private struct OpenDecisionsCard: View {
           .background(Color.white.opacity(0.06))
           .foregroundStyle(HomeboardPalette.primaryText)
           .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       } else {
         ForEach(board.openQuestions, id: \.self) { question in
@@ -3219,7 +3263,7 @@ private struct MembersPreviewCard: View {
           .background(Color.white.opacity(0.06))
           .foregroundStyle(HomeboardPalette.primaryText)
           .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       } else {
         ForEach(board.members.prefix(3)) { member in
@@ -3260,7 +3304,7 @@ private struct MembersPreviewCard: View {
             .padding(14)
             .homeboardInsetSurface()
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
     }
@@ -3314,7 +3358,7 @@ private struct ShortlistCard: View {
           .background(Color.white.opacity(0.06))
           .foregroundStyle(HomeboardPalette.primaryText)
           .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -3328,7 +3372,7 @@ private struct ShortlistCard: View {
               } label: {
                 shortlistSpotlightCard(listing)
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
               .frame(width: 250)
             }
           }
@@ -3383,7 +3427,7 @@ private struct ShortlistCard: View {
             .padding(14)
             .homeboardInsetSurface(accent: HomeboardPalette.accentStrong)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
     }
@@ -3598,7 +3642,7 @@ private struct MemberDetailSheet: View {
                 .foregroundStyle(HomeboardPalette.buttonText)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
           .padding(18)
           .homeboardPanel()
@@ -3809,7 +3853,7 @@ private struct ListingDetailSheet: View {
               .foregroundStyle(HomeboardPalette.primaryText)
               .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
 
             VStack(alignment: .leading, spacing: 8) {
               Text("Shared note")
@@ -3835,7 +3879,7 @@ private struct ListingDetailSheet: View {
                 .foregroundStyle(HomeboardPalette.primaryText)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
           .padding(18)
           .homeboardPanel()
@@ -3845,7 +3889,7 @@ private struct ListingDetailSheet: View {
           }
 
           VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("What works", "Why this listing is still a live contender.")
+            sectionHeader("What works", "Why this listing works well for the group.")
 
             ForEach(listing.highlights, id: \.self) { line in
               Text("• \(line)")
@@ -3857,7 +3901,7 @@ private struct ListingDetailSheet: View {
           .homeboardPanel()
 
           VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Open risks", "What the group should pressure-test before getting attached.")
+            sectionHeader("Things to check", "What the group should align on together.")
 
             ForEach(listing.openRisks, id: \.self) { line in
               Text("• \(line)")

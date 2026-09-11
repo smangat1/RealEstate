@@ -3,7 +3,7 @@ import Contacts
 import MapKit
 import SwiftUI
 
-private final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
   @Published private(set) var suggestions: [MKLocalSearchCompletion] = []
 
   private let completer = MKLocalSearchCompleter()
@@ -295,7 +295,7 @@ struct AuthView: View {
               .foregroundStyle(HomeboardPalette.accent)
               .frame(maxWidth: .infinity, alignment: .trailing)
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
           .disabled(appModel.isAuthLoading)
         }
 
@@ -348,7 +348,7 @@ struct AuthView: View {
             .background(HomeboardPalette.accent.opacity(0.10))
             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(appModel.isAuthLoading)
       }
 
@@ -365,7 +365,7 @@ struct AuthView: View {
             .background(Color.white.opacity(0.07))
             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(appModel.isAuthLoading)
       }
 
@@ -458,7 +458,7 @@ struct AuthView: View {
           }
         }
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 
   private func authField(
@@ -529,7 +529,7 @@ struct AuthView: View {
           .foregroundStyle(HomeboardPalette.tertiaryText)
           .frame(width: 30, height: 30)
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 12)
@@ -652,7 +652,7 @@ struct PostAuthInvitePrompt: View {
             .foregroundStyle(HomeboardPalette.secondaryText)
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(appModel.isAuthLoading)
     }
     .padding(20)
@@ -681,6 +681,7 @@ struct PostAuthInvitePrompt: View {
 struct AuthPressStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
+      .contentShape(Rectangle())
       .scaleEffect(configuration.isPressed ? 0.975 : 1)
       .opacity(configuration.isPressed ? 0.86 : 1)
       .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
@@ -705,6 +706,11 @@ private enum OnboardingQuestion: Int, CaseIterable, Identifiable {
   var id: Int { rawValue }
 }
 
+enum OnboardingPurpose {
+  case createBoard
+  case editSearchBrief
+}
+
 struct OnboardingView: View {
   @Environment(AppModel.self) private var appModel
   @StateObject private var addressSearch = OnboardingAddressSearch()
@@ -713,12 +719,37 @@ struct OnboardingView: View {
   @State private var customPrimary = ""
   @State private var customSecondary = ""
   @State private var includesNameQuestion = false
+  @State private var originalProfile: RentalProfile?
+  @State private var didSaveEdits = false
+  @State private var isSavingEdits = false
   @FocusState private var customFieldFocused: Bool
+
+  let purpose: OnboardingPurpose
+  let onComplete: (() -> Void)?
+  let onCancel: (() -> Void)?
 
   private let columns = [
     GridItem(.flexible(), spacing: 10),
     GridItem(.flexible(), spacing: 10)
   ]
+
+  init(
+    purpose: OnboardingPurpose = .createBoard,
+    onComplete: (() -> Void)? = nil,
+    onCancel: (() -> Void)? = nil
+  ) {
+    self.purpose = purpose
+    self.onComplete = onComplete
+    self.onCancel = onCancel
+  }
+
+  private var isEditingSearchBrief: Bool {
+    purpose == .editSearchBrief
+  }
+
+  private var isFinishing: Bool {
+    appModel.isOnboardingLoading || isSavingEdits
+  }
 
   var body: some View {
     ZStack {
@@ -734,7 +765,9 @@ struct OnboardingView: View {
             if question != .review {
               HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle")
-                Text("Each answer updates the shared search profile.")
+                Text(isEditingSearchBrief
+                     ? "Your current choice is already selected. Save everything at the end."
+                     : "Each answer updates the shared search profile.")
               }
               .font(.caption.weight(.medium))
               .foregroundStyle(HomeboardPalette.tertiaryText)
@@ -761,14 +794,23 @@ struct OnboardingView: View {
       }
     }
     .onAppear {
+      if isEditingSearchBrief {
+        originalProfile = appModel.profile
+      }
       includesNameQuestion = appModel.profile.name
         .trimmingCharacters(in: .whitespacesAndNewlines)
-        .isEmpty
+        .isEmpty && !isEditingSearchBrief
       question = includesNameQuestion ? .name : .city
       loadCurrentAnswer()
     }
     .onChange(of: question) { _, _ in
       loadCurrentAnswer()
+    }
+    .onDisappear {
+      if isEditingSearchBrief, !didSaveEdits, let originalProfile {
+        appModel.profile = originalProfile
+        appModel.saveOnboardingDraft()
+      }
     }
   }
 
@@ -776,7 +818,7 @@ struct OnboardingView: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 3) {
-          Text("START YOUR BOARD")
+          Text(isEditingSearchBrief ? "EDIT SEARCH BRIEF" : "START YOUR BOARD")
             .font(.caption2.weight(.bold))
             .tracking(2.4)
             .foregroundStyle(HomeboardPalette.accent)
@@ -791,6 +833,21 @@ struct OnboardingView: View {
         Text("\(progressPercent)%")
           .font(.footnote.weight(.bold))
           .foregroundStyle(HomeboardPalette.primaryText)
+
+        if isEditingSearchBrief {
+          Button {
+            onCancel?()
+          } label: {
+            Image(systemName: "xmark")
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .frame(width: 30, height: 30)
+              .background(Color.white.opacity(0.07))
+              .clipShape(Circle())
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+          .accessibilityLabel("Cancel editing search brief")
+        }
       }
 
       GeometryReader { geometry in
@@ -933,7 +990,7 @@ struct OnboardingView: View {
               .frame(height: 54)
               .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
             .frame(maxWidth: .infinity)
 
             if index < addressSearch.suggestions.count - 1 {
@@ -980,7 +1037,7 @@ struct OnboardingView: View {
       VStack(alignment: .leading, spacing: 8) {
         HStack(spacing: 7) {
           Image(systemName: "mappin.and.ellipse")
-          Text("WORK OR SCHOOL ADDRESS")
+          Text("OFFICE AREA OR ADDRESS")
         }
         .font(.caption2.weight(.bold))
         .tracking(1.1)
@@ -989,7 +1046,7 @@ struct OnboardingView: View {
         TextField(
           "",
           text: commuteAddressBinding,
-          prompt: Text("Start typing an address or place").foregroundStyle(HomeboardPalette.tertiaryText)
+          prompt: Text("Midtown Manhattan or 350 5th Ave").foregroundStyle(HomeboardPalette.tertiaryText)
         )
         .textContentType(.fullStreetAddress)
         .textInputAutocapitalization(.words)
@@ -1032,7 +1089,7 @@ struct OnboardingView: View {
               .frame(height: 54)
               .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
             .frame(maxWidth: .infinity)
 
             if index < addressSearch.suggestions.count - 1 {
@@ -1046,9 +1103,13 @@ struct OnboardingView: View {
         .homeboardInsetSurface(cornerRadius: 16)
       }
 
-      Label("Suggestions from Apple Maps", systemImage: "location.fill")
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(HomeboardPalette.tertiaryText)
+      Label(
+        "For privacy, you can enter only your office neighborhood. An exact address is never required.",
+        systemImage: "hand.raised.fill"
+      )
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.accent)
+      .fixedSize(horizontal: false, vertical: true)
 
       Text("No commute to compare?")
         .font(.caption.weight(.semibold))
@@ -1295,7 +1356,7 @@ struct OnboardingView: View {
       }
       .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
     .frame(maxWidth: .infinity)
     .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     .accessibilityAddTraits(selected ? .isSelected : [])
@@ -1375,8 +1436,10 @@ struct OnboardingView: View {
 
   private var reviewAnswers: some View {
     VStack(spacing: 0) {
-      reviewRow("Name", value: appModel.profile.name, destination: .name)
-      reviewDivider
+      if includesNameQuestion {
+        reviewRow("Name", value: appModel.profile.name, destination: .name)
+        reviewDivider
+      }
       reviewRow("City", value: appModel.profile.city, destination: .city)
       reviewDivider
       reviewRow("Move-in", value: appModel.profile.moveInDate, destination: .moveIn)
@@ -1387,7 +1450,9 @@ struct OnboardingView: View {
       reviewDivider
       reviewRow("Priorities", value: joined(appModel.profile.priorities), destination: .priorities)
 
-      Text("Neighborhoods, amenities, dealbreakers, and application readiness can be refined from Settings after the board opens.")
+      Text(isEditingSearchBrief
+           ? "Your neighborhoods, must-haves, and dealbreakers stay as currently selected. You can adjust those from your member profile."
+           : "Neighborhoods, amenities, dealbreakers, and application readiness can be refined from your member profile after the board opens.")
         .font(.caption)
         .foregroundStyle(HomeboardPalette.secondaryText)
         .fixedSize(horizontal: false, vertical: true)
@@ -1421,7 +1486,7 @@ struct OnboardingView: View {
       .padding(.horizontal, 14)
       .padding(.vertical, 12)
     }
-    .buttonStyle(.plain)
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 
   private var reviewDivider: some View {
@@ -1467,7 +1532,7 @@ struct OnboardingView: View {
               }
               .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
           .accessibilityLabel("Previous question")
         }
 
@@ -1478,17 +1543,19 @@ struct OnboardingView: View {
             RoundedRectangle(cornerRadius: 17, style: .continuous)
               .fill(HomeboardPalette.accentGradient)
 
-            if appModel.isOnboardingLoading {
+            if isFinishing {
               HStack(spacing: 9) {
                 ProgressView().tint(HomeboardPalette.buttonText)
-                Text("Creating your board…")
+                Text(isEditingSearchBrief ? "Saving changes…" : "Creating your board…")
               }
               .font(.headline.weight(.semibold))
               .foregroundStyle(HomeboardPalette.buttonText)
             } else {
               HStack(spacing: 8) {
                 Text(onboardingButtonTitle)
-                Image(systemName: question == .review ? "person.3.fill" : "arrow.right")
+                Image(systemName: question == .review
+                      ? (isEditingSearchBrief ? "checkmark.circle.fill" : "person.3.fill")
+                      : "arrow.right")
               }
               .font(.headline.weight(.semibold))
               .foregroundStyle(HomeboardPalette.buttonText)
@@ -1498,8 +1565,8 @@ struct OnboardingView: View {
           .frame(height: 56)
           .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .disabled(!canContinue || appModel.isOnboardingLoading)
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .disabled(!canContinue || isFinishing)
         .opacity(canContinue ? 1 : 0.42)
       }
     }
@@ -1514,6 +1581,7 @@ struct OnboardingView: View {
 
   private var onboardingButtonTitle: String {
     guard question == .review else { return "Continue" }
+    if isEditingSearchBrief { return "Save changes" }
     return appModel.onboardingError == nil ? "Create shared board" : "Try creating board again"
   }
 
@@ -1583,7 +1651,7 @@ struct OnboardingView: View {
     case .city: return "Type a city or metro area. You can narrow the neighborhoods in a moment."
     case .moveIn: return "A rough timeframe is enough. You can change it later."
     case .budget: return "This is your personal share, not the whole apartment. Everyone adds their own range, then Homeboard derives the group total and a fair split."
-    case .commuteTarget: return "Add one routable destination. Add how you travel and your comfortable time range on this page. Remote workers can skip it."
+    case .commuteTarget: return "Add a routable office area and how you travel. Your office neighborhood is enough if a precise address feels unsafe. Remote workers can skip commute matching."
     case .commuteAccess: return "Homeboard only recommends routes you can realistically use. A car includes a dependable ride to work."
     case .commuteLimit: return "Choose when a home feels too close to work and when it becomes too far. Every route inside the range scores equally."
     case .neighborhoods: return "Select as many as you want. These are preferences, not permanent limits."
@@ -1591,7 +1659,10 @@ struct OnboardingView: View {
     case .mustHaves: return "Choose genuine requirements rather than nice-to-haves."
     case .dealbreakers: return "These should eliminate a home before the group wastes time on it."
     case .readiness: return "This helps roommates understand what has to happen before an application."
-    case .review: return "Tap any core answer to edit it. Fine-tune neighborhoods, amenities, and dealbreakers after the board opens."
+    case .review:
+      return isEditingSearchBrief
+        ? "Tap any answer to revisit it. Your existing selections remain checked until you change them."
+        : "Tap any core answer to edit it. Fine-tune neighborhoods, amenities, and dealbreakers after the board opens."
     }
   }
 
@@ -1603,7 +1674,7 @@ struct OnboardingView: View {
     switch question {
     case .city: return "City or metro area"
     case .moveIn: return "Date or timeframe"
-    case .commuteTarget: return "Full work or school address"
+    case .commuteTarget: return "Office neighborhood or address"
     case .commuteAccess: return "Commute access"
     case .commuteLimit: return "Commute range"
     case .neighborhoods: return "Neighborhoods, separated by commas"
@@ -1700,9 +1771,21 @@ struct OnboardingView: View {
     guard canContinue else { return }
 
     if question == .review {
-      applyStreamlinedDefaults()
-      Task {
-        await appModel.finishOnboarding()
+      if isEditingSearchBrief {
+        isSavingEdits = true
+        Task {
+          let saved = await appModel.saveSearchBriefEdits()
+          isSavingEdits = false
+          if saved {
+            didSaveEdits = true
+            onComplete?()
+          }
+        }
+      } else {
+        applyStreamlinedDefaults()
+        Task {
+          await appModel.finishOnboarding()
+        }
       }
       return
     }
@@ -2389,7 +2472,7 @@ private struct LegacyOnboardingView: View {
             .foregroundStyle(active ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
             .clipShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
     }
     .padding(16)
@@ -2432,7 +2515,7 @@ private struct LegacyOnboardingView: View {
             .foregroundStyle(HomeboardPalette.primaryText)
             .clipShape(Capsule())
           }
-          .buttonStyle(.plain)
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
 
@@ -2456,7 +2539,7 @@ private struct LegacyOnboardingView: View {
             .background(Color.white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
       }
     }
     .padding(20)
@@ -2529,7 +2612,7 @@ private struct LegacyOnboardingView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 56)
       }
-      .buttonStyle(.plain)
+      .buttonStyle(HomeboardAreaButtonStyle())
       .disabled(appModel.isOnboardingLoading)
       .opacity(appModel.isOnboardingLoading ? 0.82 : 1)
 

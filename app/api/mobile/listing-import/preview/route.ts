@@ -3,9 +3,10 @@ import { z } from "zod";
 
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { previewListingImport } from "@/lib/listing-sources";
+import { isSafeHttpUrl } from "@/lib/input-safety";
 
 const schema = z.object({
-  url: z.string().url().max(2_000),
+  url: z.string().trim().max(2_000).refine(isSafeHttpUrl),
   address: z.string().trim().max(300).nullable().optional(),
   unit: z.string().trim().max(50).nullable().optional(),
   price: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to inspect this listing link.";
     return NextResponse.json(
-      { error: message === "MOBILE_AUTH_REQUIRED" ? "Sign in to import a listing." : message },
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Sign in to import a listing." : "Unable to inspect this listing link." },
       { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 400 },
     );
   }

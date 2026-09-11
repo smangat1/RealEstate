@@ -33,7 +33,16 @@ export async function POST(
     const status =
       message === "MOBILE_AUTH_REQUIRED" ? 401
       : message === "ADMIN_REQUIRED" ? 403
-      : 400;
-    return NextResponse.json({ error: message }, { status });
+      : 500;
+    return NextResponse.json(
+      {
+        error: status === 401
+          ? "Unauthorized"
+          : status === 403
+            ? "Administrator access required."
+            : "Unable to review the listing source.",
+      },
+      { status },
+    );
   }
 }

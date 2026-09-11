@@ -1,4 +1,22 @@
-import type { Breadcrumb, Event } from "@sentry/nextjs";
+type SentryBreadcrumb = {
+  message?: string;
+  data?: Record<string, unknown>;
+};
+
+type SentryEvent = {
+  request?: {
+    url?: string;
+    cookies?: unknown;
+    data?: unknown;
+    headers?: Record<string, unknown>;
+  };
+  transaction?: string;
+  message?: string;
+  breadcrumbs?: SentryBreadcrumb[];
+  exception?: {
+    values?: Array<{ value?: string }>;
+  };
+};
 
 const invitePath = /\/invite\/[^/?#\s"'<>]+/gi;
 const webURL = /https?:\/\/[^\s"'<>]+/gi;
@@ -21,7 +39,7 @@ function scrubText(value: string) {
     .replace(invitePath, "/invite/[redacted]");
 }
 
-export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
+export function scrubSentryBreadcrumb<T extends SentryBreadcrumb>(breadcrumb: T): T {
   const data = breadcrumb.data ? { ...breadcrumb.data } : undefined;
   if (data) {
     for (const key of ["from", "to", "url"]) {
@@ -32,10 +50,10 @@ export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
     ...breadcrumb,
     message: breadcrumb.message ? scrubText(breadcrumb.message) : breadcrumb.message,
     data,
-  };
+  } as T;
 }
 
-export function scrubSentryEvent<T extends Event>(event: T): T {
+export function scrubSentryEvent<T extends SentryEvent>(event: T): T {
   if (event.request) {
     delete event.request.cookies;
     delete event.request.data;

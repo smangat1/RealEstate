@@ -16,7 +16,7 @@ export function isOperatorUser(user: MaybeUser | null | undefined) {
 
   const operatorEmails = getOperatorEmails();
   if (operatorEmails.length === 0) {
-    return process.env.NODE_ENV !== "production";
+    return false;
   }
 
   return operatorEmails.includes(user.email.trim().toLowerCase());

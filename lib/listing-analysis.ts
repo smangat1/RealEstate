@@ -29,6 +29,90 @@ function dimension(score: number | null, explanation: string) {
   return { score: score === null ? null : clamp(score), explanation, known: score !== null };
 }
 
+export type ActiveOfferSummary = {
+  kind: "months_free" | "no_fee" | "move_in_credit" | "waived_deposit" | "special";
+  bonusPoints: number;
+  label: string;
+};
+
+export function detectListingActiveOffer(
+  listing: Pick<ListingRecord, "description" | "amenities">,
+): ActiveOfferSummary | null {
+  const sources = [listing.description ?? "", ...(listing.amenities ?? [])];
+  const combined = sources.join(" ");
+
+  // 1. Months free
+  const monthsMatch =
+    combined.match(
+      /(?:get\s+)?(\d+(?:\.\d+)?|\bone\b|\btwo\b|\bthree\b|\bfour\b|\bhalf\b)\s*(?:month|mo)s?\s*(?:free|off|concession|rent\s*free)/i,
+    ) ||
+    combined.match(/first\s*month(?:\s*is)?\s*free/i) ||
+    combined.match(/free\s*month/i);
+  if (monthsMatch) {
+    let count = 1.0;
+    const str = monthsMatch[0].toLowerCase();
+    if (str.includes("half")) count = 0.5;
+    else if (str.includes("two")) count = 2.0;
+    else if (str.includes("three")) count = 3.0;
+    else if (str.includes("four")) count = 4.0;
+    else if (monthsMatch[1]) {
+      const parsed = parseFloat(monthsMatch[1]);
+      if (!isNaN(parsed)) count = parsed;
+    }
+    const bonusPoints =
+      count >= 3 ? 25 : count >= 2 ? 18 : count >= 1.5 ? 14 : count >= 1 ? 10 : count >= 0.5 ? 6 : 4;
+    return {
+      kind: "months_free",
+      bonusPoints,
+      label: count === 1 ? "1 Month Free" : count === 0.5 ? "2 Weeks Free" : `${count} Months Free`,
+    };
+  }
+
+  // 2. Weeks free
+  const weeksMatch = combined.match(/(\d+)\s*(?:weeks?|wks?)\s*free/i);
+  if (weeksMatch) {
+    const weeks = parseInt(weeksMatch[1], 10);
+    const count = weeks / 4;
+    const bonusPoints = count >= 2 ? 18 : count >= 1.5 ? 14 : count >= 1 ? 10 : 6;
+    return { kind: "months_free", bonusPoints, label: `${weeks} Weeks Free` };
+  }
+
+  // 3. No broker fee
+  if (
+    /\b(?:no\s*fee|no\s*broker\s*fee|zero\s*broker\s*fee|fee\s*waived|waived\s*fee|owner\s*pays\s*(?:the\s*)?fee|op\s*fee)\b/i.test(
+      combined,
+    )
+  ) {
+    return { kind: "no_fee", bonusPoints: 8, label: "No Broker Fee" };
+  }
+
+  // 4. Move-in cash credit
+  const creditMatch = combined.match(
+    /(?:\$|usd\s*)(\d[\d,]*)\s*(?:off|credit|move-in\s*bonus|signing\s*bonus|welcome\s*credit)/i,
+  );
+  if (creditMatch) {
+    const amount = parseInt(creditMatch[1].replace(/,/g, ""), 10);
+    const bonusPoints = amount >= 1500 ? 8 : amount >= 500 ? 5 : 3;
+    return { kind: "move_in_credit", bonusPoints, label: `$${amount.toLocaleString()} Move-in Credit` };
+  }
+
+  // 5. Waived deposit
+  if (/\b(?:no\s*deposit|zero\s*deposit|waived\s*deposit|deposit\s*waived|deposit\s*free)\b/i.test(combined)) {
+    return { kind: "waived_deposit", bonusPoints: 5, label: "Waived Deposit" };
+  }
+
+  // 6. Special
+  if (
+    /\b(?:move-in\s*special|limited\s*time\s*offer|special\s*promotion|concession\s*available)\b/i.test(
+      combined,
+    )
+  ) {
+    return { kind: "special", bonusPoints: 6, label: "Move-in Special" };
+  }
+
+  return null;
+}
+
 function memberWeights(member: RoommateRecord) {
   return {
     price: 1.2,
@@ -89,6 +173,15 @@ function analyzeMember(input: {
   } else if (estimatedShare !== null) {
     unknownConstraints.push(`${member.name} has not completed a maximum budget`);
     price = dimension(null, `The estimated share is $${estimatedShare.toLocaleString()}, but ${member.name} has not entered a personal limit.`);
+  }
+
+  const offer = detectListingActiveOffer(listing);
+  if (price.score !== null && offer && hardFailures.length === 0) {
+    const adjusted = clamp(price.score + offer.bonusPoints);
+    price = dimension(
+      adjusted,
+      `${price.explanation} Includes +${offer.bonusPoints} bonus points for active offer (${offer.label}).`,
+    );
   }
 
   let commute = dimension(null, `${member.name} has not opted into commute matching.`);

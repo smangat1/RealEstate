@@ -120,9 +120,10 @@ test("notification permission is offered after auth and not buried in workspace 
   const app = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardNativeApp.swift");
   const root = read("ios/HomeboardNative/HomeboardNative/Sources/RootView.swift");
 
-  assert.match(workspace, /Share beta feedback/);
-  assert.match(workspace, /ShareLink\(item: report\)/);
-  assert.match(workspace, /It does not include your email, listing addresses, URLs, comments, or preferences/);
+  assert.match(workspace, /Saw a bug\?/);
+  assert.match(workspace, /Send bug report/);
+  assert.match(workspace, /It does not send your email, listing addresses, page contents, comments, preferences, or access tokens/);
+  assert.doesNotMatch(workspace, /ShareLink\(item: report\)/);
   assert.doesNotMatch(workspace, /title: "Notification permission"/);
   assert.match(appModel, /preparePostAuthenticationPrompts\(\)/);
   assert.match(appModel, /respondToPostAuthNotificationPrompt/);
@@ -136,17 +137,35 @@ test("notification permission is offered after auth and not buried in workspace 
   assert.match(root, /value: appModel\.showsPostAuthInvitePrompt/);
 });
 
-test("edit search brief opens the complete personal preference editor", () => {
+test("edit search brief reuses onboarding with the current selections", () => {
   const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+  const onboarding = read("ios/HomeboardNative/HomeboardNative/Sources/AccountOnboardingView.swift");
+  const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
 
   assert.match(workspace, /title: "Edit search brief"/);
-  assert.match(workspace, /These changes only apply to your personal preferences/);
-  assert.match(workspace, /presentation: \.personalPreferences/);
-  assert.match(workspace, /SharedField\(title: "Ideal monthly share"/);
-  assert.match(workspace, /SharedField\(\s*title: "Preferred neighborhoods"/);
-  assert.match(workspace, /SharedField\(\s*title: "Must-haves"/);
-  assert.match(workspace, /SharedField\(\s*title: "Hard limits"/);
-  assert.doesNotMatch(workspace, /Each person controls those fields from their member card/);
+  assert.match(workspace, /appModel\.prepareSearchBriefEditing\(\)/);
+  assert.match(workspace, /OnboardingView\(\s*purpose: \.editSearchBrief/);
+  assert.doesNotMatch(workspace, /SharedBriefEditorSheet/);
+  assert.match(onboarding, /case editSearchBrief/);
+  assert.match(onboarding, /Your current choice is already selected/);
+  assert.match(onboarding, /if isSingleOptionSelected\(option\)/);
+  assert.match(onboarding, /return "Save changes"/);
+  assert.match(appModel, /func prepareSearchBriefEditing\(\)/);
+  assert.match(appModel, /func saveSearchBriefEdits\(\) async -> Bool/);
+});
+
+test("settings consolidates tutorials and keeps bug reports out of beta sharing", () => {
+  const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+
+  assert.match(workspace, /title: "Help & tutorials"/);
+  assert.match(workspace, /Save a listing/);
+  assert.match(workspace, /Pages at a glance/);
+  assert.match(workspace, /Replay page guides/);
+  assert.match(workspace, /SharedBugReportSheet/);
+  assert.doesNotMatch(workspace, /SharedBetaFeedbackSheet|showsBetaFeedback|Share beta feedback/);
+  assert.doesNotMatch(workspace, /title: "Sharing from Safari"/);
+  assert.doesNotMatch(workspace, /title: "Replay page guides"/);
+  assert.doesNotMatch(workspace, /title: "Add an offline listing"/);
 });
 
 test("release verification scans tracked secrets and attaches correlation IDs", () => {

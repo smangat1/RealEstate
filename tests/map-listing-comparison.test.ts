@@ -96,13 +96,13 @@ test("native UI uses one neutral dark palette and skeleton-loads async content",
   assert.ok(contrastRatio("243129", "F9E2CD") >= 4.5);
 });
 
-test("empty listing states send users to rental sources before manual entry", () => {
+test("empty listing states send users to sourced rentals without an offline-entry setting", () => {
   assert.match(mapSource, /struct SharedListingDiscoverySheet/);
-  assert.match(mapSource, /Search wherever you already look/);
-  assert.match(mapSource, /use Share → Homeboard/);
+  assert.match(mapSource, /Open a listing in Safari, then tap its Homeboard pill to save/);
   assert.match(mapSource, /Button\("Find listings", action: onBrowse\)/);
-  assert.match(mapSource, /Add an offline listing/);
-  assert.match(mapSource, /Last resort for a place with no listing page/);
+  assert.doesNotMatch(mapSource, /Add an offline listing/);
+  assert.doesNotMatch(mapSource, /Add a place with no listing page/);
+  assert.doesNotMatch(mapSource, /Offline fallback/);
   assert.match(mapSource, /Listing link \(optional\)/);
   assert.doesNotMatch(mapSource, /No matching suggestions loaded/);
 
@@ -120,8 +120,10 @@ test("empty listing states send users to rental sources before manual entry", ()
 });
 
 test("page guides replay explicitly and dim through the status-bar safe area", () => {
-  assert.match(mapSource, /Replay all page guides\?/);
-  assert.match(mapSource, /Button\("Replay guides"\)/);
+  assert.match(mapSource, /title: "Help & tutorials"/);
+  assert.match(mapSource, /SharedHelpTutorialsSheet/);
+  assert.match(mapSource, /Label\("Replay page guides"/);
+  assert.match(mapSource, /private func replayPageGuides\(\)/);
   assert.match(mapSource, /Page guides restarted/);
   assert.match(mapSource, /UINotificationFeedbackGenerator/);
   assert.match(mapSource, /dismiss\(\)/);
@@ -138,6 +140,7 @@ test("page guides replay explicitly and dim through the status-bar safe area", (
   );
   assert.match(searchGuideFlow, /Use the top bar to work with listings/);
   assert.match(searchGuideFlow, /Map and Cards change the view/);
+  assert.match(searchGuideFlow, /Tap a numbered map cluster to filter Cards/);
 });
 
 test("comparison map ranks core priorities plus grounded home features and allows tied levels", () => {
@@ -153,7 +156,7 @@ test("comparison map ranks core priorities plus grounded home features and allow
   assert.match(mapSource, /ranks\[criterion\] = min\(max\(rank, 1\), 4\)/);
   assert.doesNotMatch(mapSource, /\.dropDestination\(for: String\.self\)/);
   assert.doesNotMatch(mapSource, /\.draggable\(criterion\.rawValue\)/);
-  assert.match(mapSource, /Text\("\\\(percentage\(for: criterion\)\)%"\)/);
+  assert.match(mapSource, /commuteDisabled \? "Off" : "\\\(percentage\(for: criterion\)\)%"/);
   assert.match(mapSource, /knownCriteria: Set\(values\.keys\)/);
   assert.match(mapSource, /modelInsightScore/);
   assert.match(mapSource, /confidence >= 0\.55/);
@@ -163,33 +166,46 @@ test("comparison map ranks core priorities plus grounded home features and allow
 
 test("comparison uses tiered score regions and shows scored routes to work", () => {
   assert.match(mapSource, /private var savedListingKeys: Set<String>/);
-  assert.match(
-    mapSource,
-    /return \(!isComparisonActive \|\| item\.hasReliableCoordinate\)/,
+  const comparisonFiltering = mapSource.slice(
+    mapSource.indexOf("private func rebuildMapPresentation"),
+    mapSource.indexOf("private var comparisonMetroRegion"),
   );
+  assert.match(comparisonFiltering, /return filters\.includes\(item\.listing\)/);
+  assert.doesNotMatch(comparisonFiltering, /comparisonMetroRegion\.contains/);
+  assert.match(mapSource, /buildComparisonScores\(for: filtered\)/);
+  assert.match(mapSource, /item\.hasReliableCoordinate,\s*commuteEvidence == nil/);
   assert.doesNotMatch(
     mapSource,
     /return \(!isComparisonActive \|\| savedListingKeys\.contains\(key\)\)/,
   );
   assert.match(mapSource, /item\.hasReliableCoordinate/);
   assert.match(mapSource, /MapCircle\(/);
-  assert.match(mapSource, /ForEach\(displayedComparisonRouteCorridors\)/);
+  assert.match(mapSource, /ForEach\(displayedComparisonRouteCorridors\.filter/);
   assert.match(mapSource, /MapPolyline\(corridor\.polyline\)/);
-  assert.match(mapSource, /comparisonListingColor\(for: corridor\.listingID\)/);
-  assert.match(mapSource, /comparisonListingColor\(for: item\.listing\.id\)/);
-  assert.match(mapSource, /Each line matches its listing node/);
+  assert.match(mapSource, /ForEach\(selectedComparisonRouteCorridors\)/);
+  assert.doesNotMatch(mapSource, /MapPolyline\(leg\.polyline\)/);
+  assert.match(mapSource, /SharedRouteLegCallout/);
+  assert.match(mapSource, /approximately \\\(leg\.minutes\) minutes/);
+  assert.match(mapSource, /comparisonRouteColor\(for: corridor\)/);
+  assert.match(
+    mapSource,
+    /comparisonScores\[item\.listing\.id\]\.map[\s\S]*?comparisonRegionTier\(for: \$0\.total\)\.color/,
+  );
+  assert.doesNotMatch(mapSource, /Each line matches its listing node/);
   assert.match(mapSource, /selectedComparisonRouteListingID == nil \? 0\.76 : 0\.46/);
-  assert.match(mapSource, /corridor\.listingID == selectedComparisonRouteListingID/);
+  assert.match(mapSource, /selectedComparisonRouteListingID == nil \? 0\.76 : 0\.46/);
   assert.match(mapSource, /SharedComparisonCommuteCorridor/);
   assert.match(mapSource, /SharedWorkNodeMarker/);
-  assert.match(mapSource, /Text\("Work"\)/);
+  assert.match(mapSource, /people’s work/);
+  assert.match(mapSource, /Additional commute point/);
+  assert.match(mapSource, /for \\\(workNode\.memberNames\.joined/);
   assert.match(mapSource, /briefcase\.fill/);
   assert.match(mapSource, /SharedComparisonRegionTier/);
   assert.match(mapSource, /case best/);
   assert.match(mapSource, /case weak/);
   assert.match(mapSource, /comparisonRegionTier\(for: score\.total\)/);
-  assert.match(mapSource, /Text\("\\\(routedListingCount\)\/\\\(listingCount\) routed"\)/);
-  assert.match(mapSource, /Set\(scoredComparisonRouteCorridors\.map\(\\\.listingID\)\)\.count/);
+  assert.match(mapSource, /homes · \\\(routedWorkMemberCount\) commute route/);
+  assert.match(mapSource, /let routedIDs = Set\(primaryComparisonRouteCorridors\.map\(\\\.listingID\)\)/);
   assert.match(mapSource, /comparisonScores\[corridor\.listingID\] != nil/);
   assert.match(mapSource, /case tooClose/);
   assert.match(mapSource, /case ideal/);
@@ -197,7 +213,7 @@ test("comparison uses tiered score regions and shows scored routes to work", () 
   assert.doesNotMatch(mapSource, /MapPolygon\(/);
   assert.doesNotMatch(mapSource, /MKGeoJSONDecoder/);
   assert.doesNotMatch(mapSource, /comparisonRegionCells/);
-  assert.match(mapSource, /route\.polyline\.points\(\)/);
+  assert.match(mapSource, /let points = polyline\.points\(\)/);
   assert.match(mapSource, /MKPolyline\([\s\S]*coordinates: routeCoordinates/);
   assert.doesNotMatch(mapSource, /SharedRecommendedRegionMarker/);
   assert.doesNotMatch(mapSource, /SharedComparisonMapLegend/);
@@ -206,9 +222,12 @@ test("comparison uses tiered score regions and shows scored routes to work", () 
   assert.doesNotMatch(mapSource, /solid transit · dashed road/);
   assert.match(mapSource, /if !isComparisonActive \{[\s\S]*loadMapInventory/);
   assert.match(mapSource, /missing facts stay unknown/i);
+  assert.match(mapSource, /suppressedLongRouteDestinations/);
+  assert.match(mapSource, /if displayScore > 0/);
+  assert.match(mapSource, /optimisticMetersPerMinute = 120\.0/);
 });
 
-test("node route cards load drive, transit, and walk times on demand", () => {
+test("route finding uses uniform solid paths, live fallbacks, and transport labels", () => {
   assert.match(mapSource, /transportType: \.transit/);
   assert.match(mapSource, /transportType: \.walking/);
   assert.match(mapSource, /transportType: \.automobile/);
@@ -218,16 +237,19 @@ test("node route cards load drive, transit, and walk times on demand", () => {
   assert.match(mapSource, /commuteAccess: member\.commuteAccess/);
   assert.match(mapSource, /averageScore \* 0\.72 \+ worstScore \* 0\.28/);
   assert.match(mapSource, /let commuteEvidence = comparisonCommuteEvidence\[listing\.id\]/);
-  assert.match(mapSource, /let commuteValue = comparisonWorkNodes\.isEmpty/);
-  assert.match(mapSource, /: commuteEvidence\?\.score/);
+  assert.match(
+    mapSource,
+    /let commuteValue = comparisonWorkNodes\.isEmpty\s*\? nil\s*: commuteEvidence\?\.score/,
+  );
   assert.match(mapSource, /SharedCommuteRouteLogic\.permits/);
   assert.match(mapSource, /easeAdjustedMinutes/);
   assert.match(mapSource, /stepCount: route\.steps\.count/);
-  assert.match(mapSource, /access == "car" \|\| access == "flexible"/);
+  assert.match(mapSource, /access == nil \|\| access == "car" \|\| access == "flexible"/);
   assert.match(mapSource, /let eligibleRoutes = visibleRoutes\.filter/);
   assert.match(mapSource, /eligibleRoutes\.min\(by:/);
-  assert.match(mapSource, /directDistance <= 3_200/);
-  assert.match(mapSource, /walkingCandidate\.flatMap \{ \$0\.minutes <= 30/);
+  assert.match(mapSource, /backgroundRouteModes\(for: target\.commuteAccess\)/);
+  assert.match(mapSource, /return \[\.automobile, \.transit, \.walking\]/);
+  assert.match(mapSource, /return \[\.transit, \.walking, \.automobile\]/);
   assert.doesNotMatch(mapSource, /transitRoute \?\? walkingRoute \?\? roadRoute/);
   assert.match(mapSource, /maximumMinutes: max\(maximum, preferred \+ 5\)/);
   assert.match(mapSource, /SharedComparisonNodeRouteCard/);
@@ -240,7 +262,26 @@ test("node route cards load drive, transit, and walk times on demand", () => {
   assert.match(mapSource, /case \.transit: 1/);
   assert.match(mapSource, /case \.walking: 2/);
   assert.doesNotMatch(mapSource, /estimatedComparisonCommuteScore/);
-  assert.match(mapSource, /No usable live route was returned, so commute remains unscored/);
+  assert.doesNotMatch(mapSource, /estimatedRouteResult/);
+  assert.doesNotMatch(mapSource, /usedEstimatedFallback|isEstimated/);
+  assert.doesNotMatch(mapSource, /Estimated direct path/);
+  assert.match(
+    mapSource,
+    /private var comparisonRouteStrokeStyle: StrokeStyle[\s\S]*?lineWidth: 2\.5/,
+  );
+  const renderedRoutes = mapSource.slice(
+    mapSource.indexOf("ForEach(displayedComparisonRouteCorridors.filter"),
+    mapSource.indexOf("ForEach(renderedClusters)", mapSource.indexOf("ForEach(displayedComparisonRouteCorridors.filter")),
+  );
+  assert.doesNotMatch(renderedRoutes, /lineWidth:|dash:|MapPolyline\(leg\.polyline\)/);
+  assert.match(renderedRoutes, /style: comparisonRouteStrokeStyle/g);
+  assert.match(mapSource, /SharedSelectedTransportPopup/);
+  assert.match(mapSource, /routes: comparisonCommuteCorridors\.filter/);
+  assert.match(mapSource, /private func comparisonRouteColor/);
+  assert.match(mapSource, /inferredTransitKind/);
+  assert.match(mapSource, /case \.bus: "bus\.fill"/);
+  assert.match(mapSource, /case \.train: "tram\.fill"/);
+  assert.match(mapSource, /case \.automobile: "car\.fill"/);
   assert.doesNotMatch(mapSource, /comparisonCommuteDistance/);
   assert.match(mapSource, /SharedComparisonNodeDetailSheet/);
   assert.match(mapSource, /Why it scored/);
@@ -248,14 +289,128 @@ test("node route cards load drive, transit, and walk times on demand", () => {
   assert.match(mapSource, /requestsAlternateRoutes = false/);
   assert.match(mapSource, /comparisonRoutingSignature/);
   assert.match(mapSource, /batchSize = 3/);
+  assert.match(mapSource, /SharedComparisonRouteCache\.shared\.value/);
+  assert.match(mapSource, /comparison-routes-v1\.json/);
+  assert.match(mapSource, /SharedComparisonRouteCachePayload: Codable/);
+  assert.match(mapSource, /Data\(contentsOf: cacheURL\)/);
+  assert.match(mapSource, /data\.write\(to: cacheURL, options: \.atomic\)/);
+  assert.match(mapSource, /maximumAttempts = 3/);
+  assert.match(mapSource, /Task\.sleep\(nanoseconds: delay\)/);
+  assert.match(mapSource, /case \.terminalFailure:\s*return nil/);
+  assert.match(mapSource, /case \.unknown, \.serverFailure, \.loadingThrottled:/);
+  assert.match(mapSource, /routeLegResults/);
+  assert.match(mapSource, /step\.transportType/);
+  assert.match(mapSource, /step\.polyline/);
+  assert.match(mapSource, /routingCompletedCount/);
+  assert.match(mapSource, /requesting the rest/);
+  assert.match(mapSource, /for target in targets/);
+  assert.match(mapSource, /guard !memberScores\.isEmpty \|\| !routeSnapshots\.isEmpty/);
+  assert.match(mapSource, /let resolvedEveryDestination = evaluatedDestinationCount == targets\.count/);
+  assert.match(mapSource, /score = nil/);
+  assert.match(mapSource, /displayedRouteIDs/);
+  assert.match(mapSource, /Commute stays unscored until every destination resolves/);
+  assert.match(mapSource, /queues live Apple routes for every listing and saved workplace/);
+
+  const coordinateRecovery = mapSource.slice(
+    mapSource.indexOf("private func resolveListingCoordinates"),
+    mapSource.indexOf("private func resolveCommuteRoutes"),
+  );
+  assert.match(coordinateRecovery, /for listing in candidates/);
+  assert.match(coordinateRecovery, /await resolveCoordinate\(for: query\)/);
+  assert.doesNotMatch(coordinateRecovery, /shortlistedIDs|\.prefix\(/);
+  const destinationRecovery = mapSource.slice(
+    mapSource.indexOf("private func resolveCoordinate(for destination: String)"),
+    mapSource.indexOf("\n}", mapSource.indexOf("private func resolveCoordinate(for destination: String)")),
+  );
+  assert.match(destinationRecovery, /for attempt in 0\.\.<3/);
 
   const comparisonRouting = mapSource.slice(
     mapSource.indexOf("private static func comparisonCommuteEvidence"),
-    mapSource.indexOf("private func zoomIntoCluster"),
+    mapSource.indexOf("private func filterCardsToCluster"),
+  );
+  const routeBatching = mapSource.slice(
+    mapSource.indexOf("private func resolveComparisonCommuteEvidence"),
+    mapSource.indexOf("private static func comparisonCommuteEvidence"),
   );
   assert.match(comparisonRouting, /\.automobile/);
+  assert.doesNotMatch(comparisonRouting, /route\.minutes > 30/);
+  assert.match(comparisonRouting, /let directDistance = CLLocation/);
+  assert.match(comparisonRouting, /impossible best case scores zero/);
+  assert.match(routeBatching, /for start in stride\(from: 0, to: pendingCandidates\.count/);
+  assert.doesNotMatch(routeBatching, /candidates\.prefix/);
+  assert.match(routeBatching, /comparisonEvidenceSignatures/);
+  assert.match(routeBatching, /nextSignatures\[item\.listing\.id\] != signatures\[item\.listing\.id\]/);
+  assert.doesNotMatch(
+    mapSource.slice(
+      mapSource.indexOf("private var comparisonRoutingSignature"),
+      mapSource.indexOf("var body: some View"),
+    ),
+    /filters\.|selectedBounds/,
+  );
   assert.match(mobilePayloadSource, /min driving estimate/);
   assert.doesNotMatch(mobilePayloadSource, /min best route/);
+});
+
+test("commute controls disable without a saved office area and explain the privacy-safe option", () => {
+  assert.match(mapSource, /commuteAvailable: hasCommuteDestinations/);
+  assert.match(mapSource, /criterion == \.commute && !commuteAvailable/);
+  assert.match(mapSource, /disabled: rank == 1 \|\| commuteDisabled/);
+  assert.match(mapSource, /disabled: rank == 4 \|\| commuteDisabled/);
+  assert.doesNotMatch(mapSource, /Commute unavailable/);
+  assert.match(mapSource, /Add an office neighborhood to enable commute grading/);
+  assert.match(mapSource, /Weights are normalized to 100% without commute/);
+});
+
+test("comparison mode elevates top homes and keeps scores in Cards", () => {
+  assert.match(mapSource, /private var topComparisonListingIDs: Set<String>/);
+  assert.match(mapSource, /\.prefix\(5\)/);
+  assert.match(mapSource, /priorityListingIDs: topComparisonListingIDs/);
+  assert.match(mapSource, /let priorityItems = items\.filter/);
+  assert.match(mapSource, /return clusters \+ priorityItems\.map \{ expanded\(\$0\) \}/);
+  assert.match(mapSource, /isHighlighted: topComparisonListingIDs\.contains/);
+  assert.match(mapSource, /One of the five highest comparison scores/);
+  assert.match(mapSource, /return leftScore > rightScore/);
+  assert.match(mapSource, /SharedComparisonScoreArtwork/);
+  assert.match(mapSource, /Label\("TOP MATCH", systemImage: "sparkles"\)/);
+  assert.match(mapSource, /comparisonScores: isComparisonActive \? comparisonScores : \[:\]/);
+  assert.doesNotMatch(
+    mapSource,
+    /else if presentation == \.list \{\s*isComparisonActive = false/,
+  );
+  assert.match(mapSource, /SharedGroupCommuteComparisonButton/);
+  assert.match(mapSource, /Label\("Compare group commutes", systemImage: "arrow\.triangle\.branch"\)/);
+  const topControlBar = mapSource.slice(
+    mapSource.indexOf("private struct SharedSearchControlBar"),
+    mapSource.indexOf("private struct SharedGroupCommuteComparisonButton"),
+  );
+  assert.doesNotMatch(topControlBar, /onCompare|Compare map|Text\("Compare"\)/);
+  assert.doesNotMatch(mapSource, /Label\("Priorities"/);
+});
+
+test("tapping a map cluster prepares Cards without leaving the map or hiding other nodes", () => {
+  assert.match(mapSource, /@State private var cardClusterListingIDs: Set<String> = \[\]/);
+  assert.match(mapSource, /filterCardsToCluster\(cluster\)/);
+  assert.match(mapSource, /let selectedIDs = Set\(cluster\.items\.map \{ \$0\.listing\.id \}\)/);
+  assert.match(mapSource, /selectedIDs == cardClusterListingIDs \? \[\] : selectedIDs/);
+  assert.match(mapSource, /private var visibleCardItems/);
+  assert.match(mapSource, /private var displayedResultCount: Int \{\s*visibleCardItems\.count/);
+  assert.match(mapSource, /displayedComparisonScoreCount/);
+  assert.match(mapSource, /intersection\(cardClusterListingIDs\)/);
+  assert.match(mapSource, /filters\.activeCount \+ \(cardClusterListingIDs\.isEmpty \? 0 : 1\)/);
+  assert.match(mapSource, /SharedClusterCardFilterBar/);
+  assert.match(mapSource, /Filtered to selected cluster · \\\(count\)/);
+  assert.doesNotMatch(mapSource, /Text\("Show all"\)/);
+  assert.match(mapSource, /Clear selected cluster filter/);
+  assert.match(mapSource, /isSelected: Set\(cluster\.items\.map/);
+  const clusterSelection = mapSource.slice(
+    mapSource.indexOf("private func filterCardsToCluster"),
+    mapSource.indexOf("private func loadMapInventory"),
+  );
+  assert.doesNotMatch(clusterSelection, /presentation = \.list/);
+  assert.doesNotMatch(
+    mapSource,
+    /if presentation == \.map \{\s*cardClusterListingIDs = \[\]/,
+  );
 });
 
 test("commute preference is a persisted two-handle equal-score band", () => {
@@ -271,11 +426,14 @@ test("commute preference is a persisted two-handle equal-score band", () => {
   assert.match(boardDataSource, /preferredCommuteMinutes: finalizedProfile\.minCommuteMinutes/);
 });
 
-test("comparison selects a city metro and includes its surrounding region", () => {
+test("comparison keeps its city fallback but frames and scores listings outside that metro", () => {
   assert.match(mapSource, /TextField\("City or metro area"/);
   assert.match(mapSource, /homeboard\.map-comparison-city/);
   assert.match(mapSource, /private var comparisonMetroRegion: MKCoordinateRegion/);
   assert.match(mapSource, /latitudeDelta: 1\.0, longitudeDelta: 1\.18/);
+  assert.match(mapSource, /private var comparisonFocusRegion: MKCoordinateRegion/);
+  assert.match(mapSource, /preparedMapItems\.map\(\\\.coordinate\)[\s\S]*comparisonWorkNodes\.map\(\\\.coordinate\)/);
+  assert.match(mapSource, /let candidates = preparedMapItems\.filter\(\\\.hasReliableCoordinate\)/);
   assert.match(mapSource, /resolveComparisonCity\(focus: true\)/);
 });
 
@@ -301,4 +459,16 @@ test("listing titles and verified addresses stay separate through scanning and m
     mapSource,
     /\[listing\.title, listing\.location, appModel\.board\.city\]/,
   );
+});
+
+test("captured listing photos survive the mobile payload and render with a graceful fallback", () => {
+  assert.match(mobilePayloadSource, /function listingPhotoUrl/);
+  assert.match(mobilePayloadSource, /photoUrl: listingPhotoUrl\(listing\)/);
+  assert.match(mobilePayloadSource, /photoUrl: listingPhotoUrl\(entry\.listing\)/);
+  assert.match(mapSource, /let value = listing\.photoURL\.trimmingCharacters/);
+  assert.match(mapSource, /AsyncImage\(/);
+  assert.match(mapSource, /case \.success\(let image\):[\s\S]*?\.scaledToFill\(\)/);
+  assert.match(mapSource, /case \.failure:[\s\S]*?placeholderArtwork/);
+  assert.match(boardDataSource, /const capturedImageUrl = input\.imageUrl\?\.trim\(\)/);
+  assert.match(boardDataSource, /capturedImageUrl \? \{ images: json\(\[capturedImageUrl\]\) \} : \{\}/);
 });

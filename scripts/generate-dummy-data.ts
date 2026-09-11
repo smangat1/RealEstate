@@ -197,14 +197,14 @@ function buildSummary(city: string, neighborhood: string, price: number): string
 function buildRedFlags(): string[] {
   return faker.helpers.arrayElements(
     [
-      "Broker fee is unclear",
-      "Utilities are not fully explained",
-      "Listing photos may be limited",
-      "Available date needs confirmation",
-      "Laundry setup is not clearly stated",
-      "Square footage may be estimated",
+      "Single bathroom shared across all roommates",
+      "Unequal bedroom sizes may complicate rent split",
+      "Utility costs not included in base rent",
+      "Move-in date may require lease overlap",
+      "Commute time difference between roommates is over 25 mins",
+      "Living room space is compact for shared gatherings",
     ],
-    { min: 1, max: 3 },
+    { min: 1, max: 2 },
   );
 }
 

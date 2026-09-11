@@ -6,6 +6,7 @@ import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 
 const schema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
   budgetMin: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
   idealBudget: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
   budgetMax: z.number().finite().nonnegative().max(1_000_000).nullable().optional(),
@@ -40,12 +41,16 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!current) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     const roommate = current.roommates.find((entry) => entry.id === memberId);
     if (!roommate) return NextResponse.json({ error: "Member profile not found." }, { status: 404 });
+    if (roommate.roleLabel === "commute point" && current.board.userId !== user.id) {
+      return NextResponse.json({ error: "Only the board owner can edit shared commute points." }, { status: 403 });
+    }
     if (roommate.linkedUserId && roommate.linkedUserId !== user.id) {
       return NextResponse.json({ error: "Each member controls their own budget and commute profile." }, { status: 403 });
     }
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid member update." }, { status: 400 });
     await updateRoommateProfile(memberId, {
+      name: parsed.data.name,
       budgetMin:
         parsed.data.budgetMin === undefined ? undefined : parsed.data.budgetMin === null ? "" : String(parsed.data.budgetMin),
       idealBudget:
@@ -98,7 +103,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return boardResponse(id, user.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update member.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to update member." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }
 
@@ -116,6 +124,9 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     return boardResponse(id, user.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to remove member.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to remove member." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
 }

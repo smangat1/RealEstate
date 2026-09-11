@@ -9,6 +9,7 @@ import {
   assertSpecificListingUrl,
   detectListingProvider,
   evaluateExactListingMatch,
+  isZillowBuildingDetailUrl,
   listingIdentityFingerprint,
   type ListingMatchFacts,
 } from "@/lib/listing-sources";
@@ -158,8 +159,47 @@ export async function submitBoardListingSource(input: {
   if (!boardListing) throw new Error("Listing not found.");
   const actor = await requireSourceActor(input.userId, boardListing.boardId);
 
-  const canonicalUrl = assertSpecificListingUrl(input.url);
   const facts = listingFacts(boardListing.listing);
+  const canonicalUrl = assertSpecificListingUrl(input.url, facts);
+  if (isZillowBuildingDetailUrl(canonicalUrl)) {
+    // A Zillow community URL can prove where the selected unit came from, but
+    // the same URL represents several apartments. Keep it board-scoped instead
+    // of incorrectly merging every unit into one global "exact" source.
+    const boardSource = await prisma.boardListingSource.upsert({
+      where: {
+        boardListingId_url: {
+          boardListingId: input.boardListingId,
+          url: canonicalUrl,
+        },
+      },
+      create: {
+        boardListingId: input.boardListingId,
+        catalogSourceId: null,
+        url: canonicalUrl,
+        label: input.label?.trim() || "Zillow community listing",
+        kind: "member_reference",
+        createdByRoommateId: actor.roommateId,
+        confirmedAt: null,
+      },
+      update: {
+        catalogSourceId: null,
+        label: input.label?.trim() || "Zillow community listing",
+        kind: "member_reference",
+        createdByRoommateId: actor.roommateId,
+        confirmedAt: null,
+      },
+    });
+    return {
+      boardSource,
+      catalogSourceId: null,
+      status: "board_only" as const,
+      distinctBoardSubmissions: 1,
+      distinctAttestedUsers: 0,
+      distinctAttestedBoards: 0,
+      warning: "This community page is a board reference for the selected unit.",
+      globallyDiscoverable: false,
+    };
+  }
   const identityFingerprint = listingIdentityFingerprint(facts);
   const provider = detectListingProvider(canonicalUrl);
   let catalogSource = await prisma.catalogListingSource.findUnique({

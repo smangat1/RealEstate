@@ -15,7 +15,9 @@ function nativeSource(filename: string) {
 }
 
 const apiSource = nativeSource("HomeboardAPI.swift");
+const configSource = nativeSource("HomeboardConfig.swift");
 const appModelSource = nativeSource("AppModel.swift");
+const boardShellSource = nativeSource("BoardShellView.swift");
 const authViewSource = nativeSource("AccountOnboardingView.swift");
 const appleAuthViewSource = nativeSource("AppleAuthView.swift");
 const welcomeSource = nativeSource("WelcomeView.swift");
@@ -133,11 +135,19 @@ test("device sign-in uses the stable HTTPS backend and bounded network waits", (
   assert.match(nativeProjectDefinition, productionOrigin);
   assert.doesNotMatch(nativeProjectSource, /Samyans-Laptop|192\.168\.1\.203/);
   assert.doesNotMatch(nativeProjectDefinition, /Samyans-Laptop|192\.168\.1\.203/);
+  assert.match(configSource, /private static let productionBackendBaseURL/);
+  assert.doesNotMatch(configSource, /UserDefaults\.standard\.string\(forKey: "homeboard\.apiBaseURL"\)/);
+  assert.doesNotMatch(configSource, /return URL\(string: "http:\/\/127\.0\.0\.1:3000"\)!/);
   assert.match(apiSource, /timeoutInterval: 8/);
   assert.match(apiSource, /private let backendRequestTimeout: TimeInterval = 12/);
+  assert.match(apiSource, /private let boardRequestTimeout: TimeInterval = 20/);
+  assert.match(apiSource, /configuration\.waitsForConnectivity = true/);
+  assert.match(apiSource, /dataForRequestWithTransientRetry/);
+  assert.match(apiSource, /request\.httpMethod == "GET"/);
   assert.match(apiSource, /request\.timeoutInterval = 12/);
   assert.match(apiSource, /request\.timeoutInterval = backendRequestTimeout/);
   assert.match(apiSource, /request\.timeoutInterval = timeoutInterval \?\? backendRequestTimeout/);
+  assert.match(boardShellSource, /Button\("Retry"\)[\s\S]*refreshCurrentBoard/);
 });
 
 test("startup returns the first board in one authenticated backend request", () => {
@@ -173,6 +183,8 @@ test("board creation never seeds the catalog or waits indefinitely on commute en
   );
 
   assert.doesNotMatch(createBoardFlow, /ensureStarterCatalog/);
+  assert.doesNotMatch(createBoardFlow, /ensureDefaultDemoCatalog|DEFAULT_DEMO_LISTINGS|attachDefaultDemoListings/);
+  assert.doesNotMatch(createBoardFlow, /boardListings:\s*\{\s*create:/);
   assert.match(boardDataSource, /isDemoModeEnabled\(\) \|\| options\.includeCommutes === false/);
   assert.match(commuteServiceSource, /COMMUTE_REQUEST_TIMEOUT_MS = 2_500/);
   assert.ok(
@@ -199,6 +211,38 @@ test("board loading avoids read-time maintenance writes and shows cached data im
   assert.match(continueFlow, /let cachedBoard = localBoardsById\[firstBoard\.id\]/);
   assert.match(continueFlow, /isBoardLoading = cachedBoard == nil/);
   assert.match(continueFlow, /Task \{[\s\S]*try await loadBoard\(id: firstBoard\.id\)/);
+});
+
+test("native cached board state is isolated by authenticated account", () => {
+  const initFlow = appModelSource.slice(
+    appModelSource.indexOf("init()"),
+    appModelSource.indexOf("func bootstrap"),
+  );
+  const sessionFlow = appModelSource.slice(
+    appModelSource.indexOf("private func applySessionResponse"),
+    appModelSource.indexOf("private func seedOnboardingMessagesIfNeeded"),
+  );
+  const localMergeFlow = appModelSource.slice(
+    appModelSource.indexOf("private func applyLocalBoardContributions"),
+    appModelSource.indexOf("private func removePersistedStressTestListings"),
+  );
+  const syntheticMemberFlow = appModelSource.slice(
+    appModelSource.indexOf("private func ensureCurrentAccountMemberPresence"),
+    appModelSource.indexOf("private enum NativeAuthSessionStore"),
+  );
+
+  assert.match(initFlow, /restoredRemoteBoardLacksMembership/);
+  assert.match(initFlow, /restoredIdentityMismatch \|\| restoredRemoteBoardLacksMembership/);
+  assert.match(initFlow, /restoredAuthUserID != session\.userId/);
+  assert.match(initFlow, /\$0\.userId == appUserID/);
+  assert.doesNotMatch(initFlow, /restoredAppUserID != session\.userId/);
+  assert.match(initFlow, /clearWorkspaceStateForAccountTransition\(\)/);
+  assert.match(sessionFlow, /responseBoardIDs[\s\S]*currentRemoteBoardIsUnauthorized/);
+  assert.match(sessionFlow, /authenticatedAccountChanged \|\| currentRemoteBoardIsUnauthorized/);
+  assert.match(localMergeFlow, /board\.members\.removeAll[\s\S]*\$0\.roommateId == nil/);
+  assert.match(localMergeFlow, /isDeviceLocalBoard \|\| \$0\.status == "commute point"/);
+  assert.match(syntheticMemberFlow, /guard canSynthesizeLocalMember else \{ return \}/);
+  assert.match(appModelSource, /Board snapshots and optimistic member data are device-local conveniences/);
 });
 
 test("launch intro overlaps bootstrap and hands off immediately to a restored board", () => {
@@ -273,17 +317,50 @@ test("every native build configuration uses Apple-only account entry", () => {
   );
   assert.match(macAuthSource, /SignInWithAppleButton\(\.continue\)/);
   assert.doesNotMatch(macAuthSource, /SecureField|Enter your Homeboard email and password/);
+  assert.match(macAuthSource, /That Apple identity has no Homeboard yet/);
+  assert.match(macAuthSource, /scan the QR code to connect the exact account/);
+  assert.match(macAuthSource, /QR pairing is safest when Hide My Email/);
   assert.match(extensionSyncSource, /static func signInWithApple/);
   assert.match(extensionSyncSource, /grant_type", value: "id_token"/);
 });
 
 test("native account deletion has no reusable development-account bypass", () => {
+  const deletionHelper = readFileSync(
+    resolve(process.cwd(), "lib/account-deletion.ts"),
+    "utf8",
+  );
+  const authSource = readFileSync(resolve(process.cwd(), "lib/auth.ts"), "utf8");
+  const uploadRoute = readFileSync(
+    resolve(process.cwd(), "app/api/mobile/boards/[id]/uploads/route.ts"),
+    "utf8",
+  );
+
   assert.match(appModelSource, /func deleteAccount/);
+  assert.match(appModelSource, /HomeboardShareDiagnosticStore\.clear\(\)/);
+  assert.match(appModelSource, /HomeboardShareBootDiagnosticStore\.clear\(\)/);
   assert.match(workspaceSource, /"Delete account permanently"/);
   assert.match(accountRouteSource, /supabaseAdmin\.auth\.admin\.deleteUser/);
+  assert.match(accountRouteSource, /deleteAccountListingImages/);
+  assert.match(accountRouteSource, /deleteAccountApplicationData/);
+  assert.match(accountRouteSource, /homeboard_deletion_pending/);
+  assert.match(authSource, /homeboard_deletion_pending === true/);
+  assert.match(deletionHelper, /chatMessage\.deleteMany/);
+  assert.match(deletionHelper, /analyticsEvent\.deleteMany/);
+  assert.match(deletionHelper, /roommateProfile\.deleteMany/);
+  assert.match(deletionHelper, /boardListings: \{ none: \{\} \}/);
+  assert.match(deletionHelper, /LISTING_IMAGE_BUCKET/);
+  assert.match(uploadRoute, /`\$\{user\.id\}\/\$\{id\}\//);
   assert.doesNotMatch(appModelSource, /isDevelopmentAccount|wipeDevelopmentAccount|demoaccount/);
   assert.doesNotMatch(workspaceSource, /Wipe account|demoaccount/);
   assert.doesNotMatch(accountRouteSource, /mode === "wipe"|demoaccount|wiped: true/);
+});
+
+test("relaunch recognizes the same authenticated account without clearing queued listings", () => {
+  assert.match(appModelSource, /var authenticatedAuthUserID: String\?/);
+  assert.match(appModelSource, /authenticatedAuthUserID: authSession\?\.userId/);
+  assert.match(appModelSource, /restoredAuthUserID != session\.userId/);
+  assert.match(appModelSource, /board\.members\.contains\(where: \{ \$0\.userId == appUserID \}\)/);
+  assert.doesNotMatch(appModelSource, /restoredAccountID != session\.userId/);
 });
 
 test("entry uses solid fixed cards that track reversible vertical swipes", () => {
@@ -336,8 +413,10 @@ test("onboarding skips arbitrary group size and captures routable commute access
   assert.match(authViewSource, /completer\.region = MKCoordinateRegion/);
   assert.match(authViewSource, /latitudeDelta: 1\.2, longitudeDelta: 1\.2/);
   assert.match(authViewSource, /resolveRegionIfNeeded\(for: pendingCity\)/);
-  assert.match(authViewSource, /Start typing an address or place/);
-  assert.match(authViewSource, /Suggestions from Apple Maps/);
+  assert.match(authViewSource, /Midtown Manhattan or 350 5th Ave/);
+  assert.match(authViewSource, /For privacy, you can enter only your office neighborhood/);
+  assert.match(authViewSource, /An exact address is never required/);
+  assert.match(authViewSource, /Your office neighborhood is enough if a precise address feels unsafe/);
   assert.match(authViewSource, /Car or consistent ride/);
   assert.match(authViewSource, /No car, transit first/);
   assert.match(authViewSource, /Sometimes \/ either/);
@@ -348,7 +427,7 @@ test("onboarding skips arbitrary group size and captures routable commute access
   );
 });
 
-test("onboarding keeps only core setup steps and teaches the first listing share", () => {
+test("onboarding keeps only core setup steps and teaches the first listing save", () => {
   assert.match(
     authViewSource,
     /var questions: \[OnboardingQuestion\] = \[[\s\S]*\.city,[\s\S]*\.moveIn,[\s\S]*\.budget,[\s\S]*\.commuteTarget,[\s\S]*\.priorities,[\s\S]*\.review/,
@@ -370,22 +449,34 @@ test("onboarding keeps only core setup steps and teaches the first listing share
     /Finding a place with friends doesn’t have to end your friendship/,
   );
   assert.match(appModelSource, /homeboard\.guide\.first-listing\.pending/);
+  assert.match(workspaceSource, /homeboard\.guide\.safari-extension-v1\.dismissed/);
   assert.match(workspaceSource, /SharedListingShareWorkflowGuide/);
-  assert.match(workspaceSource, /Share a listing to Homeboard/);
-  assert.match(workspaceSource, /Zillow, StreetEasy, Apartments\.com, Realtor/);
-  assert.match(workspaceSource, /Tap Share, then tap Homeboard/);
-  assert.match(workspaceSource, /square\.and\.arrow\.up/);
+  assert.match(workspaceSource, /Save from Safari/);
+  assert.match(workspaceSource, /Enable Safari capture once/);
+  assert.match(workspaceSource, /Enable in Safari/);
+  assert.match(workspaceSource, /SFSafariExtensionManager\.stateOfExtension/);
+  assert.match(workspaceSource, /SFSafariSettings\.openExtensionsSettings/);
+  assert.match(workspaceSource, /puzzlepiece\.extension/);
   assert.match(workspaceSource, /CFBundleIcons/);
-  assert.match(workspaceSource, /If Homeboard is off-screen, swipe the app row left or tap More/);
+  assert.match(workspaceSource, /Swipe left to the next unit/);
+  assert.match(workspaceSource, /Edit details/);
+  assert.match(workspaceSource, /Scroll to tuck away · tap the tab to reopen/);
+  const safariGuide = workspaceSource.slice(
+    workspaceSource.indexOf("private struct SharedSafariSaveGuideSheet"),
+    workspaceSource.indexOf("private struct SharedSettingsSheet"),
+  );
+  assert.doesNotMatch(safariGuide, /ScrollView/);
   assert.doesNotMatch(workspaceSource, /label: "AirDrop"|label: "Messages"|label: "Mail"/);
-  assert.match(workspaceSource, /Review what Homeboard found/);
-  assert.match(workspaceSource, /The \+ button is only a manual backup/);
+  assert.match(workspaceSource, /Keep Website Access set to Allow/);
+  assert.match(workspaceSource, /Open a listing; its pill appears/);
+  assert.match(workspaceSource, /No pill\? Use Page Menu → Save to Homeboard/);
+  assert.doesNotMatch(workspaceSource, /Share and choose Homeboard/);
 });
 
 test("the search brief can change the shared move-in time", () => {
-  assert.match(workspaceSource, /@State private var moveInTime = ""/);
-  assert.match(workspaceSource, /Shared move-in time/);
-  assert.match(workspaceSource, /Move-in date or timeframe/);
-  assert.match(workspaceSource, /appModel\.profile\.moveInDate = nextMoveInTime/);
-  assert.match(workspaceSource, /await appModel\.saveBoardBrief\(\)/);
+  assert.match(workspaceSource, /OnboardingView\(\s*purpose: \.editSearchBrief/);
+  assert.match(authViewSource, /case \.moveIn:/);
+  assert.match(authViewSource, /appModel\.profile\.moveInDate = option/);
+  assert.match(appModelSource, /func saveSearchBriefEdits\(\) async -> Bool/);
+  assert.match(appModelSource, /await saveBoardBrief\(\)/);
 });

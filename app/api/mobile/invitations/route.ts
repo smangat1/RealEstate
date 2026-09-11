@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { createBoardInvitation, revokeBoardInvitation } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { sendOperationalAlert } from "@/lib/monitoring";
@@ -21,6 +22,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid invite payload." }, { status: 400 });
     }
 
+    assertThrottle({
+      scope: "mobile-board-invite",
+      key: `${user.id}:${parsed.data.boardId}`,
+      limit: 10,
+      windowMs: 10 * 60 * 1_000,
+      message: "Too many invite links were created recently. Please wait before trying again.",
+    });
+
     const invitation = await createBoardInvitation(parsed.data.boardId, user.id);
 
     return NextResponse.json({
@@ -30,7 +39,16 @@ export async function POST(request: Request) {
   } catch (error) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "create_invitation", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to create invitation.";
-    return NextResponse.json({ error: message }, { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 });
+    return NextResponse.json(
+      {
+        error: message === "MOBILE_AUTH_REQUIRED"
+          ? "Unauthorized"
+          : isThrottleError(error)
+            ? message
+            : "Unable to create invitation.",
+      },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : isThrottleError(error) ? 429 : 500 },
+    );
   }
 }
 
@@ -45,6 +63,15 @@ export async function DELETE(request: Request) {
     await sendOperationalAlert(error, { area: "mobile_api", operation: "revoke_invitation", requestId: request.headers.get("x-homeboard-request-id") });
     const message = error instanceof Error ? error.message : "Unable to revoke invitation.";
     const status = message === "MOBILE_AUTH_REQUIRED" ? 401 : message.includes("Only the workspace owner") ? 403 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json(
+      {
+        error: status === 401
+          ? "Unauthorized"
+          : status === 403
+            ? "Only the workspace owner can revoke invitations."
+            : "Unable to revoke invitation.",
+      },
+      { status },
+    );
   }
 }

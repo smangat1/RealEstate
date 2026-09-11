@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 
 import { getMarketingSlide } from "@/lib/marketing-slides";
@@ -57,7 +58,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <a className={styles.scrollPrompt} href="/?slide=problem#problem" aria-label="Continue to the next page">↓</a>
+        <Link className={styles.scrollPrompt} href="/?slide=problem#problem" aria-label="Continue to the next page">↓</Link>
       </section>
 
       <section className={`${styles.statement} ${styles.mapsStatement}`} id="problem" data-page-item aria-labelledby="problem-heading">
