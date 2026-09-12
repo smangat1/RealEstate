@@ -87,3 +87,25 @@ test("generateBrokerPitch creates professional, tailored group outreach text", (
   assert.match(pitch, /tour this week/);
   assert.match(pitch, /Sam and group/);
 });
+
+test("scout cron scan route file exists and exports a GET handler", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+
+  // Route file checks
+  const routePath = path.join(__dirname, "../app/api/cron/scout-scan/route.ts");
+  assert.ok(fs.existsSync(routePath), "cron route file should exist");
+  const src = fs.readFileSync(routePath, "utf8");
+  assert.match(src, /export async function GET/, "should export a GET handler");
+  assert.match(src, /CRON_SECRET/, "should check CRON_SECRET for auth");
+  assert.match(src, /runBoardScoutScan/, "should call runBoardScoutScan for each board");
+  assert.match(src, /boardSubscription/, "should query for active subscriptions");
+
+  // vercel.json schedule checks
+  const vercelPath = path.join(__dirname, "../vercel.json");
+  assert.ok(fs.existsSync(vercelPath), "vercel.json should exist");
+  const vercelJson = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
+  const cronEntry = vercelJson.crons?.find((c: any) => c.path === "/api/cron/scout-scan");
+  assert.ok(cronEntry, "vercel.json should have a cron entry for /api/cron/scout-scan");
+  assert.equal(cronEntry.schedule, "0 9,21 * * *", "should run twice a day at 9am and 9pm UTC");
+});

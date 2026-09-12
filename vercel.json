@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/scout-scan",
+      "schedule": "0 9,21 * * *"
+    }
+  ]
+}
