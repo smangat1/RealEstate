@@ -41,6 +41,7 @@ export function calculateEqualSplit(
 }
 
 export type PriceDropAlert = {
+  direction: "drop";
   listingId: string;
   address: string;
   oldPrice: number;
@@ -49,26 +50,72 @@ export type PriceDropAlert = {
   percentDrop: number;
 };
 
+export type PriceIncreaseAlert = {
+  direction: "increase";
+  listingId: string;
+  address: string;
+  oldPrice: number;
+  newPrice: number;
+  increaseAmount: number;
+  percentIncrease: number;
+};
+
+export type PriceChangeAlert = PriceDropAlert | PriceIncreaseAlert;
+
+const MIN_CHANGE_PCT = 1; // ignore noise below 1%
+
 /**
- * Compares two price points and returns a PriceDropAlert when a real drop is detected.
+ * Detects any meaningful price change (drop or increase) between two observations.
+ * Returns null if prices are equal, invalid, or the change is below the noise threshold.
+ */
+export function detectPriceChange(
+  previousPrice: number,
+  currentPrice: number,
+): PriceChangeAlert | null {
+  if (previousPrice <= 0 || currentPrice <= 0 || previousPrice === currentPrice) {
+    return null;
+  }
+  const diff = currentPrice - previousPrice;
+  const pct = Math.round((Math.abs(diff) / previousPrice) * 100);
+  if (pct < MIN_CHANGE_PCT) return null;
+
+  if (diff < 0) {
+    // Price went down
+    const dropAmount = previousPrice - currentPrice;
+    return {
+      direction: "drop",
+      listingId: "",
+      address: "",
+      oldPrice: previousPrice,
+      newPrice: currentPrice,
+      dropAmount,
+      percentDrop: pct,
+    };
+  } else {
+    // Price went up
+    return {
+      direction: "increase",
+      listingId: "",
+      address: "",
+      oldPrice: previousPrice,
+      newPrice: currentPrice,
+      increaseAmount: diff,
+      percentIncrease: pct,
+    };
+  }
+}
+
+/**
+ * @deprecated Use detectPriceChange() which handles both directions.
+ * Kept for backward compatibility with existing tests.
  */
 export function detectPriceDrop(
   previousPrice: number,
   currentPrice: number,
 ): PriceDropAlert | null {
-  if (previousPrice <= 0 || currentPrice <= 0 || currentPrice >= previousPrice) {
-    return null;
-  }
-  const dropAmount = previousPrice - currentPrice;
-  const percentDrop = Math.round((dropAmount / previousPrice) * 100);
-  return {
-    listingId: "",
-    address: "",
-    oldPrice: previousPrice,
-    newPrice: currentPrice,
-    dropAmount,
-    percentDrop,
-  };
+  const change = detectPriceChange(previousPrice, currentPrice);
+  if (!change || change.direction !== "drop") return null;
+  return change;
 }
 
 /**

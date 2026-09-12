@@ -2,15 +2,17 @@ import { prisma } from "@/lib/prisma";
 import { trackEvent } from "@/lib/analytics";
 import type { BrokerOutreachRecordType, ScoutRadarLeadRecord } from "@/lib/types";
 import {
+  detectPriceChange,
   detectPriceDrop,
   generateBrokerPitch,
 } from "@/lib/scout-utils";
 
 export { detectPriceDrop, generateBrokerPitch };
-export type { PriceDropAlert } from "@/lib/scout-utils";
+export type { PriceDropAlert, PriceIncreaseAlert, PriceChangeAlert } from "@/lib/scout-utils";
 
 export async function runBoardScoutScan(boardId: string): Promise<{
   priceDropsDetected: number;
+  priceIncreasesDetected: number;
   newLeadsDiscovered: number;
 }> {
   const board = await (prisma as any).searchBoard.findUnique({
@@ -34,37 +36,81 @@ export async function runBoardScoutScan(boardId: string): Promise<{
   if (!board) return { priceDropsDetected: 0, newLeadsDiscovered: 0 };
 
   let priceDropsDetected = 0;
+  let priceIncreasesDetected = 0;
 
-  // 1. Check for price drops on active board listings
+  // 1. Check for price changes (drops AND increases) on active board listings
   for (const boardListing of board.boardListings) {
     const listing = boardListing.listing;
     const history = listing.priceHistory ?? [];
-    if (history.length >= 2 && listing.price) {
-      const latest = history[0].price;
-      const previous = history[1].price;
-      const drop = detectPriceDrop(previous, latest);
-      if (drop) {
-        priceDropsDetected++;
-        const dropAmountFormatted = `$${drop.dropAmount.toLocaleString()}`;
-        const newPriceFormatted = `$${drop.newPrice.toLocaleString()}`;
+    if (history.length < 2 || !listing.price) continue;
 
-        // Post high-urgency card into board chat
-        await (prisma as any).chatMessage.create({
-          data: {
-            boardId,
-            role: "assistant",
-            content: `📉 Price Drop Alert: ${listing.address ?? "Saved listing"} dropped by ${dropAmountFormatted} (down to ${newPriceFormatted}/mo, -${drop.percentDrop}%)! Review details or draft an outreach message.`,
-          },
-        });
+    const latest = history[0].price;
+    const previous = history[1].price;
+    const change = detectPriceChange(previous, latest);
+    if (!change) continue;
 
-        await trackEvent("scout_price_drop_detected", {
+    const address = listing.address ?? "Saved listing";
+
+    if (change.direction === "drop") {
+      priceDropsDetected++;
+      const dropFmt = `$${change.dropAmount.toLocaleString()}`;
+      const newFmt = `$${change.newPrice.toLocaleString()}`;
+
+      await (prisma as any).chatMessage.create({
+        data: {
           boardId,
-          listingId: listing.id,
-          oldPrice: drop.oldPrice,
-          newPrice: drop.newPrice,
-          dropAmount: drop.dropAmount,
-        });
-      }
+          role: "assistant",
+          content: `📉 Price Drop: ${address} dropped by ${dropFmt} → now ${newFmt}/mo (-${change.percentDrop}%). Good time to reach out.`,
+        },
+      });
+
+      // Ensure listing.price is synced so group analysis recalculates scores immediately
+      await (prisma as any).listing.update({
+        where: { id: listing.id },
+        data: { price: change.newPrice },
+      }).catch(() => null);
+
+      await trackEvent("scout_price_drop_detected", {
+        boardId,
+        listingId: listing.id,
+        oldPrice: change.oldPrice,
+        newPrice: change.newPrice,
+        dropAmount: change.dropAmount,
+      });
+    } else {
+      // direction === "increase"
+      priceIncreasesDetected++;
+      const riseFmt = `$${change.increaseAmount.toLocaleString()}`;
+      const newFmt = `$${change.newPrice.toLocaleString()}`;
+
+      // Alert the group — their votes may now be based on a stale price
+      await (prisma as any).chatMessage.create({
+        data: {
+          boardId,
+          role: "assistant",
+          content: `⚠️ Price Increase: ${address} went up by ${riseFmt} → now ${newFmt}/mo (+${change.percentIncrease}%). Group votes were cast at the old price — worth a quick check.`,
+        },
+      });
+
+      // Ensure listing.price is synced so group analysis recalculates scores immediately
+      await (prisma as any).listing.update({
+        where: { id: listing.id },
+        data: { price: change.newPrice },
+      }).catch(() => null);
+
+      // Flag the listing so the UI can surface a "price changed" badge
+      await (prisma as any).boardListing.update({
+        where: { id: boardListing.id },
+        data: { workflowStatus: "price_changed" },
+      }).catch(() => null); // graceful if workflowStatus enum doesn't include it yet
+
+      await trackEvent("scout_price_increase_detected", {
+        boardId,
+        listingId: listing.id,
+        oldPrice: change.oldPrice,
+        newPrice: change.newPrice,
+        increaseAmount: change.increaseAmount,
+      });
     }
   }
 
@@ -84,7 +130,7 @@ export async function runBoardScoutScan(boardId: string): Promise<{
   // Just replace this comment block with real live-inventory queries.
   const newLeadsDiscovered = 0;
 
-  return { priceDropsDetected, newLeadsDiscovered };
+  return { priceDropsDetected, priceIncreasesDetected, newLeadsDiscovered };
 }
 
 export async function getScoutRadarLeads(boardId: string): Promise<ScoutRadarLeadRecord[]> {

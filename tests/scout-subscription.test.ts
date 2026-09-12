@@ -4,6 +4,7 @@ import {
   SCOUT_WEEKLY_AMOUNT_CENTS,
   calculateEqualSplit,
   detectPriceDrop,
+  detectPriceChange,
   generateBrokerPitch,
 } from "../lib/scout-utils";
 
@@ -48,24 +49,52 @@ test("calculateEqualSplit divides $4.99 cleanly among roommates with remainder a
   );
 });
 
-test("detectPriceDrop correctly identifies price cuts and calculates percentage", () => {
-  // Price drop from $3,400 to $3,200
+test("detectPriceChange identifies price drops and increases, ignores noise", () => {
+  // Drop
+  const drop = detectPriceChange(3400, 3200);
+  assert.ok(drop !== null);
+  assert.equal(drop!.direction, "drop");
+  assert.equal(drop!.oldPrice, 3400);
+  assert.equal(drop!.newPrice, 3200);
+  if (drop!.direction === "drop") {
+    assert.equal(drop!.dropAmount, 200);
+    assert.equal(drop!.percentDrop, 6);
+  }
+
+  // Increase
+  const rise = detectPriceChange(3000, 3300);
+  assert.ok(rise !== null);
+  assert.equal(rise!.direction, "increase");
+  assert.equal(rise!.oldPrice, 3000);
+  assert.equal(rise!.newPrice, 3300);
+  if (rise!.direction === "increase") {
+    assert.equal(rise!.increaseAmount, 300);
+    assert.equal(rise!.percentIncrease, 10);
+  }
+
+  // Noise below 1% — should be ignored
+  assert.equal(detectPriceChange(3000, 3005), null);  // 0.17% change
+
+  // No change
+  assert.equal(detectPriceChange(3000, 3000), null);
+
+  // Invalid inputs
+  assert.equal(detectPriceChange(0, 3200), null);
+  assert.equal(detectPriceChange(3200, 0), null);
+});
+
+test("detectPriceDrop backward-compat: returns null on increases, works on drops", () => {
+  // Still works for drops
   const drop = detectPriceDrop(3400, 3200);
   assert.ok(drop !== null);
-  assert.equal(drop.oldPrice, 3400);
-  assert.equal(drop.newPrice, 3200);
-  assert.equal(drop.dropAmount, 200);
-  assert.equal(drop.percentDrop, 6);
+  assert.equal(drop!.direction, "drop");
+  assert.equal(drop!.dropAmount, 200);
 
-  // No drop (same price)
-  assert.equal(detectPriceDrop(3000, 3000), null);
-
-  // Price increase
+  // Returns null for increases (backward compat)
   assert.equal(detectPriceDrop(3000, 3200), null);
 
-  // Invalid numbers
-  assert.equal(detectPriceDrop(0, 3200), null);
-  assert.equal(detectPriceDrop(3200, 0), null);
+  // Returns null for same price
+  assert.equal(detectPriceDrop(3000, 3000), null);
 });
 
 test("generateBrokerPitch creates professional, tailored group outreach text", () => {

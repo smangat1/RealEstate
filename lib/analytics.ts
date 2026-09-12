@@ -34,6 +34,7 @@ export type AnalyticsEventName =
   | "scout_subscription_activated"
   | "scout_balance_covered"
   | "scout_price_drop_detected"
+  | "scout_price_increase_detected"
   | "scout_radar_lead_promoted"
   | "scout_radar_lead_dismissed"
   | "broker_outreach_recorded";
