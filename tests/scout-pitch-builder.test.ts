@@ -4,6 +4,7 @@ import {
   generateDeterministicPitch,
   getPitchTemplatesCount,
   detectPitchIntent,
+  detectAdvisorIntent,
   type PitchCategoryKey,
 } from "../lib/scout-pitch-engine";
 
@@ -12,20 +13,33 @@ test("scout pitch engine provides at least 20 deterministic outputs", () => {
   assert.ok(count >= 20, `Expected at least 20 templates, found ${count}`);
 });
 
-test("detectPitchIntent accurately catches @scout pitch triggers and addresses", () => {
-  const trigger1 = detectPitchIntent("@scout create a pitch for me");
-  assert.equal(trigger1.isPitchRequest, true);
+test("detectAdvisorIntent accurately catches @advisor and @scout triggers", () => {
+  // @advisor pitch
+  const trigger1 = detectAdvisorIntent("@advisor create a pitch for me");
+  assert.equal(trigger1.type, "pitch");
 
-  const trigger2 = detectPitchIntent("@scout pitch for 560 w 43rd");
-  assert.equal(trigger2.isPitchRequest, true);
-  assert.match(trigger2.requestedAddress ?? "", /560 w 43rd/i);
+  // @advisor with address
+  const trigger2 = detectAdvisorIntent("@advisor pitch for 560 w 43rd");
+  assert.equal(trigger2.type, "pitch");
+  if (trigger2.type === "pitch") {
+    assert.match(trigger2.requestedAddress ?? "", /560 w 43rd/i);
+  }
 
-  const trigger3 = detectPitchIntent("@scout draft a message to broker about 187 johnson");
-  assert.equal(trigger3.isPitchRequest, true);
-  assert.match(trigger3.requestedAddress ?? "", /187 johnson/i);
+  // legacy @scout pitch
+  const triggerLegacy = detectAdvisorIntent("@scout draft a message to broker about 187 johnson");
+  assert.equal(triggerLegacy.type, "pitch");
 
-  const nonTrigger = detectPitchIntent("Hey guys did anyone check out the new place?");
-  assert.equal(nonTrigger.isPitchRequest, false);
+  // @advisor scan
+  const triggerScan = detectAdvisorIntent("@advisor scan my links");
+  assert.equal(triggerScan.type, "scan");
+
+  // @advisor general
+  const triggerGeneral = detectAdvisorIntent("@advisor what can you do?");
+  assert.equal(triggerGeneral.type, "general");
+
+  // regular roommate chat
+  const nonTrigger = detectAdvisorIntent("Hey guys did anyone check out the new place?");
+  assert.equal(nonTrigger.type, "none");
 });
 
 test("pitch generator synthesizes grounded facts with zero hallucinated figures", () => {

@@ -487,7 +487,11 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     () => buildNextAction(data, shortlistItems.length, membersNeedingSetup),
     [data, shortlistItems.length, membersNeedingSetup],
   );
-  const recentMessages = data.messages.slice(-4);
+  const [localMessages, setLocalMessages] = useState(data.messages);
+  useEffect(() => {
+    setLocalMessages(data.messages);
+  }, [data.messages]);
+  const recentMessages = localMessages.slice(-12);
   const readinessLabel =
     membersNeedingSetup.length === 0
       ? "Group-ready"
@@ -598,22 +602,46 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     window.localStorage.setItem("rental-advisor-sidebar-collapsed", String(next));
   }
 
-  async function submitChat() {
-    if (!chatInput.trim()) return;
+  async function submitChat(overrideText?: string) {
+    const textToSend = (overrideText ?? chatInput).trim();
+    if (!textToSend) return;
+
+    // Immediately clear input field so there is zero latency
+    setChatInput("");
+
+    // Optimistically append user message to the active chat thread
+    const tempId = `optimistic-${Date.now()}`;
+    const optimisticMessage = {
+      id: tempId,
+      boardId: data.board.id,
+      role: "user" as const,
+      authorUserId: currentUser?.id,
+      authorName: currentUser?.displayName || "You",
+      content: textToSend,
+      createdAt: new Date().toISOString(),
+    };
+
+    setLocalMessages((prev) => [...prev, optimisticMessage as any]);
+
+    // Scroll to bottom smoothly
+    setTimeout(() => {
+      if (chatThreadRef.current) {
+        chatThreadRef.current.scrollTop = chatThreadRef.current.scrollHeight;
+      }
+    }, 40);
 
     const formData = new FormData();
     formData.set("boardId", data.board.id);
-    formData.set("content", chatInput);
+    formData.set("content", textToSend);
 
     startTransition(async () => {
       await sendChatAction(formData);
-      setChatInput("");
       router.refresh();
     });
   }
 
   function handleChatKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if ((event.key === "Enter" || event.keyCode === 13) && !event.shiftKey) {
       event.preventDefault();
       void submitChat();
       return;
@@ -1333,23 +1361,112 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                   ))}
                 </div>
                 <div className="chat-input-shell board-home-chat-shell">
+                  {chatInput.toLowerCase().includes("@advisor") || chatInput.toLowerCase().includes("@scout") ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "6px 12px",
+                        borderRadius: "10px",
+                        background: "rgba(99, 179, 237, 0.12)",
+                        border: "1px solid rgba(99, 179, 237, 0.35)",
+                        marginBottom: "8px",
+                        fontSize: "0.78rem",
+                        flexWrap: "wrap",
+                        gap: "6px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#63b3ed", fontWeight: 600 }}>
+                        <span>🛰️</span>
+                        <span>Addressing Advisor</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChatInput("@advisor create a pitch for me");
+                            chatInputRef.current?.focus();
+                          }}
+                          style={{
+                            background: "rgba(255,255,255,0.08)",
+                            border: "1px solid rgba(255,255,255,0.18)",
+                            color: "#fff",
+                            fontSize: "0.72rem",
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontWeight: 500,
+                          }}
+                        >
+                          ⚡ Draft Pitch
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChatInput("@advisor scan my links");
+                            chatInputRef.current?.focus();
+                          }}
+                          style={{
+                            background: "rgba(255,255,255,0.08)",
+                            border: "1px solid rgba(255,255,255,0.18)",
+                            color: "#fff",
+                            fontSize: "0.72rem",
+                            padding: "3px 8px",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontWeight: 500,
+                          }}
+                        >
+                          ⚡ Scan Links
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <textarea
                     ref={chatInputRef}
                     value={chatInput}
                     onChange={(event) => setChatInput(event.target.value)}
                     onKeyDown={handleChatKeyDown}
                     rows={3}
-                    placeholder="Update the brief, add a concern, ask for more listings, or tell the group what changed."
+                    placeholder="Message the board, or type @advisor to draft broker pitches and scan links..."
                   />
                   <div className="chat-input-footer">
-                    <div className="chat-hints">
+                    <div className="chat-hints" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!chatInput.includes("@advisor")) {
+                            setChatInput(chatInput ? `@advisor ${chatInput}` : "@advisor ");
+                          }
+                          chatInputRef.current?.focus();
+                        }}
+                        style={{
+                          background: chatInput.toLowerCase().includes("@advisor") ? "rgba(99, 179, 237, 0.25)" : "rgba(255,255,255,0.06)",
+                          border: chatInput.toLowerCase().includes("@advisor") ? "1px solid rgba(99, 179, 237, 0.5)" : "1px solid rgba(255,255,255,0.15)",
+                          color: chatInput.toLowerCase().includes("@advisor") ? "#63b3ed" : "rgba(255,255,255,0.85)",
+                          fontSize: "0.74rem",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <span>🛰️</span>
+                        <span>@Advisor</span>
+                      </button>
+
                       <span>
                         {data.missingFields.length > 0
                           ? `Profile ${data.completion.percentComplete}% complete · still collecting: ${data.missingFields.join(", ")}`
                           : "The shared brief is in good shape. Use chat for changes, clarifications, and reactions as the search evolves."}
                       </span>
                     </div>
-                    <button type="button" onClick={submitChat} disabled={isPending}>
+                    <button type="button" onClick={() => submitChat()} disabled={isPending}>
                       {isPending ? "Updating..." : "Send"}
                     </button>
                   </div>
@@ -1625,16 +1742,16 @@ function ScoutBanner({
       >
         <div>
           <strong style={{ fontSize: "0.92rem" }}>
-            {isActive ? "🛰️ Scout Active" : isExpired ? "⏰ Scout Paused" : "🛰️ Homeboard Scout"}
+            {isActive ? "🛰️ Advisor Active" : isExpired ? "⏰ Advisor Paused" : "🛰️ Homeboard Advisor"}
           </strong>
           <p style={{ margin: "3px 0 0 0", fontSize: "0.78rem", opacity: 0.75 }}>
             {isActive
-              ? `Autonomous price monitoring + lead radar live · ${subscription?.daysRemaining ?? 0}d remaining`
+              ? `Autonomous price monitoring + broker pitch synthesis live · ${subscription?.daysRemaining ?? 0}d remaining`
               : isExpired
-              ? "Scout paused — renew for the next 7 days to resume monitoring."
+              ? "Advisor paused — renew for the next 7 days to resume autonomous monitoring."
               : isPending
               ? `Split in progress · $${((subscription?.fundedCents ?? 0) / 100).toFixed(2)} of $${((subscription?.targetCents ?? 499) / 100).toFixed(2)} funded (${fundedPct}%)`
-              : "Price drops, concession alerts, and daily lead radar — split $4.99/week across the group."}
+              : "Autonomous price monitoring, link scanning, and broker pitch synthesis — split $4.99/week across the group."}
           </p>
           {isPending && subscription && (
             <div
@@ -1658,20 +1775,13 @@ function ScoutBanner({
             </div>
           )}
           {scanFeedback && (
-            <p
-              style={{
-                marginTop: "8px",
-                fontSize: "0.76rem",
-                color: scanFeedback.includes("fail") || scanFeedback.includes("Error") ? "#ff7a7e" : "#63b3ed",
-                fontWeight: 500,
-              }}
-            >
+            <p style={{ margin: "6px 0 0 0", fontSize: "0.76rem", color: "#68d391", fontWeight: 600 }}>
               {scanFeedback}
             </p>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {isActive ? (
             <button
               type="button"
@@ -1679,17 +1789,17 @@ function ScoutBanner({
               onClick={handleTriggerScan}
               disabled={isScanning}
               style={{
-                fontSize: "0.75rem",
-                padding: "5px 12px",
-                borderRadius: "99px",
-                cursor: isScanning ? "wait" : "pointer",
-                background: "rgba(99, 179, 237, 0.15)",
+                fontSize: "0.78rem",
+                padding: "6px 12px",
+                borderRadius: "8px",
+                cursor: isScanning ? "default" : "pointer",
+                border: "1px solid rgba(99, 179, 237, 0.5)",
+                background: isScanning ? "rgba(99, 179, 237, 0.2)" : "rgba(99, 179, 237, 0.1)",
                 color: "#63b3ed",
-                border: "1px solid rgba(99, 179, 237, 0.4)",
                 fontWeight: 600,
               }}
             >
-              {isScanning ? "Scanning…" : "⚡ Scan Now"}
+              {isScanning ? "Scanning links…" : "⚡ Scan Links Now"}
             </button>
           ) : (
             <span

@@ -673,35 +673,76 @@ export function getPitchTemplatesCount(): number {
   return Object.keys(TEMPLATE_VARIATIONS).length;
 }
 
+export type AdvisorIntent =
+  | { type: "pitch"; requestedAddress?: string }
+  | { type: "scan" }
+  | { type: "general" }
+  | { type: "none" };
+
 /**
- * Detects if a chat message is asking Scout for an outreach pitch.
+ * Detects if a chat message is addressing the Advisor (via @advisor or legacy @scout)
+ * and classifies the specific action requested.
  */
-export function detectPitchIntent(content: string): {
-  isPitchRequest: boolean;
-  requestedAddress?: string;
-} {
-  const clean = content.toLowerCase();
-  const mentionsScout = clean.includes("@scout") || clean.includes("scout");
+export function detectAdvisorIntent(content: string): AdvisorIntent {
+  const clean = content.toLowerCase().trim();
+  const mentionsAdvisor =
+    clean.includes("@advisor") ||
+    clean.includes("advisor") ||
+    clean.includes("@scout") ||
+    clean.includes("scout");
+
+  if (!mentionsAdvisor) {
+    return { type: "none" };
+  }
+
+  // 1. Pitch request
   const asksForPitch =
     clean.includes("pitch") ||
     clean.includes("outreach") ||
     clean.includes("draft a message") ||
     clean.includes("create a pitch") ||
+    clean.includes("write a pitch") ||
+    clean.includes("make a pitch") ||
     clean.includes("write an email") ||
     clean.includes("contact broker") ||
+    clean.includes("broker message") ||
     clean.includes("reach out");
 
-  if (!mentionsScout || !asksForPitch) {
-    return { isPitchRequest: false };
+  if (asksForPitch) {
+    // Check if an address or street name was mentioned
+    // e.g. "for 560 w 43rd" or "for johnson"
+    const forMatch = clean.match(/(?:for|about|on)\s+([^,?.!]+)/i);
+    const requestedAddress = forMatch ? forMatch[1].trim() : undefined;
+    return { type: "pitch", requestedAddress };
   }
 
-  // Check if an address or street name was mentioned
-  // e.g. "for 560 w 43rd" or "for johnson"
-  const forMatch = clean.match(/(?:for|about|on)\s+([^,?.!]+)/i);
-  const requestedAddress = forMatch ? forMatch[1].trim() : undefined;
+  // 2. Scan request
+  const asksForScan =
+    clean.includes("scan") ||
+    clean.includes("check price") ||
+    clean.includes("check link") ||
+    clean.includes("refresh link") ||
+    clean.includes("find drop") ||
+    clean.includes("check drop");
 
-  return {
-    isPitchRequest: true,
-    requestedAddress,
-  };
+  if (asksForScan) {
+    return { type: "scan" };
+  }
+
+  // 3. General address to Advisor
+  return { type: "general" };
+}
+
+/**
+ * Backward-compatible helper for pitch detection.
+ */
+export function detectPitchIntent(content: string): {
+  isPitchRequest: boolean;
+  requestedAddress?: string;
+} {
+  const intent = detectAdvisorIntent(content);
+  if (intent.type === "pitch") {
+    return { isPitchRequest: true, requestedAddress: intent.requestedAddress };
+  }
+  return { isPitchRequest: false };
 }

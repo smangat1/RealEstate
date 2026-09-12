@@ -57,8 +57,8 @@ import { matchDemoScenarioForProfile } from "@/lib/demo-scenarios";
 import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
-import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
-import { detectPitchIntent } from "@/lib/scout-pitch-engine";
+import { detectAdvisorIntent } from "@/lib/scout-pitch-engine";
+import { runBoardScoutScan } from "@/lib/scout-engine";
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
   listingSourceTrustWarning,
@@ -2076,74 +2076,122 @@ export async function sendChat(boardId: string, content: string, author: { userI
     },
   });
 
-  // Check if this is an explicit @scout pitch request
-  const pitchIntent = detectPitchIntent(content);
-  if (pitchIntent.isPitchRequest) {
-    const activeBoardListings = boardData.boardListings.filter((bl) => bl.userStatus !== "rejected");
-    let targetListing = activeBoardListings[0];
-    if (pitchIntent.requestedAddress) {
-      const needle = pitchIntent.requestedAddress.toLowerCase();
-      const match = activeBoardListings.find(
-        (bl) =>
-          (bl.listing.address && bl.listing.address.toLowerCase().includes(needle)) ||
-          (bl.listing.neighborhood && bl.listing.neighborhood.toLowerCase().includes(needle)),
-      );
-      if (match) targetListing = match;
-    }
+  // Check if this message is addressing the Advisor (@advisor or @scout)
+  const advisorIntent = detectAdvisorIntent(content);
+  if (advisorIntent.type !== "none") {
+    if (advisorIntent.type === "pitch") {
+      const activeBoardListings = boardData.boardListings.filter((bl) => bl.userStatus !== "rejected");
+      let targetListing = activeBoardListings[0];
+      if (advisorIntent.requestedAddress) {
+        const needle = advisorIntent.requestedAddress.toLowerCase();
+        const match = activeBoardListings.find(
+          (bl) =>
+            (bl.listing.address && bl.listing.address.toLowerCase().includes(needle)) ||
+            (bl.listing.neighborhood && bl.listing.neighborhood.toLowerCase().includes(needle)),
+        );
+        if (match) targetListing = match;
+      }
 
-    if (!targetListing) {
+      if (!targetListing) {
+        await prisma.chatMessage.create({
+          data: {
+            boardId,
+            role: "assistant",
+            authorName: "Advisor",
+            content: "🛰️ I would love to draft a broker pitch, but there are no active listings saved on this board yet. Import or save a listing link first, then ask `@advisor create a pitch for me`!",
+          },
+        });
+        await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
+        await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
+        return;
+      }
+
+      const l = targetListing.listing;
+      const history = (l as any).priceHistory ?? [];
+      const hadDrop = history.length >= 2 && history[0].price < history[1].price;
+      const dropAmt = hadDrop ? history[1].price - history[0].price : 0;
+      const pctDrop = hadDrop ? Math.round((dropAmt / history[1].price) * 100) : 0;
+
+      const payload = {
+        boardListingId: targetListing.id,
+        address: l.address,
+        unit: l.unit,
+        neighborhood: l.neighborhood,
+        price: l.price,
+        oldPrice: hadDrop ? history[1].price : l.price,
+        hasPriceDrop: hadDrop,
+        dropAmount: dropAmt,
+        percentDrop: pctDrop,
+        roommateCount: boardData.roommates.length,
+        roommateNames: boardData.roommates.map((r) => r.name),
+        senderName: author.authorName,
+        allListings: activeBoardListings.map((bl) => ({
+          id: bl.id,
+          address: bl.listing.address,
+          unit: bl.listing.unit,
+          price: bl.listing.price,
+          neighborhood: bl.listing.neighborhood,
+        })),
+      };
+
+      const advisorCard = `<!-- SCOUT_PITCH_BUILDER:${JSON.stringify(payload)} -->
+🛰️ **Advisor Broker Pitch Builder**
+I have prepped the pitch builder for **${l.address ?? "your saved listing"}${l.unit ? ` #${l.unit}` : ""}**${l.price ? ` ($${l.price.toLocaleString()}/mo)` : ""}.
+Select the checklist options below to synthesize your tailored outreach pitch.`;
+
       await prisma.chatMessage.create({
         data: {
           boardId,
           role: "assistant",
-          authorName: "Scout",
-          content: "🛰️ I would love to draft a broker pitch, but there are no active listings saved on this board yet. Import or save a listing link first, then ask `@scout create a pitch for me`!",
+          authorName: "Advisor",
+          content: advisorCard,
         },
       });
+
       await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
       await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
       return;
     }
 
-    const l = targetListing.listing;
-    const history = (l as any).priceHistory ?? [];
-    const hadDrop = history.length >= 2 && history[0].price < history[1].price;
-    const dropAmt = hadDrop ? history[1].price - history[0].price : 0;
-    const pctDrop = hadDrop ? Math.round((dropAmt / history[1].price) * 100) : 0;
+    if (advisorIntent.type === "scan") {
+      const scanRes = await runBoardScoutScan(boardId);
+      const scanMsg = `🛰️ **Advisor Link Scan Complete**
+Scanned active listing links on this board.
+${
+  scanRes.priceDropsDetected > 0
+    ? `📉 **Detected ${scanRes.priceDropsDetected} price drop(s)!** Recalculated roommate splits and posted details to chat.`
+    : scanRes.priceIncreasesDetected > 0
+      ? `⚠️ **Detected ${scanRes.priceIncreasesDetected} price increase(s).** Flagged listings for roommate review.`
+      : `✓ All saved listing prices are currently verified and up to date.`
+}`;
 
-    const payload = {
-      boardListingId: targetListing.id,
-      address: l.address,
-      unit: l.unit,
-      neighborhood: l.neighborhood,
-      price: l.price,
-      oldPrice: hadDrop ? history[1].price : l.price,
-      hasPriceDrop: hadDrop,
-      dropAmount: dropAmt,
-      percentDrop: pctDrop,
-      roommateCount: boardData.roommates.length,
-      roommateNames: boardData.roommates.map((r) => r.name),
-      senderName: author.authorName,
-      allListings: activeBoardListings.map((bl) => ({
-        id: bl.id,
-        address: bl.listing.address,
-        unit: bl.listing.unit,
-        price: bl.listing.price,
-        neighborhood: bl.listing.neighborhood,
-      })),
-    };
+      await prisma.chatMessage.create({
+        data: {
+          boardId,
+          role: "assistant",
+          authorName: "Advisor",
+          content: scanMsg,
+        },
+      });
 
-    const scoutCard = `<!-- SCOUT_PITCH_BUILDER:${JSON.stringify(payload)} -->
-🛰️ **Scout Broker Pitch Builder**
-I have prepped the pitch builder for **${l.address ?? "your saved listing"}${l.unit ? ` #${l.unit}` : ""}**${l.price ? ` ($${l.price.toLocaleString()}/mo)` : ""}.
-Select the checklist options below to synthesize your tailored outreach pitch.`;
+      await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
+      await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
+      return;
+    }
+
+    // General address to @advisor
+    const helpMsg = `🛰️ **Advisor Ready**
+I'm your autonomous rental search advisor. Here's what I can do for your board:
+• **Broker Outreach:** Say \`@advisor create a pitch for me\` to synthesize tailored, grounded broker emails.
+• **Price Monitoring:** Say \`@advisor scan my links\` to check saved listings for live price drops and status changes.
+• **Group Fit:** Ask questions like \`@advisor how is our budget fit?\` or tell me what to update in your search brief!`;
 
     await prisma.chatMessage.create({
       data: {
         boardId,
         role: "assistant",
-        authorName: "Scout",
-        content: scoutCard,
+        authorName: "Advisor",
+        content: helpMsg,
       },
     });
 
