@@ -58,6 +58,7 @@ import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
 import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
+import { detectPitchIntent } from "@/lib/scout-pitch-engine";
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
   listingSourceTrustWarning,
@@ -2074,6 +2075,82 @@ export async function sendChat(boardId: string, content: string, author: { userI
       content,
     },
   });
+
+  // Check if this is an explicit @scout pitch request
+  const pitchIntent = detectPitchIntent(content);
+  if (pitchIntent.isPitchRequest) {
+    const activeBoardListings = boardData.boardListings.filter((bl) => bl.userStatus !== "rejected");
+    let targetListing = activeBoardListings[0];
+    if (pitchIntent.requestedAddress) {
+      const needle = pitchIntent.requestedAddress.toLowerCase();
+      const match = activeBoardListings.find(
+        (bl) =>
+          (bl.listing.address && bl.listing.address.toLowerCase().includes(needle)) ||
+          (bl.listing.neighborhood && bl.listing.neighborhood.toLowerCase().includes(needle)),
+      );
+      if (match) targetListing = match;
+    }
+
+    if (!targetListing) {
+      await prisma.chatMessage.create({
+        data: {
+          boardId,
+          role: "assistant",
+          authorName: "Scout",
+          content: "🛰️ I would love to draft a broker pitch, but there are no active listings saved on this board yet. Import or save a listing link first, then ask `@scout create a pitch for me`!",
+        },
+      });
+      await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
+      await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
+      return;
+    }
+
+    const l = targetListing.listing;
+    const history = (l as any).priceHistory ?? [];
+    const hadDrop = history.length >= 2 && history[0].price < history[1].price;
+    const dropAmt = hadDrop ? history[1].price - history[0].price : 0;
+    const pctDrop = hadDrop ? Math.round((dropAmt / history[1].price) * 100) : 0;
+
+    const payload = {
+      boardListingId: targetListing.id,
+      address: l.address,
+      unit: l.unit,
+      neighborhood: l.neighborhood,
+      price: l.price,
+      oldPrice: hadDrop ? history[1].price : l.price,
+      hasPriceDrop: hadDrop,
+      dropAmount: dropAmt,
+      percentDrop: pctDrop,
+      roommateCount: boardData.roommates.length,
+      roommateNames: boardData.roommates.map((r) => r.name),
+      senderName: author.authorName,
+      allListings: activeBoardListings.map((bl) => ({
+        id: bl.id,
+        address: bl.listing.address,
+        unit: bl.listing.unit,
+        price: bl.listing.price,
+        neighborhood: bl.listing.neighborhood,
+      })),
+    };
+
+    const scoutCard = `<!-- SCOUT_PITCH_BUILDER:${JSON.stringify(payload)} -->
+🛰️ **Scout Broker Pitch Builder**
+I have prepped the pitch builder for **${l.address ?? "your saved listing"}${l.unit ? ` #${l.unit}` : ""}**${l.price ? ` ($${l.price.toLocaleString()}/mo)` : ""}.
+Select the checklist options below to synthesize your tailored outreach pitch.`;
+
+    await prisma.chatMessage.create({
+      data: {
+        boardId,
+        role: "assistant",
+        authorName: "Scout",
+        content: scoutCard,
+      },
+    });
+
+    await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
+    await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
+    return;
+  }
 
   const conversationHint = getConversationHint(boardData.messages);
   const recentMessages = [

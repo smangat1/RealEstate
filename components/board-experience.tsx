@@ -24,6 +24,11 @@ import type {
   BoardListingVoteRecord,
   BoardPageData,
 } from "@/lib/types";
+import {
+  generateDeterministicPitch,
+  type PitchCategoryKey,
+  type PitchTone,
+} from "@/lib/scout-pitch-engine";
 
 type BoardExperienceProps = {
   currentUser: AuthUserRecord | null;
@@ -1294,10 +1299,35 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 <div className="board-home-chat-preview" ref={chatThreadRef}>
                   {recentMessages.map((message) => (
                     <article key={message.id} className={`modern-message ${message.role}`}>
-                      {message.role === "assistant" ? <div className="avatar">A</div> : null}
-                      <div className="message-body">
-                        <span className="message-role">{message.role === "assistant" ? "Advisor" : message.authorName ?? "Board member"}</span>
-                        <p>{message.content}</p>
+                      {message.role === "assistant" ? (
+                        <div
+                          className="avatar"
+                          style={{
+                            background: message.authorName === "Scout" ? "rgba(99, 179, 237, 0.25)" : undefined,
+                            borderColor: message.authorName === "Scout" ? "rgba(99, 179, 237, 0.5)" : undefined,
+                          }}
+                        >
+                          {message.authorName === "Scout" ? "🛰️" : "A"}
+                        </div>
+                      ) : null}
+                      <div className="message-body" style={{ width: "100%" }}>
+                        <span className="message-role">
+                          {message.authorName ?? (message.role === "assistant" ? "Advisor" : "Board member")}
+                        </span>
+                        {message.content.includes("<!-- SCOUT_PITCH_BUILDER:") ? (
+                          <ScoutPitchBuilderCard
+                            content={message.content}
+                            senderName={currentUser?.displayName || "Samyan"}
+                            onPostToChat={async (pitchText) => {
+                              const fd = new FormData();
+                              fd.set("boardId", data.board.id);
+                              fd.set("content", pitchText);
+                              await sendChatAction(fd);
+                            }}
+                          />
+                        ) : (
+                          <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
+                        )}
                       </div>
                     </article>
                   ))}
@@ -1677,6 +1707,464 @@ function ScoutBanner({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ScoutPitchBuilderCard({
+  content,
+  senderName,
+  onPostToChat,
+}: {
+  content: string;
+  senderName: string;
+  onPostToChat: (pitchText: string) => Promise<void>;
+}) {
+  const match = content.match(/<!-- SCOUT_PITCH_BUILDER:([\s\S]*?) -->/);
+  const payload = useMemo(() => {
+    if (!match) return null;
+    try {
+      return JSON.parse(match[1]);
+    } catch {
+      return null;
+    }
+  }, [match]);
+
+  const allListings = payload?.allListings ?? [];
+  const [selectedListingId, setSelectedListingId] = useState<string>(payload?.boardListingId ?? "");
+  const currentListing = useMemo(() => {
+    return allListings.find((l: any) => l.id === selectedListingId) ?? payload;
+  }, [allListings, selectedListingId, payload]);
+
+  const hasDrop = Boolean(currentListing?.id === payload?.boardListingId ? payload?.hasPriceDrop : false);
+  const dropAmt = hasDrop ? payload?.dropAmount : 0;
+  const pctDrop = hasDrop ? payload?.percentDrop : 0;
+
+  const [categories, setCategories] = useState<PitchCategoryKey[]>(() => {
+    const list: PitchCategoryKey[] = ["financial_readiness", "tour_speed"];
+    if (payload?.hasPriceDrop) list.unshift("price_drop");
+    return list;
+  });
+  const [tone, setTone] = useState<PitchTone>("executive");
+
+  const [pitch, setPitch] = useState<ReturnType<typeof generateDeterministicPitch> | null>(() => {
+    if (!payload) return null;
+    return generateDeterministicPitch({
+      listingAddress: payload.address,
+      unit: payload.unit,
+      neighborhood: payload.neighborhood,
+      monthlyRent: payload.price,
+      oldPrice: payload.oldPrice,
+      priceDropAmount: payload.dropAmount,
+      percentDrop: payload.percentDrop,
+      roommateCount: payload.roommateCount ?? 1,
+      roommateNames: payload.roommateNames ?? [],
+      senderName,
+      categories: payload.hasPriceDrop
+        ? ["price_drop", "financial_readiness", "tour_speed"]
+        : ["financial_readiness", "tour_speed"],
+      tone: "executive",
+    });
+  });
+
+  const [editedBody, setEditedBody] = useState<string>(pitch?.body ?? "");
+  const [copied, setCopied] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState(false);
+
+  function handleRecompute(newCats = categories, newTone = tone, listing = currentListing) {
+    if (!listing) return;
+    const isTarget = listing.id === payload?.boardListingId;
+    const res = generateDeterministicPitch({
+      listingAddress: listing.address,
+      unit: listing.unit,
+      neighborhood: listing.neighborhood,
+      monthlyRent: listing.price,
+      oldPrice: isTarget ? payload?.oldPrice : listing.price,
+      priceDropAmount: isTarget ? payload?.dropAmount : 0,
+      percentDrop: isTarget ? payload?.percentDrop : 0,
+      roommateCount: payload?.roommateCount ?? 1,
+      roommateNames: payload?.roommateNames ?? [],
+      senderName,
+      categories: newCats,
+      tone: newTone,
+    });
+    setPitch(res);
+    setEditedBody(res.body);
+  }
+
+  function toggleCat(cat: PitchCategoryKey) {
+    const next = categories.includes(cat)
+      ? categories.filter((c) => c !== cat)
+      : [...categories, cat];
+    setCategories(next);
+    handleRecompute(next, tone, currentListing);
+  }
+
+  function toggleTone(newTone: PitchTone) {
+    setTone(newTone);
+    handleRecompute(categories, newTone, currentListing);
+  }
+
+  function handleCopy() {
+    if (!pitch) return;
+    const fullText = `Subject: ${pitch.subject}\n\n${editedBody}`;
+    navigator.clipboard.writeText(fullText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handlePost() {
+    if (!pitch || posting || posted) return;
+    setPosting(true);
+    try {
+      const fullText = `🤝 **Outreach Pitch for ${currentListing.address}${currentListing.unit ? ` #${currentListing.unit}` : ""}**\n*Subject:* ${pitch.subject}\n\n${editedBody}`;
+      await onPostToChat(fullText);
+      setPosted(true);
+    } catch {
+      // ignore
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  if (!payload) {
+    return <p>{content.replace(/<!--[\s\S]*?-->/g, "").trim()}</p>;
+  }
+
+  const mailtoUrl = pitch
+    ? `mailto:?subject=${encodeURIComponent(pitch.subject)}&body=${encodeURIComponent(editedBody)}`
+    : "#";
+
+  return (
+    <div
+      style={{
+        marginTop: "8px",
+        padding: "14px 16px",
+        borderRadius: "14px",
+        background: "rgba(99, 179, 237, 0.05)",
+        border: "1px solid rgba(99, 179, 237, 0.3)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+        <div>
+          <strong style={{ fontSize: "0.9rem", color: "#63b3ed", display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>🛰️</span> Scout Broker Pitch Builder
+          </strong>
+          <p style={{ margin: "2px 0 0 0", fontSize: "0.75rem", opacity: 0.75 }}>
+            Grounded synthesis — strictly verified board facts, zero made-up data.
+          </p>
+        </div>
+
+        {allListings.length > 1 && (
+          <select
+            value={selectedListingId}
+            onChange={(e) => {
+              setSelectedListingId(e.target.value);
+              const nextListing = allListings.find((l: any) => l.id === e.target.value);
+              handleRecompute(categories, tone, nextListing);
+            }}
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: "8px",
+              padding: "4px 8px",
+              fontSize: "0.75rem",
+              maxWidth: "200px",
+            }}
+          >
+            {allListings.map((l: any) => (
+              <option key={l.id} value={l.id} style={{ background: "#1c2420", color: "#fff" }}>
+                {l.address}{l.unit ? ` #${l.unit}` : ""}{l.price ? ` ($${l.price.toLocaleString()})` : ""}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Target listing pill */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "6px 10px",
+          borderRadius: "8px",
+          background: "rgba(255,255,255,0.04)",
+          marginBottom: "12px",
+          fontSize: "0.78rem",
+        }}
+      >
+        <span style={{ fontWeight: 600 }}>{currentListing.address}{currentListing.unit ? ` #${currentListing.unit}` : ""}</span>
+        <span style={{ opacity: 0.6 }}>·</span>
+        <span style={{ color: "#63b3ed", fontWeight: 600 }}>
+          {currentListing.price ? `$${currentListing.price.toLocaleString()}/mo` : "Rent unlisted"}
+        </span>
+        {hasDrop && (
+          <span
+            style={{
+              padding: "2px 6px",
+              borderRadius: "4px",
+              background: "rgba(72, 187, 120, 0.2)",
+              color: "#68d391",
+              fontSize: "0.7rem",
+              fontWeight: 700,
+            }}
+          >
+            📉 -${dropAmt.toLocaleString()}/mo (-{pctDrop}%)
+          </span>
+        )}
+      </div>
+
+      {/* Category Checklist */}
+      <div style={{ marginBottom: "12px" }}>
+        <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.6, fontWeight: 700, display: "block", marginBottom: "6px" }}>
+          What to highlight in this pitch:
+        </span>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {hasDrop && (
+            <button
+              type="button"
+              onClick={() => toggleCat("price_drop")}
+              style={{
+                fontSize: "0.74rem",
+                padding: "4px 10px",
+                borderRadius: "99px",
+                cursor: "pointer",
+                border: categories.includes("price_drop")
+                  ? "1px solid rgba(104, 211, 145, 0.6)"
+                  : "1px solid rgba(255,255,255,0.12)",
+                background: categories.includes("price_drop")
+                  ? "rgba(104, 211, 145, 0.15)"
+                  : "rgba(255,255,255,0.03)",
+                color: categories.includes("price_drop") ? "#68d391" : "rgba(255,255,255,0.6)",
+                fontWeight: categories.includes("price_drop") ? 600 : 400,
+              }}
+            >
+              {categories.includes("price_drop") ? "✓ " : "+ "}📉 Mention Price Drop (-${dropAmt})
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => toggleCat("financial_readiness")}
+            style={{
+              fontSize: "0.74rem",
+              padding: "4px 10px",
+              borderRadius: "99px",
+              cursor: "pointer",
+              border: categories.includes("financial_readiness")
+                ? "1px solid rgba(99, 179, 237, 0.6)"
+                : "1px solid rgba(255,255,255,0.12)",
+              background: categories.includes("financial_readiness")
+                ? "rgba(99, 179, 237, 0.15)"
+                : "rgba(255,255,255,0.03)",
+              color: categories.includes("financial_readiness") ? "#63b3ed" : "rgba(255,255,255,0.6)",
+              fontWeight: categories.includes("financial_readiness") ? 600 : 400,
+            }}
+          >
+            {categories.includes("financial_readiness") ? "✓ " : "+ "}💼 40x Income & Credit Ready
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleCat("tour_speed")}
+            style={{
+              fontSize: "0.74rem",
+              padding: "4px 10px",
+              borderRadius: "99px",
+              cursor: "pointer",
+              border: categories.includes("tour_speed")
+                ? "1px solid rgba(99, 179, 237, 0.6)"
+                : "1px solid rgba(255,255,255,0.12)",
+              background: categories.includes("tour_speed")
+                ? "rgba(99, 179, 237, 0.15)"
+                : "rgba(255,255,255,0.03)",
+              color: categories.includes("tour_speed") ? "#63b3ed" : "rgba(255,255,255,0.6)",
+              fontWeight: categories.includes("tour_speed") ? 600 : 400,
+            }}
+          >
+            {categories.includes("tour_speed") ? "✓ " : "+ "}⚡ Tour Immediately (This Week)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleCat("stable_tenants")}
+            style={{
+              fontSize: "0.74rem",
+              padding: "4px 10px",
+              borderRadius: "99px",
+              cursor: "pointer",
+              border: categories.includes("stable_tenants")
+                ? "1px solid rgba(99, 179, 237, 0.6)"
+                : "1px solid rgba(255,255,255,0.12)",
+              background: categories.includes("stable_tenants")
+                ? "rgba(99, 179, 237, 0.15)"
+                : "rgba(255,255,255,0.03)",
+              color: categories.includes("stable_tenants") ? "#63b3ed" : "rgba(255,255,255,0.6)",
+              fontWeight: categories.includes("stable_tenants") ? 600 : 400,
+            }}
+          >
+            {categories.includes("stable_tenants") ? "✓ " : "+ "}🏡 Quiet, Respectful Long-Term
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleCat("lease_urgency")}
+            style={{
+              fontSize: "0.74rem",
+              padding: "4px 10px",
+              borderRadius: "99px",
+              cursor: "pointer",
+              border: categories.includes("lease_urgency")
+                ? "1px solid rgba(99, 179, 237, 0.6)"
+                : "1px solid rgba(255,255,255,0.12)",
+              background: categories.includes("lease_urgency")
+                ? "rgba(99, 179, 237, 0.15)"
+                : "rgba(255,255,255,0.03)",
+              color: categories.includes("lease_urgency") ? "#63b3ed" : "rgba(255,255,255,0.6)",
+              fontWeight: categories.includes("lease_urgency") ? 600 : 400,
+            }}
+          >
+            {categories.includes("lease_urgency") ? "✓ " : "+ "}🗓️ Fast-Track Move-In
+          </button>
+        </div>
+      </div>
+
+      {/* Tone Switcher */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", fontSize: "0.75rem" }}>
+        <span style={{ opacity: 0.6 }}>Tone:</span>
+        <button
+          type="button"
+          onClick={() => toggleTone("executive")}
+          style={{
+            fontSize: "0.72rem",
+            padding: "3px 8px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            background: tone === "executive" ? "rgba(255,255,255,0.15)" : "transparent",
+            color: tone === "executive" ? "#fff" : "rgba(255,255,255,0.5)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            fontWeight: tone === "executive" ? 600 : 400,
+          }}
+        >
+          👔 Executive & Direct
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleTone("warm")}
+          style={{
+            fontSize: "0.72rem",
+            padding: "3px 8px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            background: tone === "warm" ? "rgba(255,255,255,0.15)" : "transparent",
+            color: tone === "warm" ? "#fff" : "rgba(255,255,255,0.5)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            fontWeight: tone === "warm" ? 600 : 400,
+          }}
+        >
+          ☕ Warm & Neighborly
+        </button>
+      </div>
+
+      {/* Generated Pitch Box */}
+      {pitch && (
+        <div style={{ marginTop: "10px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+            <span style={{ fontSize: "0.72rem", color: "#63b3ed", fontWeight: 600 }}>
+              Angle: {pitch.angleLabel}
+            </span>
+            <span style={{ fontSize: "0.7rem", opacity: 0.5 }}>Variation #{pitch.variationIndex} of 24</span>
+          </div>
+          <div
+            style={{
+              padding: "6px 10px",
+              borderRadius: "6px",
+              background: "rgba(0,0,0,0.25)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              fontSize: "0.76rem",
+              fontWeight: 600,
+              marginBottom: "6px",
+              color: "rgba(255,255,255,0.9)",
+            }}
+          >
+            Subject: {pitch.subject}
+          </div>
+          <textarea
+            value={editedBody}
+            onChange={(e) => setEditedBody(e.target.value)}
+            rows={8}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "rgba(0,0,0,0.3)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: "8px",
+              color: "#fff",
+              padding: "10px",
+              fontSize: "0.78rem",
+              lineHeight: 1.5,
+              resize: "vertical",
+              fontFamily: "inherit",
+            }}
+          />
+
+          {/* Action Row */}
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleCopy}
+              style={{
+                fontSize: "0.75rem",
+                padding: "6px 12px",
+                borderRadius: "8px",
+                cursor: "pointer",
+                background: copied ? "rgba(104, 211, 145, 0.2)" : undefined,
+                color: copied ? "#68d391" : undefined,
+                fontWeight: 600,
+              }}
+            >
+              {copied ? "✓ Copied to Clipboard!" : "📋 Copy Pitch"}
+            </button>
+
+            <a
+              href={mailtoUrl}
+              className="secondary-button"
+              style={{
+                fontSize: "0.75rem",
+                padding: "6px 12px",
+                borderRadius: "8px",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                fontWeight: 600,
+              }}
+            >
+              ✉️ Open in Mail
+            </a>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handlePost}
+              disabled={posting || posted}
+              style={{
+                fontSize: "0.75rem",
+                padding: "6px 12px",
+                borderRadius: "8px",
+                cursor: posted ? "default" : "pointer",
+                opacity: posted ? 0.6 : 1,
+                fontWeight: 600,
+              }}
+            >
+              {posted ? "✓ Shared to Chat" : posting ? "Posting…" : "💬 Share in Board Chat"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
