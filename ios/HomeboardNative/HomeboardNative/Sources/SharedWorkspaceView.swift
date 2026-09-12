@@ -3335,8 +3335,11 @@ struct SharedShortlistView: View {
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
           }
+          // ── Scout Crowdfunder Banner ──
+          ScoutBannerView(subscription: appModel.board.scoutSubscription)
 
           if appModel.isBoardLoading && appModel.board.shortlist.isEmpty {
+
             ForEach(0..<3, id: \.self) { _ in
               HomeboardListingSkeletonCard()
             }
@@ -11310,5 +11313,89 @@ private extension View {
       RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         .stroke(HomeboardPalette.border, lineWidth: 1)
     }
+  }
+}
+
+// ──────────────────────────────────────────────────
+// MARK: - Scout Crowdfunder Banner
+// ──────────────────────────────────────────────────
+
+private struct ScoutBannerView: View {
+  let subscription: ScoutSubscription?
+
+  var body: some View {
+    let isActive = subscription?.isActive == true
+    let isPending = subscription?.isPending == true
+    let isExpired = subscription?.isExpired == true
+
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: 3) {
+          HStack(spacing: 6) {
+            Text(isActive ? "🛰️ Scout Active" : isExpired ? "⏰ Scout Paused" : "🛰️ Homeboard Scout")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Spacer()
+            if !isActive {
+              Text(isPending ? "Pay your share" : isExpired ? "Renew" : "Start split")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(HomeboardPalette.secondaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .overlay(
+                  Capsule().stroke(HomeboardPalette.border, lineWidth: 1)
+                )
+            }
+          }
+
+          Group {
+            if isActive, let sub = subscription {
+              Text("Price monitoring + lead radar active · \(sub.daysRemaining)d remaining")
+            } else if isExpired {
+              Text("Scout paused — renew to resume monitoring for 7 more days.")
+            } else if isPending, let sub = subscription {
+              let pct = Int(sub.fundedPercent * 100)
+              Text("Split in progress · \(pct)% funded — your share: \(sub.perRoommateFormatted)")
+            } else {
+              Text("Price drops, concession alerts & daily lead radar — split $4.99/week.")
+            }
+          }
+          .font(.caption)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+
+      if isPending, let sub = subscription {
+        GeometryReader { geo in
+          ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+              .fill(Color.white.opacity(0.08))
+              .frame(height: 4)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+              .fill(HomeboardPalette.accent)
+              .frame(width: geo.size.width * sub.fundedPercent, height: 4)
+          }
+        }
+        .frame(height: 4)
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 11)
+    .background(
+      isActive
+        ? Color(red: 99 / 255, green: 179 / 255, blue: 237 / 255).opacity(0.07)
+        : Color.white.opacity(0.025)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .stroke(
+          isActive
+            ? Color(red: 99 / 255, green: 179 / 255, blue: 237 / 255).opacity(0.35)
+            : Color.white.opacity(0.1),
+          lineWidth: 1
+        )
+    )
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 }

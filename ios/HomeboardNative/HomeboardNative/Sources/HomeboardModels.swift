@@ -590,6 +590,76 @@ struct BoardMessage: Identifiable, Hashable, Codable {
   var createdAt: String
 }
 
+// ──────────────────────────────────────────────────
+// MARK: - Homeboard Scout Monetization Models
+// ──────────────────────────────────────────────────
+
+struct ScoutContribution: Identifiable, Hashable, Codable {
+  var id: String
+  var subscriptionId: String
+  var userId: String
+  var userName: String?
+  var amountCents: Int
+  var status: String          // "pledged" | "paid"
+  var paymentMethod: String?
+  var paidAt: String?
+  var transactionId: String?
+}
+
+struct ScoutSubscription: Hashable, Codable {
+  var id: String
+  var boardId: String
+  var status: String          // "pending_split" | "active" | "expired" | "cancelled"
+  var tier: String
+  var amountCents: Int
+  var currency: String
+  var startedAt: String?
+  var expiresAt: String?
+  var fundedCents: Int
+  var targetCents: Int
+  var daysRemaining: Int
+  var contributions: [ScoutContribution]
+
+  var isActive: Bool { status == "active" }
+  var isPending: Bool { status == "pending_split" }
+  var isExpired: Bool { status == "expired" }
+  var fundedPercent: Double {
+    guard targetCents > 0 else { return 0 }
+    return min(1.0, Double(fundedCents) / Double(targetCents))
+  }
+  var perRoommateFormatted: String {
+    guard !contributions.isEmpty else { return "$4.99" }
+    let myShare = contributions.first?.amountCents ?? amountCents
+    let dollars = Double(myShare) / 100.0
+    return String(format: "$%.2f", dollars)
+  }
+}
+
+struct ScoutRadarLead: Identifiable, Hashable, Codable {
+  var id: String
+  var boardId: String
+  var listingId: String
+  var matchScore: Int
+  var matchReason: String?
+  var status: String          // "pending" | "promoted" | "dismissed"
+  var discoveredAt: String
+  var listing: ListingPreview
+}
+
+struct BrokerOutreachEntry: Identifiable, Hashable, Codable {
+  var id: String
+  var boardListingId: String
+  var userId: String
+  var userName: String?
+  var contactedAt: String
+  var method: String          // "email" | "portal" | "phone"
+  var notes: String?
+}
+
+// ──────────────────────────────────────────────────
+// MARK: - MobileBoard
+// ──────────────────────────────────────────────────
+
 struct MobileBoard: Hashable, Codable {
   var id: String? = nil
   var title: String
@@ -611,6 +681,9 @@ struct MobileBoard: Hashable, Codable {
   var recentlyDeleted: [ListingPreview]? = nil
   var invitations: [BoardInvitationSummary]
   var ranking: [MobileListingRanking]? = nil
+  // Scout monetization
+  var scoutSubscription: ScoutSubscription? = nil
+  var scoutRadarLeads: [ScoutRadarLead]? = nil
 }
 
 extension MobileBoard {
@@ -635,3 +708,4 @@ extension MobileBoard {
     invitations: []
   )
 }
+

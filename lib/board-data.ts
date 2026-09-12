@@ -1697,6 +1697,94 @@ export async function getBoardPageData(
   const currentBrowseRequest = browseRequests.at(-1) ?? null;
   const commuteMode = getCommuteServiceMode(demoMode);
 
+  // Scout monetization data (safe: returns null/empty if Scout not yet active)
+  const [scoutSubscription, scoutRadarLeads, brokerOutreachesByBoardListingId] = await Promise.all([
+    (prisma as any).boardSubscription.findFirst({
+      where: { boardId: board.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        contributions: {
+          include: { user: { select: { id: true, displayName: true } } },
+        },
+      },
+    }).then((sub: any) => {
+      if (!sub) return null;
+      const now = new Date();
+      const status = sub.status === "active" && sub.expiresAt && sub.expiresAt < now ? "expired" : sub.status;
+      const fundedCents = sub.contributions
+        .filter((c: any) => c.status === "paid")
+        .reduce((s: number, c: any) => s + c.amountCents, 0);
+      const daysRemaining = sub.expiresAt && status === "active"
+        ? Math.max(0, Math.ceil((sub.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+        : 0;
+      return {
+        id: sub.id,
+        boardId: sub.boardId,
+        status,
+        tier: "scout_weekly",
+        amountCents: sub.amountCents,
+        currency: sub.currency,
+        startedAt: sub.startedAt?.toISOString() ?? null,
+        expiresAt: sub.expiresAt?.toISOString() ?? null,
+        fundedCents,
+        targetCents: sub.amountCents,
+        daysRemaining,
+        contributions: sub.contributions.map((c: any) => ({
+          id: c.id,
+          subscriptionId: c.subscriptionId,
+          userId: c.userId,
+          userName: c.user?.displayName,
+          amountCents: c.amountCents,
+          status: c.status as "pledged" | "paid",
+          paymentMethod: c.paymentMethod,
+          paidAt: c.paidAt?.toISOString() ?? null,
+          transactionId: c.transactionId,
+        })),
+      };
+    }).catch(() => null),
+    (prisma as any).scoutDiscoveredLead.findMany({
+      where: { boardId: board.id, status: "pending" },
+      include: { listing: true },
+      orderBy: { matchScore: "desc" },
+      take: 6,
+    }).then((leads: any[]) =>
+      leads.map((item: any) => ({
+        id: item.id,
+        boardId: item.boardId,
+        listingId: item.listingId,
+        matchScore: item.matchScore,
+        matchReason: item.matchReason,
+        status: item.status,
+        discoveredAt: item.discoveredAt.toISOString(),
+        listing: {
+          ...item.listing,
+          createdAt: item.listing.createdAt.toISOString(),
+          updatedAt: item.listing.updatedAt.toISOString(),
+        },
+      }))
+    ).catch(() => []),
+    (prisma as any).brokerOutreachRecord.findMany({
+      where: { boardListing: { boardId: board.id } },
+      include: { user: { select: { displayName: true } } },
+      orderBy: { contactedAt: "desc" },
+    }).then((records: any[]) => {
+      const grouped: Record<string, any[]> = {};
+      for (const r of records) {
+        if (!grouped[r.boardListingId]) grouped[r.boardListingId] = [];
+        grouped[r.boardListingId].push({
+          id: r.id,
+          boardListingId: r.boardListingId,
+          userId: r.userId,
+          userName: r.user?.displayName,
+          contactedAt: r.contactedAt.toISOString(),
+          method: r.method,
+          notes: r.notes,
+        });
+      }
+      return grouped;
+    }).catch(() => ({})),
+  ]);
+
   return {
     isDemoMode: demoMode,
     commuteMode,
@@ -1740,8 +1828,12 @@ export async function getBoardPageData(
       : generateComparison(effectiveProfile, boardListings),
     missingFields: getMissingFields(effectiveProfile),
     completion: getProfileCompletion(effectiveProfile),
+    scoutSubscription,
+    scoutRadarLeads,
+    brokerOutreachesByBoardListingId,
   };
 }
+
 
 export async function createBoardAndReturnId(input: {
   title?: string;

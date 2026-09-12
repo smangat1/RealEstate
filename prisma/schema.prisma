@@ -183,6 +183,8 @@ model User {
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
   catalogSourcesVerified    CatalogListingSource[]     @relation("CatalogSourceVerifiedBy")
+  subscriptionContributions BoardSubscriptionContribution[]
+  brokerOutreaches          BrokerOutreachRecord[]
 }
 
 model DevicePairing {
@@ -223,6 +225,8 @@ model SearchBoard {
   invitations               BoardInvitation[]
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
+  subscriptions             BoardSubscription[]
+  scoutLeads                ScoutDiscoveredLead[]
 
   @@index([userId])
 }
@@ -319,6 +323,7 @@ model Listing {
   boardListings      BoardListing[]
   priceHistory       PriceHistory[]
   catalogSources     CatalogListingSource[]
+  scoutLeads         ScoutDiscoveredLead[]
 
   @@unique([sourceName, externalId])
   @@index([source])
@@ -350,6 +355,7 @@ model BoardListing {
   verifications      BoardListingVerification[]
   reviews            BoardListingReview[]
   decisions          BoardListingDecision[]
+  brokerOutreaches   BrokerOutreachRecord[]
 
   @@unique([boardId, listingId])
   @@index([boardId, userStatus])
@@ -680,3 +686,70 @@ model PushDevice {
 
   @@index([userId, lastSeenAt])
 }
+
+model BoardSubscription {
+  id            String                          @id @default(cuid())
+  boardId       String
+  status        String                          @default("pending_split") // pending_split | active | paused | expired
+  tier          String                          @default("scout_weekly")
+  amountCents   Int                             @default(499)
+  currency      String                          @default("usd")
+  startedAt     DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime                        @default(now())
+  updatedAt     DateTime                        @updatedAt
+  board         SearchBoard                     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  contributions BoardSubscriptionContribution[]
+
+  @@index([boardId, status])
+}
+
+model BoardSubscriptionContribution {
+  id             String            @id @default(cuid())
+  subscriptionId String
+  userId         String
+  amountCents    Int
+  status         String            @default("pledged") // pledged | paid
+  paymentMethod  String?
+  paidAt         DateTime?
+  transactionId  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  subscription   BoardSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, status])
+  @@index([userId])
+}
+
+model ScoutDiscoveredLead {
+  id           String      @id @default(cuid())
+  boardId      String
+  listingId    String
+  matchScore   Int         @default(85)
+  matchReason  String
+  status       String      @default("pending") // pending | promoted | dismissed
+  discoveredAt DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  listing      Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, listingId])
+  @@index([boardId, status])
+  @@index([listingId])
+}
+
+model BrokerOutreachRecord {
+  id             String       @id @default(cuid())
+  boardListingId String
+  userId         String
+  contactedAt    DateTime     @default(now())
+  method         String       @default("email") // email | portal | phone
+  notes          String?
+  boardListing   BoardListing @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([boardListingId, contactedAt])
+  @@index([userId])
+}
+

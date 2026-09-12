@@ -1086,6 +1086,83 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : (
                   <p>Nothing is on the shortlist yet. Import an exact listing link so the group can react to a real source.</p>
                 )}
+                {/* ── Scout Crowdfunder Banner ── */}
+                {(() => {
+                  const sub = data.scoutSubscription;
+                  const isActive = sub?.status === "active";
+                  const isPending = sub?.status === "pending_split";
+                  const isExpired = sub?.status === "expired";
+                  const fundedPct = sub ? Math.min(100, Math.round((sub.fundedCents / sub.targetCents) * 100)) : 0;
+
+                  return (
+                    <div
+                      style={{
+                        marginTop: "20px",
+                        padding: "16px 18px",
+                        borderRadius: "14px",
+                        border: isActive
+                          ? "1px solid rgba(99, 179, 237, 0.35)"
+                          : "1px dashed rgba(255, 255, 255, 0.13)",
+                        background: isActive
+                          ? "rgba(99, 179, 237, 0.07)"
+                          : "rgba(255, 255, 255, 0.025)",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                        <div>
+                          <strong style={{ fontSize: "0.92rem" }}>
+                            {isActive ? "🛰️ Scout Active" : isExpired ? "⏰ Scout Paused" : "🛰️ Homeboard Scout"}
+                          </strong>
+                          <p style={{ margin: "3px 0 0 0", fontSize: "0.78rem", opacity: 0.75 }}>
+                            {isActive
+                              ? `Autonomous price monitoring + lead radar live · ${sub?.daysRemaining ?? 0}d remaining`
+                              : isExpired
+                              ? "Scout paused — renew for the next 7 days to resume monitoring."
+                              : isPending
+                              ? `Split in progress · $${((sub?.fundedCents ?? 0) / 100).toFixed(2)} of $${((sub?.targetCents ?? 499) / 100).toFixed(2)} funded (${fundedPct}%)`
+                              : "Price drops, concession alerts, and daily lead radar — split $4.99/week across the group."}
+                          </p>
+                          {isPending && sub && (
+                            <div
+                              style={{
+                                marginTop: "8px",
+                                height: "4px",
+                                borderRadius: "4px",
+                                background: "rgba(255,255,255,0.1)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height: "100%",
+                                  width: `${fundedPct}%`,
+                                  borderRadius: "4px",
+                                  background: "var(--accent)",
+                                  transition: "width 0.4s",
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        {!isActive && (
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              padding: "4px 10px",
+                              borderRadius: "99px",
+                              border: "1px solid rgba(255,255,255,0.2)",
+                              opacity: 0.8,
+                              flexShrink: 0,
+                              cursor: "default",
+                            }}
+                          >
+                            {isPending ? "Pay your share in-app" : isExpired ? "Renew in-app" : "Start split in-app"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {data.recentlyDeletedBoardListings.length > 0 ? (
                   <div
@@ -1093,6 +1170,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                     style={{
                       marginTop: "16px",
                       padding: "16px",
+
                       borderRadius: "14px",
                       border: "1px dashed rgba(255, 255, 255, 0.15)",
                       background: "rgba(255, 255, 255, 0.02)",
@@ -1199,11 +1277,91 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : null}
               </section>
 
+              {/* ── Scout Radar ── only shown when Scout is active and has leads ── */}
+              {data.scoutSubscription?.status === "active" && (data.scoutRadarLeads ?? []).length > 0 ? (
+                <section className="rail-card board-home-section">
+                  <div className="rail-card-header">
+                    <h2>🛰️ Scout Radar</h2>
+                    <span>{data.scoutRadarLeads!.length} new leads</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>
+                    {data.scoutRadarLeads!.map((lead) => (
+                      <div
+                        key={lead.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          gap: "12px",
+                          padding: "12px 14px",
+                          borderRadius: "12px",
+                          border: "1px solid rgba(255, 255, 255, 0.08)",
+                          background: "rgba(255, 255, 255, 0.025)",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: "0" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
+                            <span
+                              style={{
+                                fontSize: "0.72rem",
+                                padding: "2px 7px",
+                                borderRadius: "99px",
+                                background: "rgba(99,179,237,0.15)",
+                                color: "#63b3ed",
+                                fontWeight: 600,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {lead.matchScore}% match
+                            </span>
+                            <strong style={{ fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {lead.listing.address ?? lead.listing.neighborhood ?? "New lead"}
+                            </strong>
+                          </div>
+                          <p style={{ margin: 0, fontSize: "0.78rem", opacity: 0.7 }}>
+                            {lead.matchReason}
+                            {lead.listing.price ? ` · $${lead.listing.price.toLocaleString()}/mo` : ""}
+                          </p>
+                        </div>
+                        <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "5px 10px", fontSize: "0.78rem", color: "var(--accent)", cursor: "pointer" }}
+                            onClick={() => {
+                              fetch(`/api/mobile/boards/${data.board.id}/scout/radar/${lead.id}/promote`, { method: "POST" })
+                                .then(() => window.location.reload())
+                                .catch(() => null);
+                            }}
+                          >
+                            Add to Shortlist
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "5px 10px", fontSize: "0.78rem", opacity: 0.65, cursor: "pointer" }}
+                            onClick={() => {
+                              fetch(`/api/mobile/boards/${data.board.id}/scout/radar/${lead.id}/dismiss`, { method: "POST" })
+                                .then(() => window.location.reload())
+                                .catch(() => null);
+                            }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               <section className="rail-card board-home-section">
                 <div className="rail-card-header">
                   <h2>Shared Chat</h2>
                   <span>{recentMessages.length} latest messages</span>
                 </div>
+
                 <div className="board-home-chat-preview" ref={chatThreadRef}>
                   {recentMessages.map((message) => (
                     <article key={message.id} className={`modern-message ${message.role}`}>
@@ -1396,9 +1554,11 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
           commute={data.boardListingCommutesByBoardListingId[focusedListing.id]}
           votes={data.listingVotesByBoardListingId[focusedListing.id] ?? []}
           comments={data.listingCommentsByBoardListingId[focusedListing.id] ?? []}
+          brokerOutreaches={data.brokerOutreachesByBoardListingId?.[focusedListing.id] ?? []}
           onClose={() => setFocusedListingId(null)}
         />
       ) : null}
+
     </main>
   );
 }
@@ -1447,6 +1607,7 @@ function ListingDetailModal({
   commute,
   votes,
   comments,
+  brokerOutreaches,
   onClose,
 }: {
   boardId: string;
@@ -1454,11 +1615,13 @@ function ListingDetailModal({
   commute: BoardPageData["boardListingCommutesByBoardListingId"][string] | undefined;
   votes: BoardListingVoteRecord[];
   comments: BoardListingCommentRecord[];
+  brokerOutreaches: Array<{ id: string; userName?: string | null; contactedAt: string; method: string; notes?: string | null }>;
   onClose: () => void;
 }) {
   const listing = boardListing.listing;
   const headline = [listing.neighborhood, listing.city].filter(Boolean).join(", ") || listing.address || "Untitled listing";
   const feeEntries = Object.entries(listing.fees ?? {}).filter(([, value]) => value !== null && value !== "");
+
 
   return (
     <div className="deck-overlay" onClick={onClose}>
@@ -1546,7 +1709,29 @@ function ListingDetailModal({
             <p>{listing.description ?? "No description saved for this listing yet."}</p>
           </div>
 
+          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <strong>🤝 Contact Log</strong>
+            {brokerOutreaches.length > 0 ? (
+              <ul className="detail-list" style={{ margin: 0 }}>
+                {brokerOutreaches.map((o) => (
+                  <li key={o.id} style={{ fontSize: "0.82rem" }}>
+                    <strong>{o.userName ?? "Roommate"}</strong> reached out via {o.method}{" "}
+                    <span style={{ opacity: 0.6 }}>
+                      · {new Date(o.contactedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                    </span>
+                    {o.notes ? <span style={{ opacity: 0.75 }}> — {o.notes}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ fontSize: "0.82rem", opacity: 0.65, margin: 0 }}>
+                No one has contacted the landlord or broker yet. Use Scout to generate a pitch.
+              </p>
+            )}
+          </div>
+
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
+
             {boardListing.deletedAt ? (
               <form action={restoreBoardListingAction} onSubmit={onClose}>
                 <input type="hidden" name="boardId" value={boardId} />

@@ -493,4 +493,57 @@ export type BoardPageData = {
   comparison: string;
   missingFields: string[];
   completion: ProfileCompletion;
+  scoutSubscription?: BoardSubscriptionRecord | null;
+  scoutRadarLeads?: ScoutRadarLeadRecord[];
+  brokerOutreachesByBoardListingId?: Record<string, BrokerOutreachRecordType[]>;
+};
+
+export type BoardSubscriptionStatus = "pending_split" | "active" | "paused" | "expired";
+
+export type BoardSubscriptionContributionRecord = {
+  id: string;
+  subscriptionId: string;
+  userId: string;
+  userName?: string;
+  amountCents: number;
+  status: "pledged" | "paid";
+  paymentMethod: string | null;
+  paidAt: string | null;
+  transactionId: string | null;
+};
+
+export type BoardSubscriptionRecord = {
+  id: string;
+  boardId: string;
+  status: BoardSubscriptionStatus;
+  tier: "scout_weekly";
+  amountCents: number;
+  currency: string;
+  startedAt: string | null;
+  expiresAt: string | null;
+  fundedCents: number;
+  targetCents: number;
+  daysRemaining: number;
+  contributions: BoardSubscriptionContributionRecord[];
+};
+
+export type ScoutRadarLeadRecord = {
+  id: string;
+  boardId: string;
+  listingId: string;
+  matchScore: number;
+  matchReason: string;
+  status: "pending" | "promoted" | "dismissed";
+  discoveredAt: string;
+  listing: ListingRecord;
+};
+
+export type BrokerOutreachRecordType = {
+  id: string;
+  boardListingId: string;
+  userId: string;
+  userName?: string;
+  contactedAt: string;
+  method: "email" | "portal" | "phone";
+  notes: string | null;
 };
