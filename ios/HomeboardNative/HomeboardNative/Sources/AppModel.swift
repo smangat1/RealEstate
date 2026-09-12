@@ -763,6 +763,17 @@ final class AppModel {
     }
   }
 
+  func triggerScoutScan(boardId: String) async {
+    guard let session = authSession else { return }
+    do {
+      try await api.triggerScoutScan(accessToken: session.accessToken, boardId: boardId)
+      await refreshCurrentBoardSilently()
+      boardFeedback = "Scout scan finished. Checked listings for drops and new leads."
+    } catch {
+      boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+  }
+
   func loadListingInventory(
     view: String,
     minimumLatitude: Double? = nil,

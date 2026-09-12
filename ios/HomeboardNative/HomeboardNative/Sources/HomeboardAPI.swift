@@ -954,6 +954,15 @@ final class HomeboardAPI {
     try await requestBackend(path: "/api/mobile/boards/\(boardId)/updates", method: "POST", accessToken: accessToken, body: body)
   }
 
+  func triggerScoutScan(accessToken: String, boardId: String) async throws {
+    let _: EmptyResponse = try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/scout/scan",
+      method: "POST",
+      accessToken: accessToken,
+      body: EmptyRequestBody()
+    )
+  }
+
   func addMember(
     accessToken: String,
     boardId: String,

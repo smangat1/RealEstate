@@ -1087,82 +1087,11 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                   <p>Nothing is on the shortlist yet. Import an exact listing link so the group can react to a real source.</p>
                 )}
                 {/* ── Scout Crowdfunder Banner ── */}
-                {(() => {
-                  const sub = data.scoutSubscription;
-                  const isActive = sub?.status === "active";
-                  const isPending = sub?.status === "pending_split";
-                  const isExpired = sub?.status === "expired";
-                  const fundedPct = sub ? Math.min(100, Math.round((sub.fundedCents / sub.targetCents) * 100)) : 0;
+                <ScoutBanner
+                  boardId={data.board.id}
+                  subscription={data.scoutSubscription ?? null}
+                />
 
-                  return (
-                    <div
-                      style={{
-                        marginTop: "20px",
-                        padding: "16px 18px",
-                        borderRadius: "14px",
-                        border: isActive
-                          ? "1px solid rgba(99, 179, 237, 0.35)"
-                          : "1px dashed rgba(255, 255, 255, 0.13)",
-                        background: isActive
-                          ? "rgba(99, 179, 237, 0.07)"
-                          : "rgba(255, 255, 255, 0.025)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
-                        <div>
-                          <strong style={{ fontSize: "0.92rem" }}>
-                            {isActive ? "🛰️ Scout Active" : isExpired ? "⏰ Scout Paused" : "🛰️ Homeboard Scout"}
-                          </strong>
-                          <p style={{ margin: "3px 0 0 0", fontSize: "0.78rem", opacity: 0.75 }}>
-                            {isActive
-                              ? `Autonomous price monitoring + lead radar live · ${sub?.daysRemaining ?? 0}d remaining`
-                              : isExpired
-                              ? "Scout paused — renew for the next 7 days to resume monitoring."
-                              : isPending
-                              ? `Split in progress · $${((sub?.fundedCents ?? 0) / 100).toFixed(2)} of $${((sub?.targetCents ?? 499) / 100).toFixed(2)} funded (${fundedPct}%)`
-                              : "Price drops, concession alerts, and daily lead radar — split $4.99/week across the group."}
-                          </p>
-                          {isPending && sub && (
-                            <div
-                              style={{
-                                marginTop: "8px",
-                                height: "4px",
-                                borderRadius: "4px",
-                                background: "rgba(255,255,255,0.1)",
-                                overflow: "hidden",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  height: "100%",
-                                  width: `${fundedPct}%`,
-                                  borderRadius: "4px",
-                                  background: "var(--accent)",
-                                  transition: "width 0.4s",
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        {!isActive && (
-                          <span
-                            style={{
-                              fontSize: "0.75rem",
-                              padding: "4px 10px",
-                              borderRadius: "99px",
-                              border: "1px solid rgba(255,255,255,0.2)",
-                              opacity: 0.8,
-                              flexShrink: 0,
-                              cursor: "default",
-                            }}
-                          >
-                            {isPending ? "Pay your share in-app" : isExpired ? "Renew in-app" : "Start split in-app"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
 
                 {data.recentlyDeletedBoardListings.length > 0 ? (
                   <div
@@ -1597,6 +1526,157 @@ function CommentFeed({ comments }: { comments: BoardListingCommentRecord[] }) {
           <p>{comment.content}</p>
         </article>
       ))}
+    </div>
+  );
+}
+
+function ScoutBanner({
+  boardId,
+  subscription,
+}: {
+  boardId: string;
+  subscription: BoardPageData["scoutSubscription"] | null;
+}) {
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<string | null>(null);
+
+  const isActive = subscription?.status === "active";
+  const isPending = subscription?.status === "pending_split";
+  const isExpired = subscription?.status === "expired";
+  const fundedPct = subscription
+    ? Math.min(100, Math.round((subscription.fundedCents / subscription.targetCents) * 100))
+    : 0;
+
+  async function handleTriggerScan() {
+    setIsScanning(true);
+    setScanFeedback(null);
+    try {
+      const res = await fetch(`/api/mobile/boards/${boardId}/scout/scan`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setScanFeedback(data.error ?? "Scan failed");
+      } else {
+        setScanFeedback(data.message ?? "Scan complete!");
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      }
+    } catch (err: any) {
+      setScanFeedback(err?.message ?? "Error running scan");
+    } finally {
+      setIsScanning(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: "20px",
+        padding: "16px 18px",
+        borderRadius: "14px",
+        border: isActive
+          ? "1px solid rgba(99, 179, 237, 0.35)"
+          : "1px dashed rgba(255, 255, 255, 0.13)",
+        background: isActive
+          ? "rgba(99, 179, 237, 0.07)"
+          : "rgba(255, 255, 255, 0.025)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: "8px",
+        }}
+      >
+        <div>
+          <strong style={{ fontSize: "0.92rem" }}>
+            {isActive ? "🛰️ Scout Active" : isExpired ? "⏰ Scout Paused" : "🛰️ Homeboard Scout"}
+          </strong>
+          <p style={{ margin: "3px 0 0 0", fontSize: "0.78rem", opacity: 0.75 }}>
+            {isActive
+              ? `Autonomous price monitoring + lead radar live · ${subscription?.daysRemaining ?? 0}d remaining`
+              : isExpired
+              ? "Scout paused — renew for the next 7 days to resume monitoring."
+              : isPending
+              ? `Split in progress · $${((subscription?.fundedCents ?? 0) / 100).toFixed(2)} of $${((subscription?.targetCents ?? 499) / 100).toFixed(2)} funded (${fundedPct}%)`
+              : "Price drops, concession alerts, and daily lead radar — split $4.99/week across the group."}
+          </p>
+          {isPending && subscription && (
+            <div
+              style={{
+                marginTop: "8px",
+                height: "4px",
+                borderRadius: "4px",
+                background: "rgba(255,255,255,0.1)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${fundedPct}%`,
+                  borderRadius: "4px",
+                  background: "var(--accent)",
+                  transition: "width 0.4s",
+                }}
+              />
+            </div>
+          )}
+          {scanFeedback && (
+            <p
+              style={{
+                marginTop: "8px",
+                fontSize: "0.76rem",
+                color: scanFeedback.includes("fail") || scanFeedback.includes("Error") ? "#ff7a7e" : "#63b3ed",
+                fontWeight: 500,
+              }}
+            >
+              {scanFeedback}
+            </p>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
+          {isActive ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleTriggerScan}
+              disabled={isScanning}
+              style={{
+                fontSize: "0.75rem",
+                padding: "5px 12px",
+                borderRadius: "99px",
+                cursor: isScanning ? "wait" : "pointer",
+                background: "rgba(99, 179, 237, 0.15)",
+                color: "#63b3ed",
+                border: "1px solid rgba(99, 179, 237, 0.4)",
+                fontWeight: 600,
+              }}
+            >
+              {isScanning ? "Scanning…" : "⚡ Scan Now"}
+            </button>
+          ) : (
+            <span
+              style={{
+                fontSize: "0.75rem",
+                padding: "4px 10px",
+                borderRadius: "99px",
+                border: "1px solid rgba(255,255,255,0.2)",
+                opacity: 0.8,
+                cursor: "default",
+              }}
+            >
+              {isPending ? "Pay your share in-app" : isExpired ? "Renew in-app" : "Start split in-app"}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

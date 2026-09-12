@@ -11322,6 +11322,8 @@ private extension View {
 
 private struct ScoutBannerView: View {
   let subscription: ScoutSubscription?
+  @Environment(AppModel.self) private var appModel
+  @State private var isScanning = false
 
   var body: some View {
     let isActive = subscription?.isActive == true
@@ -11336,7 +11338,25 @@ private struct ScoutBannerView: View {
               .font(.subheadline.weight(.semibold))
               .foregroundStyle(HomeboardPalette.primaryText)
             Spacer()
-            if !isActive {
+            if isActive {
+              Button {
+                guard let boardId = appModel.board.id else { return }
+                isScanning = true
+                Task {
+                  await appModel.triggerScoutScan(boardId: boardId)
+                  isScanning = false
+                }
+              } label: {
+                Text(isScanning ? "Scanning…" : "⚡ Check / Scan")
+                  .font(.caption2.weight(.bold))
+                  .foregroundStyle(HomeboardPalette.accent)
+                  .padding(.horizontal, 8)
+                  .padding(.vertical, 3)
+                  .background(Color.white.opacity(0.08))
+                  .clipShape(Capsule())
+              }
+              .disabled(isScanning)
+            } else {
               Text(isPending ? "Pay your share" : isExpired ? "Renew" : "Start split")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(HomeboardPalette.secondaryText)
