@@ -68,68 +68,21 @@ export async function runBoardScoutScan(boardId: string): Promise<{
     }
   }
 
-  // 2. Discover matching leads for the Radar deck
-  const profile = board.searchProfile;
-  const budgetMax = profile?.budgetMax ?? (board.roommates.reduce((s: number, r: any) => s + (r.budgetMax ?? 1500), 0) || 4500);
-  const preferredNeighborhoods = profile?.neighborhoods ?? [];
-  const existingListingIds = new Set(board.boardListings.map((b: any) => b.listingId));
-
-  // Find candidate listings in database not yet on this board
-  const candidates = await (prisma as any).listing.findMany({
-    where: {
-      id: { notIn: Array.from(existingListingIds) },
-      price: { lte: budgetMax + 300 },
-    },
-    take: 10,
-    orderBy: { createdAt: "desc" },
-  });
-
-  let newLeadsDiscovered = 0;
-
-  for (const candidate of candidates) {
-    // Check if already in Radar
-    const existingRadar = await (prisma as any).scoutDiscoveredLead.findUnique({
-      where: {
-        boardId_listingId: {
-          boardId,
-          listingId: candidate.id,
-        },
-      },
-    });
-    if (existingRadar) continue;
-
-    // Score match affinity
-    let score = 75;
-    const reasons: string[] = [];
-
-    if (candidate.price && candidate.price <= budgetMax) {
-      score += 15;
-      reasons.push(`Under group target budget ($${candidate.price.toLocaleString()}/mo)`);
-    }
-    if (preferredNeighborhoods.length > 0 && preferredNeighborhoods.some((n: string) => candidate.neighborhood?.toLowerCase().includes(n.toLowerCase()))) {
-      score += 10;
-      reasons.push(`In preferred neighborhood (${candidate.neighborhood})`);
-    }
-    if (candidate.amenities && Array.isArray(candidate.amenities) && candidate.amenities.some((a: string) => a.toLowerCase().includes("laundry"))) {
-      score += 5;
-      reasons.push("In-unit laundry available");
-    }
-
-    const matchReason = reasons.join(" · ") || "Good candidate for group parameters";
-
-    await (prisma as any).scoutDiscoveredLead.create({
-      data: {
-        boardId,
-        listingId: candidate.id,
-        matchScore: Math.min(score, 99),
-        matchReason,
-        status: "pending",
-      },
-    });
-
-    newLeadsDiscovered++;
-    if (newLeadsDiscovered >= 3) break;
-  }
+  // 2. Lead Radar discovery — DISABLED pending live data source integration.
+  //
+  // The `Listing` table contains only user-imported listings that were manually
+  // scraped via URL. These are stale, unverified, and may already be rented.
+  // Surfacing them as "discovered leads" would be misleading.
+  //
+  // This step should be re-enabled once integrated with a live rental feed:
+  //   - RentCast API (rentcast.io)
+  //   - StreetEasy API (NYC-focused)
+  //   - Zillow Bridge API or RapidAPI/Zillow scrapers
+  //   - Any provider returning verified, currently-available listings
+  //
+  // The ScoutDiscoveredLead schema, API routes, and UI are all ready.
+  // Just replace this comment block with real live-inventory queries.
+  const newLeadsDiscovered = 0;
 
   return { priceDropsDetected, newLeadsDiscovered };
 }
