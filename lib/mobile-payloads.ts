@@ -282,10 +282,30 @@ function listingDisplayTitle(listing: ListingRecord) {
     : listing.address || listing.neighborhood || "Untitled listing";
 }
 
-function listingPhotoUrl(listing: Pick<ListingRecord, "images">) {
-  return listing.images
+const FALLBACK_RENTAL_PHOTOS = [
+  "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1502005229762-ae1b465ab7b4?w=800&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800&auto=format&fit=crop&q=80",
+];
+
+function fallbackListingPhoto(identifier?: string) {
+  if (!identifier) return FALLBACK_RENTAL_PHOTOS[0];
+  let hash = 0;
+  for (let i = 0; i < identifier.length; i++) {
+    hash = (hash * 31 + identifier.charCodeAt(i)) | 0;
+  }
+  return FALLBACK_RENTAL_PHOTOS[Math.abs(hash) % FALLBACK_RENTAL_PHOTOS.length];
+}
+
+function listingPhotoUrl(listing: Pick<ListingRecord, "images"> & Partial<Pick<ListingRecord, "id" | "address">>) {
+  const photo = listing.images
     .map((image) => image.trim())
-    .find(Boolean) ?? "";
+    .find(Boolean);
+  if (photo) return photo;
+  return fallbackListingPhoto(listing.id || listing.address);
 }
 
 function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {

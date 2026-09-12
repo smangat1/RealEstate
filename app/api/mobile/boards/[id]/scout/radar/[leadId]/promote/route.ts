@@ -1,18 +1,23 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { promoteRadarLeadToShortlist } from "@/lib/scout-engine";
 
 // POST /api/mobile/boards/[id]/scout/radar/[leadId]/promote
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; leadId: string }> },
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const user = await requireMobileAppUser(req);
+    const { leadId } = await params;
+    const success = await promoteRadarLeadToShortlist(leadId, user.id);
+    return NextResponse.json({ success });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to promote lead.";
+    return NextResponse.json(
+      { error: message === "MOBILE_AUTH_REQUIRED" ? "Unauthorized" : "Unable to promote lead." },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : 500 },
+    );
   }
-  const { leadId } = await params;
-  const success = await promoteRadarLeadToShortlist(leadId, session.user.id);
-  return NextResponse.json({ success });
 }

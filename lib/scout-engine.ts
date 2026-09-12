@@ -83,12 +83,12 @@ export async function runBoardScoutScan(boardId: string): Promise<{
       const riseFmt = `$${change.increaseAmount.toLocaleString()}`;
       const newFmt = `$${change.newPrice.toLocaleString()}`;
 
-      // Alert the group — their votes may now be based on a stale price
+      // Alert the group: their votes may now be based on a stale price
       await (prisma as any).chatMessage.create({
         data: {
           boardId,
           role: "assistant",
-          content: `⚠️ Price Increase: ${address} went up by ${riseFmt} → now ${newFmt}/mo (+${change.percentIncrease}%). Group votes were cast at the old price — worth a quick check.`,
+          content: `⚠️ Price Increase: ${address} went up by ${riseFmt} → now ${newFmt}/mo (+${change.percentIncrease}%). Group votes were cast at the old price; worth a quick check.`,
         },
       });
 
@@ -114,7 +114,7 @@ export async function runBoardScoutScan(boardId: string): Promise<{
     }
   }
 
-  // 2. Lead Radar discovery — DISABLED pending live data source integration.
+  // 2. Lead Radar discovery: DISABLED pending live data source integration.
   //
   // The `Listing` table contains only user-imported listings that were manually
   // scraped via URL. These are stale, unverified, and may already be rented.

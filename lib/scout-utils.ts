@@ -1,7 +1,7 @@
 /**
  * scout-utils.ts
  * Pure utility functions for the Homeboard Scout monetization feature.
- * No server-only imports — safe to use in tests and client code.
+ * No server-only imports: safe to use in tests and client code.
  */
 
 export const SCOUT_WEEKLY_AMOUNT_CENTS = 499;

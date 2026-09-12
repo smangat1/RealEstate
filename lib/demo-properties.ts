@@ -54,7 +54,7 @@ export const demoProperties: DemoPropertyInput[] = [
     amenities: ["laundry", "dishwasher", "natural light", "near N/W train"],
     description:
       "A balanced Queens option for a three-person recent-grad share. Not the flashiest neighborhood in the set, but the Midtown commute is clean and the pricing stays inside the realistic group ceiling.",
-    images: [],
+    images: ["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&auto=format&fit=crop&q=80"],
     scenarioIds: ["recent-grad-nyc-share"],
     demoFitLabel: "best practical fit",
     demoFitReason:
@@ -82,7 +82,7 @@ export const demoProperties: DemoPropertyInput[] = [
     amenities: ["natural light", "dishwasher", "near A/C train"],
     description:
       "The lifestyle-forward Brooklyn pick. Better neighborhood energy and sunlight, but it pushes the budget harder and asks the group to tolerate a little more commute strain.",
-    images: [],
+    images: ["https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&auto=format&fit=crop&q=80"],
     scenarioIds: ["recent-grad-nyc-share"],
     demoFitLabel: "worth a look",
     demoFitReason:
@@ -110,7 +110,7 @@ export const demoProperties: DemoPropertyInput[] = [
     amenities: ["laundry", "near 7 train"],
     description:
       "The strict-budget option in the set. It is not the coolest listing, but it protects Jordan’s ceiling and still keeps reasonable train access for the whole group.",
-    images: [],
+    images: ["https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&auto=format&fit=crop&q=80"],
     scenarioIds: ["recent-grad-nyc-share"],
     demoFitLabel: "stretch option",
     demoFitReason:
@@ -138,7 +138,7 @@ export const demoProperties: DemoPropertyInput[] = [
     amenities: ["laundry", "air conditioning", "clubhouse", "pet friendly"],
     description:
       "Introducing the new Shorecrest Towers at Trump Village in the heart of Brighton Beach. A reinvention of a South Brooklyn icon, this classic brick, two-building complex offers no fee, no security deposit studio-to-three-bedroom apartments with Atlantic Ocean views. Just two blocks from the beach and close to the B/Q trains. Parking $300. Gym $35 per resident.",
-    images: [],
+    images: ["https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800&auto=format&fit=crop&q=80"],
     scenarioIds: ["nyc-group-houses"],
     demoFitLabel: "stretch option",
     demoFitReason:
@@ -166,7 +166,7 @@ export const demoProperties: DemoPropertyInput[] = [
     amenities: ["laundry", "dishwasher", "storage"],
     description:
       "A softer neighborhood-driven option that should still feel plausible for a July move. Good for testing whether the board talks about compromise between commute convenience and neighborhood quality.",
-    images: [],
+    images: ["https://images.unsplash.com/photo-1502005229762-ae1b465ab7b4?w=800&auto=format&fit=crop&q=80"],
     scenarioIds: ["nyc-group-houses"],
     demoFitLabel: "best practical fit",
     demoFitReason:
@@ -194,7 +194,7 @@ export const demoProperties: DemoPropertyInput[] = [
     amenities: ["laundry", "gym", "elevator", "doorman"],
     description:
       "A cleaner practical option for a group that cares about commute reliability first and neighborhood energy second.",
-    images: [],
+    images: ["https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800&auto=format&fit=crop&q=80"],
     scenarioIds: ["nyc-group-houses"],
     demoFitLabel: "worth a look",
     demoFitReason:

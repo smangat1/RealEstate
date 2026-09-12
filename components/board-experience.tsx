@@ -1748,10 +1748,10 @@ function ScoutBanner({
             {isActive
               ? `Autonomous price monitoring + broker pitch synthesis live · ${subscription?.daysRemaining ?? 0}d remaining`
               : isExpired
-              ? "Advisor paused — renew for the next 7 days to resume autonomous monitoring."
+              ? "Advisor paused: renew for the next 7 days to resume autonomous monitoring."
               : isPending
               ? `Split in progress · $${((subscription?.fundedCents ?? 0) / 100).toFixed(2)} of $${((subscription?.targetCents ?? 499) / 100).toFixed(2)} funded (${fundedPct}%)`
-              : "Autonomous price monitoring, link scanning, and broker pitch synthesis — split $4.99/week across the group."}
+              : "Autonomous price monitoring, link scanning, and broker pitch synthesis: split $4.99/week across the group."}
           </p>
           {isPending && subscription && (
             <div
@@ -1962,7 +1962,7 @@ function ScoutPitchBuilderCard({
             <span>🛰️</span> Scout Broker Pitch Builder
           </strong>
           <p style={{ margin: "2px 0 0 0", fontSize: "0.75rem", opacity: 0.75 }}>
-            Grounded synthesis — strictly verified board facts, zero made-up data.
+            Grounded synthesis: strictly verified board facts, zero made-up data.
           </p>
         </div>
 
@@ -2397,7 +2397,7 @@ function ListingDetailModal({
                     <span style={{ opacity: 0.6 }}>
                       · {new Date(o.contactedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
                     </span>
-                    {o.notes ? <span style={{ opacity: 0.75 }}> — {o.notes}</span> : null}
+                    {o.notes ? <span style={{ opacity: 0.75 }}> · {o.notes}</span> : null}
                   </li>
                 ))}
               </ul>

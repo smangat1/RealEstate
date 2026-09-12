@@ -8534,6 +8534,7 @@ struct AddSharedListingSheet: View {
   @State private var showsCaptureGuide = false
   @State private var importPreview: ListingImportPreviewResponse?
   @State private var importError: String?
+  @State private var saveError: String? = nil
   private let initialImport: HomeboardSharedImportStore.PendingImport?
   private let importedAmenities: [String]
   private let importedModelInsights: [HomeboardListingInsight]
@@ -8726,6 +8727,8 @@ struct AddSharedListingSheet: View {
             Task {
               isSaving = true
               let coordinate = await resolveListingCoordinate()
+              saveError = nil
+              appModel.boardError = nil
               appModel.addManualListing(
                 title: title,
                 location: location,
@@ -8748,7 +8751,10 @@ struct AddSharedListingSheet: View {
                 longitude: coordinate?.longitude
               )
               isSaving = false
-              if appModel.boardError == nil {
+              if let err = appModel.boardError {
+                saveError = err
+                appModel.boardError = nil
+              } else {
                 appModel.resolvePendingSharedListingImport()
                 dismiss()
               }
@@ -8775,7 +8781,7 @@ struct AddSharedListingSheet: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
 
-          if let error = appModel.boardError {
+          if let error = saveError {
             Text(error)
               .font(.footnote)
               .foregroundStyle(HomeboardPalette.danger)
@@ -8785,6 +8791,9 @@ struct AddSharedListingSheet: View {
         .padding(.bottom, 30)
       }
       .background(WorkspaceBackgroundView())
+      .onAppear {
+        saveError = nil
+      }
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Button("Cancel") { dismiss() }
@@ -9033,6 +9042,7 @@ private struct SharedInviteCard: View {
 private struct InviteSharedMemberSheet: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
+  @State private var inviteError: String? = nil
 
   var body: some View {
     NavigationStack {
@@ -9050,7 +9060,7 @@ private struct InviteSharedMemberSheet: View {
         .font(.caption)
         .foregroundStyle(HomeboardPalette.secondaryText)
 
-        if let error = appModel.boardError {
+        if let error = inviteError {
           Text(error)
             .font(.footnote)
             .foregroundStyle(HomeboardPalette.danger)
@@ -9058,8 +9068,13 @@ private struct InviteSharedMemberSheet: View {
 
         Button {
           Task {
+            inviteError = nil
+            appModel.boardError = nil
             await appModel.createInvite()
-            if appModel.boardError == nil {
+            if let err = appModel.boardError {
+              inviteError = err
+              appModel.boardError = nil
+            } else {
               dismiss()
             }
           }
@@ -9086,6 +9101,9 @@ private struct InviteSharedMemberSheet: View {
       }
       .padding(18)
       .background(WorkspaceBackgroundView())
+      .onAppear {
+        inviteError = nil
+      }
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Button("Cancel") { dismiss() }
@@ -9730,6 +9748,8 @@ private struct SharedJoinBoardSheet: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
   @State private var inviteCode = ""
+  @State private var joinError: String? = nil
+  @State private var isJoining = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
@@ -9743,23 +9763,36 @@ private struct SharedJoinBoardSheet: View {
 
       Button {
         Task {
+          isJoining = true
+          joinError = nil
+          appModel.boardError = nil
           await appModel.joinBoardFromWorkspace(code: inviteCode)
-          if appModel.boardError == nil {
+          if let err = appModel.boardError {
+            joinError = err
+            appModel.boardError = nil
+          } else {
             dismiss()
           }
+          isJoining = false
         }
       } label: {
-        Text("Join board")
-          .font(.headline.weight(.bold))
-          .foregroundStyle(Color.black)
-          .frame(maxWidth: .infinity)
-          .frame(height: 54)
-          .background(HomeboardPalette.accent)
-          .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+        HStack(spacing: 9) {
+          if isJoining {
+            ProgressView().tint(.black)
+          }
+          Text(isJoining ? "Joining board…" : "Join board")
+        }
+        .font(.headline.weight(.bold))
+        .foregroundStyle(Color.black)
+        .frame(maxWidth: .infinity)
+        .frame(height: 54)
+        .background(HomeboardPalette.accent)
+        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
       }
       .buttonStyle(HomeboardAreaButtonStyle())
+      .disabled(isJoining)
 
-      if let error = appModel.boardError {
+      if let error = joinError {
         Text(error)
           .font(.footnote)
           .foregroundStyle(HomeboardPalette.danger)
@@ -9769,6 +9802,9 @@ private struct SharedJoinBoardSheet: View {
     }
     .padding(18)
     .background(WorkspaceBackgroundView())
+    .onAppear {
+      joinError = nil
+    }
   }
 }
 
@@ -10324,10 +10360,19 @@ private struct SharedListingArtwork: View {
   let height: CGFloat
   let cornerRadius: CGFloat
 
+  private static let curatedRentalPhotos = [
+    "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1502005229762-ae1b465ab7b4?w=800&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800&auto=format&fit=crop&q=80"
+  ]
+
   var body: some View {
     GeometryReader { proxy in
       ZStack {
-        artwork
+        artwork(size: proxy.size)
 
         LinearGradient(
           colors: [Color.black.opacity(0.18), .clear, Color.black.opacity(0.64)],
@@ -10377,8 +10422,15 @@ private struct SharedListingArtwork: View {
   }
 
   @ViewBuilder
-  private var artwork: some View {
-    if let remotePhotoURL {
+  private func artwork(size: CGSize) -> some View {
+    if let localPreviewImage {
+      Image(uiImage: localPreviewImage)
+        .resizable()
+        .scaledToFill()
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .accessibilityLabel("Listing photo")
+    } else if let remotePhotoURL {
       AsyncImage(
         url: remotePhotoURL,
         transaction: Transaction(animation: .easeInOut(duration: 0.2))
@@ -10394,6 +10446,8 @@ private struct SharedListingArtwork: View {
           image
             .resizable()
             .scaledToFill()
+            .frame(width: size.width, height: size.height)
+            .clipped()
         case .failure:
           placeholderArtwork
         @unknown default:
@@ -10406,13 +10460,36 @@ private struct SharedListingArtwork: View {
     }
   }
 
+  private var localPreviewImage: UIImage? {
+    if let previewID = HomeboardSharedImportStore.previewImageID(from: listing.photoURL),
+       let data = HomeboardSharedImportStore.previewImageData(for: previewID) {
+      return UIImage(data: data)
+    }
+    if let id = UUID(uuidString: listing.id),
+       let data = HomeboardSharedImportStore.previewImageData(for: id) {
+      return UIImage(data: data)
+    }
+    if let listingUUID = UUID(uuidString: listing.listingId),
+       let data = HomeboardSharedImportStore.previewImageData(for: listingUUID) {
+      return UIImage(data: data)
+    }
+    return nil
+  }
+
   private var remotePhotoURL: URL? {
     let value = listing.photoURL.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard
-      let url = URL(string: value),
-      ["http", "https"].contains(url.scheme?.lowercased() ?? "")
-    else { return nil }
-    return url
+    if !value.isEmpty {
+      if let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+        return url
+      }
+      if value.hasPrefix("/") {
+        return URL(string: value, relativeTo: HomeboardConfig.backendBaseURL)
+      }
+    }
+    let key = listing.listingId.isEmpty ? listing.id : listing.listingId
+    let hash = abs(key.hashValue)
+    let photoStr = Self.curatedRentalPhotos[hash % Self.curatedRentalPhotos.count]
+    return URL(string: photoStr)
   }
 
   private var placeholderArtwork: some View {
@@ -11334,7 +11411,7 @@ private struct ScoutBannerView: View {
       HStack(alignment: .top, spacing: 10) {
         VStack(alignment: .leading, spacing: 3) {
           HStack(spacing: 6) {
-            Text(isActive ? "🛰️ Scout Active" : isExpired ? "⏰ Scout Paused" : "🛰️ Homeboard Scout")
+            Text(isActive ? "🛰️ Advisor Active" : isExpired ? "⏰ Advisor Paused" : "🛰️ Homeboard Advisor")
               .font(.subheadline.weight(.semibold))
               .foregroundStyle(HomeboardPalette.primaryText)
             Spacer()
@@ -11372,12 +11449,12 @@ private struct ScoutBannerView: View {
             if isActive, let sub = subscription {
               Text("Price monitoring + lead radar active · \(sub.daysRemaining)d remaining")
             } else if isExpired {
-              Text("Scout paused — renew to resume monitoring for 7 more days.")
+              Text("Advisor paused: renew to resume monitoring for 7 more days.")
             } else if isPending, let sub = subscription {
               let pct = Int(sub.fundedPercent * 100)
-              Text("Split in progress · \(pct)% funded — your share: \(sub.perRoommateFormatted)")
+              Text("Split in progress · \(pct)% funded · your share: \(sub.perRoommateFormatted)")
             } else {
-              Text("Price drops, concession alerts & daily lead radar — split $4.99/week.")
+              Text("Price drops, concession alerts & daily lead radar: split $4.99/week.")
             }
           }
           .font(.caption)

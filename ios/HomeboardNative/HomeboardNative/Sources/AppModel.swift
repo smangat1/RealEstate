@@ -976,6 +976,7 @@ final class AppModel {
   }
 
   func joinBoardFromWorkspace(code rawCode: String) async {
+    boardError = nil
     let inviteCode = normalizedInviteToken(from: rawCode)
     guard !inviteCode.isEmpty else {
       boardError = "Open an invite link or paste its token first."
@@ -1618,7 +1619,7 @@ final class AppModel {
       openRisks: {
         var groupChecks: [String] = []
         if cleanedBathrooms == "1" || (Double(cleanedBathrooms) ?? 0) == 1.0 {
-          groupChecks.append("Single bathroom shared across roommates — align on morning routines")
+          groupChecks.append("Single bathroom shared across roommates: align on morning routines")
         }
         groupChecks.append("Compare bedroom sizes to agree on an equitable rent split")
         groupChecks.append("Confirm total monthly share (including utilities) fits everyone's budget")
@@ -3838,6 +3839,7 @@ final class AppModel {
       highlights: ["3 bedrooms and 2 full bathrooms for all roommates", "Near N/W trains with direct access to Midtown", "Balanced neighborhood vibe for the whole group"],
       openRisks: ["Pushes Jordan to the top of their $1,550 budget cap", "Compare bedroom sizes to agree on an even rent split"],
       status: "interested",
+      photoURL: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&auto=format&fit=crop&q=80",
       bedrooms: "3",
       bathrooms: "2",
       latitude: 40.7685,
@@ -3862,6 +3864,7 @@ final class AppModel {
       highlights: ["1 month free lowers effective rent to $1,329/person", "Well within Jordan and Sam's budget goals", "1 train stop is a short walk away"],
       openRisks: ["Only 1 bathroom shared between 3 roommates", "Longer morning commute for Maya's downtown route"],
       status: "maybe",
+      photoURL: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&auto=format&fit=crop&q=80",
       bedrooms: "3",
       bathrooms: "1",
       latitude: 40.8253,
@@ -3886,6 +3889,7 @@ final class AppModel {
       highlights: ["Large open living room for shared socializing", "2 full bathrooms make morning routines seamless", "Top neighborhood pick for weekend culture"],
       openRisks: ["$1,650/person exceeds Jordan's $1,550 budget cap", "Longer 45+ min commute to Midtown for Sam"],
       status: "new",
+      photoURL: "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&auto=format&fit=crop&q=80",
       bedrooms: "3",
       bathrooms: "2",
       latitude: 40.6747,

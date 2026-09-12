@@ -2,7 +2,7 @@
  * scout-pitch-engine.ts
  *
  * Deterministic, grounded broker outreach pitch generator.
- * Strictly adheres to verified board facts — never fabricates salaries,
+ * Strictly adheres to verified board facts; never fabricates salaries,
  * credit scores, employer names, or unverified claims.
  *
  * Contains 24+ curated, high-converting combinations tailored to
@@ -107,7 +107,7 @@ const TEMPLATE_VARIATIONS: Record<string, TemplateHandler> = {
       angleLabel: "Price Drop Strike · Executive",
       variationIndex: 1,
       categoriesApplied: ["price_drop", "financial_readiness", "tour_speed"],
-      subject: `Inquiring on ${formatSubjectAddress(input.listingAddress, input.unit)} — Pre-qualified group`,
+      subject: `Inquiring on ${formatSubjectAddress(input.listingAddress, input.unit)} - Pre-qualified group`,
       body: `Hello,
 
 I saw ${loc} and noticed the recent price adjustment to ${rentFmt}${dropFmt ? ` (${dropFmt})` : ""}. We would like to confirm its current availability.
@@ -176,7 +176,7 @@ ${formatSignoff(input.senderName, input.roommateCount)}`,
       angleLabel: "Fast-Track Applicant · Warm",
       variationIndex: 4,
       categoriesApplied: ["financial_readiness", "tour_speed", "lease_urgency"],
-      subject: `Inquiry for ${formatSubjectAddress(input.listingAddress, input.unit)} — Ready to view & apply`,
+      subject: `Inquiry for ${formatSubjectAddress(input.listingAddress, input.unit)} - Ready to view & apply`,
       body: `Hello!
 
 We love the look of ${loc} and wanted to check if it is still on the market.
@@ -225,7 +225,7 @@ ${formatSignoff(input.senderName, input.roommateCount)}`,
 
 We came across your listing for ${loc} and wanted to introduce ourselves.
 
-We are ${group.short}. We treat our living space with genuine respect and are looking for a place to call home for a full 12-month lease or longer. Financially, we are thoroughly qualified—combined household income exceeds 40x rent, credit scores are solid, and employer verification letters are on hand.
+We are ${group.short}. We treat our living space with genuine respect and are looking for a place to call home for a full 12-month lease or longer. Financially, we are thoroughly qualified; combined household income exceeds 40x rent, credit scores are solid, and employer verification letters are on hand.
 
 Could we set up a time to view the apartment? Looking forward to hearing from you.
 

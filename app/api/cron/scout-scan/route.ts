@@ -9,7 +9,7 @@ import { runBoardScoutScan } from "@/lib/scout-engine";
  * Called by Vercel Cron (or any external scheduler) twice per day.
  * Finds every board with an active Scout subscription and runs the scan:
  *   1. Price drop detection across all active shortlisted listings
- *   2. Lead radar discovery — up to 3 new matching leads per board per run
+ *   2. Lead radar discovery: up to 3 new matching leads per board per run
  *
  * Authentication: Bearer token checked against CRON_SECRET env var.
  * In Vercel production the Authorization header is set automatically by the cron runtime.
