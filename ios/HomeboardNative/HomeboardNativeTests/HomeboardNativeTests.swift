@@ -2,6 +2,15 @@ import XCTest
 @testable import HomeboardNative
 
 final class HomeboardNativeTests: XCTestCase {
+  private let appModelPersistenceKeys = [
+    "homeboard.native.state",
+    "homeboard.native.account-session",
+    "homeboard.native.profile",
+    "homeboard.native.boards-listings",
+    "homeboard.native.onboarding",
+    "homeboard.native.pending-operations",
+  ]
+
   func testPollVoteIdentityDoesNotConfuseMembersWithTheSameName() throws {
     let decision = ListingDecisionSummary(id: "tour", type: "request_viewing", votes: [
       ListingDecisionVote(name: "Sam", choice: "no", userId: "first-sam"),
@@ -904,7 +913,7 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertTrue(result.analysis.missingFields.isEmpty)
   }
 
-  func testShareTriggeredImportWaitsForReviewEvenWhenFactsAreComplete() {
+  func testCompleteShareTriggeredImportSavesWithoutReview() {
     let pending = HomeboardSharedImportStore.PendingImport(
       url: "https://example.com/listing/3b",
       address: "219 Kent Avenue, Brooklyn, NY 11249",
@@ -914,21 +923,13 @@ final class HomeboardNativeTests: XCTestCase {
       extractionConfidence: "needs-review"
     )
 
-    XCTAssertTrue(pending.requiresReview)
+    XCTAssertFalse(pending.requiresReview)
   }
 
   @MainActor
   func testRemoveListingUsesServerBoardWhenLocalOverlayIsEmpty() {
-    let persistenceKey = "homeboard.native.state"
-    let previousState = UserDefaults.standard.data(forKey: persistenceKey)
-    defer {
-      if let previousState {
-        UserDefaults.standard.set(previousState, forKey: persistenceKey)
-      } else {
-        UserDefaults.standard.removeObject(forKey: persistenceKey)
-      }
-    }
-    UserDefaults.standard.removeObject(forKey: persistenceKey)
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
 
     let listing = ListingPreview(
       id: "board-listing-1",
@@ -958,16 +959,8 @@ final class HomeboardNativeTests: XCTestCase {
 
   @MainActor
   func testLocalListingInsertionAndDeletionSurviveRelaunch() {
-    let persistenceKey = "homeboard.native.state"
-    let previousState = UserDefaults.standard.data(forKey: persistenceKey)
-    defer {
-      if let previousState {
-        UserDefaults.standard.set(previousState, forKey: persistenceKey)
-      } else {
-        UserDefaults.standard.removeObject(forKey: persistenceKey)
-      }
-    }
-    UserDefaults.standard.removeObject(forKey: persistenceKey)
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
 
     let model = AppModel()
     model.authSession = nil
@@ -1012,15 +1005,8 @@ final class HomeboardNativeTests: XCTestCase {
 
   @MainActor
   func testAppModelInitWithExistingLocalBoardsDoesNotTriggerExclusivityViolation() {
-    let persistenceKey = "homeboard.native.state"
-    let previousState = UserDefaults.standard.data(forKey: persistenceKey)
-    defer {
-      if let previousState {
-        UserDefaults.standard.set(previousState, forKey: persistenceKey)
-      } else {
-        UserDefaults.standard.removeObject(forKey: persistenceKey)
-      }
-    }
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
 
     let model = AppModel()
     var sampleBoard = MobileBoard.empty
@@ -1045,6 +1031,26 @@ final class HomeboardNativeTests: XCTestCase {
     let reinitialized = AppModel()
     XCTAssertNotNil(reinitialized.localBoardsById["local-exclusivity-test"])
     XCTAssertTrue(reinitialized.localBoardsById["local-exclusivity-test"]?.recentlyDeleted?.isEmpty ?? false)
+  }
+
+  private func isolateAppModelPersistence() -> [(key: String, data: Data?)] {
+    let defaults = UserDefaults.standard
+    let previousState = appModelPersistenceKeys.map { key in
+      (key: key, data: defaults.data(forKey: key))
+    }
+    appModelPersistenceKeys.forEach(defaults.removeObject(forKey:))
+    return previousState
+  }
+
+  private func restoreAppModelPersistence(_ previousState: [(key: String, data: Data?)]) {
+    let defaults = UserDefaults.standard
+    for record in previousState {
+      if let data = record.data {
+        defaults.set(data, forKey: record.key)
+      } else {
+        defaults.removeObject(forKey: record.key)
+      }
+    }
   }
 
   func testSharedListingActiveOfferDetectionAndScaling() {

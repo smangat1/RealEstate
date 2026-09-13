@@ -28,7 +28,7 @@ final class HomeboardNativeUITests: XCTestCase {
 
     let accessTitle = app.staticTexts["Get into the workspace."]
     XCTAssertTrue(accessTitle.waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["Existing users: click the key. New accounts: sign in with Apple."].exists)
+    XCTAssertTrue(app.staticTexts["If you already have a board code, tap the key. Otherwise, sign in with Apple."].exists)
     XCTAssertTrue(app.buttons["homeboard.welcome.invite-toggle"].exists)
     waitUntilHittable(app.buttons["homeboard.welcome.apple"])
   }
