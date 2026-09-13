@@ -191,6 +191,10 @@ final class AppModel {
   var advisorChecklistByListingID: [String: [ApplicationChecklistEntry]] = [:]
   var advisorInquiriesByListingID: [String: [ListingInquiry]] = [:]
   var advisorTourNotesByListingID: [String: TourNoteSummary] = [:]
+  var advisorError: String?
+  var apiVersion: String?
+  var apiCommit: String?
+  var apiVersionError: String?
   var authError: String?
   var authFeedback: String?
   var showsPostAuthInvitePrompt = false
@@ -749,9 +753,23 @@ final class AppModel {
     persist()
   }
 
+  func refreshVersionInfo() async {
+    apiVersionError = nil
+    do {
+      let health = try await api.fetchHealth()
+      apiVersion = health.apiVersion
+      apiCommit = health.serverCommit
+    } catch {
+      apiVersion = nil
+      apiCommit = nil
+      apiVersionError = readable(error)
+    }
+  }
+
   func openBoard(id: String) async {
     boardError = nil
     boardFeedback = nil
+    advisorError = nil
 
     if id.hasPrefix("local-"), let localBoard = localBoardsById[id] {
       board = localBoard
@@ -825,7 +843,7 @@ final class AppModel {
   }
 
   func triggerScoutScan(boardId: String) async {
-    boardError = nil
+    advisorError = nil
     boardFeedback = nil
 
     if boardId.hasPrefix("preview-") || boardId.hasPrefix("local-") {
@@ -833,7 +851,7 @@ final class AppModel {
       return
     }
     guard let session = authSession else {
-      boardError = "Sign in before running an Advisor scan."
+      advisorError = "Sign in before running an Advisor scan."
       return
     }
     do {
@@ -841,13 +859,14 @@ final class AppModel {
       await refreshCurrentBoardSilently()
       boardFeedback = "Advisor scan finished. Review Updates for any grounded listing changes or follow-ups."
     } catch {
-      boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+      advisorError = readable(error)
     }
   }
 
   func updateAdvisorAction(_ action: AdvisorAction, status: String) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       try await api.updateAdvisorAction(
@@ -860,16 +879,17 @@ final class AppModel {
       storeCurrentBoardSnapshot()
       persist()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func checkListingAgain(listingId: String) async {
     guard let session = authSession, let boardId = board.id else {
-      boardError = "Sign in before checking a live listing."
+      advisorError = "Sign in before checking a live listing."
       return
     }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let response = try await api.checkListing(
@@ -881,12 +901,13 @@ final class AppModel {
       await refreshCurrentBoardSilently()
       await loadAdvisorListingTools(listingId: listingId)
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func loadAdvisorListingTools(listingId: String) async {
     guard let session = authSession, let boardId = board.id else { return }
+    advisorError = nil
     do {
       async let history = api.loadListingHistory(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
       async let checklist = api.loadApplicationChecklist(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
@@ -895,14 +916,16 @@ final class AppModel {
       advisorHistoryByListingID[listingId] = result.0
       advisorChecklistByListingID[listingId] = result.1
       advisorInquiriesByListingID[listingId] = result.2
+      persist()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func createInquiryDraft(listingId: String, templateKey: String) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let inquiry = try await api.createInquiryDraft(
@@ -915,7 +938,7 @@ final class AppModel {
       boardFeedback = "Draft created. Review every word before sending."
       await refreshCurrentBoardSilently()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
@@ -930,6 +953,7 @@ final class AppModel {
   ) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let updated = try await api.updateInquiry(
@@ -949,12 +973,13 @@ final class AppModel {
       boardFeedback = status == "sent" ? "Marked sent after your review." : status == "answered" ? "Reply parsed into grounded fields." : "Draft saved."
       await refreshCurrentBoardSilently()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func updateApplicationItem(listingId: String, item: ApplicationChecklistEntry, status: String) async {
     guard let session = authSession, let boardId = board.id else { return }
+    advisorError = nil
     do {
       let updated = try await api.updateApplicationChecklist(
         accessToken: session.accessToken,
@@ -967,13 +992,14 @@ final class AppModel {
         $0.id == updated.id ? updated : $0
       }
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func saveTourNote(listingId: String, transcript: String) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let summary = try await api.saveTourNote(
@@ -986,7 +1012,7 @@ final class AppModel {
       boardFeedback = "Tour notes organized: \(summary.pros.count) pros, \(summary.cons.count) cons, and \(summary.followUps.count) follow-ups."
       await refreshCurrentBoardSilently()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
@@ -1743,6 +1769,7 @@ final class AppModel {
     advisorChecklistByListingID = [:]
     advisorInquiriesByListingID = [:]
     advisorTourNotesByListingID = [:]
+    advisorError = nil
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -1796,6 +1823,7 @@ final class AppModel {
     advisorChecklistByListingID = [:]
     advisorInquiriesByListingID = [:]
     advisorTourNotesByListingID = [:]
+    advisorError = nil
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]

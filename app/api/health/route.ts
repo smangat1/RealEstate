@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { API_VERSION, getServerCommit } from "@/lib/build-info";
 import { prisma } from "@/lib/prisma";
 import { getRuntimeStatus } from "@/lib/runtime-status";
 
@@ -31,6 +32,8 @@ export async function GET() {
       ok,
       betaReady,
       service: "homeboard",
+      apiVersion: API_VERSION,
+      serverCommit: getServerCommit(),
       checks: {
         configuration: requiredConfigurationReady ? "ok" : "unavailable",
         database: databaseReady ? "ok" : "unavailable",

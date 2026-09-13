@@ -88,6 +88,38 @@ function formatCommuteModeHelp(mode: BoardPageData["commuteMode"]) {
   return "Add OPENROUTESERVICE_API_KEY to turn live commute timing on for this workspace.";
 }
 
+async function readAdvisorAPIResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? "unknown";
+  const body = await response.text();
+  const excerpt = body.replace(/\s+/g, " ").trim().slice(0, 240) || "<empty>";
+  let decoded: unknown = null;
+  try {
+    decoded = body ? JSON.parse(body) : null;
+  } catch {
+    decoded = null;
+  }
+  const endpoint = (() => {
+    try {
+      const url = new URL(response.url);
+      return url.pathname;
+    } catch {
+      return response.url || "unknown endpoint";
+    }
+  })();
+  const detail = `Endpoint ${endpoint} · status ${response.status} · content type ${contentType} · body ${excerpt}`;
+  if (!response.ok) {
+    const message = decoded && typeof decoded === "object" && !Array.isArray(decoded)
+      && typeof (decoded as { error?: unknown }).error === "string"
+      ? (decoded as { error: string }).error
+      : "Advisor API request failed.";
+    throw new Error(`${message} ${detail}`);
+  }
+  if (decoded === null) {
+    throw new Error(`Advisor API returned an unreadable response. ${detail}`);
+  }
+  return decoded as T;
+}
+
 function formatBudgetRange(profile: BoardPageData["profile"]) {
   const parts: string[] = [];
   if (profile.budgetMin !== undefined && profile.budgetMax !== undefined) {
@@ -687,7 +719,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ actionId, status }),
     });
-    if (!response.ok) throw new Error("Unable to update this Advisor action.");
+    await readAdvisorAPIResponse(response);
     setAdvisorActions((current) => current.filter((action) => action.id !== actionId));
   }
 
@@ -722,8 +754,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const result = await response.json().catch(() => null) as { error?: string; message?: string } | null;
-      if (!response.ok) throw new Error(result?.error ?? "Unable to check this listing.");
+      const result = await readAdvisorAPIResponse<{ message?: string }>(response);
       setAdvisorFeedback(result?.message ?? "Listing checked.");
       router.refresh();
     }
@@ -1619,15 +1650,11 @@ function ScoutBanner({
       const res = await fetch(`/api/mobile/boards/${boardId}/scout/scan`, {
         method: "POST",
       });
-      const data = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
-      if (!res.ok) {
-        throw new Error(data?.error ?? "Unable to run an Advisor scan.");
-      } else {
-        setFeedback({ tone: "success", message: data?.message ?? "Advisor scan complete." });
-        setTimeout(() => {
-          window.location.reload();
-        }, 1200);
-      }
+      const data = await readAdvisorAPIResponse<{ message?: string }>(res);
+      setFeedback({ tone: "success", message: data.message ?? "Advisor scan complete." });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
     } catch (error) {
       setFeedback({
         tone: "error",
@@ -1662,12 +1689,11 @@ function ScoutBanner({
           ),
         },
       );
-      const result = (await response.json().catch(() => null)) as {
+      const result = await readAdvisorAPIResponse<{
         subscription?: BoardSubscriptionRecord;
-        error?: string;
-      } | null;
-      if (!response.ok || !result?.subscription) {
-        throw new Error(result?.error ?? "Unable to update Advisor.");
+      }>(response);
+      if (!result.subscription) {
+        throw new Error("Advisor API returned no subscription data.");
       }
 
       setLiveSubscription(result.subscription);
@@ -1888,8 +1914,8 @@ function InquiryEditor({
           ...(status === "sent" ? { reviewConfirmed: true } : {}),
         }),
       });
-      const result = await response.json().catch(() => null) as { inquiry?: ListingInquiryRecord; error?: string } | null;
-      if (!response.ok || !result?.inquiry) throw new Error(result?.error ?? "Unable to update inquiry.");
+      const result = await readAdvisorAPIResponse<{ inquiry?: ListingInquiryRecord }>(response);
+      if (!result.inquiry) throw new Error("Advisor API returned no inquiry data.");
       onChange(result.inquiry);
       setFeedback(status === "sent" ? "Marked sent after your review." : status === "answered" ? "Reply parsed into grounded fields." : "Draft saved.");
     } catch (updateError) {
@@ -1971,16 +1997,20 @@ function ListingDetailModal({
   const [checklist, setChecklist] = useState<ApplicationChecklistItemRecord[]>([]);
   const [tourNote, setTourNote] = useState("");
   const [advisorToolFeedback, setAdvisorToolFeedback] = useState<string | null>(null);
+  const [advisorLoadError, setAdvisorLoadError] = useState<string | null>(null);
   const [advisorToolWorking, setAdvisorToolWorking] = useState(false);
 
   useEffect(() => {
     const base = `/api/mobile/boards/${boardId}/listings/${listing.id}/advisor`;
     void Promise.all([
-      fetch(`${base}/history`).then((response) => response.ok ? response.json() : { changes: [] }),
-      fetch(`${base}/application`).then((response) => response.ok ? response.json() : { items: [] }),
+      fetch(`${base}/history`).then((response) => readAdvisorAPIResponse<{ changes?: ListingChangeRecord[] }>(response)),
+      fetch(`${base}/application`).then((response) => readAdvisorAPIResponse<{ items?: ApplicationChecklistItemRecord[] }>(response)),
     ]).then(([historyResult, checklistResult]) => {
-      setHistory((historyResult as { changes?: ListingChangeRecord[] }).changes ?? []);
-      setChecklist((checklistResult as { items?: ApplicationChecklistItemRecord[] }).items ?? []);
+      setHistory(historyResult.changes ?? []);
+      setChecklist(checklistResult.items ?? []);
+      setAdvisorLoadError(null);
+    }).catch((loadError: unknown) => {
+      setAdvisorLoadError(loadError instanceof Error ? loadError.message : "Advisor API request failed.");
     });
   }, [boardId, listing.id]);
 
@@ -1993,8 +2023,8 @@ function ListingDetailModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ templateKey }),
       });
-      const result = await response.json().catch(() => null) as { inquiry?: ListingInquiryRecord; error?: string } | null;
-      if (!response.ok || !result?.inquiry) throw new Error(result?.error ?? "Unable to create inquiry draft.");
+      const result = await readAdvisorAPIResponse<{ inquiry?: ListingInquiryRecord }>(response);
+      if (!result.inquiry) throw new Error("Advisor API returned no inquiry data.");
       setLocalInquiries((current) => [result.inquiry!, ...current]);
       setAdvisorToolFeedback("Draft created from saved listing and profile facts. Review every word before sending.");
     } catch (draftError) {
@@ -2015,10 +2045,9 @@ function ListingDetailModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript }),
       });
-      const result = await response.json().catch(() => null) as { error?: string; summary?: { pros: string[]; cons: string[]; concerns: string[]; followUps: string[] } } | null;
-      if (!response.ok) throw new Error(result?.error ?? "Unable to organize tour notes.");
+      const result = await readAdvisorAPIResponse<{ summary?: { pros: string[]; cons: string[]; concerns: string[]; followUps: string[] } }>(response);
       setTourNote("");
-      setAdvisorToolFeedback(`Tour notes organized: ${result?.summary?.pros.length ?? 0} pros, ${result?.summary?.cons.length ?? 0} cons, and ${result?.summary?.followUps.length ?? 0} follow-ups.`);
+      setAdvisorToolFeedback(`Tour notes organized: ${result.summary?.pros.length ?? 0} pros, ${result.summary?.cons.length ?? 0} cons, and ${result.summary?.followUps.length ?? 0} follow-ups.`);
     } catch (noteError) {
       setAdvisorToolFeedback(noteError instanceof Error ? noteError.message : "Unable to organize tour notes.");
     } finally {
@@ -2032,12 +2061,17 @@ function ListingDetailModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ itemId: item.id, status }),
     });
-    const result = await response.json().catch(() => null) as { item?: ApplicationChecklistItemRecord; error?: string } | null;
-    if (!response.ok || !result?.item) {
-      setAdvisorToolFeedback(result?.error ?? "Unable to update the application checklist.");
+    try {
+      const result = await readAdvisorAPIResponse<{ item?: ApplicationChecklistItemRecord }>(response);
+      if (!result.item) {
+        setAdvisorToolFeedback("Advisor API returned no checklist item.");
+        return;
+      }
+      setChecklist((current) => current.map((entry) => entry.id === item.id ? result.item! : entry));
+    } catch (updateError) {
+      setAdvisorToolFeedback(updateError instanceof Error ? updateError.message : "Unable to update the application checklist.");
       return;
     }
-    setChecklist((current) => current.map((entry) => entry.id === item.id ? result.item! : entry));
   }
 
 
@@ -2056,6 +2090,12 @@ function ListingDetailModal({
         </div>
 
         <div className="detail-modal-grid">
+          {advisorLoadError ? (
+            <div className="detail-panel" style={{ gridColumn: "1 / -1" }} role="alert">
+              <strong>Advisor API unavailable</strong>
+              <p className="mini-meta">{advisorLoadError}</p>
+            </div>
+          ) : null}
           {advisorActions.length > 0 ? (
             <div className="detail-panel" style={{ gridColumn: "1 / -1", display: "grid", gap: "10px" }}>
               <strong>Advisor actions</strong>
@@ -2202,7 +2242,9 @@ function ListingDetailModal({
                 <strong style={{ fontSize: "0.8rem" }}>{change.explanation}</strong>
                 <p className="mini-meta" style={{ margin: "3px 0 0" }}>{change.whyItMatters}</p>
               </div>
-            )) : <p className="mini-meta">No price, fee, availability, or status changes recorded yet.</p>}
+            )) : advisorLoadError
+              ? <p className="mini-meta">Listing history could not be loaded.</p>
+              : <p className="mini-meta">No price, fee, availability, or status changes recorded yet.</p>}
           </div>
 
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -2217,7 +2259,9 @@ function ListingDetailModal({
                   <option value="waived">Waived</option>
                 </select>
               </label>
-            )) : <p className="mini-meta">No checklist items are available yet.</p>}
+            )) : advisorLoadError
+              ? <p className="mini-meta">Application checklist data could not be loaded.</p>
+              : <p className="mini-meta">No checklist items are available yet.</p>}
           </div>
 
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px", gridColumn: "1 / -1" }}>

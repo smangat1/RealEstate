@@ -964,6 +964,7 @@
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_APP_COMMIT = local;
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
@@ -1124,6 +1125,7 @@
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_APP_COMMIT = local;
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";

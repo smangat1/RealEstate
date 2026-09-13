@@ -3751,12 +3751,20 @@ struct SharedUpdatesView: View {
 
             SharedSectionTitle(
               title: "Advisor updates",
-              trailing: appModel.board.advisorActions.isEmpty
-                ? "All clear"
-                : "\(appModel.board.advisorActions.count) open"
+              trailing: appModel.advisorError != nil
+                ? "Unavailable"
+                : appModel.board.advisorActions.isEmpty
+                  ? "All clear"
+                  : "\(appModel.board.advisorActions.count) open"
             )
 
-            if appModel.board.advisorActions.isEmpty {
+            if let advisorError = appModel.advisorError {
+              SharedInlineEmpty(
+                icon: "exclamationmark.triangle.fill",
+                title: "Advisor API unavailable",
+                message: advisorError
+              )
+            } else if appModel.board.advisorActions.isEmpty {
               SharedInlineEmpty(
                 icon: "checkmark.seal",
                 title: "No Advisor actions",
@@ -4527,6 +4535,31 @@ struct SharedSetupView: View {
           }
           .sharedSurface(cornerRadius: 20)
 
+          VStack(alignment: .leading, spacing: 10) {
+            SharedSectionTitle(title: "Build information", trailing: nil)
+            Text("App \(HomeboardConfig.appVersion) (\(HomeboardConfig.appBuild))")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Text("App commit: \(HomeboardConfig.appCommit)")
+              .font(.caption.monospaced())
+              .foregroundStyle(HomeboardPalette.secondaryText)
+            if let apiVersion = appModel.apiVersion, let apiCommit = appModel.apiCommit {
+              Text("API \(apiVersion) · commit \(apiCommit)")
+                .font(.caption.monospaced())
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            } else if let apiVersionError = appModel.apiVersionError {
+              Text("API version unavailable: \(apiVersionError)")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.danger)
+            } else {
+              Text("Checking API version…")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            }
+          }
+          .padding(14)
+          .sharedSurface(cornerRadius: 18)
+
           if !appModel.availableBoards.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
               SharedSectionTitle(title: "Your boards", trailing: "\(appModel.availableBoards.count)")
@@ -4646,6 +4679,9 @@ struct SharedSetupView: View {
     .toolbar(.hidden, for: .navigationBar)
     .onAppear {
       titleDraft = appModel.board.title
+    }
+    .task {
+      await appModel.refreshVersionInfo()
     }
     .sheet(isPresented: $showsBriefEditor) {
       OnboardingView(
@@ -7704,11 +7740,27 @@ struct SharedListingDetailView: View {
           VStack(alignment: .leading, spacing: 12) {
             SharedSectionTitle(
               title: "Advisor",
-              trailing: advisorActions.isEmpty ? "No open actions" : "\(advisorActions.count) open"
+              trailing: appModel.advisorError != nil
+                ? "Unavailable"
+                : advisorActions.isEmpty ? "No open actions" : "\(advisorActions.count) open"
             )
 
             ForEach(advisorActions) { action in
               AdvisorActionCardView(action: action) { _ in }
+            }
+
+            if let advisorError = appModel.advisorError {
+              SharedInlineEmpty(
+                icon: "exclamationmark.triangle.fill",
+                title: "Advisor API unavailable",
+                message: advisorError
+              )
+            } else if advisorActions.isEmpty {
+              SharedInlineEmpty(
+                icon: "checkmark.seal",
+                title: "No Advisor data",
+                message: "No Advisor action needs attention for this listing."
+              )
             }
 
             HStack(spacing: 10) {
@@ -8026,6 +8078,14 @@ private struct AdvisorListingToolsSheet: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
 
+          if let advisorError = appModel.advisorError {
+            SharedInlineEmpty(
+              icon: "exclamationmark.triangle.fill",
+              title: "Advisor API unavailable",
+              message: advisorError
+            )
+          }
+
           VStack(alignment: .leading, spacing: 10) {
             SharedSectionTitle(title: "Inquiry templates", trailing: "Review required")
             ForEach(templates, id: \.0) { template in
@@ -8103,9 +8163,15 @@ private struct AdvisorListingToolsSheet: View {
           VStack(alignment: .leading, spacing: 10) {
             SharedSectionTitle(
               title: "Application checklist",
-              trailing: checklist.isEmpty ? "Loading" : "\(checklist.filter { $0.status == "missing" }.count) missing"
+              trailing: appModel.advisorError != nil
+                ? "Unavailable"
+                : checklist.isEmpty ? "No data" : "\(checklist.filter { $0.status == "missing" }.count) missing"
             )
-            if checklist.isEmpty {
+            if appModel.advisorError != nil {
+              Text("Application checklist data could not be loaded.")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            } else if checklist.isEmpty {
               SharedInlineEmpty(
                 icon: "doc.badge.plus",
                 title: "No checklist items yet",
@@ -8119,8 +8185,17 @@ private struct AdvisorListingToolsSheet: View {
           }
 
           VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(title: "Listing change history", trailing: history.isEmpty ? "No changes" : "\(history.count)")
-            if history.isEmpty {
+            SharedSectionTitle(
+              title: "Listing change history",
+              trailing: appModel.advisorError != nil
+                ? "Unavailable"
+                : history.isEmpty ? "No changes" : "\(history.count)"
+            )
+            if appModel.advisorError != nil {
+              Text("Listing history could not be loaded.")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            } else if history.isEmpty {
               SharedInlineEmpty(
                 icon: "clock.arrow.circlepath",
                 title: "No recorded changes",

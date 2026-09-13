@@ -16,6 +16,8 @@
   <string>$(PRODUCT_NAME)</string>
 	<key>HomeboardAPIBaseURL</key>
 	<string>$(HOMEBOARD_API_BASE_URL)</string>
+	<key>HomeboardAppCommit</key>
+	<string>$(HOMEBOARD_APP_COMMIT)</string>
 	<key>HomeboardKeychainAccessGroup</key>
 	<string>$(AppIdentifierPrefix)com.homeboard.native.shared</string>
 	<key>HomeboardPublicWebURL</key>
