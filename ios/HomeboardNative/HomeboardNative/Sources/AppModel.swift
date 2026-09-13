@@ -53,6 +53,7 @@ final class AppModel {
     var boardTab: BoardTab?
     var account: LocalAccount?
     var authenticatedAuthUserID: String?
+    var membershipState: MobileMembershipState?
     var availableBoards: [MobileBoardSummary]
     var pendingConfirmationEmail: String?
   }
@@ -165,6 +166,7 @@ final class AppModel {
   var board: MobileBoard = .empty
   var account: LocalAccount?
   var authSession: NativeAuthSession?
+  var authenticatedMembershipState: MobileMembershipState?
   var availableBoards: [MobileBoardSummary] = []
   var pendingInviteCode = ""
   var pendingConfirmationEmail = ""
@@ -255,43 +257,9 @@ final class AppModel {
     restore()
     removePersistedStressTestListings()
     purgeExpiredLocalRecentlyDeletedListings()
-    let restoredAppUserID = account?.id
     authSession = NativeAuthSessionStore.load()
-    let restoredIdentityMismatch = authSession.map { session in
-      if let restoredAuthUserID {
-        return restoredAuthUserID != session.userId
-      }
-
-      // Snapshots written before authenticatedAuthUserID was introduced only
-      // have the application user ID. Use the account email for this one-time
-      // migration instead of comparing IDs from two different namespaces.
-      let restoredEmail = account?.email
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased() ?? ""
-      let sessionEmail = session.email
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased()
-      return restoredEmail.isEmpty || restoredEmail != sessionEmail
-    } ?? false
-    let restoredRemoteBoardLacksMembership = authSession.map { _ in
-      board.id.map { boardID in
-        !boardID.hasPrefix("local-")
-          && !boardID.hasPrefix("preview-")
-          && restoredAppUserID.map { appUserID in
-            !board.members.contains(where: { $0.userId == appUserID })
-          } ?? true
-      } ?? false
-    } ?? false
-    if let session = authSession,
-       restoredIdentityMismatch || restoredRemoteBoardLacksMembership {
-      clearWorkspaceStateForAccountTransition()
-      account = LocalAccount(
-        id: nil,
-        name: session.displayName,
-        email: session.email
-      )
-      currentScreen = .welcome
-    }
+    // Cached membership is not proof of identity or authorization. Preserve it
+    // until a successful session response identifies the current app user.
     if authSession == nil {
       clearGuestPreviewState(preservingNonPreviewBoard: true)
       opensWelcomeOnAccessPage = false
@@ -339,9 +307,11 @@ final class AppModel {
         } else {
           try await loadBoard(id: firstBoard.id)
         }
-      } else {
+      } else if response.membershipState == .authenticatedNoMembership {
         seedOnboardingMessagesIfNeeded()
         currentScreen = .onboarding
+      } else {
+        boardError = "The server did not confirm this account's board membership. Your saved board is still available."
       }
     } catch HomeboardAPIError.unauthorized {
       do {
@@ -358,12 +328,16 @@ final class AppModel {
           } else {
             try await loadBoard(id: firstBoard.id)
           }
-        } else {
+        } else if response.membershipState == .authenticatedNoMembership {
           seedOnboardingMessagesIfNeeded()
           currentScreen = .onboarding
+        } else {
+          boardError = "The server did not confirm this account's board membership. Your saved board is still available."
         }
       } catch HomeboardAPIError.unauthorized {
-        clearSessionState()
+        // A failed refresh is not a successful identity transition. Preserve
+        // the Keychain session and every cached workspace record for retry.
+        boardError = "Homeboard could not renew this session. Your saved board is still on this device."
       } catch {
         boardError = readable(error)
       }
@@ -707,6 +681,11 @@ final class AppModel {
     showsPostAuthInvitePrompt = false
 
     guard let firstBoard = availableBoards.first else {
+      guard authenticatedMembershipState == .authenticatedNoMembership else {
+        authError = "Homeboard has not confirmed that this account has no boards. Your cached data was kept; retry the connection."
+        persist()
+        return
+      }
       profile.name = account?.name ?? profile.name
       seedOnboardingMessagesIfNeeded()
       currentScreen = .onboarding
@@ -1698,22 +1677,28 @@ final class AppModel {
   @discardableResult
   private func applySessionResponse(_ response: MobileSessionResponse, session: NativeAuthSession) -> Bool {
     guard authSession?.userId == session.userId else { return false }
-    let responseBoardIDs = Set(response.boards.map(\.id))
-    let currentRemoteBoardIsUnauthorized = board.id.map { boardID in
-      !boardID.hasPrefix("local-")
-        && !boardID.hasPrefix("preview-")
-        && !responseBoardIDs.contains(boardID)
-    } ?? false
-    let authenticatedAccountChanged = account?.id.map { $0 != response.user.id }
-      ?? (board.id != nil)
+    let authenticatedAccountChanged: Bool
+    if let cachedAppUserID = account?.id {
+      authenticatedAccountChanged = cachedAppUserID != response.user.id
+    } else if let restoredAuthUserID {
+      authenticatedAccountChanged = restoredAuthUserID != session.userId
+    } else {
+      authenticatedAccountChanged = false
+    }
 
-    if authenticatedAccountChanged || currentRemoteBoardIsUnauthorized {
+    // This is the only automatic workspace-clear path: both the auth session
+    // and application user have been confirmed by a successful API response.
+    if authenticatedAccountChanged {
       clearWorkspaceStateForAccountTransition()
     }
 
     authSession = session
+    restoredAuthUserID = session.userId
     account = LocalAccount(id: response.user.id, name: response.user.displayName, email: response.user.email)
-    availableBoards = response.boards
+    authenticatedMembershipState = response.membershipState
+    if !response.boards.isEmpty || response.membershipState == .authenticatedNoMembership {
+      availableBoards = response.boards
+    }
     if profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       profile.name = response.user.displayName
     }
@@ -1740,6 +1725,7 @@ final class AppModel {
     onboardingPersistenceTask = nil
     authSession = nil
     restoredAuthUserID = nil
+    authenticatedMembershipState = nil
     account = nil
     availableBoards = []
     pendingInviteCode = ""
@@ -1796,6 +1782,7 @@ final class AppModel {
     onboardingPersistenceTask?.cancel()
     onboardingPersistenceTask = nil
     availableBoards = []
+    authenticatedMembershipState = nil
     onboardingCreationRequestId = nil
     board = .empty
     profile = RentalProfile()
@@ -2946,7 +2933,10 @@ final class AppModel {
         availableBoards.removeAll { $0.id == boardId }
         board = .empty
         if let next = availableBoards.first { await openBoard(id: next.id) }
-        else { currentScreen = .onboarding }
+        else {
+          authenticatedMembershipState = .authenticatedNoMembership
+          currentScreen = .onboarding
+        }
         persist()
       } catch {
         guard authSession?.userId == session.userId else { return }
@@ -2964,7 +2954,10 @@ final class AppModel {
         availableBoards.removeAll { $0.id == boardId }
         board = .empty
         if let next = availableBoards.first { await openBoard(id: next.id) }
-        else { currentScreen = .onboarding }
+        else {
+          authenticatedMembershipState = .authenticatedNoMembership
+          currentScreen = .onboarding
+        }
         persist()
       } catch {
         guard authSession?.userId == session.userId else { return }
@@ -4307,14 +4300,15 @@ final class AppModel {
   }
 
   private func clearGuestPreviewState(preservingNonPreviewBoard: Bool = false) {
+    let isDisplayingPreview = board.id == "preview-workspace"
     localShortlistsByBoard.removeValue(forKey: "preview-workspace")
     localMembersByBoard.removeValue(forKey: "preview-workspace")
     localBoardsById.removeValue(forKey: "preview-workspace")
     localProfilesByBoard.removeValue(forKey: "preview-workspace")
-    account = nil
-    if preservingNonPreviewBoard, board.id != "preview-workspace" {
+    if preservingNonPreviewBoard, !isDisplayingPreview {
       return
     }
+    account = nil
     board = .empty
     listingInventory = []
     listingInventoryNextCursor = nil
@@ -4348,6 +4342,7 @@ final class AppModel {
       boardTab: boardTab,
       account: account,
       authenticatedAuthUserID: authSession?.userId ?? restoredAuthUserID,
+      membershipState: authenticatedMembershipState,
       availableBoards: availableBoards,
       pendingConfirmationEmail: pendingConfirmationEmail
     )
@@ -4422,6 +4417,7 @@ final class AppModel {
       boardTab = record.boardTab ?? .board
       account = record.account
       restoredAuthUserID = record.authenticatedAuthUserID
+      authenticatedMembershipState = record.membershipState
       availableBoards = record.availableBoards
       pendingConfirmationEmail = record.pendingConfirmationEmail ?? ""
     } else if defaults.data(forKey: accountSessionPersistenceKey) == nil,

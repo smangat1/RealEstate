@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { User } from "@prisma/client";
 import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
 
 import { prisma } from "@/lib/prisma";
@@ -70,23 +71,46 @@ function metadataString(value: unknown) {
 
 export async function syncAuthUserToProfile(authUser: SupabaseAuthUser) {
   if (!authUser.email || authUser.app_metadata?.homeboard_deletion_pending === true) return null;
+  const email = authUser.email.trim().toLowerCase();
+  const profileData = {
+    email,
+    displayName: deriveDisplayName(authUser),
+    workAddress: deriveWorkAddress(authUser),
+    secondaryWorkAddress: deriveSecondaryWorkAddress(authUser),
+  };
 
-  const row = await prisma.user.upsert({
+  // Supabase owns provider linking. Homeboard first follows its stable auth ID,
+  // then safely adopts an older email-only application row when Supabase has
+  // verified that email. This keeps Apple and email entry mapped to one app
+  // user without ever reassigning a row already bound to another auth user.
+  const existingByAuthID = await prisma.user.findUnique({
     where: { authUserId: authUser.id },
-    update: {
-      email: authUser.email,
-      displayName: deriveDisplayName(authUser),
-      workAddress: deriveWorkAddress(authUser),
-      secondaryWorkAddress: deriveSecondaryWorkAddress(authUser),
-    },
-    create: {
-      authUserId: authUser.id,
-      email: authUser.email,
-      displayName: deriveDisplayName(authUser),
-      workAddress: deriveWorkAddress(authUser),
-      secondaryWorkAddress: deriveSecondaryWorkAddress(authUser),
-    },
   });
+  let row: User;
+  if (existingByAuthID) {
+    row = await prisma.user.update({
+      where: { id: existingByAuthID.id },
+      data: profileData,
+    });
+  } else {
+    const existingByEmail = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
+    if (existingByEmail?.authUserId && existingByEmail.authUserId !== authUser.id) {
+      throw new Error("AUTH_IDENTITY_CONFLICT");
+    }
+    if (existingByEmail && !authUser.email_confirmed_at) {
+      throw new Error("AUTH_IDENTITY_REQUIRES_VERIFIED_EMAIL");
+    }
+    row = existingByEmail
+      ? await prisma.user.update({
+          where: { id: existingByEmail.id },
+          data: { ...profileData, authUserId: authUser.id },
+        })
+      : await prisma.user.create({
+          data: { ...profileData, authUserId: authUser.id },
+        });
+  }
 
   const identities = Array.isArray(authUser.identities) ? authUser.identities : [];
   const authProviders = Array.from(

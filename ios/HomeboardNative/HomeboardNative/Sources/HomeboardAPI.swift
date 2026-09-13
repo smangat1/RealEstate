@@ -23,9 +23,15 @@ enum HomeboardAPIError: LocalizedError {
   }
 }
 
+enum MobileMembershipState: String, Codable {
+  case member
+  case authenticatedNoMembership = "authenticated_no_membership"
+}
+
 struct MobileSessionResponse: Decodable {
   var user: RemoteUserPayload
   var boards: [MobileBoardSummary]
+  var membershipState: MobileMembershipState
   var activeBoard: MobileBoardLoadResponse?
 }
 

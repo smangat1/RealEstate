@@ -91,6 +91,7 @@ const boardDataSource = readFileSync(
   resolve(process.cwd(), "lib/board-data.ts"),
   "utf8",
 );
+const authSource = readFileSync(resolve(process.cwd(), "lib/auth.ts"), "utf8");
 const commuteServiceSource = readFileSync(
   resolve(process.cwd(), "lib/commute-service.ts"),
   "utf8",
@@ -213,7 +214,7 @@ test("board loading avoids read-time maintenance writes and shows cached data im
   assert.match(continueFlow, /Task \{[\s\S]*try await loadBoard\(id: firstBoard\.id\)/);
 });
 
-test("native cached board state is isolated by authenticated account", () => {
+test("native cached board state clears only after a successful different-user response", () => {
   const initFlow = appModelSource.slice(
     appModelSource.indexOf("init()"),
     appModelSource.indexOf("func bootstrap"),
@@ -231,18 +232,42 @@ test("native cached board state is isolated by authenticated account", () => {
     appModelSource.indexOf("private enum NativeAuthSessionStore"),
   );
 
-  assert.match(initFlow, /restoredRemoteBoardLacksMembership/);
-  assert.match(initFlow, /restoredIdentityMismatch \|\| restoredRemoteBoardLacksMembership/);
-  assert.match(initFlow, /restoredAuthUserID != session\.userId/);
-  assert.match(initFlow, /\$0\.userId == appUserID/);
-  assert.doesNotMatch(initFlow, /restoredAppUserID != session\.userId/);
-  assert.match(initFlow, /clearWorkspaceStateForAccountTransition\(\)/);
-  assert.match(sessionFlow, /responseBoardIDs[\s\S]*currentRemoteBoardIsUnauthorized/);
-  assert.match(sessionFlow, /authenticatedAccountChanged \|\| currentRemoteBoardIsUnauthorized/);
+  assert.doesNotMatch(initFlow, /restoredRemoteBoardLacksMembership|restoredIdentityMismatch/);
+  assert.doesNotMatch(initFlow, /clearWorkspaceStateForAccountTransition\(\)/);
+  assert.match(sessionFlow, /cachedAppUserID != response\.user\.id/);
+  assert.match(sessionFlow, /restoredAuthUserID != session\.userId/);
+  assert.match(sessionFlow, /if authenticatedAccountChanged \{\s*clearWorkspaceStateForAccountTransition\(\)/);
+  assert.doesNotMatch(sessionFlow, /currentRemoteBoardIsUnauthorized|responseBoardIDs/);
   assert.match(localMergeFlow, /board\.members\.removeAll[\s\S]*\$0\.roommateId == nil/);
   assert.match(localMergeFlow, /isDeviceLocalBoard \|\| \$0\.status == "commute point"/);
   assert.match(syntheticMemberFlow, /guard canSynthesizeLocalMember else \{ return \}/);
   assert.match(appModelSource, /Board snapshots and optimistic member data are device-local conveniences/);
+});
+
+test("onboarding requires an explicit authenticated no-membership response", () => {
+  const bootstrapFlow = appModelSource.slice(
+    appModelSource.indexOf("func bootstrap"),
+    appModelSource.indexOf("func openAuth"),
+  );
+  const continueFlow = appModelSource.slice(
+    appModelSource.indexOf("func continueAfterAuthenticationWithoutInvite"),
+    appModelSource.indexOf("func requestPasswordReset"),
+  );
+
+  assert.match(apiSource, /case authenticatedNoMembership = "authenticated_no_membership"/);
+  assert.match(mobileSessionRouteSource, /membershipState: boards\.length === 0 \? "authenticated_no_membership" : "member"/);
+  assert.match(bootstrapFlow, /response\.membershipState == \.authenticatedNoMembership/);
+  assert.match(continueFlow, /authenticatedMembershipState == \.authenticatedNoMembership/);
+  assert.match(continueFlow, /Your cached data was kept; retry the connection/);
+  assert.doesNotMatch(bootstrapFlow, /catch HomeboardAPIError\.unauthorized \{[\s\S]*clearSessionState\(\)/);
+});
+
+test("verified Apple or email auth adopts only an unbound matching app user", () => {
+  assert.match(authSource, /where: \{ authUserId: authUser\.id \}/);
+  assert.match(authSource, /email: \{ equals: email, mode: "insensitive" \}/);
+  assert.match(authSource, /existingByEmail\?\.authUserId && existingByEmail\.authUserId !== authUser\.id/);
+  assert.match(authSource, /existingByEmail && !authUser\.email_confirmed_at/);
+  assert.match(authSource, /data: \{ \.\.\.profileData, authUserId: authUser\.id \}/);
 });
 
 test("launch intro overlaps bootstrap and hands off immediately to a restored board", () => {
@@ -357,9 +382,10 @@ test("native account deletion has no reusable development-account bypass", () =>
 
 test("relaunch recognizes the same authenticated account without clearing queued listings", () => {
   assert.match(appModelSource, /var authenticatedAuthUserID: String\?/);
-  assert.match(appModelSource, /authenticatedAuthUserID: authSession\?\.userId/);
+  assert.match(appModelSource, /authenticatedAuthUserID: authSession\?\.userId \?\? restoredAuthUserID/);
   assert.match(appModelSource, /restoredAuthUserID != session\.userId/);
-  assert.match(appModelSource, /board\.members\.contains\(where: \{ \$0\.userId == appUserID \}\)/);
+  assert.doesNotMatch(appModelSource, /restoredRemoteBoardLacksMembership/);
+  assert.doesNotMatch(appModelSource, /board\.members\.contains\(where: \{ \$0\.userId == appUserID \}\)/);
   assert.doesNotMatch(appModelSource, /restoredAccountID != session\.userId/);
 });
 

@@ -66,7 +66,8 @@ test("shared web links open the installed app and otherwise retain an install pa
   assert.match(onboarding, /PASTE INVITE LINK/);
   assert.match(welcome, /Paste invite link or token/);
   assert.match(welcome, /joinCode\.count == 10 \|\| joinCode\.count == 32/);
-  assert.match(appModel, /pendingInviteCode: ""/);
+  assert.match(appModel, /pendingInviteCode = ""/);
+  assert.match(appModel, /Invite links are bearer credentials and intentionally never migrate/);
   assert.match(appModel, /incomingLinkError/);
 });
 
