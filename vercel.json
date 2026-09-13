@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/advisor-monitor",
-      "schedule": "0 9,21 * * *"
-    }
-  ]
-}
+{}

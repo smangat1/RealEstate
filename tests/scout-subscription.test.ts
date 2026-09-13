@@ -50,7 +50,7 @@ test("calculateEqualSplit divides $4.99 cleanly among roommates with remainder a
   );
 });
 
-test("Advisor monitoring route is scheduled and exports a GET handler", () => {
+test("Advisor monitoring route remains callable without a paid Vercel schedule", () => {
   // Route file checks
   const routePath = resolve(process.cwd(), "app/api/cron/advisor-monitor/route.ts");
   assert.ok(existsSync(routePath), "cron route file should exist");
@@ -60,15 +60,14 @@ test("Advisor monitoring route is scheduled and exports a GET handler", () => {
   assert.match(src, /monitorBoardListings/, "should monitor saved listings");
   assert.match(src, /markStaleInquiriesAndCreateFollowUps/, "should schedule inquiry follow-ups");
 
-  // vercel.json schedule checks
+  // Current-plan deployments must not declare a Vercel Cron. The protected
+  // route remains available to a separately configured scheduler.
   const vercelPath = resolve(process.cwd(), "vercel.json");
   assert.ok(existsSync(vercelPath), "vercel.json should exist");
   const vercelJson = JSON.parse(readFileSync(vercelPath, "utf8")) as {
     crons?: Array<{ path: string; schedule: string }>;
   };
-  const cronEntry = vercelJson.crons?.find((entry) => entry.path === "/api/cron/advisor-monitor");
-  assert.ok(cronEntry, "vercel.json should schedule /api/cron/advisor-monitor");
-  assert.equal(cronEntry.schedule, "0 9,21 * * *", "should run twice a day at 9am and 9pm UTC");
+  assert.deepEqual(vercelJson.crons ?? [], []);
 });
 
 test("Advisor subscription is included in native board payloads", () => {
