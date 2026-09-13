@@ -11,6 +11,18 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.pending-operations",
   ]
 
+  func testLegacySessionResponseDecodesWithoutForcingOnboarding() throws {
+    let response = try JSONDecoder().decode(
+      MobileSessionResponse.self,
+      from: Data(
+        #"{"user":{"id":"app-user-1","email":"user@example.com","displayName":"Sam"},"boards":[{"id":"board-1","title":"Shared search","city":"New York, NY","createdAt":"2026-09-01T00:00:00.000Z","updatedAt":"2026-09-12T00:00:00.000Z"}],"activeBoard":null}"#.utf8
+      )
+    )
+
+    XCTAssertEqual(response.boards.map(\.id), ["board-1"])
+    XCTAssertNil(response.membershipState)
+  }
+
   func testPollVoteIdentityDoesNotConfuseMembersWithTheSameName() throws {
     let decision = ListingDecisionSummary(id: "tour", type: "request_viewing", votes: [
       ListingDecisionVote(name: "Sam", choice: "no", userId: "first-sam"),

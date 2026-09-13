@@ -42,7 +42,10 @@ enum MobileMembershipState: String, Codable {
 struct MobileSessionResponse: Decodable {
   var user: RemoteUserPayload
   var boards: [MobileBoardSummary]
-  var membershipState: MobileMembershipState
+  // Older production servers predate this discriminator. A missing value is
+  // deliberately unknown rather than `authenticatedNoMembership`, so an empty
+  // legacy response can never force an existing account into onboarding.
+  var membershipState: MobileMembershipState?
   var activeBoard: MobileBoardLoadResponse?
 }
 
