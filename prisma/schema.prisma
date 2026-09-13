@@ -756,6 +756,7 @@ model BoardSubscription {
   contributions BoardSubscriptionContribution[]
 
   @@index([boardId, status])
+  @@index([expiresAt])
 }
 
 model BoardSubscriptionContribution {
@@ -784,6 +785,7 @@ model ScoutDiscoveredLead {
   matchReason  String
   status       String      @default("pending") // pending | promoted | dismissed
   discoveredAt DateTime    @default(now())
+  createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
   listing      Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)

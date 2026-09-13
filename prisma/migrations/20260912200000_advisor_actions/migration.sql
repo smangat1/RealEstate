@@ -28,8 +28,8 @@ ALTER TABLE "BrokerOutreachRecord"
   ADD COLUMN "lastFollowUpAt" TIMESTAMP(3),
   ADD COLUMN "replyText" TEXT,
   ADD COLUMN "replyFacts" JSONB,
-  ADD COLUMN "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 UPDATE "BrokerOutreachRecord"
 SET "status" = 'sent',
@@ -39,7 +39,8 @@ SET "status" = 'sent',
 
 ALTER TABLE "BrokerOutreachRecord"
   ALTER COLUMN "contactedAt" DROP NOT NULL,
-  ALTER COLUMN "contactedAt" DROP DEFAULT;
+  ALTER COLUMN "contactedAt" DROP DEFAULT,
+  ALTER COLUMN "updatedAt" DROP DEFAULT;
 
 DROP INDEX IF EXISTS "BrokerOutreachRecord_boardListingId_contactedAt_idx";
 CREATE INDEX "BrokerOutreachRecord_boardListingId_status_createdAt_idx"
