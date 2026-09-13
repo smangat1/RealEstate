@@ -6,7 +6,7 @@ import { addListingToBoard, getBoardPageData } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload, mapListingInventoryForMobile } from "@/lib/mobile-payloads";
 import { sendOperationalAlert } from "@/lib/monitoring";
-import { previewListingImport } from "@/lib/listing-sources";
+import { isZillowBuildingDetailUrl, previewListingImport } from "@/lib/listing-sources";
 import { listingSourceTrustWarning } from "@/lib/listing-source-policy";
 import { isSafeHttpUrl } from "@/lib/input-safety";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +39,8 @@ const listingSchema = z.object({
   availableDate: z.string().trim().max(80).optional(),
   amenities: z.array(z.string().trim().min(1).max(120)).max(40).optional(),
   modelInsights: z.array(modelInsightSchema).max(16).optional(),
+  listingScope: z.enum(["unit", "building"]).optional(),
+  partialUnitParsing: z.boolean().optional(),
   description: z.string().trim().max(10_000).optional(),
   sourceUrl: z.string().trim().max(2_000).refine(isSafeHttpUrl).or(z.literal("")).optional(),
   imageUrl: z.string().trim().max(2_000).refine(isSafeHttpUrl).or(z.literal("")).optional(),
@@ -370,6 +372,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       availableDate: parsed.data.availableDate,
       amenities: parsed.data.amenities,
       modelInsights: parsed.data.modelInsights,
+      listingScope: importPreview?.scope ?? parsed.data.listingScope,
+      partialUnitParsing: Boolean(
+        parsed.data.partialUnitParsing
+        && parsed.data.sourceUrl
+        && isZillowBuildingDetailUrl(parsed.data.sourceUrl),
+      ),
       description: parsed.data.description,
       imageUrl: parsed.data.imageUrl,
       userNotes: parsed.data.groupNote,

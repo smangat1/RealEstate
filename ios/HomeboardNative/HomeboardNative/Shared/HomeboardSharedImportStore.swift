@@ -268,10 +268,15 @@ enum HomeboardSharedImportStore {
     var amenities: [String]
     var modelInsights: [HomeboardListingInsight]
     var listingScope: String?
+    var partialUnitParsing: Bool
     var extractionConfidence: String?
 
     var requiresReview: Bool {
-      extractionConfidence?.lowercased() == "needs-review"
+      let hasAddress = address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+      if listingScope?.lowercased() == "building", unit?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+        return !hasAddress
+      }
+      return !hasAddress || price == nil || bedrooms == nil || bathrooms == nil
     }
 
     init(
@@ -298,6 +303,7 @@ enum HomeboardSharedImportStore {
       amenities: [String] = [],
       modelInsights: [HomeboardListingInsight] = [],
       listingScope: String? = nil,
+      partialUnitParsing: Bool = false,
       extractionConfidence: String? = nil
     ) {
       self.id = id
@@ -323,6 +329,7 @@ enum HomeboardSharedImportStore {
       self.amenities = amenities
       self.modelInsights = modelInsights
       self.listingScope = listingScope
+      self.partialUnitParsing = partialUnitParsing
       self.extractionConfidence = extractionConfidence
     }
 
@@ -374,6 +381,9 @@ enum HomeboardSharedImportStore {
         amenities: (message["amenities"] as? [String]) ?? [],
         modelInsights: Self.decodeInsights(message["modelInsights"]),
         listingScope: cleaned("listingScope"),
+        partialUnitParsing: (message["partialUnitParsing"] as? Bool)
+          ?? (message["partialUnitParsing"] as? NSNumber)?.boolValue
+          ?? false,
         extractionConfidence: cleaned("extractionConfidence")
       )
     }
@@ -403,6 +413,7 @@ enum HomeboardSharedImportStore {
       amenities = try container.decodeIfPresent([String].self, forKey: .amenities) ?? []
       modelInsights = try container.decodeIfPresent([HomeboardListingInsight].self, forKey: .modelInsights) ?? []
       listingScope = try container.decodeIfPresent(String.self, forKey: .listingScope)
+      partialUnitParsing = try container.decodeIfPresent(Bool.self, forKey: .partialUnitParsing) ?? false
       extractionConfidence = try container.decodeIfPresent(String.self, forKey: .extractionConfidence)
     }
 

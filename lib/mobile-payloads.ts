@@ -47,6 +47,8 @@ export type MobileListingPreviewPayload = {
   status: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied";
   workflowStatus: "suggested" | "source_confirmed" | "considering" | "shortlisted" | "viewing" | "applying" | "decided";
   sourceUrl: string;
+  listingScope: "unit" | "building";
+  partialUnitParsing: boolean;
   exactSources: {
     id: string;
     catalogSourceId: string | null;
@@ -333,6 +335,15 @@ function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {
   }).slice(0, 16);
 }
 
+function listingImportMetadata(listing: ListingRecord) {
+  return {
+    listingScope: listing.providerData.homeboardListingScope === "building"
+      ? "building" as const
+      : "unit" as const,
+    partialUnitParsing: listing.providerData.homeboardPartialUnitParsing === true,
+  };
+}
+
 function mapSuggestedListingForMobile(
   entry: BoardPageData["suggestedListings"][number],
   data: BoardPageData,
@@ -372,6 +383,8 @@ function mapSuggestedListingForMobile(
     status: "new",
     workflowStatus: "suggested",
     sourceUrl: "",
+    listingScope: "unit",
+    partialUnitParsing: false,
     exactSources: [],
     // Address-search links are not listing results. Only return source actions
     // when Homeboard has an exact URL attached to the property.
@@ -449,6 +462,7 @@ export function mapListingInventoryForMobile(
     status: "new",
     workflowStatus: "suggested",
     sourceUrl,
+    ...listingImportMetadata(listing),
     exactSources: sourceUrl
       ? [{
           id: `inventory-source:${listing.id}`,
@@ -555,6 +569,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
     status: entry.userStatus,
     workflowStatus: entry.workflowStatus,
     sourceUrl: entry.listing.sourceUrl ?? "",
+    ...listingImportMetadata(entry.listing),
     exactSources: [],
     generatedSearches: [],
     verification: {
@@ -729,6 +744,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
             (data.listingSourcesByBoardListingId[entry.id] ?? [])[0]?.url
             ?? entry.listing.sourceUrl
             ?? "",
+          ...listingImportMetadata(entry.listing),
           exactSources: (data.listingSourcesByBoardListingId[entry.id] ?? []).map((source) => ({
             id: source.id,
             catalogSourceId: source.catalogSourceId,

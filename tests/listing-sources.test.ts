@@ -42,6 +42,7 @@ test("external listing previews identify the provider without fetching the page"
   });
 
   assert.equal(preview.provider, "Zillow");
+  assert.equal(preview.scope, "unit");
   assert.equal(preview.suggestedAddress, "123 Main ST");
   assert.equal(preview.suggestedUnit, "4B");
   assert.deepEqual(preview.missingEssentialFields, []);
@@ -110,33 +111,31 @@ test("a selected Zillow building unit can keep its building detail URL", () => {
     "https://zillow.com/apartments/tuxedo-ny/tuxedo-farms/Cnh3g7",
   );
   assert.equal(preview.suggestedUnit, "05-2D");
+  assert.equal(preview.scope, "unit");
   assert.deepEqual(preview.missingEssentialFields, []);
   assert.equal(isZillowBuildingDetailUrl(preview.normalizedUrl), true);
 });
 
-test("a Zillow building page still needs one complete selected unit", () => {
+test("a Zillow building page can be saved without pretending it is one exact unit", () => {
   const url = "https://www.zillow.com/apartments/tuxedo-ny/tuxedo-farms/Cnh3g7/";
 
-  assert.throws(
-    () => previewListingImport({
-      url,
-      address: "5 Summit Trl, Tuxedo, NY 10987",
-      price: 3_720,
-      bedrooms: 1,
-      bathrooms: 1,
-    }),
-    /exact rental unit/i,
-  );
-  assert.throws(
-    () => previewListingImport({
-      url,
-      address: "5 Summit Trl, Tuxedo, NY 10987",
-      unit: "05-2D",
-      price: 3_720,
-      bedrooms: 1,
-    }),
-    /exact rental unit/i,
-  );
+  const building = previewListingImport({
+    url,
+    address: "5 Summit Trl, Tuxedo, NY 10987",
+  });
+  assert.equal(building.scope, "building");
+  assert.deepEqual(building.missingEssentialFields, []);
+  assert.match(building.notice, /unit availability may be partial/i);
+
+  const incompleteUnit = previewListingImport({
+    url,
+    address: "5 Summit Trl, Tuxedo, NY 10987",
+    unit: "05-2D",
+    price: 3_720,
+    bedrooms: 1,
+  });
+  assert.equal(incompleteUnit.scope, "unit");
+  assert.deepEqual(incompleteUnit.missingEssentialFields, ["bathrooms"]);
 });
 
 test("same building with a different apartment is rejected", () => {

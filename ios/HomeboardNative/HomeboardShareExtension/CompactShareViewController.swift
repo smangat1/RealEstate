@@ -77,6 +77,8 @@ private final class CompactPayloadAccumulator: @unchecked Sendable {
 private struct CompactZillowSnapshot: @unchecked Sendable {
   var values: [String: Any]
   var unitCount: Int
+  var declaredUnitCount: Int?
+  var isPartial: Bool
 }
 
 private enum CompactZillowSnapshotLoader {
@@ -135,15 +137,12 @@ private enum CompactZillowSnapshotLoader {
     else { return nil }
 
     let options = unitOptions(in: building)
-    guard !options.isEmpty else { return nil }
-
     let declaredCount = dictionary(building["rentalUnitsSummary"])
       .flatMap { integer($0["availableUnitCount"]) ?? integer($0["unitCount"]) }
-    // A partial snapshot is worse than the live page for a building. Only win
-    // the race when Zillow's own declared count matches every parsed unit.
-    if let declaredCount, declaredCount > 0, options.count != declaredCount {
-      return nil
-    }
+    // Zillow frequently exposes useful building facts before every live unit
+    // appears in embedded data. Keep that partial snapshot and label it rather
+    // than rejecting the whole building page.
+    let isPartial = declaredCount.map { $0 > options.count } ?? false
 
     let structuredEvidence = options.compactMap(jsonLine).joined(separator: "\n")
     let availableCount = declaredCount ?? options.count
@@ -172,8 +171,10 @@ private enum CompactZillowSnapshotLoader {
       "availabilityPageEvidence": "\(availableCount) available units for rent\n\(structuredEvidence)",
       "structuredUnitEvidence": structuredEvidence,
       "unitOptions": options,
+      "partialUnitParsing": isPartial,
       "addressEvidence": [["text": address, "source": "zillow-next-data"]]
     ]
+    if let declaredCount { values["declaredUnitCount"] = declaredCount }
     if let city = string(building["city"]) { values["city"] = city }
     if let region = string(building["state"]) { values["region"] = region }
     if let postalCode = string(building["zipcode"]) { values["postalCode"] = postalCode }
@@ -187,7 +188,12 @@ private enum CompactZillowSnapshotLoader {
     {
       values["imageURL"] = imageURL
     }
-    return CompactZillowSnapshot(values: values, unitCount: options.count)
+    return CompactZillowSnapshot(
+      values: values,
+      unitCount: options.count,
+      declaredUnitCount: declaredCount,
+      isPartial: isPartial
+    )
   }
 
   private static func matchingBuilding(in root: Any, pageURL: URL) -> [String: Any]? {
@@ -998,7 +1004,9 @@ final class CompactShareViewController: UIViewController {
         guard let self, !self.hasStartedModelAnalysis, !self.hasFinished else { return }
         _ = HomeboardShareBootDiagnosticStore.append(
           stage: "compact.snapshot.ready",
-          detail: "Zillow embedded data supplied \(snapshot.unitCount) complete units"
+          detail: snapshot.isPartial
+            ? "Zillow embedded data supplied \(snapshot.unitCount) of \(snapshot.declaredUnitCount ?? snapshot.unitCount) declared units"
+            : "Zillow embedded data supplied \(snapshot.unitCount) units"
         )
         let isShowingPendingChoices = self.showPendingSnapshot(snapshot)
         if snapshot.values["imageURL"] != nil {
@@ -1185,6 +1193,15 @@ final class CompactShareViewController: UIViewController {
       ?? "Shared listing"
 
     let listingChoices = makeChoices(from: analysis)
+    if listingChoices.count == 1,
+       let choice = listingChoices.first,
+       choice.isConfirmed,
+       let pendingImport = choice.pendingImport
+    {
+      statusLabel.text = "Saving this listing…"
+      save(pendingImport)
+      return
+    }
     items = listingChoices.map(CompactShareItem.listing) + [.edit]
     collectionView.reloadData()
     collectionView.isHidden = false
@@ -1206,9 +1223,20 @@ final class CompactShareViewController: UIViewController {
 
   private func makeChoices(from analysis: HomeboardListingAnalysis) -> [CompactListingChoice] {
     if !analysis.options.isEmpty {
-      return analysis.options.compactMap { option in
+      var choices = analysis.options.compactMap { option in
         makeChoice(facts: analysis.facts, option: option, isMultiple: true)
       }
+      let partialUnits = dictionaryBool(in: extractedValues, key: "partialUnitParsing")
+        || choices.count < analysis.options.count
+      if analysis.scope == "building", partialUnits,
+         let building = makeBuildingChoice(from: analysis, partialUnitParsing: true)
+      {
+        choices.append(building)
+      }
+      return choices
+    }
+    if analysis.scope == "building" {
+      return makeBuildingChoice(from: analysis, partialUnitParsing: true).map { [$0] } ?? []
     }
     guard let choice = makeChoice(
       facts: analysis.facts,
@@ -1216,6 +1244,35 @@ final class CompactShareViewController: UIViewController {
       isMultiple: false
     ) else { return [] }
     return [choice]
+  }
+
+  private func makeBuildingChoice(
+    from analysis: HomeboardListingAnalysis,
+    partialUnitParsing: Bool
+  ) -> CompactListingChoice? {
+    let address = cleaned(analysis.facts.address)
+      ?? dictionaryString(in: extractedValues, keys: ["address"])
+    guard let address else { return nil }
+    let pending = makePendingImport(
+      address: address,
+      unit: nil,
+      price: nil,
+      bedrooms: nil,
+      bathrooms: nil,
+      squareFeet: nil,
+      availableDate: nil,
+      confidence: "building-reference",
+      listingScope: "building",
+      partialUnitParsing: partialUnitParsing
+    )
+    guard let pending else { return nil }
+    return CompactListingChoice(
+      title: "Save building reference",
+      subtitle: "Unit availability is partial · check Zillow for the latest openings",
+      price: nil,
+      pendingImport: pending,
+      isConfirmed: true
+    )
   }
 
   private func makeChoice(
@@ -1241,7 +1298,8 @@ final class CompactShareViewController: UIViewController {
       squareFeet: squareFeet,
       availableDate: option?.availableDate
         ?? dictionaryString(in: extractedValues, keys: ["availableDate"]),
-      confidence: "pill-confirmed"
+      confidence: "pill-confirmed",
+      partialUnitParsing: dictionaryBool(in: extractedValues, key: "partialUnitParsing")
     )
     guard let pending else { return nil }
     let title = isMultiple
@@ -1273,7 +1331,9 @@ final class CompactShareViewController: UIViewController {
     bathrooms: Double?,
     squareFeet: Int?,
     availableDate: String?,
-    confidence: String
+    confidence: String,
+    listingScope: String = "unit",
+    partialUnitParsing: Bool = false
   ) -> HomeboardSharedImportStore.PendingImport? {
     guard let sharedURL else { return nil }
     return HomeboardSharedImportStore.PendingImport(
@@ -1303,7 +1363,8 @@ final class CompactShareViewController: UIViewController {
       amenities: analysis?.facts.amenities
         ?? (extractedValues["amenities"] as? [String] ?? []),
       modelInsights: analysis?.facts.insights ?? [],
-      listingScope: "unit",
+      listingScope: listingScope,
+      partialUnitParsing: partialUnitParsing,
       extractionConfidence: confidence
     )
   }

@@ -408,7 +408,9 @@ test("native-app Zillow shares reveal exact units while the model confirms each 
   assert.match(compactShareViewControllerSource, /URLSession\.shared\.data\(for: request\)/);
   assert.match(compactShareViewControllerSource, /__NEXT_DATA__/);
   assert.match(compactShareViewControllerSource, /rentalUnitsSummary/);
-  assert.match(compactShareViewControllerSource, /options\.count != declaredCount/);
+  assert.doesNotMatch(compactShareViewControllerSource, /options\.count != declaredCount[\s\S]*return nil/);
+  assert.match(compactShareViewControllerSource, /"partialUnitParsing": isPartial/);
+  assert.match(compactShareViewControllerSource, /Save building reference/);
   assert.match(compactShareViewControllerSource, /hasStartedModelAnalysis/);
   assert.match(compactShareViewControllerSource, /previewImageURL\(in: html, relativeTo: url\)/);
   assert.match(compactShareViewControllerSource, /og:image/);
@@ -449,6 +451,12 @@ test("native-app Zillow shares reveal exact units while the model confirms each 
     compactShareViewControllerSource,
     /guard choice\.isConfirmed, let pendingImport = choice\.pendingImport/,
   );
+  const completedChoiceFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func show(_ analysis"),
+    compactShareViewControllerSource.indexOf("private func makeChoices"),
+  );
+  assert.match(completedChoiceFlow, /listingChoices\.count == 1/);
+  assert.match(completedChoiceFlow, /save\(pendingImport\)/);
   assert.match(
     safariContentSource,
     /allowSystemModel: visualTracking \|\| mobilePillPicker/,
@@ -463,6 +471,19 @@ test("native-app Zillow shares reveal exact units while the model confirms each 
     compactSaveFlow.indexOf("HomeboardListingSavePipeline.enqueue(pending)")
       < compactSaveFlow.indexOf('self.showSaved(message: "Saved to Homeboard")'),
   );
+});
+
+test("complete imports skip review while partial building references stay explicitly flagged", () => {
+  const reviewRule = sharedImportStoreSource.slice(
+    sharedImportStoreSource.indexOf("var requiresReview: Bool"),
+    sharedImportStoreSource.indexOf("init(", sharedImportStoreSource.indexOf("var requiresReview: Bool")),
+  );
+  assert.match(reviewRule, /listingScope\?\.lowercased\(\) == "building"/);
+  assert.match(reviewRule, /price == nil \|\| bedrooms == nil \|\| bathrooms == nil/);
+  assert.doesNotMatch(reviewRule, /extractionConfidence/);
+  assert.match(appModelSource, /isBuildingReference[\s\S]*Partial unit availability/);
+  assert.match(mobileListingRouteSource, /listingScope: importPreview\?\.scope/);
+  assert.match(mobileListingRouteSource, /partialUnitParsing/);
 });
 
 test("the compact chooser keeps bottom spacing inside its scrollable content", () => {
