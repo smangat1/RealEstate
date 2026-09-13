@@ -58,7 +58,7 @@ function ExtensionPreview() {
           <header>
             <BrandMark className={styles.extensionMark} />
             <div><small>HOMEBOARD · STREETEASY</small><strong>Listing ready to review</strong></div>
-            <span>⌘↵</span>
+            <span>Cmd+Enter</span>
           </header>
           <p>123 Greenpoint Ave · $4,800 · 3 bd · 2 ba</p>
           <div className={styles.factRow}><span>Exact address</span><span>Price found</span><span>Unit found</span></div>
@@ -114,10 +114,10 @@ export default function SafariSetupPage() {
             <h2 id="setup-heading">Your Mac and your board, connected.</h2>
           </div>
           <div className={styles.steps}>
-            <article><b>01</b><span className={styles.stepIcon}>↓</span><h3>Open the companion</h3><p>Install Homeboard Safari Setup, then open it once so Safari can see the extension.</p></article>
-            <article><b>02</b><span className={styles.stepIcon}>⌁</span><h3>Scan the QR</h3><p>On iPhone, open Homeboard → Settings → Connect a Mac and scan the code on screen.</p></article>
-            <article><b>03</b><span className={styles.stepIcon}>✓</span><h3>Enable in Safari</h3><p>Click Open Safari Settings in the companion and switch Homeboard on. Apple requires this one manual approval.</p></article>
-            <article><b>04</b><span className={styles.stepIcon}>⌂</span><h3>Save a rental</h3><p>Open a listing, click Homeboard in Safari’s toolbar, review the details, and choose Save.</p></article>
+            <article><b>01</b><span className={styles.stepIcon}>1</span><h3>Open the companion</h3><p>Install Homeboard Safari Setup, then open it once so Safari can see the extension.</p></article>
+            <article><b>02</b><span className={styles.stepIcon}>2</span><h3>Scan the QR</h3><p>On iPhone, open Homeboard → Settings → Connect a Mac and scan the code on screen.</p></article>
+            <article><b>03</b><span className={styles.stepIcon}>3</span><h3>Enable in Safari</h3><p>Click Open Safari Settings in the companion and switch Homeboard on. Apple requires this one manual approval.</p></article>
+            <article><b>04</b><span className={styles.stepIcon}>4</span><h3>Save a rental</h3><p>Open a listing, click Homeboard in Safari’s toolbar, review the details, and choose Save.</p></article>
           </div>
           {!macInstallUrl ? (
             <aside className={styles.developerNote}>

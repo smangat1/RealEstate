@@ -35,8 +35,7 @@ export type AnalyticsEventName =
   | "scout_balance_covered"
   | "scout_price_drop_detected"
   | "scout_price_increase_detected"
-  | "scout_radar_lead_promoted"
-  | "scout_radar_lead_dismissed"
+  | "advisor_listing_changes_detected"
   | "broker_outreach_recorded";
 
 type AnalyticsPayload = Record<string, unknown>;

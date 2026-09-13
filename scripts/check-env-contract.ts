@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const platformVariables = new Set(["NEXT_RUNTIME", "NODE_ENV", "VERCEL_ENV", "NEXT_PUBLIC_VERCEL_ENV"]);
 const sourceFiles = execFileSync(
@@ -11,6 +11,7 @@ const sourceFiles = execFileSync(
 const usedVariables = new Set<string>();
 for (const file of sourceFiles) {
   if (file === "scripts/check-env-contract.ts") continue;
+  if (!existsSync(file)) continue;
   const source = readFileSync(file, "utf8");
   for (const match of source.matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)) {
     usedVariables.add(match[1]);

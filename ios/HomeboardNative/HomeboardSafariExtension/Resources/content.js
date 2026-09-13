@@ -2246,7 +2246,7 @@
       button,
       capture,
       mobileListingTitle(capture),
-      "Saved ✓"
+      "Saved"
     );
     ui.capturePills.replaceChildren(button);
     ui.capturePills.classList.remove("hidden");
@@ -2809,7 +2809,7 @@
             await saveListingCapture(capture);
             button.classList.remove("saving");
             button.classList.add("saved");
-            price.textContent = "Saved ✓";
+            price.textContent = "Saved";
             ui.capturePills.replaceChildren(button);
             ui.completeTitle.textContent = "Saved to Homeboard";
             ui.completeSummary.textContent = listingSummary(capture);

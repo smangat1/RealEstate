@@ -71,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {`
             (function() {
               try {
-                var saved = window.localStorage.getItem('rental-advisor-theme');
+                var saved = window.localStorage.getItem('homeboard-theme');
                 var theme = saved === 'light' || saved === 'dark'
                   ? saved
                   : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');

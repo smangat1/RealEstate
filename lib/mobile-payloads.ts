@@ -178,6 +178,8 @@ export type MobileBoardPayload = {
     fairnessScore: number | null;
     confidence: "high" | "medium" | "low";
   }[];
+  advisorActions: BoardPageData["advisorActions"];
+  scoutSubscription: BoardPageData["scoutSubscription"];
 };
 
 function currencyLine(min?: number, max?: number) {
@@ -305,7 +307,7 @@ function listingPhotoUrl(listing: Pick<ListingRecord, "images"> & Partial<Pick<L
     .map((image) => image.trim())
     .find(Boolean);
   if (photo) return photo;
-  return fallbackListingPhoto(listing.id || listing.address);
+  return fallbackListingPhoto(listing.id || listing.address || undefined);
 }
 
 function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {
@@ -612,7 +614,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
                 : "Invite the rest of the group and start adding the first serious listings to the board.",
     inviteCode: data.invitations.find((invitation) => invitation.status === "pending")?.inviteCode ?? "",
     recentActivity: data.activity.slice(0, 5).map((entry) => entry.content),
-    chatMessages: data.messages.slice(-20).map((message) => ({
+    chatMessages: data.messages.map((message) => ({
       id: message.id,
       role: message.role,
       authorName: message.authorName,
@@ -845,5 +847,9 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
       fairnessScore: analysis?.fairnessScore ?? null,
       confidence: analysis?.confidence ?? "low",
     })),
+    advisorActions: data.advisorActions,
+    // The native banner cannot distinguish an active entitlement from a
+    // prospect unless subscription state travels with every board refresh.
+    scoutSubscription: data.scoutSubscription ?? null,
   };
 }

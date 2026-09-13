@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/cron/scout-scan",
+      "path": "/api/cron/advisor-monitor",
       "schedule": "0 9,21 * * *"
     }
   ]

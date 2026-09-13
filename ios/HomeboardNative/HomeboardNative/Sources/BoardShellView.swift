@@ -925,13 +925,25 @@ private struct ConversationView: View {
       }
       .safeAreaInset(edge: .bottom) {
         VStack(spacing: 10) {
-          HStack(alignment: .bottom, spacing: 10) {
+          HStack(alignment: .center, spacing: 10) {
             TextField(
               "Update the group: budget, commute, neighborhoods, shortlist thoughts...",
-              text: $appModel.boardMessageDraft,
-              axis: .vertical
+              text: $appModel.boardMessageDraft
             )
-            .lineLimit(1...5)
+            .submitLabel(.send)
+            .onSubmit {
+              Task {
+                await appModel.sendBoardMessage()
+              }
+            }
+            .onChange(of: appModel.boardMessageDraft) { _, newValue in
+              if newValue.contains("\n") {
+                appModel.boardMessageDraft = newValue.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+                Task {
+                  await appModel.sendBoardMessage()
+                }
+              }
+            }
             .foregroundStyle(HomeboardPalette.primaryText)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)

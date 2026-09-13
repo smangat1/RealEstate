@@ -1,3 +1,4 @@
+import { demoAdvisorSubscription, isDemoAdvisorAccount } from "@/lib/advisor-access";
 import { prisma } from "@/lib/prisma";
 import { trackEvent } from "@/lib/analytics";
 import type { BoardSubscriptionRecord, BoardSubscriptionStatus } from "@/lib/types";
@@ -10,8 +11,47 @@ import {
 export { SCOUT_WEEKLY_AMOUNT_CENTS, SCOUT_DURATION_MS, calculateEqualSplit };
 export type { SplitCalculation } from "@/lib/scout-utils";
 
+async function requireBoardMemberUserIds(boardId: string, actingUserId: string): Promise<string[]> {
+  const board = await prisma.searchBoard.findUnique({
+    where: { id: boardId },
+    select: {
+      userId: true,
+      members: { select: { userId: true } },
+    },
+  });
+
+  if (!board) {
+    throw new Error("ADVISOR_BOARD_NOT_FOUND");
+  }
+
+  const memberUserIds = [...new Set([board.userId, ...board.members.map((member) => member.userId)])];
+  if (!memberUserIds.includes(actingUserId)) {
+    // Do not reveal the existence of a board to a signed-in non-member.
+    throw new Error("ADVISOR_BOARD_NOT_FOUND");
+  }
+
+  return memberUserIds;
+}
+
+export async function requireBoardSubscriptionAccess(boardId: string, actingUserId: string): Promise<void> {
+  await requireBoardMemberUserIds(boardId, actingUserId);
+}
+
+export async function getDemoBoardSubscription(boardId: string): Promise<BoardSubscriptionRecord | null> {
+  const board = await prisma.searchBoard.findUnique({
+    where: { id: boardId },
+    select: { user: { select: { email: true, isDemoAccount: true } } },
+  });
+  if (!board) return null;
+  return process.env.DEMO_MODE === "true" || isDemoAdvisorAccount(board.user)
+    ? demoAdvisorSubscription(boardId) : null;
+}
+
 export async function getBoardSubscriptionState(boardId: string): Promise<BoardSubscriptionRecord | null> {
-  const subscription = await (prisma as any).boardSubscription.findFirst({
+  const demo = await getDemoBoardSubscription(boardId);
+  if (demo) return demo;
+
+  const subscription = await prisma.boardSubscription.findFirst({
     where: { boardId },
     orderBy: { createdAt: "desc" },
     include: {
@@ -33,15 +73,15 @@ export async function getBoardSubscriptionState(boardId: string): Promise<BoardS
   // Auto-expire if pass window ended
   if (subscription.status === "active" && subscription.expiresAt && subscription.expiresAt < now) {
     currentStatus = "expired";
-    await (prisma as any).boardSubscription.update({
+    await prisma.boardSubscription.update({
       where: { id: subscription.id },
       data: { status: "expired" },
     });
   }
 
   const fundedCents = subscription.contributions
-    .filter((entry: any) => entry.status === "paid")
-    .reduce((sum: number, entry: any) => sum + entry.amountCents, 0);
+    .filter((entry) => entry.status === "paid")
+    .reduce((sum, entry) => sum + entry.amountCents, 0);
 
   const daysRemaining = subscription.expiresAt && currentStatus === "active"
     ? Math.max(0, Math.ceil((subscription.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
@@ -59,7 +99,7 @@ export async function getBoardSubscriptionState(boardId: string): Promise<BoardS
     fundedCents,
     targetCents: subscription.amountCents,
     daysRemaining,
-    contributions: subscription.contributions.map((c: any) => ({
+    contributions: subscription.contributions.map((c) => ({
       id: c.id,
       subscriptionId: c.subscriptionId,
       userId: c.userId,
@@ -76,14 +116,26 @@ export async function getBoardSubscriptionState(boardId: string): Promise<BoardS
 export async function initiateBoardSubscriptionSplit(
   boardId: string,
   initiatorUserId: string,
-  memberUserIds: string[],
 ): Promise<BoardSubscriptionRecord> {
-  const members = [...new Set([initiatorUserId, ...memberUserIds.filter(Boolean)])];
+  // Membership is derived on the server. Accepting member IDs from the client
+  // allowed malformed splits and could create contributions for other users.
+  const boardMemberUserIds = await requireBoardMemberUserIds(boardId, initiatorUserId);
+  const demo = await getDemoBoardSubscription(boardId);
+  if (demo) return demo;
+  const members = [initiatorUserId, ...boardMemberUserIds.filter((id) => id !== initiatorUserId)];
   const split = calculateEqualSplit(members, SCOUT_WEEKLY_AMOUNT_CENTS);
 
-  // Check if there is already an active subscription
-  const existing = await (prisma as any).boardSubscription.findFirst({
-    where: { boardId, status: "active", expiresAt: { gt: new Date() } },
+  // Starting is idempotent: an impatient double tap should never create two
+  // simultaneous funding rounds for the same board.
+  const existing = await prisma.boardSubscription.findFirst({
+    where: {
+      boardId,
+      OR: [
+        { status: "pending_split" },
+        { status: "active", expiresAt: { gt: new Date() } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
   });
   if (existing) {
     const state = await getBoardSubscriptionState(boardId);
@@ -91,7 +143,7 @@ export async function initiateBoardSubscriptionSplit(
   }
 
   // Create new split session
-  await (prisma as any).boardSubscription.create({
+  await prisma.boardSubscription.create({
     data: {
       boardId,
       status: "pending_split",
@@ -125,71 +177,85 @@ export async function contributeToBoardSubscription(
   paymentMethod: string = "apple_pay",
   transactionId?: string,
 ): Promise<BoardSubscriptionRecord> {
-  const activeOrPending = await (prisma as any).boardSubscription.findFirst({
+  await requireBoardMemberUserIds(boardId, userId);
+  const demo = await getDemoBoardSubscription(boardId);
+  if (demo) return demo;
+
+  const activeOrPending = await prisma.boardSubscription.findFirst({
     where: { boardId, status: "pending_split" },
     include: { contributions: true },
     orderBy: { createdAt: "desc" },
   });
 
   if (!activeOrPending) {
-    throw new Error("No active Scout split found for this board.");
+    throw new Error("No pending Advisor split found for this board.");
   }
 
-  const existingContribution = activeOrPending.contributions.find((c: any) => c.userId === userId);
+  const existingContribution = activeOrPending.contributions.find((contribution) => contribution.userId === userId);
   const now = new Date();
 
   if (existingContribution) {
-    await (prisma as any).boardSubscriptionContribution.update({
-      where: { id: existingContribution.id },
-      data: {
-        status: "paid",
-        paymentMethod,
-        paidAt: now,
-        transactionId: transactionId ?? `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      },
-    });
+    // A retried payment callback must be idempotent.
+    if (existingContribution.status !== "paid") {
+      await prisma.boardSubscriptionContribution.update({
+        where: { id: existingContribution.id },
+        data: {
+          status: "paid",
+          paymentMethod,
+          paidAt: now,
+          transactionId: transactionId ?? `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        },
+      });
+    }
   } else {
-    // Roommate was added after split was initiated
-    const count = activeOrPending.contributions.length + 1;
-    const amount = Math.floor(SCOUT_WEEKLY_AMOUNT_CENTS / count);
-    await (prisma as any).boardSubscriptionContribution.create({
-      data: {
-        subscriptionId: activeOrPending.id,
-        userId,
-        amountCents: amount,
-        status: "paid",
-        paymentMethod,
-        paidAt: now,
-        transactionId: transactionId ?? `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      },
-    });
+    // If someone joined after the split began, rebalance only the unpaid
+    // remainder. Already-paid shares never change and the round still totals
+    // exactly the advertised board price.
+    const paidCents = activeOrPending.contributions
+      .filter((contribution) => contribution.status === "paid")
+      .reduce((sum, contribution) => sum + contribution.amountCents, 0);
+    const unpaid = activeOrPending.contributions.filter((contribution) => contribution.status !== "paid");
+    const remainingCents = Math.max(0, activeOrPending.amountCents - paidCents);
+    const remainingMembers = [userId, ...unpaid.map((contribution) => contribution.userId).filter((id) => id !== userId)];
+    const rebalanced = calculateEqualSplit(remainingMembers, remainingCents);
+
+    await prisma.$transaction([
+      ...unpaid.map((contribution) =>
+        prisma.boardSubscriptionContribution.update({
+          where: { id: contribution.id },
+          data: { amountCents: rebalanced.sharesByUserId[contribution.userId] ?? 0 },
+        }),
+      ),
+      prisma.boardSubscriptionContribution.create({
+        data: {
+          subscriptionId: activeOrPending.id,
+          userId,
+          amountCents: rebalanced.sharesByUserId[userId] ?? 0,
+          status: "paid",
+          paymentMethod,
+          paidAt: now,
+          transactionId: transactionId ?? `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        },
+      }),
+    ]);
   }
 
   // Check if fully funded
-  const updatedContributions = await (prisma as any).boardSubscriptionContribution.findMany({
+  const updatedContributions = await prisma.boardSubscriptionContribution.findMany({
     where: { subscriptionId: activeOrPending.id },
   });
   const totalPaid = updatedContributions
-    .filter((c: any) => c.status === "paid")
-    .reduce((sum: number, c: any) => sum + c.amountCents, 0);
+    .filter((contribution) => contribution.status === "paid")
+    .reduce((sum, contribution) => sum + contribution.amountCents, 0);
 
   if (totalPaid >= activeOrPending.amountCents) {
     const expiresAt = new Date(Date.now() + SCOUT_DURATION_MS);
-    await (prisma as any).boardSubscription.update({
+    await prisma.boardSubscription.update({
       where: { id: activeOrPending.id },
       data: {
         status: "active",
         startedAt: now,
         expiresAt,
-      },
-    });
-
-    // Announce to shared chat
-    await (prisma as any).chatMessage.create({
-      data: {
-        boardId,
-        role: "assistant",
-        content: "🚀 Homeboard Scout is now fully funded and active for the group! Price drop monitoring, concession alerts, and daily lead radar are unlocked for the next 7 days.",
       },
     });
 
@@ -210,24 +276,28 @@ export async function coverRemainingSubscriptionBalance(
   userId: string,
   paymentMethod: string = "apple_pay",
 ): Promise<BoardSubscriptionRecord> {
-  const pending = await (prisma as any).boardSubscription.findFirst({
+  await requireBoardMemberUserIds(boardId, userId);
+  const demo = await getDemoBoardSubscription(boardId);
+  if (demo) return demo;
+
+  const pending = await prisma.boardSubscription.findFirst({
     where: { boardId, status: "pending_split" },
     include: { contributions: true },
     orderBy: { createdAt: "desc" },
   });
 
   if (!pending) {
-    throw new Error("No pending Scout split found to cover.");
+    throw new Error("No pending Advisor split found to cover.");
   }
 
   const now = new Date();
   const alreadyPaid = pending.contributions
-    .filter((c: any) => c.status === "paid")
-    .reduce((sum: number, c: any) => sum + c.amountCents, 0);
+    .filter((contribution) => contribution.status === "paid")
+    .reduce((sum, contribution) => sum + contribution.amountCents, 0);
   const remainingCents = Math.max(0, pending.amountCents - alreadyPaid);
 
   if (remainingCents > 0) {
-    await (prisma as any).boardSubscriptionContribution.create({
+    await prisma.boardSubscriptionContribution.create({
       data: {
         subscriptionId: pending.id,
         userId,
@@ -242,20 +312,12 @@ export async function coverRemainingSubscriptionBalance(
 
   // Activate immediately
   const expiresAt = new Date(Date.now() + SCOUT_DURATION_MS);
-  await (prisma as any).boardSubscription.update({
+  await prisma.boardSubscription.update({
     where: { id: pending.id },
     data: {
       status: "active",
       startedAt: now,
       expiresAt,
-    },
-  });
-
-  await (prisma as any).chatMessage.create({
-    data: {
-      boardId,
-      role: "assistant",
-      content: "🚀 Homeboard Scout was covered and is now active for the entire group! Autonomous price drop tracking, concession alerts, and lead radar are live for the next 7 days.",
     },
   });
 

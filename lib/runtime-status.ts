@@ -2,8 +2,7 @@ import "server-only";
 
 import { isAppEnabled } from "@/lib/app-mode";
 import { getCommuteServiceMode, type CommuteServiceMode } from "@/lib/commute-service";
-import { isDemoModeEnabled } from "@/lib/demo-chat";
-import { getOllamaRuntimeConfig } from "@/lib/ollama";
+import { isDemoModeEnabled } from "@/lib/demo-mode";
 
 export type RuntimeStatus = {
   overallStatus: "healthy" | "partial";
@@ -13,11 +12,6 @@ export type RuntimeStatus = {
   supabasePasswordRecoveryConfigured: boolean;
   supabaseAdminConfigured: boolean;
   databaseConfigured: boolean;
-  ollamaConfigured: boolean;
-  ollamaUrl: string;
-  ollamaModel: string;
-  ollamaExtractModel: string;
-  ollamaReplyModel: string;
   commuteMode: CommuteServiceMode;
   commuteConfigured: boolean;
   errorMonitoringConfigured: boolean;
@@ -31,7 +25,6 @@ function hasValue(value?: string) {
 
 export function getRuntimeStatus(): RuntimeStatus {
   const demoMode = isDemoModeEnabled();
-  const ollama = getOllamaRuntimeConfig();
   const supabaseConfigured =
     hasValue(process.env.SUPABASE_URL) && hasValue(process.env.SUPABASE_PUBLISHABLE_KEY);
   const supabaseAdminConfigured =
@@ -40,7 +33,6 @@ export function getRuntimeStatus(): RuntimeStatus {
     hasValue(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
     hasValue(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
   const databaseConfigured = hasValue(process.env.DATABASE_URL);
-  const ollamaConfigured = hasValue(process.env.OLLAMA_URL) || hasValue(process.env.OLLAMA_MODEL);
   const commuteConfigured = hasValue(process.env.OPENROUTESERVICE_API_KEY);
   const errorMonitoringConfigured =
     hasValue(process.env.SENTRY_DSN) || hasValue(process.env.NEXT_PUBLIC_SENTRY_DSN);
@@ -65,11 +57,6 @@ export function getRuntimeStatus(): RuntimeStatus {
     supabasePasswordRecoveryConfigured,
     supabaseAdminConfigured,
     databaseConfigured,
-    ollamaConfigured,
-    ollamaUrl: ollama.url,
-    ollamaModel: ollama.model,
-    ollamaExtractModel: ollama.extractModel,
-    ollamaReplyModel: ollama.replyModel,
     commuteMode,
     commuteConfigured,
     errorMonitoringConfigured,

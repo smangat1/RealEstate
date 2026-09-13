@@ -59,6 +59,7 @@ final class AppModel {
     var localQuestionsByBoard: [String: [String]]
     var localActivityByBoard: [String: [String]]
     var localMembersByBoard: [String: [MemberPreferenceCard]]
+    var localChatMessagesByBoard: [String: [BoardMessage]]?
     var localBoardsById: [String: MobileBoard]
     var localProfilesByBoard: [String: RentalProfile]
     var pendingListingCreatesByBoard: [String: [ListingPreview]]?
@@ -104,6 +105,7 @@ final class AppModel {
   var localQuestionsByBoard: [String: [String]] = [:]
   var localActivityByBoard: [String: [String]] = [:]
   var localMembersByBoard: [String: [MemberPreferenceCard]] = [:]
+  var localChatMessagesByBoard: [String: [BoardMessage]] = [:]
   var localBoardsById: [String: MobileBoard] = [:]
   var localProfilesByBoard: [String: RentalProfile] = [:]
   var isBootstrapping = false
@@ -112,6 +114,11 @@ final class AppModel {
   var isBoardLoading = false
   var isRestoredBoardRefreshing = false
   var isPostingBoardUpdate = false
+  var isAdvisorActionWorking = false
+  var advisorHistoryByListingID: [String: [ListingChangeEntry]] = [:]
+  var advisorChecklistByListingID: [String: [ApplicationChecklistEntry]] = [:]
+  var advisorInquiriesByListingID: [String: [ListingInquiry]] = [:]
+  var advisorTourNotesByListingID: [String: TourNoteSummary] = [:]
   var authError: String?
   var authFeedback: String?
   var showsPostAuthInvitePrompt = false
@@ -333,6 +340,9 @@ final class AppModel {
   }
 
   func openBoardTab(_ tab: BoardTab) {
+    // Errors belong to the action that produced them. Do not carry a stale
+    // network error into Group just because the user changed tabs.
+    boardError = nil
     boardTab = tab
     currentScreen = .board
     persist()
@@ -380,7 +390,7 @@ final class AppModel {
     onboardingMessages = [
       OnboardingChatMessage(
         role: .assistant,
-        content: "Tell me about your move and I’ll build the rental brief while we talk. Start anywhere natural: city, roommates, budget, move-in timing, commute, or neighborhoods."
+        content: "Set up your rental search by adding a city, roommates, budget, move-in timing, commute, and neighborhoods."
       )
     ]
     currentScreen = .onboarding
@@ -764,13 +774,225 @@ final class AppModel {
   }
 
   func triggerScoutScan(boardId: String) async {
-    guard let session = authSession else { return }
+    boardError = nil
+    boardFeedback = nil
+
+    if boardId.hasPrefix("preview-") || boardId.hasPrefix("local-") {
+      boardFeedback = "Preview listings use their saved facts; live checks require a signed-in board."
+      return
+    }
+    guard let session = authSession else {
+      boardError = "Sign in before running an Advisor scan."
+      return
+    }
     do {
       try await api.triggerScoutScan(accessToken: session.accessToken, boardId: boardId)
       await refreshCurrentBoardSilently()
-      boardFeedback = "Scout scan finished. Checked listings for drops and new leads."
+      boardFeedback = "Advisor scan finished. Review Updates for any grounded listing changes or follow-ups."
     } catch {
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+  }
+
+  func updateAdvisorAction(_ action: AdvisorAction, status: String) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    isAdvisorActionWorking = true
+    defer { isAdvisorActionWorking = false }
+    do {
+      try await api.updateAdvisorAction(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        actionId: action.id,
+        status: status
+      )
+      board.advisorActions.removeAll { $0.id == action.id }
+      storeCurrentBoardSnapshot()
+      persist()
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func checkListingAgain(listingId: String) async {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Sign in before checking a live listing."
+      return
+    }
+    isAdvisorActionWorking = true
+    defer { isAdvisorActionWorking = false }
+    do {
+      let response = try await api.checkListing(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId
+      )
+      boardFeedback = response.message
+      await refreshCurrentBoardSilently()
+      await loadAdvisorListingTools(listingId: listingId)
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func loadAdvisorListingTools(listingId: String) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    do {
+      async let history = api.loadListingHistory(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
+      async let checklist = api.loadApplicationChecklist(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
+      async let inquiries = api.loadListingInquiries(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
+      let result = try await (history, checklist, inquiries)
+      advisorHistoryByListingID[listingId] = result.0
+      advisorChecklistByListingID[listingId] = result.1
+      advisorInquiriesByListingID[listingId] = result.2
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func createInquiryDraft(listingId: String, templateKey: String) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    isAdvisorActionWorking = true
+    defer { isAdvisorActionWorking = false }
+    do {
+      let inquiry = try await api.createInquiryDraft(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        templateKey: templateKey
+      )
+      advisorInquiriesByListingID[listingId, default: []].insert(inquiry, at: 0)
+      boardFeedback = "Draft created. Review every word before sending."
+      await refreshCurrentBoardSilently()
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func updateInquiry(
+    listingId: String,
+    inquiry: ListingInquiry,
+    status: String,
+    subject: String,
+    body: String,
+    replyText: String? = nil,
+    reviewConfirmed: Bool? = nil
+  ) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    isAdvisorActionWorking = true
+    defer { isAdvisorActionWorking = false }
+    do {
+      let updated = try await api.updateInquiry(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        inquiryId: inquiry.id,
+        status: status,
+        subject: subject,
+        body: body,
+        replyText: replyText,
+        reviewConfirmed: reviewConfirmed
+      )
+      advisorInquiriesByListingID[listingId] = advisorInquiriesByListingID[listingId, default: []].map {
+        $0.id == updated.id ? updated : $0
+      }
+      boardFeedback = status == "sent" ? "Marked sent after your review." : status == "answered" ? "Reply parsed into grounded fields." : "Draft saved."
+      await refreshCurrentBoardSilently()
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func updateApplicationItem(listingId: String, item: ApplicationChecklistEntry, status: String) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    do {
+      let updated = try await api.updateApplicationChecklist(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        itemId: item.id,
+        status: status
+      )
+      advisorChecklistByListingID[listingId] = advisorChecklistByListingID[listingId, default: []].map {
+        $0.id == updated.id ? updated : $0
+      }
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func saveTourNote(listingId: String, transcript: String) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    isAdvisorActionWorking = true
+    defer { isAdvisorActionWorking = false }
+    do {
+      let summary = try await api.saveTourNote(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        transcript: transcript
+      )
+      advisorTourNotesByListingID[listingId] = summary
+      boardFeedback = "Tour notes organized: \(summary.pros.count) pros, \(summary.cons.count) cons, and \(summary.followUps.count) follow-ups."
+      await refreshCurrentBoardSilently()
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  @discardableResult
+  func startAdvisorSplit(boardId: String) async -> Bool {
+    guard let session = authSession else {
+      boardError = "Sign in before starting an Advisor split."
+      return false
+    }
+
+    boardError = nil
+    boardFeedback = nil
+    do {
+      let subscription = try await api.startAdvisorSplit(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+      guard board.id == boardId, authSession?.userId == session.userId else { return false }
+      board.scoutSubscription = subscription
+      storeCurrentBoardSnapshot()
+      persist()
+      boardFeedback = subscription.isActive
+        ? "Advisor is already active for this board."
+        : "The Advisor split is ready. Fund your share to keep it moving."
+      return true
+    } catch {
+      boardError = readable(error)
+      return false
+    }
+  }
+
+  @discardableResult
+  func fundAdvisor(boardId: String, coverRemaining: Bool = false) async -> Bool {
+    guard let session = authSession else {
+      boardError = "Sign in before funding Advisor."
+      return false
+    }
+
+    boardError = nil
+    boardFeedback = nil
+    do {
+      let subscription = try await api.fundAdvisor(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        coverRemaining: coverRemaining
+      )
+      guard board.id == boardId, authSession?.userId == session.userId else { return false }
+      board.scoutSubscription = subscription
+      storeCurrentBoardSnapshot()
+      persist()
+      boardFeedback = subscription.isActive
+        ? "Advisor is active for the next seven days."
+        : "Your Advisor share is funded. Waiting for the rest of the group."
+      return true
+    } catch {
+      boardError = readable(error)
+      return false
     }
   }
 
@@ -849,6 +1071,19 @@ final class AppModel {
     boardError = nil
     boardFeedback = nil
     boardMessageDraft = ""
+
+    let temporaryID = "local-msg-\(UUID().uuidString)"
+    board.chatMessages.append(
+      BoardMessage(
+        id: temporaryID,
+        role: "user",
+        authorName: account?.name ?? authSession?.displayName ?? "You",
+        content: message,
+        createdAt: ISO8601DateFormatter().string(from: Date())
+      )
+    )
+    storeCurrentBoardSnapshot()
+
     isBoardLoading = true
     defer {
       isBoardLoading = false
@@ -864,10 +1099,12 @@ final class AppModel {
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
             board.id == boardId else { return }
-      board = response.board
+      board = boardWithDemoAdvisorEntitlement(response.board)
       profile = RentalProfile(remote: response.profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
+      board.chatMessages.removeAll { $0.id == temporaryID }
+      storeCurrentBoardSnapshot()
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       boardMessageDraft = message
     }
@@ -1082,7 +1319,7 @@ final class AppModel {
 
   private func applyOnboardingConfirmation(_ response: MobileOnboardingConfirmResponse) {
     profile = RentalProfile(remote: response.profile)
-    board = response.board
+    board = boardWithDemoAdvisorEntitlement(response.board)
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     if let boardId = response.board.id {
@@ -1191,7 +1428,7 @@ final class AppModel {
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
             board.id == boardId else { return }
-      board = response.board
+      board = boardWithDemoAdvisorEntitlement(response.board)
       profile = RentalProfile(remote: response.profile)
       storeCurrentBoardSnapshot()
       boardFeedback = "Board brief saved."
@@ -1414,7 +1651,7 @@ final class AppModel {
       onboardingMessages = [
         OnboardingChatMessage(
           role: .assistant,
-          content: "Tell me about your move and I’ll build the rental brief while we talk. Start anywhere natural: city, roommates, budget, move-in timing, commute, or neighborhoods."
+          content: "Set up your rental search by adding a city, roommates, budget, move-in timing, commute, and neighborhoods."
         )
       ]
     }
@@ -1440,6 +1677,11 @@ final class AppModel {
     localQuestionsByBoard = [:]
     localActivityByBoard = [:]
     localMembersByBoard = [:]
+    localChatMessagesByBoard = [:]
+    advisorHistoryByListingID = [:]
+    advisorChecklistByListingID = [:]
+    advisorInquiriesByListingID = [:]
+    advisorTourNotesByListingID = [:]
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -1487,6 +1729,11 @@ final class AppModel {
     localQuestionsByBoard = [:]
     localActivityByBoard = [:]
     localMembersByBoard = [:]
+    localChatMessagesByBoard = [:]
+    advisorHistoryByListingID = [:]
+    advisorChecklistByListingID = [:]
+    advisorInquiriesByListingID = [:]
+    advisorTourNotesByListingID = [:]
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -1772,6 +2019,13 @@ final class AppModel {
     let message = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !message.isEmpty, !isPostingBoardUpdate else { return false }
 
+    let requestEpoch = sessionEpoch
+    isPostingBoardUpdate = true
+    defer {
+      isPostingBoardUpdate = false
+      persist()
+    }
+
     boardError = nil
     boardFeedback = nil
     let temporaryID = "local-update-\(UUID().uuidString)"
@@ -1789,15 +2043,10 @@ final class AppModel {
 
     guard let session = authSession,
           let boardId = board.id,
-          !boardId.hasPrefix("local-") else {
+          !boardId.hasPrefix("local-"),
+          !boardId.hasPrefix("preview-") else {
       boardFeedback = "Message added."
       return true
-    }
-
-    isPostingBoardUpdate = true
-    defer {
-      isPostingBoardUpdate = false
-      persist()
     }
 
     do {
@@ -1806,10 +2055,12 @@ final class AppModel {
         boardId: boardId,
         content: message
       )
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId, board.id == boardId else { return false }
       applyRemoteMutation(response, clearing: [.activity])
       boardFeedback = "Message sent."
       return true
     } catch {
+      guard requestEpoch == sessionEpoch, authSession?.userId == session.userId, board.id == boardId else { return false }
       board.chatMessages.removeAll { $0.id == temporaryID }
       storeCurrentBoardSnapshot()
       boardError = "\(readable(error)) Your message was put back in the composer."
@@ -3219,14 +3470,20 @@ final class AppModel {
     persist()
   }
 
+  private func boardWithDemoAdvisorEntitlement(_ remoteBoard: MobileBoard) -> MobileBoard {
+    // Server entitlement is shared by the board, subscription API, and scan API.
+    // Preview boards carry their own local demo entitlement.
+    remoteBoard
+  }
+
   private func boardByApplyingRemovalTombstones(
     _ remoteBoard: MobileBoard,
     storageKey: String
   ) -> MobileBoard {
     let removedIDs = removedServerListingIDsByBoard[storageKey] ?? []
     let removedIdentityKeys = removedListingIdentityKeysByBoard[storageKey] ?? []
-    guard !removedIDs.isEmpty || !removedIdentityKeys.isEmpty else { return remoteBoard }
-    var filtered = remoteBoard
+    var filtered = boardWithDemoAdvisorEntitlement(remoteBoard)
+    guard !removedIDs.isEmpty || !removedIdentityKeys.isEmpty else { return filtered }
     filtered.shortlist.removeAll {
       removedIDs.contains($0.id)
         || removedIdentityKeys.contains(listingIdentityKey($0))
@@ -3902,6 +4159,27 @@ final class AppModel {
       jordan: ["value": 1, "commute": 3, "space": 4, "neighborhood": 4, "amenities": 4, "confidence": 2]
     )
 
+    let demoStartedAt = ISO8601DateFormatter().string(from: Date())
+    let demoExpiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(7 * 24 * 60 * 60))
+    let demoAdvisor = ScoutSubscription(
+      id: "demo-advisor-preview-workspace",
+      boardId: "preview-workspace",
+      status: "active",
+      tier: "scout_weekly",
+      amountCents: 499,
+      currency: "usd",
+      startedAt: demoStartedAt,
+      expiresAt: demoExpiresAt,
+      fundedCents: 499,
+      targetCents: 499,
+      daysRemaining: 7,
+      contributions: [
+        ScoutContribution(id: "preview-advisor-sam", subscriptionId: "demo-advisor-preview-workspace", userId: "preview-sam", userName: "Sam", amountCents: 167, status: "paid"),
+        ScoutContribution(id: "preview-advisor-maya", subscriptionId: "demo-advisor-preview-workspace", userId: "preview-maya", userName: "Maya", amountCents: 166, status: "paid"),
+        ScoutContribution(id: "preview-advisor-jordan", subscriptionId: "demo-advisor-preview-workspace", userId: "preview-jordan", userName: "Jordan", amountCents: 166, status: "paid")
+      ]
+    )
+
     account = nil
     authSession = nil
     opensWelcomeOnAccessPage = false
@@ -3926,7 +4204,8 @@ final class AppModel {
       openQuestions: ["Which tradeoff matters more: the Brooklyn location or the lower Hamilton Heights rent?"],
       members: members,
       shortlist: [hamilton, astoria, brooklyn],
-      invitations: []
+      invitations: [],
+      scoutSubscription: demoAdvisor
     )
     localShortlistsByBoard["preview-workspace"] = board.shortlist
     localMembersByBoard["preview-workspace"] = members
@@ -4007,6 +4286,7 @@ final class AppModel {
       localQuestionsByBoard: localQuestionsByBoard,
       localActivityByBoard: localActivityByBoard,
       localMembersByBoard: localMembersByBoard,
+      localChatMessagesByBoard: localChatMessagesByBoard,
       localBoardsById: localBoardsById,
       localProfilesByBoard: localProfilesByBoard,
       pendingListingCreatesByBoard: pendingListingCreatesByBoard,
@@ -4044,6 +4324,7 @@ final class AppModel {
     localQuestionsByBoard = snapshot.localQuestionsByBoard
     localActivityByBoard = snapshot.localActivityByBoard
     localMembersByBoard = snapshot.localMembersByBoard
+    localChatMessagesByBoard = snapshot.localChatMessagesByBoard ?? [:]
     localBoardsById = snapshot.localBoardsById
     localProfilesByBoard = snapshot.localProfilesByBoard
     pendingListingCreatesByBoard = snapshot.pendingListingCreatesByBoard ?? [:]

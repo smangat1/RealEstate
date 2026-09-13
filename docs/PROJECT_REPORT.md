@@ -125,7 +125,7 @@ The backend is a Next.js 16 App Router project using TypeScript and React 19. It
 - Push-token registration.
 - Runtime-status and analytics export endpoints.
 
-The web board remains in the repository, but the product direction is now native-first. Some older web chat/demo behavior and Ollama-oriented code still exists and contributes to product and maintenance ambiguity.
+The web board remains in the repository, but the product direction is now native-first. Board chat is roommate-only, and Advisor guidance is delivered as structured action cards backed by app-computed facts rather than Ollama or scripted chatbot replies.
 
 ### 3.3 Data and authentication
 
@@ -680,7 +680,7 @@ The image/source issue is the primary product blocker. The remaining issues are 
 9. **Native tests are insufficient.** Multi-account invitation, board joining, source trust, comments, ratings, decisions, route display, offline behavior, and session expiry need automated or repeatable device tests.
 10. **Oversized files increase risk.** `SharedWorkspaceView.swift`, `BoardShellView.swift`, `board-data.ts`, `AppModel.swift`, and `AccountOnboardingView.swift` should be split by feature and state ownership.
 11. **Parallel/legacy UI remains.** `BoardShellView.swift`, `SharedWorkspaceView.swift`, and older web/demo surfaces overlap conceptually, increasing the chance that similar behavior is fixed in one surface but not another.
-12. **Legacy AI/demo code obscures the product.** Ollama chat, scripted demo, and earlier chat-first paths remain in the repository even though the native beta is now a non-AI shared board.
+12. **Advisor migration is complete.** The Ollama, scripted chatbot, old rental-advisor store, and earlier chat-first Advisor paths have been removed. The remaining demo fixtures exercise the current shared-board and action-card flows.
 13. **iCloud placeholder contamination exists.** Numerous `.icloud-placeholder-*` files and `node_modules.dataless-old` indicate the project has been partially offloaded or duplicated by iCloud. This can cause missing-file, duplicate-file, and build inconsistencies.
 14. **Media storage is public and incomplete.** Uploaded files lack private access, rights metadata, cleanup, moderation, transformation, and safe validation.
 15. **No formal source liveness process.** Exact source URLs need scheduled or user-triggered status checks that respect provider terms without scraping protected pages.

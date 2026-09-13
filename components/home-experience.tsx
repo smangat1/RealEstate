@@ -69,9 +69,9 @@ function createInitialDraft(currentUser: AuthUserRecord): DraftState {
         boardId: "onboarding-draft",
         role: "assistant",
         authorUserId: null,
-        authorName: "Advisor",
+        authorName: "Homeboard setup",
         content:
-          "Tell me about your move and I’ll build the rental profile before we open the shared workspace. Start with whatever comes naturally: city, roommates, budget, move-in timing, commute, or neighborhoods.",
+          "Describe your move and Homeboard will fill the setup form before opening the shared workspace. Start with city, roommates, budget, move-in timing, commute, or neighborhoods.",
         createdAt: now,
       },
     ],
@@ -97,7 +97,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
   const [draft, setDraft] = useState<DraftState>(() => createInitialDraft(currentUser));
 
   useEffect(() => {
-    const savedTheme = window.localStorage.getItem("rental-advisor-theme");
+    const savedTheme = window.localStorage.getItem("homeboard-theme");
     const nextTheme =
       savedTheme === "light" || savedTheme === "dark"
         ? savedTheme
@@ -107,7 +107,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
     setTheme(nextTheme);
     document.documentElement.dataset.theme = nextTheme;
 
-    const collapsed = window.localStorage.getItem("rental-advisor-sidebar-collapsed");
+    const collapsed = window.localStorage.getItem("homeboard-sidebar-collapsed");
     if (collapsed === "true") setIsSidebarCollapsed(true);
 
     const savedDraft = window.sessionStorage.getItem(STORAGE_KEY);
@@ -156,13 +156,13 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.dataset.theme = next;
-    window.localStorage.setItem("rental-advisor-theme", next);
+    window.localStorage.setItem("homeboard-theme", next);
   }
 
   function toggleSidebar() {
     const next = !isSidebarCollapsed;
     setIsSidebarCollapsed(next);
-    window.localStorage.setItem("rental-advisor-sidebar-collapsed", String(next));
+    window.localStorage.setItem("homeboard-sidebar-collapsed", String(next));
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -246,7 +246,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
             boardId: "onboarding-draft",
             role: "assistant",
             authorUserId: null,
-            authorName: "Advisor",
+            authorName: "Homeboard setup",
             content: "I hit a snag while updating the onboarding profile. Try sending that again.",
             createdAt: new Date().toISOString(),
           },
@@ -304,7 +304,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
             {theme === "dark" ? "◐" : "◑"}
           </button>
           <Link href="/settings" className="icon-button" aria-label="Open settings">
-            ⚙
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </Link>
         </div>
 
@@ -389,7 +389,7 @@ export function HomeExperience({ currentUser, recentBoards, isDemoEnabled }: Hom
                 <article key={message.id} className={`modern-message ${message.role}`}>
                   {message.role === "assistant" ? <div className="avatar">A</div> : null}
                   <div className="message-body">
-                    <span className="message-role">{message.role === "assistant" ? "Advisor" : message.authorName ?? "You"}</span>
+                    <span className="message-role">{message.role === "assistant" ? "Setup guide" : message.authorName ?? "You"}</span>
                     <p>{message.content}</p>
                   </div>
                 </article>

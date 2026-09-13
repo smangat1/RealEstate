@@ -23,12 +23,15 @@ import type {
   BoardListingRecord,
   BoardListingVoteRecord,
   BoardPageData,
+  BoardSubscriptionRecord,
 } from "@/lib/types";
-import {
-  generateDeterministicPitch,
-  type PitchCategoryKey,
-  type PitchTone,
-} from "@/lib/scout-pitch-engine";
+import type {
+  AdvisorActionCommand,
+  AdvisorActionRecord,
+  ApplicationChecklistItemRecord,
+  ListingChangeRecord,
+  ListingInquiryRecord,
+} from "@/lib/advisor-types";
 
 type BoardExperienceProps = {
   currentUser: AuthUserRecord | null;
@@ -491,7 +494,13 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
   useEffect(() => {
     setLocalMessages(data.messages);
   }, [data.messages]);
-  const recentMessages = localMessages.slice(-12);
+  const recentMessages = localMessages.filter((message) => message.role === "user").slice(-12);
+  const [advisorActions, setAdvisorActions] = useState(data.advisorActions);
+  const [workingAdvisorActionId, setWorkingAdvisorActionId] = useState<string | null>(null);
+  const [advisorFeedback, setAdvisorFeedback] = useState<string | null>(null);
+  useEffect(() => {
+    setAdvisorActions(data.advisorActions);
+  }, [data.advisorActions]);
   const readinessLabel =
     membersNeedingSetup.length === 0
       ? "Group-ready"
@@ -533,7 +542,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
   );
 
   useEffect(() => {
-    const savedTheme = window.localStorage.getItem("rental-advisor-theme");
+    const savedTheme = window.localStorage.getItem("homeboard-theme");
     const nextTheme =
       savedTheme === "light" || savedTheme === "dark"
         ? savedTheme
@@ -543,7 +552,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     setTheme(nextTheme);
     document.documentElement.dataset.theme = nextTheme;
 
-    const collapsed = window.localStorage.getItem("rental-advisor-sidebar-collapsed");
+    const collapsed = window.localStorage.getItem("homeboard-sidebar-collapsed");
     if (collapsed === "true") setIsSidebarCollapsed(true);
   }, []);
 
@@ -593,13 +602,13 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
     document.documentElement.dataset.theme = next;
-    window.localStorage.setItem("rental-advisor-theme", next);
+    window.localStorage.setItem("homeboard-theme", next);
   }
 
   function toggleSidebar() {
     const next = !isSidebarCollapsed;
     setIsSidebarCollapsed(next);
-    window.localStorage.setItem("rental-advisor-sidebar-collapsed", String(next));
+    window.localStorage.setItem("homeboard-sidebar-collapsed", String(next));
   }
 
   async function submitChat(overrideText?: string) {
@@ -615,13 +624,13 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       id: tempId,
       boardId: data.board.id,
       role: "user" as const,
-      authorUserId: currentUser?.id,
+      authorUserId: currentUser?.id ?? null,
       authorName: currentUser?.displayName || "You",
       content: textToSend,
       createdAt: new Date().toISOString(),
     };
 
-    setLocalMessages((prev) => [...prev, optimisticMessage as any]);
+    setLocalMessages((prev) => [...prev, optimisticMessage]);
 
     // Scroll to bottom smoothly
     setTimeout(() => {
@@ -672,6 +681,66 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
     chatInputRef.current?.focus();
   }
 
+  async function updateAdvisorAction(actionId: string, status: "completed" | "dismissed") {
+    const response = await fetch(`/api/mobile/boards/${data.board.id}/advisor/actions`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actionId, status }),
+    });
+    if (!response.ok) throw new Error("Unable to update this Advisor action.");
+    setAdvisorActions((current) => current.filter((action) => action.id !== actionId));
+  }
+
+  async function runAdvisorCommand(action: AdvisorActionRecord, command: AdvisorActionCommand) {
+    const listingId = command.payload.listingId || action.listingId;
+    const boardListingId = command.payload.boardListingId || action.boardListingId;
+    if (command.type === "open_source") {
+      const url = command.payload.url;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (["open_listing", "review_inquiry", "review_follow_up", "review_reply", "open_application_checklist"].includes(command.type)) {
+      if (boardListingId) setFocusedListingId(boardListingId);
+      return;
+    }
+    if (command.type === "dismiss") {
+      await updateAdvisorAction(action.id, "dismissed");
+      return;
+    }
+    if (command.type === "archive_listing") {
+      if (!listingId || !window.confirm("Archive this listing for the whole board? Its shared history will remain recoverable.")) return;
+      const response = await fetch(`/api/mobile/boards/${data.board.id}/listings/${listingId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Unable to archive this listing.");
+      await updateAdvisorAction(action.id, "completed");
+      router.refresh();
+      return;
+    }
+    if (command.type === "check_listing") {
+      if (!listingId) return;
+      const response = await fetch(`/api/mobile/boards/${data.board.id}/listings/${listingId}/advisor/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const result = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Unable to check this listing.");
+      setAdvisorFeedback(result?.message ?? "Listing checked.");
+      router.refresh();
+    }
+  }
+
+  async function handleAdvisorCommand(action: AdvisorActionRecord, command: AdvisorActionCommand) {
+    setWorkingAdvisorActionId(action.id);
+    setAdvisorFeedback(null);
+    try {
+      await runAdvisorCommand(action, command);
+    } catch (commandError) {
+      setAdvisorFeedback(commandError instanceof Error ? commandError.message : "Unable to run this Advisor action.");
+    } finally {
+      setWorkingAdvisorActionId(null);
+    }
+  }
+
   return (
     <main className={`app-shell ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar mac-sidebar">
@@ -683,7 +752,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
             {theme === "dark" ? "◐" : "◑"}
           </button>
           <Link href="/settings" className="icon-button" aria-label="Open settings">
-            ⚙
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </Link>
         </div>
 
@@ -1122,6 +1191,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 {/* ── Scout Crowdfunder Banner ── */}
                 <ScoutBanner
                   boardId={data.board.id}
+                  currentUserId={currentUser?.id ?? null}
                   subscription={data.scoutSubscription ?? null}
                 />
 
@@ -1150,7 +1220,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                     >
                       <div>
                         <strong style={{ fontSize: "0.92rem", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <span>🗑️</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                           <span>Recently Deleted ({data.recentlyDeletedBoardListings.length})</span>
                         </strong>
                         <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", opacity: 0.7 }}>
@@ -1239,232 +1309,60 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : null}
               </section>
 
-              {/* ── Scout Radar ── only shown when Scout is active and has leads ── */}
-              {data.scoutSubscription?.status === "active" && (data.scoutRadarLeads ?? []).length > 0 ? (
-                <section className="rail-card board-home-section">
-                  <div className="rail-card-header">
-                    <h2>🛰️ Scout Radar</h2>
-                    <span>{data.scoutRadarLeads!.length} new leads</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>
-                    {data.scoutRadarLeads!.map((lead) => (
-                      <div
-                        key={lead.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "flex-start",
-                          gap: "12px",
-                          padding: "12px 14px",
-                          borderRadius: "12px",
-                          border: "1px solid rgba(255, 255, 255, 0.08)",
-                          background: "rgba(255, 255, 255, 0.025)",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: "0" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
-                            <span
-                              style={{
-                                fontSize: "0.72rem",
-                                padding: "2px 7px",
-                                borderRadius: "99px",
-                                background: "rgba(99,179,237,0.15)",
-                                color: "#63b3ed",
-                                fontWeight: 600,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {lead.matchScore}% match
-                            </span>
-                            <strong style={{ fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {lead.listing.address ?? lead.listing.neighborhood ?? "New lead"}
-                            </strong>
-                          </div>
-                          <p style={{ margin: 0, fontSize: "0.78rem", opacity: 0.7 }}>
-                            {lead.matchReason}
-                            {lead.listing.price ? ` · $${lead.listing.price.toLocaleString()}/mo` : ""}
-                          </p>
-                        </div>
-                        <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            style={{ padding: "5px 10px", fontSize: "0.78rem", color: "var(--accent)", cursor: "pointer" }}
-                            onClick={() => {
-                              fetch(`/api/mobile/boards/${data.board.id}/scout/radar/${lead.id}/promote`, { method: "POST" })
-                                .then(() => window.location.reload())
-                                .catch(() => null);
-                            }}
-                          >
-                            Add to Shortlist
-                          </button>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            style={{ padding: "5px 10px", fontSize: "0.78rem", opacity: 0.65, cursor: "pointer" }}
-                            onClick={() => {
-                              fetch(`/api/mobile/boards/${data.board.id}/scout/radar/${lead.id}/dismiss`, { method: "POST" })
-                                .then(() => window.location.reload())
-                                .catch(() => null);
-                            }}
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
+              <section id="advisor-updates-section" className="rail-card board-home-section">
+                <div className="rail-card-header">
+                  <h2>Advisor Updates</h2>
+                  <span>{advisorActions.length} open</span>
+                </div>
+                <p className="mini-meta">
+                  Facts and next steps computed from the shared board. On supported Apple devices, wording may be polished on-device without changing these facts.
+                </p>
+                {advisorFeedback ? <p className="settings-help-copy">{advisorFeedback}</p> : null}
+                {advisorActions.length > 0 ? (
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {advisorActions.slice(0, 12).map((action) => (
+                      <AdvisorActionCard
+                        key={action.id}
+                        action={action}
+                        working={workingAdvisorActionId === action.id}
+                        onCommand={(command) => void handleAdvisorCommand(action, command)}
+                        onDone={() => void updateAdvisorAction(action.id, "completed")}
+                      />
                     ))}
                   </div>
-                </section>
-              ) : null}
+                ) : (
+                  <p>No Advisor actions need attention. Saving or reviewing a listing will create a grounded fit summary here.</p>
+                )}
+              </section>
 
               <section className="rail-card board-home-section">
                 <div className="rail-card-header">
-                  <h2>Shared Chat</h2>
+                  <h2>Roommate Chat</h2>
                   <span>{recentMessages.length} latest messages</span>
                 </div>
 
                 <div className="board-home-chat-preview" ref={chatThreadRef}>
                   {recentMessages.map((message) => (
-                    <article key={message.id} className={`modern-message ${message.role}`}>
-                      {message.role === "assistant" ? (
-                        <div
-                          className="avatar"
-                          style={{
-                            background: message.authorName === "Scout" ? "rgba(99, 179, 237, 0.25)" : undefined,
-                            borderColor: message.authorName === "Scout" ? "rgba(99, 179, 237, 0.5)" : undefined,
-                          }}
-                        >
-                          {message.authorName === "Scout" ? "🛰️" : "A"}
-                        </div>
-                      ) : null}
+                    <article key={message.id} className="modern-message user">
                       <div className="message-body" style={{ width: "100%" }}>
-                        <span className="message-role">
-                          {message.authorName ?? (message.role === "assistant" ? "Advisor" : "Board member")}
-                        </span>
-                        {message.content.includes("<!-- SCOUT_PITCH_BUILDER:") ? (
-                          <ScoutPitchBuilderCard
-                            content={message.content}
-                            senderName={currentUser?.displayName || "Samyan"}
-                            onPostToChat={async (pitchText) => {
-                              const fd = new FormData();
-                              fd.set("boardId", data.board.id);
-                              fd.set("content", pitchText);
-                              await sendChatAction(fd);
-                            }}
-                          />
-                        ) : (
-                          <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
-                        )}
+                        <span className="message-role">{message.authorName ?? "Board member"}</span>
+                        <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
                       </div>
                     </article>
                   ))}
                 </div>
                 <div className="chat-input-shell board-home-chat-shell">
-                  {chatInput.toLowerCase().includes("@advisor") || chatInput.toLowerCase().includes("@scout") ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "6px 12px",
-                        borderRadius: "10px",
-                        background: "rgba(99, 179, 237, 0.12)",
-                        border: "1px solid rgba(99, 179, 237, 0.35)",
-                        marginBottom: "8px",
-                        fontSize: "0.78rem",
-                        flexWrap: "wrap",
-                        gap: "6px",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#63b3ed", fontWeight: 600 }}>
-                        <span>🛰️</span>
-                        <span>Addressing Advisor</span>
-                      </div>
-                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChatInput("@advisor create a pitch for me");
-                            chatInputRef.current?.focus();
-                          }}
-                          style={{
-                            background: "rgba(255,255,255,0.08)",
-                            border: "1px solid rgba(255,255,255,0.18)",
-                            color: "#fff",
-                            fontSize: "0.72rem",
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            fontWeight: 500,
-                          }}
-                        >
-                          ⚡ Draft Pitch
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChatInput("@advisor scan my links");
-                            chatInputRef.current?.focus();
-                          }}
-                          style={{
-                            background: "rgba(255,255,255,0.08)",
-                            border: "1px solid rgba(255,255,255,0.18)",
-                            color: "#fff",
-                            fontSize: "0.72rem",
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            fontWeight: 500,
-                          }}
-                        >
-                          ⚡ Scan Links
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
                   <textarea
                     ref={chatInputRef}
                     value={chatInput}
                     onChange={(event) => setChatInput(event.target.value)}
                     onKeyDown={handleChatKeyDown}
                     rows={3}
-                    placeholder="Message the board, or type @advisor to draft broker pitches and scan links..."
+                    placeholder="Message your roommates..."
                   />
                   <div className="chat-input-footer">
-                    <div className="chat-hints" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!chatInput.includes("@advisor")) {
-                            setChatInput(chatInput ? `@advisor ${chatInput}` : "@advisor ");
-                          }
-                          chatInputRef.current?.focus();
-                        }}
-                        style={{
-                          background: chatInput.toLowerCase().includes("@advisor") ? "rgba(99, 179, 237, 0.25)" : "rgba(255,255,255,0.06)",
-                          border: chatInput.toLowerCase().includes("@advisor") ? "1px solid rgba(99, 179, 237, 0.5)" : "1px solid rgba(255,255,255,0.15)",
-                          color: chatInput.toLowerCase().includes("@advisor") ? "#63b3ed" : "rgba(255,255,255,0.85)",
-                          fontSize: "0.74rem",
-                          padding: "2px 8px",
-                          borderRadius: "6px",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        <span>🛰️</span>
-                        <span>@Advisor</span>
-                      </button>
-
-                      <span>
-                        {data.missingFields.length > 0
-                          ? `Profile ${data.completion.percentComplete}% complete · still collecting: ${data.missingFields.join(", ")}`
-                          : "The shared brief is in good shape. Use chat for changes, clarifications, and reactions as the search evolves."}
-                      </span>
+                    <div className="chat-hints">
+                      <span>Roommates only. Advisor recommendations appear as separate action cards above.</span>
                     </div>
                     <button type="button" onClick={() => submitChat()} disabled={isPending}>
                       {isPending ? "Updating..." : "Send"}
@@ -1630,7 +1528,10 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
           commute={data.boardListingCommutesByBoardListingId[focusedListing.id]}
           votes={data.listingVotesByBoardListingId[focusedListing.id] ?? []}
           comments={data.listingCommentsByBoardListingId[focusedListing.id] ?? []}
-          brokerOutreaches={data.brokerOutreachesByBoardListingId?.[focusedListing.id] ?? []}
+          inquiries={data.listingInquiriesByBoardListingId?.[focusedListing.id] ?? []}
+          advisorActions={advisorActions.filter((action) => action.boardListingId === focusedListing.id)}
+          onAdvisorCommand={(action, command) => void handleAdvisorCommand(action, command)}
+          onAdvisorDone={(action) => void updateAdvisorAction(action.id, "completed")}
           onClose={() => setFocusedListingId(null)}
         />
       ) : null}
@@ -1679,43 +1580,126 @@ function CommentFeed({ comments }: { comments: BoardListingCommentRecord[] }) {
 
 function ScoutBanner({
   boardId,
+  currentUserId,
   subscription,
 }: {
   boardId: string;
-  subscription: BoardPageData["scoutSubscription"] | null;
+  currentUserId: string | null;
+  subscription: BoardSubscriptionRecord | null;
 }) {
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanFeedback, setScanFeedback] = useState<string | null>(null);
+  const [liveSubscription, setLiveSubscription] = useState<BoardSubscriptionRecord | null>(subscription);
+  const [isWorking, setIsWorking] = useState(false);
+  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
 
-  const isActive = subscription?.status === "active";
-  const isPending = subscription?.status === "pending_split";
-  const isExpired = subscription?.status === "expired";
-  const fundedPct = subscription
-    ? Math.min(100, Math.round((subscription.fundedCents / subscription.targetCents) * 100))
+  useEffect(() => {
+    setLiveSubscription(subscription);
+  }, [subscription]);
+
+  const isActive = liveSubscription?.status === "active";
+  const isPending = liveSubscription?.status === "pending_split";
+  const isExpired = liveSubscription?.status === "expired" || liveSubscription?.status === "paused";
+  const isDemoEntitlement = liveSubscription?.id.startsWith("demo-advisor-") ?? false;
+  const fundedPct = liveSubscription && liveSubscription.targetCents > 0
+    ? Math.min(100, Math.round((liveSubscription.fundedCents / liveSubscription.targetCents) * 100))
+    : 0;
+  const currentContribution = liveSubscription?.contributions.find((entry) => entry.userId === currentUserId) ?? null;
+  const currentSharePaid = currentContribution?.status === "paid";
+  const remainingCents = liveSubscription
+    ? Math.max(0, liveSubscription.targetCents - liveSubscription.fundedCents)
     : 0;
 
+  function formatCents(value: number) {
+    return `$${(value / 100).toFixed(2)}`;
+  }
+
   async function handleTriggerScan() {
-    setIsScanning(true);
-    setScanFeedback(null);
+    setIsWorking(true);
+    setFeedback(null);
     try {
       const res = await fetch(`/api/mobile/boards/${boardId}/scout/scan`, {
         method: "POST",
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
       if (!res.ok) {
-        setScanFeedback(data.error ?? "Scan failed");
+        throw new Error(data?.error ?? "Unable to run an Advisor scan.");
       } else {
-        setScanFeedback(data.message ?? "Scan complete!");
+        setFeedback({ tone: "success", message: data?.message ?? "Advisor scan complete." });
         setTimeout(() => {
           window.location.reload();
         }, 1200);
       }
-    } catch (err: any) {
-      setScanFeedback(err?.message ?? "Error running scan");
+    } catch (error) {
+      setFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to run an Advisor scan.",
+      });
     } finally {
-      setIsScanning(false);
+      setIsWorking(false);
     }
   }
+
+  async function handleSubscriptionAction() {
+    if (!currentUserId) {
+      setFeedback({ tone: "error", message: "Sign in to manage Advisor for this board." });
+      return;
+    }
+
+    setIsWorking(true);
+    setFeedback(null);
+    try {
+      const isContribution = isPending;
+      const response = await fetch(
+        isContribution
+          ? `/api/mobile/boards/${boardId}/subscription/contribute`
+          : `/api/mobile/boards/${boardId}/subscription`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isContribution
+              ? { action: currentSharePaid ? "cover" : "contribute", paymentMethod: "web" }
+              : {},
+          ),
+        },
+      );
+      const result = (await response.json().catch(() => null)) as {
+        subscription?: BoardSubscriptionRecord;
+        error?: string;
+      } | null;
+      if (!response.ok || !result?.subscription) {
+        throw new Error(result?.error ?? "Unable to update Advisor.");
+      }
+
+      setLiveSubscription(result.subscription);
+      setFeedback({
+        tone: "success",
+        message: result.subscription.status === "active"
+          ? "Advisor is active for the next seven days."
+          : isContribution
+            ? "Your share is funded."
+            : "Split started. Fund your share when you’re ready.",
+      });
+    } catch (error) {
+      setFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Unable to update Advisor.",
+      });
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  const actionLabel = isActive
+    ? isWorking ? "Scanning…" : "Scan now"
+    : isWorking
+      ? "Working…"
+      : isPending
+        ? currentSharePaid
+          ? remainingCents > 0 ? `Cover rest ${formatCents(remainingCents)}` : "Activating…"
+          : `Fund ${formatCents(currentContribution?.amountCents ?? liveSubscription?.amountCents ?? 499)} share`
+        : isExpired
+          ? "Renew"
+          : "Start split";
 
   return (
     <div
@@ -1724,10 +1708,10 @@ function ScoutBanner({
         padding: "16px 18px",
         borderRadius: "14px",
         border: isActive
-          ? "1px solid rgba(99, 179, 237, 0.35)"
+          ? "1px solid rgba(255, 255, 255, 0.1)"
           : "1px dashed rgba(255, 255, 255, 0.13)",
         background: isActive
-          ? "rgba(99, 179, 237, 0.07)"
+          ? "rgba(255, 255, 255, 0.035)"
           : "rgba(255, 255, 255, 0.025)",
       }}
     >
@@ -1742,18 +1726,22 @@ function ScoutBanner({
       >
         <div>
           <strong style={{ fontSize: "0.92rem" }}>
-            {isActive ? "🛰️ Advisor Active" : isExpired ? "⏰ Advisor Paused" : "🛰️ Homeboard Advisor"}
+            {isActive ? "Advisor on" : isExpired ? "Advisor paused" : "Homeboard Advisor"}
           </strong>
           <p style={{ margin: "3px 0 0 0", fontSize: "0.78rem", opacity: 0.75 }}>
             {isActive
-              ? `Autonomous price monitoring + broker pitch synthesis live · ${subscription?.daysRemaining ?? 0}d remaining`
+              ? isDemoEntitlement
+                ? "Included with this demo board"
+                : `${liveSubscription?.daysRemaining ?? 0} day${liveSubscription?.daysRemaining === 1 ? "" : "s"} left`
               : isExpired
-              ? "Advisor paused: renew for the next 7 days to resume autonomous monitoring."
+              ? "Your previous pass ended. Renew when the group wants another seven days."
               : isPending
-              ? `Split in progress · $${((subscription?.fundedCents ?? 0) / 100).toFixed(2)} of $${((subscription?.targetCents ?? 499) / 100).toFixed(2)} funded (${fundedPct}%)`
-              : "Autonomous price monitoring, link scanning, and broker pitch synthesis: split $4.99/week across the group."}
+              ? currentSharePaid
+                ? `Your share is funded · ${fundedPct}% complete · waiting on the group`
+                : `Split in progress · ${fundedPct}% funded · your share ${formatCents(currentContribution?.amountCents ?? liveSubscription?.amountCents ?? 499)}`
+              : "Scheduled listing checks, grounded change alerts, and review-first outreach drafts: split $4.99/week across the group."}
           </p>
-          {isPending && subscription && (
+          {isPending && liveSubscription && (
             <div
               style={{
                 marginTop: "8px",
@@ -1774,508 +1762,181 @@ function ScoutBanner({
               />
             </div>
           )}
-          {scanFeedback && (
-            <p style={{ margin: "6px 0 0 0", fontSize: "0.76rem", color: "#68d391", fontWeight: 600 }}>
-              {scanFeedback}
+          {feedback && (
+            <p style={{ margin: "6px 0 0 0", fontSize: "0.76rem", color: feedback.tone === "error" ? "#fc8181" : "#68d391", fontWeight: 600 }}>
+              {feedback.message}
             </p>
           )}
         </div>
 
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          {isActive ? (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handleTriggerScan}
-              disabled={isScanning}
-              style={{
-                fontSize: "0.78rem",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                cursor: isScanning ? "default" : "pointer",
-                border: "1px solid rgba(99, 179, 237, 0.5)",
-                background: isScanning ? "rgba(99, 179, 237, 0.2)" : "rgba(99, 179, 237, 0.1)",
-                color: "#63b3ed",
-                fontWeight: 600,
-              }}
-            >
-              {isScanning ? "Scanning links…" : "⚡ Scan Links Now"}
-            </button>
-          ) : (
-            <span
-              style={{
-                fontSize: "0.75rem",
-                padding: "4px 10px",
-                borderRadius: "99px",
-                border: "1px solid rgba(255,255,255,0.2)",
-                opacity: 0.8,
-                cursor: "default",
-              }}
-            >
-              {isPending ? "Pay your share in-app" : isExpired ? "Renew in-app" : "Start split in-app"}
-            </span>
-          )}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void (isActive ? handleTriggerScan() : handleSubscriptionAction())}
+            disabled={isWorking || (isPending && currentSharePaid && remainingCents === 0)}
+            style={{
+              fontSize: "0.78rem",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              cursor: isWorking ? "default" : "pointer",
+              border: isActive ? "1px solid rgba(99, 179, 237, 0.5)" : "1px solid rgba(255,255,255,0.2)",
+              background: isActive ? "rgba(99, 179, 237, 0.1)" : "rgba(255,255,255,0.05)",
+              color: isActive ? "#63b3ed" : "inherit",
+              fontWeight: 600,
+            }}
+          >
+            {actionLabel}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function ScoutPitchBuilderCard({
-  content,
-  senderName,
-  onPostToChat,
+function AdvisorActionCard({
+  action,
+  working,
+  onCommand,
+  onDone,
 }: {
-  content: string;
-  senderName: string;
-  onPostToChat: (pitchText: string) => Promise<void>;
+  action: AdvisorActionRecord;
+  working: boolean;
+  onCommand: (command: AdvisorActionCommand) => void;
+  onDone: () => void;
 }) {
-  const match = content.match(/<!-- SCOUT_PITCH_BUILDER:([\s\S]*?) -->/);
-  const payload = useMemo(() => {
-    if (!match) return null;
-    try {
-      return JSON.parse(match[1]);
-    } catch {
-      return null;
-    }
-  }, [match]);
-
-  const allListings = payload?.allListings ?? [];
-  const [selectedListingId, setSelectedListingId] = useState<string>(payload?.boardListingId ?? "");
-  const currentListing = useMemo(() => {
-    return allListings.find((l: any) => l.id === selectedListingId) ?? payload;
-  }, [allListings, selectedListingId, payload]);
-
-  const hasDrop = Boolean(currentListing?.id === payload?.boardListingId ? payload?.hasPriceDrop : false);
-  const dropAmt = hasDrop ? payload?.dropAmount : 0;
-  const pctDrop = hasDrop ? payload?.percentDrop : 0;
-
-  const [categories, setCategories] = useState<PitchCategoryKey[]>(() => {
-    const list: PitchCategoryKey[] = ["financial_readiness", "tour_speed"];
-    if (payload?.hasPriceDrop) list.unshift("price_drop");
-    return list;
-  });
-  const [tone, setTone] = useState<PitchTone>("executive");
-
-  const [pitch, setPitch] = useState<ReturnType<typeof generateDeterministicPitch> | null>(() => {
-    if (!payload) return null;
-    return generateDeterministicPitch({
-      listingAddress: payload.address,
-      unit: payload.unit,
-      neighborhood: payload.neighborhood,
-      monthlyRent: payload.price,
-      oldPrice: payload.oldPrice,
-      priceDropAmount: payload.dropAmount,
-      percentDrop: payload.percentDrop,
-      roommateCount: payload.roommateCount ?? 1,
-      roommateNames: payload.roommateNames ?? [],
-      senderName,
-      categories: payload.hasPriceDrop
-        ? ["price_drop", "financial_readiness", "tour_speed"]
-        : ["financial_readiness", "tour_speed"],
-      tone: "executive",
-    });
-  });
-
-  const [editedBody, setEditedBody] = useState<string>(pitch?.body ?? "");
-  const [copied, setCopied] = useState(false);
-  const [posting, setPosting] = useState(false);
-  const [posted, setPosted] = useState(false);
-
-  function handleRecompute(newCats = categories, newTone = tone, listing = currentListing) {
-    if (!listing) return;
-    const isTarget = listing.id === payload?.boardListingId;
-    const res = generateDeterministicPitch({
-      listingAddress: listing.address,
-      unit: listing.unit,
-      neighborhood: listing.neighborhood,
-      monthlyRent: listing.price,
-      oldPrice: isTarget ? payload?.oldPrice : listing.price,
-      priceDropAmount: isTarget ? payload?.dropAmount : 0,
-      percentDrop: isTarget ? payload?.percentDrop : 0,
-      roommateCount: payload?.roommateCount ?? 1,
-      roommateNames: payload?.roommateNames ?? [],
-      senderName,
-      categories: newCats,
-      tone: newTone,
-    });
-    setPitch(res);
-    setEditedBody(res.body);
-  }
-
-  function toggleCat(cat: PitchCategoryKey) {
-    const next = categories.includes(cat)
-      ? categories.filter((c) => c !== cat)
-      : [...categories, cat];
-    setCategories(next);
-    handleRecompute(next, tone, currentListing);
-  }
-
-  function toggleTone(newTone: PitchTone) {
-    setTone(newTone);
-    handleRecompute(categories, newTone, currentListing);
-  }
-
-  function handleCopy() {
-    if (!pitch) return;
-    const fullText = `Subject: ${pitch.subject}\n\n${editedBody}`;
-    navigator.clipboard.writeText(fullText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function handlePost() {
-    if (!pitch || posting || posted) return;
-    setPosting(true);
-    try {
-      const fullText = `🤝 **Outreach Pitch for ${currentListing.address}${currentListing.unit ? ` #${currentListing.unit}` : ""}**\n*Subject:* ${pitch.subject}\n\n${editedBody}`;
-      await onPostToChat(fullText);
-      setPosted(true);
-    } catch {
-      // ignore
-    } finally {
-      setPosting(false);
-    }
-  }
-
-  if (!payload) {
-    return <p>{content.replace(/<!--[\s\S]*?-->/g, "").trim()}</p>;
-  }
-
-  const mailtoUrl = pitch
-    ? `mailto:?subject=${encodeURIComponent(pitch.subject)}&body=${encodeURIComponent(editedBody)}`
-    : "#";
-
+  const tone = action.priority === "critical"
+    ? "#ff7a7e"
+    : action.priority === "high"
+      ? "#f6c177"
+      : "var(--accent)";
   return (
-    <div
-      style={{
-        marginTop: "8px",
-        padding: "14px 16px",
-        borderRadius: "14px",
-        background: "rgba(99, 179, 237, 0.05)",
-        border: "1px solid rgba(99, 179, 237, 0.3)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+    <article style={{ padding: "15px", borderRadius: "14px", border: `1px solid ${tone}55`, background: "rgba(255,255,255,0.035)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start" }}>
         <div>
-          <strong style={{ fontSize: "0.9rem", color: "#63b3ed", display: "flex", alignItems: "center", gap: "6px" }}>
-            <span>🛰️</span> Scout Broker Pitch Builder
-          </strong>
-          <p style={{ margin: "2px 0 0 0", fontSize: "0.75rem", opacity: 0.75 }}>
-            Grounded synthesis: strictly verified board facts, zero made-up data.
-          </p>
-        </div>
-
-        {allListings.length > 1 && (
-          <select
-            value={selectedListingId}
-            onChange={(e) => {
-              setSelectedListingId(e.target.value);
-              const nextListing = allListings.find((l: any) => l.id === e.target.value);
-              handleRecompute(categories, tone, nextListing);
-            }}
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,0.2)",
-              borderRadius: "8px",
-              padding: "4px 8px",
-              fontSize: "0.75rem",
-              maxWidth: "200px",
-            }}
-          >
-            {allListings.map((l: any) => (
-              <option key={l.id} value={l.id} style={{ background: "#1c2420", color: "#fff" }}>
-                {l.address}{l.unit ? ` #${l.unit}` : ""}{l.price ? ` ($${l.price.toLocaleString()})` : ""}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* Target listing pill */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          padding: "6px 10px",
-          borderRadius: "8px",
-          background: "rgba(255,255,255,0.04)",
-          marginBottom: "12px",
-          fontSize: "0.78rem",
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>{currentListing.address}{currentListing.unit ? ` #${currentListing.unit}` : ""}</span>
-        <span style={{ opacity: 0.6 }}>·</span>
-        <span style={{ color: "#63b3ed", fontWeight: 600 }}>
-          {currentListing.price ? `$${currentListing.price.toLocaleString()}/mo` : "Rent unlisted"}
-        </span>
-        {hasDrop && (
-          <span
-            style={{
-              padding: "2px 6px",
-              borderRadius: "4px",
-              background: "rgba(72, 187, 120, 0.2)",
-              color: "#68d391",
-              fontSize: "0.7rem",
-              fontWeight: 700,
-            }}
-          >
-            📉 -${dropAmt.toLocaleString()}/mo (-{pctDrop}%)
+          <span style={{ color: tone, fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            {action.kind.replaceAll("_", " ")} · {action.priority}
           </span>
-        )}
-      </div>
-
-      {/* Category Checklist */}
-      <div style={{ marginBottom: "12px" }}>
-        <span style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.6, fontWeight: 700, display: "block", marginBottom: "6px" }}>
-          What to highlight in this pitch:
-        </span>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-          {hasDrop && (
-            <button
-              type="button"
-              onClick={() => toggleCat("price_drop")}
-              style={{
-                fontSize: "0.74rem",
-                padding: "4px 10px",
-                borderRadius: "99px",
-                cursor: "pointer",
-                border: categories.includes("price_drop")
-                  ? "1px solid rgba(104, 211, 145, 0.6)"
-                  : "1px solid rgba(255,255,255,0.12)",
-                background: categories.includes("price_drop")
-                  ? "rgba(104, 211, 145, 0.15)"
-                  : "rgba(255,255,255,0.03)",
-                color: categories.includes("price_drop") ? "#68d391" : "rgba(255,255,255,0.6)",
-                fontWeight: categories.includes("price_drop") ? 600 : 400,
-              }}
-            >
-              {categories.includes("price_drop") ? "✓ " : "+ "}📉 Mention Price Drop (-${dropAmt})
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => toggleCat("financial_readiness")}
-            style={{
-              fontSize: "0.74rem",
-              padding: "4px 10px",
-              borderRadius: "99px",
-              cursor: "pointer",
-              border: categories.includes("financial_readiness")
-                ? "1px solid rgba(99, 179, 237, 0.6)"
-                : "1px solid rgba(255,255,255,0.12)",
-              background: categories.includes("financial_readiness")
-                ? "rgba(99, 179, 237, 0.15)"
-                : "rgba(255,255,255,0.03)",
-              color: categories.includes("financial_readiness") ? "#63b3ed" : "rgba(255,255,255,0.6)",
-              fontWeight: categories.includes("financial_readiness") ? 600 : 400,
-            }}
-          >
-            {categories.includes("financial_readiness") ? "✓ " : "+ "}💼 40x Income & Credit Ready
-          </button>
-
-          <button
-            type="button"
-            onClick={() => toggleCat("tour_speed")}
-            style={{
-              fontSize: "0.74rem",
-              padding: "4px 10px",
-              borderRadius: "99px",
-              cursor: "pointer",
-              border: categories.includes("tour_speed")
-                ? "1px solid rgba(99, 179, 237, 0.6)"
-                : "1px solid rgba(255,255,255,0.12)",
-              background: categories.includes("tour_speed")
-                ? "rgba(99, 179, 237, 0.15)"
-                : "rgba(255,255,255,0.03)",
-              color: categories.includes("tour_speed") ? "#63b3ed" : "rgba(255,255,255,0.6)",
-              fontWeight: categories.includes("tour_speed") ? 600 : 400,
-            }}
-          >
-            {categories.includes("tour_speed") ? "✓ " : "+ "}⚡ Tour Immediately (This Week)
-          </button>
-
-          <button
-            type="button"
-            onClick={() => toggleCat("stable_tenants")}
-            style={{
-              fontSize: "0.74rem",
-              padding: "4px 10px",
-              borderRadius: "99px",
-              cursor: "pointer",
-              border: categories.includes("stable_tenants")
-                ? "1px solid rgba(99, 179, 237, 0.6)"
-                : "1px solid rgba(255,255,255,0.12)",
-              background: categories.includes("stable_tenants")
-                ? "rgba(99, 179, 237, 0.15)"
-                : "rgba(255,255,255,0.03)",
-              color: categories.includes("stable_tenants") ? "#63b3ed" : "rgba(255,255,255,0.6)",
-              fontWeight: categories.includes("stable_tenants") ? 600 : 400,
-            }}
-          >
-            {categories.includes("stable_tenants") ? "✓ " : "+ "}🏡 Quiet, Respectful Long-Term
-          </button>
-
-          <button
-            type="button"
-            onClick={() => toggleCat("lease_urgency")}
-            style={{
-              fontSize: "0.74rem",
-              padding: "4px 10px",
-              borderRadius: "99px",
-              cursor: "pointer",
-              border: categories.includes("lease_urgency")
-                ? "1px solid rgba(99, 179, 237, 0.6)"
-                : "1px solid rgba(255,255,255,0.12)",
-              background: categories.includes("lease_urgency")
-                ? "rgba(99, 179, 237, 0.15)"
-                : "rgba(255,255,255,0.03)",
-              color: categories.includes("lease_urgency") ? "#63b3ed" : "rgba(255,255,255,0.6)",
-              fontWeight: categories.includes("lease_urgency") ? 600 : 400,
-            }}
-          >
-            {categories.includes("lease_urgency") ? "✓ " : "+ "}🗓️ Fast-Track Move-In
-          </button>
+          <h3 style={{ margin: "4px 0 6px", fontSize: "1rem" }}>{action.title}</h3>
         </div>
-      </div>
-
-      {/* Tone Switcher */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", fontSize: "0.75rem" }}>
-        <span style={{ opacity: 0.6 }}>Tone:</span>
-        <button
-          type="button"
-          onClick={() => toggleTone("executive")}
-          style={{
-            fontSize: "0.72rem",
-            padding: "3px 8px",
-            borderRadius: "6px",
-            cursor: "pointer",
-            background: tone === "executive" ? "rgba(255,255,255,0.15)" : "transparent",
-            color: tone === "executive" ? "#fff" : "rgba(255,255,255,0.5)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            fontWeight: tone === "executive" ? 600 : 400,
-          }}
-        >
-          👔 Executive & Direct
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleTone("warm")}
-          style={{
-            fontSize: "0.72rem",
-            padding: "3px 8px",
-            borderRadius: "6px",
-            cursor: "pointer",
-            background: tone === "warm" ? "rgba(255,255,255,0.15)" : "transparent",
-            color: tone === "warm" ? "#fff" : "rgba(255,255,255,0.5)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            fontWeight: tone === "warm" ? 600 : 400,
-          }}
-        >
-          ☕ Warm & Neighborly
+        <button type="button" className="secondary-button" disabled={working} onClick={onDone} style={{ padding: "4px 8px", fontSize: "0.72rem" }}>
+          Done
         </button>
       </div>
-
-      {/* Generated Pitch Box */}
-      {pitch && (
-        <div style={{ marginTop: "10px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-            <span style={{ fontSize: "0.72rem", color: "#63b3ed", fontWeight: 600 }}>
-              Angle: {pitch.angleLabel}
-            </span>
-            <span style={{ fontSize: "0.7rem", opacity: 0.5 }}>Variation #{pitch.variationIndex} of 24</span>
-          </div>
-          <div
-            style={{
-              padding: "6px 10px",
-              borderRadius: "6px",
-              background: "rgba(0,0,0,0.25)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              fontSize: "0.76rem",
-              fontWeight: 600,
-              marginBottom: "6px",
-              color: "rgba(255,255,255,0.9)",
-            }}
-          >
-            Subject: {pitch.subject}
-          </div>
-          <textarea
-            value={editedBody}
-            onChange={(e) => setEditedBody(e.target.value)}
-            rows={8}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              background: "rgba(0,0,0,0.3)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: "8px",
-              color: "#fff",
-              padding: "10px",
-              fontSize: "0.78rem",
-              lineHeight: 1.5,
-              resize: "vertical",
-              fontFamily: "inherit",
-            }}
-          />
-
-          {/* Action Row */}
-          <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handleCopy}
-              style={{
-                fontSize: "0.75rem",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                cursor: "pointer",
-                background: copied ? "rgba(104, 211, 145, 0.2)" : undefined,
-                color: copied ? "#68d391" : undefined,
-                fontWeight: 600,
-              }}
-            >
-              {copied ? "✓ Copied to Clipboard!" : "📋 Copy Pitch"}
-            </button>
-
-            <a
-              href={mailtoUrl}
-              className="secondary-button"
-              style={{
-                fontSize: "0.75rem",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                fontWeight: 600,
-              }}
-            >
-              ✉️ Open in Mail
-            </a>
-
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handlePost}
-              disabled={posting || posted}
-              style={{
-                fontSize: "0.75rem",
-                padding: "6px 12px",
-                borderRadius: "8px",
-                cursor: posted ? "default" : "pointer",
-                opacity: posted ? 0.6 : 1,
-                fontWeight: 600,
-              }}
-            >
-              {posted ? "✓ Shared to Chat" : posting ? "Posting…" : "💬 Share in Board Chat"}
-            </button>
-          </div>
+      <p style={{ margin: "0 0 7px" }}>{action.summary}</p>
+      <p className="mini-meta" style={{ margin: "0 0 10px" }}><strong>Why it matters:</strong> {action.whyItMatters}</p>
+      {action.facts.length > 0 ? (
+        <div className="detail-chip-wrap" style={{ marginBottom: "10px" }}>
+          {action.facts.slice(0, 8).map((fact) => (
+            <span key={fact.key} className="saved-pill">{fact.label}: {fact.value}</span>
+          ))}
         </div>
-      )}
-    </div>
+      ) : null}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        <button type="button" className="primary-sidebar-button" disabled={working} onClick={() => onCommand(action.primaryAction)}>
+          {working ? "Working…" : action.primaryAction.label}
+        </button>
+        {action.secondaryActions.map((command, index) => (
+          <button key={`${command.type}-${index}`} type="button" className="secondary-button" disabled={working} onClick={() => onCommand(command)}>
+            {command.label}
+          </button>
+        ))}
+        {action.sourceLinks.slice(0, 2).map((source) => (
+          <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="secondary-button">{source.label}</a>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function InquiryEditor({
+  boardId,
+  listingId,
+  inquiry,
+  onChange,
+}: {
+  boardId: string;
+  listingId: string;
+  inquiry: ListingInquiryRecord;
+  onChange: (inquiry: ListingInquiryRecord) => void;
+}) {
+  const [subject, setSubject] = useState(inquiry.subject ?? "");
+  const [body, setBody] = useState(inquiry.body ?? "");
+  const [replyText, setReplyText] = useState(inquiry.replyText ?? "");
+  const [working, setWorking] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  async function save(status: ListingInquiryRecord["status"]) {
+    if (status === "sent" && !window.confirm("I reviewed this draft and confirm that I, not Homeboard, am sending it.")) return;
+    if (status === "answered" && !replyText.trim()) {
+      setFeedback("Paste the agent reply before marking this inquiry answered.");
+      return;
+    }
+    setWorking(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listingId}/outreach`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inquiryId: inquiry.id,
+          status,
+          subject,
+          body,
+          method: inquiry.method,
+          ...(status === "answered" ? { replyText } : {}),
+          ...(status === "sent" ? { reviewConfirmed: true } : {}),
+        }),
+      });
+      const result = await response.json().catch(() => null) as { inquiry?: ListingInquiryRecord; error?: string } | null;
+      if (!response.ok || !result?.inquiry) throw new Error(result?.error ?? "Unable to update inquiry.");
+      onChange(result.inquiry);
+      setFeedback(status === "sent" ? "Marked sent after your review." : status === "answered" ? "Reply parsed into grounded fields." : "Draft saved.");
+    } catch (updateError) {
+      setFeedback(updateError instanceof Error ? updateError.message : "Unable to update inquiry.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return (
+    <article style={{ padding: "12px", borderRadius: "11px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+        <strong style={{ textTransform: "capitalize" }}>{inquiry.templateKey.replaceAll("_", " ")}</strong>
+        <span className="saved-pill">{inquiry.status}</span>
+      </div>
+      <label style={{ display: "grid", gap: "4px", marginTop: "8px" }}>
+        <span className="mini-meta">Subject</span>
+        <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={300} />
+      </label>
+      <label style={{ display: "grid", gap: "4px", marginTop: "8px" }}>
+        <span className="mini-meta">Draft: review and edit before sending</span>
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} maxLength={8000} />
+      </label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginTop: "8px" }}>
+        <button type="button" className="secondary-button" disabled={working} onClick={() => void save("drafted")}>Save draft</button>
+        <a className="secondary-button" href={mailto}>Open reviewed draft in Mail</a>
+        <button type="button" className="primary-sidebar-button" disabled={working} onClick={() => void save("sent")}>Mark sent</button>
+      </div>
+      {inquiry.status !== "drafted" ? (
+        <label style={{ display: "grid", gap: "4px", marginTop: "10px" }}>
+          <span className="mini-meta">Agent reply</span>
+          <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} rows={4} placeholder="Paste the agent's reply to extract availability, fees, tours, requirements, and next steps." />
+          <button type="button" className="secondary-button" disabled={working || !replyText.trim()} onClick={() => void save("answered")}>Parse reply and mark answered</button>
+        </label>
+      ) : null}
+      {inquiry.replyFacts ? (
+        <div className="detail-chip-wrap" style={{ marginTop: "8px" }}>
+          {inquiry.replyFacts.availability ? <span className="saved-pill">Availability: {inquiry.replyFacts.availability}</span> : null}
+          {inquiry.replyFacts.fees.map((value) => <span key={value} className="saved-pill">Fee: {value}</span>)}
+          {inquiry.replyFacts.tourTimes.map((value) => <span key={value} className="saved-pill">Tour: {value}</span>)}
+          {inquiry.replyFacts.requirements.map((value) => <span key={value} className="saved-pill">Requirement: {value}</span>)}
+          {inquiry.replyFacts.nextSteps.map((value) => <span key={value} className="saved-pill">Next: {value}</span>)}
+        </div>
+      ) : null}
+      {feedback ? <p className="settings-help-copy">{feedback}</p> : null}
+    </article>
   );
 }
 
@@ -2285,7 +1946,10 @@ function ListingDetailModal({
   commute,
   votes,
   comments,
-  brokerOutreaches,
+  inquiries,
+  advisorActions,
+  onAdvisorCommand,
+  onAdvisorDone,
   onClose,
 }: {
   boardId: string;
@@ -2293,12 +1957,88 @@ function ListingDetailModal({
   commute: BoardPageData["boardListingCommutesByBoardListingId"][string] | undefined;
   votes: BoardListingVoteRecord[];
   comments: BoardListingCommentRecord[];
-  brokerOutreaches: Array<{ id: string; userName?: string | null; contactedAt: string; method: string; notes?: string | null }>;
+  inquiries: ListingInquiryRecord[];
+  advisorActions: AdvisorActionRecord[];
+  onAdvisorCommand: (action: AdvisorActionRecord, command: AdvisorActionCommand) => void;
+  onAdvisorDone: (action: AdvisorActionRecord) => void;
   onClose: () => void;
 }) {
   const listing = boardListing.listing;
   const headline = [listing.neighborhood, listing.city].filter(Boolean).join(", ") || listing.address || "Untitled listing";
   const feeEntries = Object.entries(listing.fees ?? {}).filter(([, value]) => value !== null && value !== "");
+  const [localInquiries, setLocalInquiries] = useState(inquiries);
+  const [history, setHistory] = useState<ListingChangeRecord[]>([]);
+  const [checklist, setChecklist] = useState<ApplicationChecklistItemRecord[]>([]);
+  const [tourNote, setTourNote] = useState("");
+  const [advisorToolFeedback, setAdvisorToolFeedback] = useState<string | null>(null);
+  const [advisorToolWorking, setAdvisorToolWorking] = useState(false);
+
+  useEffect(() => {
+    const base = `/api/mobile/boards/${boardId}/listings/${listing.id}/advisor`;
+    void Promise.all([
+      fetch(`${base}/history`).then((response) => response.ok ? response.json() : { changes: [] }),
+      fetch(`${base}/application`).then((response) => response.ok ? response.json() : { items: [] }),
+    ]).then(([historyResult, checklistResult]) => {
+      setHistory((historyResult as { changes?: ListingChangeRecord[] }).changes ?? []);
+      setChecklist((checklistResult as { items?: ApplicationChecklistItemRecord[] }).items ?? []);
+    });
+  }, [boardId, listing.id]);
+
+  async function createInquiry(templateKey: string) {
+    setAdvisorToolWorking(true);
+    setAdvisorToolFeedback(null);
+    try {
+      const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/outreach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateKey }),
+      });
+      const result = await response.json().catch(() => null) as { inquiry?: ListingInquiryRecord; error?: string } | null;
+      if (!response.ok || !result?.inquiry) throw new Error(result?.error ?? "Unable to create inquiry draft.");
+      setLocalInquiries((current) => [result.inquiry!, ...current]);
+      setAdvisorToolFeedback("Draft created from saved listing and profile facts. Review every word before sending.");
+    } catch (draftError) {
+      setAdvisorToolFeedback(draftError instanceof Error ? draftError.message : "Unable to create inquiry draft.");
+    } finally {
+      setAdvisorToolWorking(false);
+    }
+  }
+
+  async function saveTourNotes() {
+    const transcript = tourNote.trim();
+    if (!transcript) return;
+    setAdvisorToolWorking(true);
+    setAdvisorToolFeedback(null);
+    try {
+      const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/advisor/tour-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript }),
+      });
+      const result = await response.json().catch(() => null) as { error?: string; summary?: { pros: string[]; cons: string[]; concerns: string[]; followUps: string[] } } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Unable to organize tour notes.");
+      setTourNote("");
+      setAdvisorToolFeedback(`Tour notes organized: ${result?.summary?.pros.length ?? 0} pros, ${result?.summary?.cons.length ?? 0} cons, and ${result?.summary?.followUps.length ?? 0} follow-ups.`);
+    } catch (noteError) {
+      setAdvisorToolFeedback(noteError instanceof Error ? noteError.message : "Unable to organize tour notes.");
+    } finally {
+      setAdvisorToolWorking(false);
+    }
+  }
+
+  async function updateChecklistItem(item: ApplicationChecklistItemRecord, status: ApplicationChecklistItemRecord["status"]) {
+    const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/advisor/application`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId: item.id, status }),
+    });
+    const result = await response.json().catch(() => null) as { item?: ApplicationChecklistItemRecord; error?: string } | null;
+    if (!response.ok || !result?.item) {
+      setAdvisorToolFeedback(result?.error ?? "Unable to update the application checklist.");
+      return;
+    }
+    setChecklist((current) => current.map((entry) => entry.id === item.id ? result.item! : entry));
+  }
 
 
   return (
@@ -2316,6 +2056,20 @@ function ListingDetailModal({
         </div>
 
         <div className="detail-modal-grid">
+          {advisorActions.length > 0 ? (
+            <div className="detail-panel" style={{ gridColumn: "1 / -1", display: "grid", gap: "10px" }}>
+              <strong>Advisor actions</strong>
+              {advisorActions.map((action) => (
+                <AdvisorActionCard
+                  key={action.id}
+                  action={action}
+                  working={false}
+                  onCommand={(command) => onAdvisorCommand(action, command)}
+                  onDone={() => onAdvisorDone(action)}
+                />
+              ))}
+            </div>
+          ) : null}
           <div className="detail-panel">
             <strong>Snapshot</strong>
             <div className="compare-stat-list">
@@ -2387,25 +2141,93 @@ function ListingDetailModal({
             <p>{listing.description ?? "No description saved for this listing yet."}</p>
           </div>
 
+          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
+            <strong>Agent outreach</strong>
+            <p className="mini-meta">Choose a grounded starting point. Drafts use only saved listing and profile facts and are never sent automatically.</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
+              {[
+                ["availability", "Check availability"],
+                ["tour_request", "Request a tour"],
+                ["fee_clarification", "Clarify fees"],
+                ["application_requirements", "Ask requirements"],
+              ].map(([key, label]) => (
+                <button key={key} type="button" className="secondary-button" disabled={advisorToolWorking} onClick={() => void createInquiry(key)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {localInquiries.map((inquiry) => (
+              <InquiryEditor
+                key={`${inquiry.id}-${inquiry.updatedAt}`}
+                boardId={boardId}
+                listingId={listing.id}
+                inquiry={inquiry}
+                onChange={(updated) => setLocalInquiries((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
+              />
+            ))}
+          </div>
+
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <strong>🤝 Contact Log</strong>
-            {brokerOutreaches.length > 0 ? (
-              <ul className="detail-list" style={{ margin: 0 }}>
-                {brokerOutreaches.map((o) => (
-                  <li key={o.id} style={{ fontSize: "0.82rem" }}>
-                    <strong>{o.userName ?? "Roommate"}</strong> reached out via {o.method}{" "}
-                    <span style={{ opacity: 0.6 }}>
-                      · {new Date(o.contactedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
-                    </span>
-                    {o.notes ? <span style={{ opacity: 0.75 }}> · {o.notes}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p style={{ fontSize: "0.82rem", opacity: 0.65, margin: 0 }}>
-                No one has contacted the landlord or broker yet. Use Scout to generate a pitch.
-              </p>
-            )}
+            <strong>Listing change history</strong>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={advisorToolWorking}
+              onClick={() => onAdvisorCommand({
+                schemaVersion: 1,
+                id: `manual-check-${boardListing.id}`,
+                boardId,
+                boardListingId: boardListing.id,
+                listingId: listing.id,
+                kind: "listing_change",
+                status: "open",
+                priority: "medium",
+                title: "Manual listing check",
+                summary: "",
+                whyItMatters: "",
+                facts: [],
+                sourceLinks: [],
+                primaryAction: { type: "check_listing", label: "Check listing again", payload: { listingId: listing.id, boardListingId: boardListing.id }, requiresReview: false },
+                secondaryActions: [],
+                engine: "deterministic",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                completedAt: null,
+              }, { type: "check_listing", label: "Check listing again", payload: { listingId: listing.id, boardListingId: boardListing.id }, requiresReview: false })}
+            >
+              Check listing again
+            </button>
+            {history.length > 0 ? history.map((change) => (
+              <div key={change.id} style={{ padding: "9px", borderRadius: "9px", background: "rgba(255,255,255,0.04)" }}>
+                <strong style={{ fontSize: "0.8rem" }}>{change.explanation}</strong>
+                <p className="mini-meta" style={{ margin: "3px 0 0" }}>{change.whyItMatters}</p>
+              </div>
+            )) : <p className="mini-meta">No price, fee, availability, or status changes recorded yet.</p>}
+          </div>
+
+          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <strong>Application checklist</strong>
+            {checklist.length > 0 ? checklist.map((item) => (
+              <label key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", fontSize: "0.8rem" }}>
+                <span>{item.label}</span>
+                <select value={item.status} onChange={(event) => void updateChecklistItem(item, event.target.value as ApplicationChecklistItemRecord["status"])}>
+                  <option value="missing">Missing</option>
+                  <option value="ready">Ready</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="waived">Waived</option>
+                </select>
+              </label>
+            )) : <p className="mini-meta">No checklist items are available yet.</p>}
+          </div>
+
+          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px", gridColumn: "1 / -1" }}>
+            <strong>Tour notes</strong>
+            <p className="mini-meta">Paste or dictate your notes. Homeboard organizes only the words you provide into pros, cons, concerns, and follow-ups.</p>
+            <textarea value={tourNote} onChange={(event) => setTourNote(event.target.value)} rows={4} placeholder="The kitchen was bright. Bedroom two felt small. Ask whether the windows are being repaired..." />
+            <button type="button" className="secondary-button" disabled={advisorToolWorking || !tourNote.trim()} onClick={() => void saveTourNotes()}>
+              Organize tour notes
+            </button>
+            {advisorToolFeedback ? <p className="settings-help-copy">{advisorToolFeedback}</p> : null}
           </div>
 
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>

@@ -20,9 +20,6 @@
     "ios:release": "xcodebuild -quiet -project ios/HomeboardNative/HomeboardNative.xcodeproj -scheme HomeboardNative -configuration Release -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO",
     "verify:all": "npm run verify && npm run prisma:validate && npm run ios:test && npm run ios:release",
     "lint": "eslint --no-warn-ignored app components lib scripts tests *.ts",
-    "db:seed": "tsx scripts/generate-dummy-data.ts --scale demo --reset",
-    "db:seed:large": "tsx scripts/generate-dummy-data.ts --scale large --reset",
-    "db:seed:huge": "tsx scripts/generate-dummy-data.ts --scale huge --reset",
     "rentcast:status": "tsx scripts/check-rentcast-setup.ts",
     "rentcast:import": "tsx scripts/import-rentcast-listings.ts",
     "rentcast:refresh:nyc": "tsx scripts/import-rentcast-listings.ts --controlled-nyc-refresh --confirm-one-request"
@@ -41,7 +38,6 @@
     "@sentry/nextjs": "^10.73.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
-    "better-sqlite3": "^12.11.1",
     "dotenv": "^17.4.2",
     "next": "^16.3.4",
     "react": "^19.2.8",
@@ -51,8 +47,6 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@faker-js/faker": "^10.6.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^25.9.5",
     "@types/react": "^19.2.18",

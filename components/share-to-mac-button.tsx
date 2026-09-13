@@ -64,7 +64,7 @@ export function ShareToMacButton({
   return (
     <button className={className} type="button" onClick={shareSetup}>
       <span>{feedback ?? label}</span>
-      <span aria-hidden="true">{feedback ? "✓" : "↗"}</span>
+      <span aria-hidden="true">{feedback ? "•" : "↗"}</span>
     </button>
   );
 }

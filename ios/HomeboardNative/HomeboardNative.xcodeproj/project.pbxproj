@@ -63,6 +63,7 @@
 		B7855DB36D0A397147C979C8 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */; };
 		BB00C219498B248279BC3A3B /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
+		C2DA2C775D4DF14C4638F68C /* AdvisorWordingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B314FAD8F24EE50916B8DFEC /* AdvisorWordingEngine.swift */; };
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
 		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
@@ -183,6 +184,7 @@
 		A69FCB73F4C2B9E99A5B401A /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardListingIntelligence.swift; sourceTree = "<group>"; };
 		AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAppleSignIn.swift; sourceTree = "<group>"; };
+		B314FAD8F24EE50916B8DFEC /* AdvisorWordingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorWordingEngine.swift; sourceTree = "<group>"; };
 		B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppSafariView.swift; sourceTree = "<group>"; };
 		BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeUITests.swift; sourceTree = "<group>"; };
 		C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = SharePreprocessor.js; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 			isa = PBXGroup;
 			children = (
 				40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */,
+				B314FAD8F24EE50916B8DFEC /* AdvisorWordingEngine.swift */,
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
 				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
@@ -689,6 +692,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */,
+				C2DA2C775D4DF14C4638F68C /* AdvisorWordingEngine.swift in Sources */,
 				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
 				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,

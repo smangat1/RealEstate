@@ -121,15 +121,12 @@ export default async function SettingsPage({
                   <article className="invite-summary-card">
                     <div className="invite-summary-head">
                       <div>
-                        <strong>AI assistant</strong>
-                        <span>Local Ollama stack currently backing onboarding and reasoning</span>
+                        <strong>Advisor actions</strong>
+                        <span>Server-computed facts with optional on-device Apple Intelligence wording</span>
                       </div>
-                      <span>{runtime.ollamaConfigured ? "Configured" : "Fallback defaults"}</span>
+                      <span>Grounded</span>
                     </div>
-                    <p>Host: {runtime.ollamaUrl}</p>
-                    <p>Base model: {runtime.ollamaModel}</p>
-                    <p>Extract model: {runtime.ollamaExtractModel}</p>
-                    <p>Reply model: {runtime.ollamaReplyModel}</p>
+                    <p>Web uses deterministic copy. Supported Apple devices can vary wording without changing server facts.</p>
                   </article>
                   <article className="invite-summary-card">
                     <div className="invite-summary-head">

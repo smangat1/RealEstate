@@ -1,7 +1,5 @@
 import "server-only";
 
-import { extractSearchProfileUpdatesWithAI, generateConversationalReplyWithAI, mergeProfileUpdates } from "@/lib/chat-ai";
-import { isDemoModeEnabled, runDemoChatTurn } from "@/lib/demo-chat";
 import {
   applyMessageToProfile,
   createBlankProfile,
@@ -27,46 +25,16 @@ export async function runOnboardingTurn(input: {
   messages: ChatMessage[];
 }) {
   const conversationHint = getConversationHint(input.messages);
-  const recentMessages = [...input.messages.slice(-8), { role: "user", content: input.message, authorName: input.profile.name }];
-
-  let nextProfile = input.profile;
-  let assistant = "";
-
-  if (isDemoModeEnabled()) {
-    const demoTurn = runDemoChatTurn({
-      previousProfile: input.profile,
-      message: input.message,
-      messages: input.messages,
-      listingsCount: 0,
-    });
-    nextProfile = finalizeProfileState(demoTurn.nextProfile);
-    assistant = demoTurn.reply;
-  } else {
-    const ruleProfile = applyMessageToProfile(input.profile, input.message, conversationHint);
-    const aiExtraction = await extractSearchProfileUpdatesWithAI({
-      profile: input.profile,
-      message: input.message,
-      recentMessages,
-      conversationHint,
-    });
-
-    nextProfile =
-      aiExtraction?.updates && Object.keys(aiExtraction.updates).length > 0
-        ? mergeProfileUpdates(ruleProfile, aiExtraction.updates)
-        : ruleProfile;
-    nextProfile = finalizeProfileState(nextProfile);
-
-    const fallbackReply = generateAssistantReply(input.profile, nextProfile, input.message, 0, conversationHint);
-    assistant = await generateConversationalReplyWithAI({
-      previousProfile: input.profile,
-      nextProfile,
-      message: input.message,
-      recentMessages,
-      missingFields: getProfileCompletion(nextProfile).missingFields,
-      listingsCount: 0,
-      fallbackReply,
-    });
-  }
+  const nextProfile = finalizeProfileState(
+    applyMessageToProfile(input.profile, input.message, conversationHint),
+  );
+  const assistant = generateAssistantReply(
+    input.profile,
+    nextProfile,
+    input.message,
+    0,
+    conversationHint,
+  );
 
   return {
     profile: nextProfile,
@@ -76,7 +44,7 @@ export async function runOnboardingTurn(input: {
       boardId: "onboarding-draft",
       role: "assistant" as const,
       authorUserId: null,
-      authorName: "Advisor",
+      authorName: "Homeboard setup",
       content: assistant,
       createdAt: new Date().toISOString(),
     },

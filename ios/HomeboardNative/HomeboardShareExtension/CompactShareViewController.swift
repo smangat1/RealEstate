@@ -1437,7 +1437,7 @@ final class CompactShareViewController: UIViewController {
     guard !hasFinished else { return }
     hasFinished = true
     loadingView.stopAnimating()
-    brandLabel.text = "HOMEBOARD  ✓"
+    brandLabel.text = "HOMEBOARD"
     statusLabel.text = message
     addressLabel.textColor = CompactSharePalette.secondaryText.withAlphaComponent(0.82)
     choicesBottomConstraint?.isActive = false

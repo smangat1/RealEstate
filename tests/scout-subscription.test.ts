@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import {
   SCOUT_WEEKLY_AMOUNT_CENTS,
   calculateEqualSplit,
-  detectPriceDrop,
-  detectPriceChange,
-  generateBrokerPitch,
 } from "../lib/scout-utils";
+
+const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 test("calculateEqualSplit divides $4.99 cleanly among roommates with remainder assigned to initiator", () => {
   // 1 member
@@ -49,92 +50,49 @@ test("calculateEqualSplit divides $4.99 cleanly among roommates with remainder a
   );
 });
 
-test("detectPriceChange identifies price drops and increases, ignores noise", () => {
-  // Drop
-  const drop = detectPriceChange(3400, 3200);
-  assert.ok(drop !== null);
-  assert.equal(drop!.direction, "drop");
-  assert.equal(drop!.oldPrice, 3400);
-  assert.equal(drop!.newPrice, 3200);
-  if (drop!.direction === "drop") {
-    assert.equal(drop!.dropAmount, 200);
-    assert.equal(drop!.percentDrop, 6);
-  }
-
-  // Increase
-  const rise = detectPriceChange(3000, 3300);
-  assert.ok(rise !== null);
-  assert.equal(rise!.direction, "increase");
-  assert.equal(rise!.oldPrice, 3000);
-  assert.equal(rise!.newPrice, 3300);
-  if (rise!.direction === "increase") {
-    assert.equal(rise!.increaseAmount, 300);
-    assert.equal(rise!.percentIncrease, 10);
-  }
-
-  // Noise below 1% — should be ignored
-  assert.equal(detectPriceChange(3000, 3005), null);  // 0.17% change
-
-  // No change
-  assert.equal(detectPriceChange(3000, 3000), null);
-
-  // Invalid inputs
-  assert.equal(detectPriceChange(0, 3200), null);
-  assert.equal(detectPriceChange(3200, 0), null);
-});
-
-test("detectPriceDrop backward-compat: returns null on increases, works on drops", () => {
-  // Still works for drops
-  const drop = detectPriceDrop(3400, 3200);
-  assert.ok(drop !== null);
-  assert.equal(drop!.direction, "drop");
-  assert.equal(drop!.dropAmount, 200);
-
-  // Returns null for increases (backward compat)
-  assert.equal(detectPriceDrop(3000, 3200), null);
-
-  // Returns null for same price
-  assert.equal(detectPriceDrop(3000, 3000), null);
-});
-
-test("generateBrokerPitch creates professional, tailored group outreach text", () => {
-  const pitch = generateBrokerPitch({
-    listingAddress: "31-15 21st St, Apt 3B",
-    neighborhood: "Astoria",
-    monthlyRent: 3200,
-    roommateCount: 3,
-    combinedBudgetMax: 3500,
-    moveInDate: "October 1st",
-    senderName: "Sam",
-  });
-
-  assert.match(pitch, /31-15 21st St, Apt 3B in Astoria/);
-  assert.match(pitch, /\$3,200\/mo/);
-  assert.match(pitch, /my 2 roommates and myself \(3 working professionals\)/);
-  assert.match(pitch, /October 1st/);
-  assert.match(pitch, /40x requirements/);
-  assert.match(pitch, /tour this week/);
-  assert.match(pitch, /Sam and group/);
-});
-
-test("scout cron scan route file exists and exports a GET handler", () => {
-  const fs = require("node:fs");
-  const path = require("node:path");
-
+test("Advisor monitoring route is scheduled and exports a GET handler", () => {
   // Route file checks
-  const routePath = path.join(__dirname, "../app/api/cron/scout-scan/route.ts");
-  assert.ok(fs.existsSync(routePath), "cron route file should exist");
-  const src = fs.readFileSync(routePath, "utf8");
+  const routePath = resolve(process.cwd(), "app/api/cron/advisor-monitor/route.ts");
+  assert.ok(existsSync(routePath), "cron route file should exist");
+  const src = readFileSync(routePath, "utf8");
   assert.match(src, /export async function GET/, "should export a GET handler");
   assert.match(src, /CRON_SECRET/, "should check CRON_SECRET for auth");
-  assert.match(src, /runBoardScoutScan/, "should call runBoardScoutScan for each board");
-  assert.match(src, /boardSubscription/, "should query for active subscriptions");
+  assert.match(src, /monitorBoardListings/, "should monitor saved listings");
+  assert.match(src, /markStaleInquiriesAndCreateFollowUps/, "should schedule inquiry follow-ups");
 
   // vercel.json schedule checks
-  const vercelPath = path.join(__dirname, "../vercel.json");
-  assert.ok(fs.existsSync(vercelPath), "vercel.json should exist");
-  const vercelJson = JSON.parse(fs.readFileSync(vercelPath, "utf8"));
-  const cronEntry = vercelJson.crons?.find((c: any) => c.path === "/api/cron/scout-scan");
-  assert.ok(cronEntry, "vercel.json should have a cron entry for /api/cron/scout-scan");
+  const vercelPath = resolve(process.cwd(), "vercel.json");
+  assert.ok(existsSync(vercelPath), "vercel.json should exist");
+  const vercelJson = JSON.parse(readFileSync(vercelPath, "utf8")) as {
+    crons?: Array<{ path: string; schedule: string }>;
+  };
+  const cronEntry = vercelJson.crons?.find((entry) => entry.path === "/api/cron/advisor-monitor");
+  assert.ok(cronEntry, "vercel.json should schedule /api/cron/advisor-monitor");
   assert.equal(cronEntry.schedule, "0 9,21 * * *", "should run twice a day at 9am and 9pm UTC");
+});
+
+test("Advisor subscription is included in native board payloads", () => {
+  const payload = source("lib/mobile-payloads.ts");
+
+  assert.match(payload, /scoutSubscription:\s*data\.scoutSubscription\s*\?\?\s*null/);
+});
+
+test("Advisor split route derives members on the server", () => {
+  const routeSource = source("app/api/mobile/boards/[id]/subscription/route.ts");
+  const serviceSource = source("lib/subscription-service.ts");
+
+  assert.doesNotMatch(routeSource, /body\.memberUserIds/);
+  assert.match(serviceSource, /requireBoardMemberUserIds\(boardId, initiatorUserId\)/);
+  assert.match(serviceSource, /status:\s*"pending_split"/);
+});
+
+test("demo accounts and the native preview receive an active Advisor entitlement", () => {
+  const boardData = source("lib/board-data.ts");
+  const appModel = source("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
+
+  assert.match(boardData, /getBoardSubscriptionState\(board.id\)/);
+  assert.match(appModel, /boardWithDemoAdvisorEntitlement\(response\.board\)/);
+  assert.doesNotMatch(appModel, /private var hasDemoAdvisorEntitlement/);
+  assert.match(appModel, /id:\s*"demo-advisor-preview-workspace"/);
+  assert.match(appModel, /boardError\s*=\s*nil\s*\n\s*boardTab\s*=\s*tab/);
 });

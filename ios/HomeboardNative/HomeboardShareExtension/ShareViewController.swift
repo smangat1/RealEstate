@@ -2847,7 +2847,7 @@ private final class ListingReviewViewController: UIViewController, UITextFieldDe
     label.font = .systemFont(ofSize: 9, weight: .bold)
 
     let values = InsetLabel()
-    values.text = amenities.prefix(8).map { "✓ \($0.capitalized)" }.joined(separator: "   ")
+    values.text = amenities.prefix(8).map { "• \($0.capitalized)" }.joined(separator: "   ")
     values.textColor = accentColor
     values.font = .systemFont(ofSize: 12, weight: .semibold)
     values.numberOfLines = 0

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const trackedFiles = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
   .split("\0")
@@ -26,6 +26,10 @@ const sensitiveFilePatterns = [
 const findings: string[] = [];
 for (const file of trackedFiles) {
   if (file === "scripts/check-tracked-secrets.ts") continue;
+  // `git ls-files` includes tracked files deleted in the working tree until the
+  // deletion is committed. Skipping those keeps this check useful during a
+  // refactor without weakening the scan of files that would still be shipped.
+  if (!existsSync(file)) continue;
   if (file !== ".env.example" && sensitiveFilePatterns.some((pattern) => pattern.test(file))) {
     findings.push(`${file}: sensitive filename is tracked`);
     continue;

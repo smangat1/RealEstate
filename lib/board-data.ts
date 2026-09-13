@@ -1,3 +1,4 @@
+import { getBoardSubscriptionState } from "@/lib/subscription-service";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
@@ -27,21 +28,13 @@ import type {
   SearchProfileData,
   SuggestedListingRecord,
 } from "@/lib/types";
+import { getDemoComparisonCopy, getDemoScenarioListingIds, isDemoModeEnabled } from "@/lib/demo-mode";
 import {
-  extractSearchProfileUpdatesWithAI,
-  generateConversationalReplyWithAI,
-  mergeProfileUpdatesWithGuards,
-} from "@/lib/chat-ai";
-import { getDemoComparisonCopy, getDemoScenarioListingIds, isDemoModeEnabled, runDemoChatTurn } from "@/lib/demo-chat";
-import {
-  applyMessageToProfile,
   createBlankProfile,
   finalizeProfileState,
-  generateAssistantReply,
   generateComparison,
   generateListingAnalysis,
   encodeNotesPayload,
-  getConversationHint,
   getMissingFields,
   getProfileCompletion,
   mapProfileRow,
@@ -57,8 +50,12 @@ import { matchDemoScenarioForProfile } from "@/lib/demo-scenarios";
 import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
-import { detectAdvisorIntent } from "@/lib/scout-pitch-engine";
-import { runBoardScoutScan } from "@/lib/scout-engine";
+import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
+import {
+  ensureApplicationChecklist,
+  getAdvisorActions,
+  seedListingAdvisorActions,
+} from "@/lib/advisor-service";
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
   listingSourceTrustWarning,
@@ -1344,6 +1341,7 @@ export async function getBoardPageData(
       ],
     },
     include: {
+      user: true,
       searchProfile: true,
       roommates: { orderBy: [{ createdAt: "asc" }, { name: "asc" }] },
       members: {
@@ -1698,78 +1696,15 @@ export async function getBoardPageData(
   const currentBrowseRequest = browseRequests.at(-1) ?? null;
   const commuteMode = getCommuteServiceMode(demoMode);
 
-  // Scout monetization data (safe: returns null/empty if Scout not yet active)
-  const [scoutSubscription, scoutRadarLeads, brokerOutreachesByBoardListingId] = await Promise.all([
-    (prisma as any).boardSubscription.findFirst({
-      where: { boardId: board.id },
-      orderBy: { createdAt: "desc" },
-      include: {
-        contributions: {
-          include: { user: { select: { id: true, displayName: true } } },
-        },
-      },
-    }).then((sub: any) => {
-      if (!sub) return null;
-      const now = new Date();
-      const status = sub.status === "active" && sub.expiresAt && sub.expiresAt < now ? "expired" : sub.status;
-      const fundedCents = sub.contributions
-        .filter((c: any) => c.status === "paid")
-        .reduce((s: number, c: any) => s + c.amountCents, 0);
-      const daysRemaining = sub.expiresAt && status === "active"
-        ? Math.max(0, Math.ceil((sub.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
-        : 0;
-      return {
-        id: sub.id,
-        boardId: sub.boardId,
-        status,
-        tier: "scout_weekly",
-        amountCents: sub.amountCents,
-        currency: sub.currency,
-        startedAt: sub.startedAt?.toISOString() ?? null,
-        expiresAt: sub.expiresAt?.toISOString() ?? null,
-        fundedCents,
-        targetCents: sub.amountCents,
-        daysRemaining,
-        contributions: sub.contributions.map((c: any) => ({
-          id: c.id,
-          subscriptionId: c.subscriptionId,
-          userId: c.userId,
-          userName: c.user?.displayName,
-          amountCents: c.amountCents,
-          status: c.status as "pledged" | "paid",
-          paymentMethod: c.paymentMethod,
-          paidAt: c.paidAt?.toISOString() ?? null,
-          transactionId: c.transactionId,
-        })),
-      };
-    }).catch(() => null),
-    (prisma as any).scoutDiscoveredLead.findMany({
-      where: { boardId: board.id, status: "pending" },
-      include: { listing: true },
-      orderBy: { matchScore: "desc" },
-      take: 6,
-    }).then((leads: any[]) =>
-      leads.map((item: any) => ({
-        id: item.id,
-        boardId: item.boardId,
-        listingId: item.listingId,
-        matchScore: item.matchScore,
-        matchReason: item.matchReason,
-        status: item.status,
-        discoveredAt: item.discoveredAt.toISOString(),
-        listing: {
-          ...item.listing,
-          createdAt: item.listing.createdAt.toISOString(),
-          updatedAt: item.listing.updatedAt.toISOString(),
-        },
-      }))
-    ).catch(() => []),
-    (prisma as any).brokerOutreachRecord.findMany({
+  // Advisor subscription, actions, and listing workflow data.
+  const [persistedScoutSubscription, listingInquiriesByBoardListingId, advisorActions] = await Promise.all([
+    getBoardSubscriptionState(board.id),
+    prisma.brokerOutreachRecord.findMany({
       where: { boardListing: { boardId: board.id } },
       include: { user: { select: { displayName: true } } },
-      orderBy: { contactedAt: "desc" },
-    }).then((records: any[]) => {
-      const grouped: Record<string, any[]> = {};
+      orderBy: { createdAt: "desc" },
+    }).then((records) => {
+      const grouped: NonNullable<BoardPageData["listingInquiriesByBoardListingId"]> = {};
       for (const r of records) {
         if (!grouped[r.boardListingId]) grouped[r.boardListingId] = [];
         grouped[r.boardListingId].push({
@@ -1777,14 +1712,31 @@ export async function getBoardPageData(
           boardListingId: r.boardListingId,
           userId: r.userId,
           userName: r.user?.displayName,
-          contactedAt: r.contactedAt.toISOString(),
-          method: r.method,
+          status: r.status,
+          templateKey: r.templateKey,
+          subject: r.subject,
+          body: r.body,
+          contactedAt: r.contactedAt?.toISOString() ?? null,
+          sentAt: r.sentAt?.toISOString() ?? null,
+          answeredAt: r.answeredAt?.toISOString() ?? null,
+          staleAt: r.staleAt?.toISOString() ?? null,
+          lastFollowUpAt: r.lastFollowUpAt?.toISOString() ?? null,
+          method: r.method as "email" | "portal" | "phone",
           notes: r.notes,
+          replyText: r.replyText,
+          replyFacts: r.replyFacts && typeof r.replyFacts === "object" && !Array.isArray(r.replyFacts)
+            ? r.replyFacts as unknown as NonNullable<typeof grouped[string]>[number]["replyFacts"]
+            : null,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
         });
       }
       return grouped;
     }).catch(() => ({})),
+    getAdvisorActions({ boardId: board.id }).catch(() => []),
   ]);
+
+  const scoutSubscription = persistedScoutSubscription;
 
   return {
     isDemoMode: demoMode,
@@ -1821,6 +1773,7 @@ export async function getBoardPageData(
     listingReviewsByBoardListingId,
     listingDecisionsByBoardListingId,
     listingAnalysisByBoardListingId,
+    advisorActions,
     suggestedListings,
     currentDeckListings: buildDeckListings(suggestedListings, browseRequests),
     currentBrowseRequest,
@@ -1830,8 +1783,7 @@ export async function getBoardPageData(
     missingFields: getMissingFields(effectiveProfile),
     completion: getProfileCompletion(effectiveProfile),
     scoutSubscription,
-    scoutRadarLeads,
-    brokerOutreachesByBoardListingId,
+    listingInquiriesByBoardListingId,
   };
 }
 
@@ -1897,13 +1849,6 @@ export async function createBoardAndReturnId(input: {
             laundryRequired: seededProfile.laundryRequired,
             commuteTarget: seededProfile.commuteTarget,
             notes: encodeNotesPayload(seededProfile),
-          },
-        },
-        chatMessages: {
-          create: {
-            role: "assistant",
-            authorName: "Advisor",
-            content: input.initialAssistantMessage ?? "Tell me what kind of rental you want, and I’ll build the search profile while we talk.",
           },
         },
         boardEvents: {
@@ -2062,244 +2007,20 @@ export async function saveBoardProfile(boardId: string, actingUserId: string, ne
 }
 
 export async function sendChat(boardId: string, content: string, author: { userId: string; authorName: string }) {
-  const boardData = await getBoardPageData(boardId, author.userId, { includeSuggestedListings: true });
-  if (!boardData) return;
-  const previousStatus = boardData.profile.completionStatus;
-
+  if (!(await ensureBoard(boardId, author.userId))) throw new Error("Workspace not found.");
+  const message = content.trim();
+  if (!message || message.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters.");
   await prisma.chatMessage.create({
     data: {
       boardId,
       role: "user",
       authorUserId: author.userId,
       authorName: author.authorName,
-      content,
+      content: message,
     },
   });
-
-  // Check if this message is addressing the Advisor (@advisor or @scout)
-  const advisorIntent = detectAdvisorIntent(content);
-  if (advisorIntent.type !== "none") {
-    if (advisorIntent.type === "pitch") {
-      const activeBoardListings = boardData.boardListings.filter((bl) => bl.userStatus !== "rejected");
-      let targetListing = activeBoardListings[0];
-      if (advisorIntent.requestedAddress) {
-        const needle = advisorIntent.requestedAddress.toLowerCase();
-        const match = activeBoardListings.find(
-          (bl) =>
-            (bl.listing.address && bl.listing.address.toLowerCase().includes(needle)) ||
-            (bl.listing.neighborhood && bl.listing.neighborhood.toLowerCase().includes(needle)),
-        );
-        if (match) targetListing = match;
-      }
-
-      if (!targetListing) {
-        await prisma.chatMessage.create({
-          data: {
-            boardId,
-            role: "assistant",
-            authorName: "Advisor",
-            content: "🛰️ I would love to draft a broker pitch, but there are no active listings saved on this board yet. Import or save a listing link first, then ask `@advisor create a pitch for me`!",
-          },
-        });
-        await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
-        await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
-        return;
-      }
-
-      const l = targetListing.listing;
-      const history = (l as any).priceHistory ?? [];
-      const hadDrop = history.length >= 2 && history[0].price < history[1].price;
-      const dropAmt = hadDrop ? history[1].price - history[0].price : 0;
-      const pctDrop = hadDrop ? Math.round((dropAmt / history[1].price) * 100) : 0;
-
-      const payload = {
-        boardListingId: targetListing.id,
-        address: l.address,
-        unit: l.unit,
-        neighborhood: l.neighborhood,
-        price: l.price,
-        oldPrice: hadDrop ? history[1].price : l.price,
-        hasPriceDrop: hadDrop,
-        dropAmount: dropAmt,
-        percentDrop: pctDrop,
-        roommateCount: boardData.roommates.length,
-        roommateNames: boardData.roommates.map((r) => r.name),
-        senderName: author.authorName,
-        allListings: activeBoardListings.map((bl) => ({
-          id: bl.id,
-          address: bl.listing.address,
-          unit: bl.listing.unit,
-          price: bl.listing.price,
-          neighborhood: bl.listing.neighborhood,
-        })),
-      };
-
-      const advisorCard = `<!-- SCOUT_PITCH_BUILDER:${JSON.stringify(payload)} -->
-🛰️ **Advisor Broker Pitch Builder**
-I have prepped the pitch builder for **${l.address ?? "your saved listing"}${l.unit ? ` #${l.unit}` : ""}**${l.price ? ` ($${l.price.toLocaleString()}/mo)` : ""}.
-Select the checklist options below to synthesize your tailored outreach pitch.`;
-
-      await prisma.chatMessage.create({
-        data: {
-          boardId,
-          role: "assistant",
-          authorName: "Advisor",
-          content: advisorCard,
-        },
-      });
-
-      await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
-      await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
-      return;
-    }
-
-    if (advisorIntent.type === "scan") {
-      const scanRes = await runBoardScoutScan(boardId);
-      const scanMsg = `🛰️ **Advisor Link Scan Complete**
-Scanned active listing links on this board.
-${
-  scanRes.priceDropsDetected > 0
-    ? `📉 **Detected ${scanRes.priceDropsDetected} price drop(s)!** Recalculated roommate splits and posted details to chat.`
-    : scanRes.priceIncreasesDetected > 0
-      ? `⚠️ **Detected ${scanRes.priceIncreasesDetected} price increase(s).** Flagged listings for roommate review.`
-      : `✓ All saved listing prices are currently verified and up to date.`
-}`;
-
-      await prisma.chatMessage.create({
-        data: {
-          boardId,
-          role: "assistant",
-          authorName: "Advisor",
-          content: scanMsg,
-        },
-      });
-
-      await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
-      await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
-      return;
-    }
-
-    // General address to @advisor
-    const helpMsg = `🛰️ **Advisor Ready**
-I'm your autonomous rental search advisor. Here's what I can do for your board:
-• **Broker Outreach:** Say \`@advisor create a pitch for me\` to synthesize tailored, grounded broker emails.
-• **Price Monitoring:** Say \`@advisor scan my links\` to check saved listings for live price drops and status changes.
-• **Group Fit:** Ask questions like \`@advisor how is our budget fit?\` or tell me what to update in your search brief!`;
-
-    await prisma.chatMessage.create({
-      data: {
-        boardId,
-        role: "assistant",
-        authorName: "Advisor",
-        content: helpMsg,
-      },
-    });
-
-    await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
-    await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
-    return;
-  }
-
-  const conversationHint = getConversationHint(boardData.messages);
-  const recentMessages = [
-    ...boardData.messages.slice(-8),
-    { role: "user", content, authorName: author.authorName },
-  ];
-
-  let nextProfile = boardData.profile;
-  let assistant = "";
-
-  if (isDemoModeEnabled()) {
-    const demoTurn = runDemoChatTurn({
-      previousProfile: boardData.profile,
-      message: content,
-      messages: boardData.messages,
-      listingsCount: boardData.boardListings.filter((item) => item.userStatus !== "rejected").length,
-    });
-    nextProfile = finalizeProfileState(demoTurn.nextProfile);
-    assistant = demoTurn.reply;
-  } else {
-    const ruleProfile = applyMessageToProfile(boardData.profile, content, conversationHint);
-    const aiExtraction = await extractSearchProfileUpdatesWithAI({
-      profile: boardData.profile,
-      message: content,
-      recentMessages,
-      conversationHint,
-    });
-
-    nextProfile =
-      aiExtraction?.updates && Object.keys(aiExtraction.updates).length > 0
-        ? mergeProfileUpdatesWithGuards({
-            profile: boardData.profile,
-            ruleProfile,
-            updates: aiExtraction.updates,
-            message: content,
-            conversationHint,
-          })
-        : ruleProfile;
-    nextProfile = finalizeProfileState(nextProfile);
-
-    const householdRoommates = boardData.roommates.filter(
-      (roommate) => roommate.roleLabel !== "commute point",
-    );
-    const groupSynthesis = summarizeGroup(householdRoommates, nextProfile);
-    const suggestedCount = (
-      await getSuggestedListings(
-        {
-          ...nextProfile,
-          budgetMin: groupSynthesis.groupBudgetMin ?? undefined,
-          budgetMax: groupSynthesis.groupBudgetMax ?? undefined,
-          stretchBudget: groupSynthesis.groupStretchBudget ?? undefined,
-        },
-        boardData.boardListings,
-        householdRoommates,
-      )
-    ).length;
-    const fallbackAssistant = generateAssistantReply(
-      boardData.profile,
-      nextProfile,
-      content,
-      Math.max(boardData.boardListings.filter((item) => item.userStatus !== "rejected").length, suggestedCount),
-      conversationHint,
-    );
-    assistant = await generateConversationalReplyWithAI({
-      previousProfile: boardData.profile,
-      nextProfile,
-      message: content,
-      recentMessages,
-      missingFields: getMissingFields(nextProfile),
-      listingsCount: Math.max(boardData.boardListings.filter((item) => item.userStatus !== "rejected").length, suggestedCount),
-      fallbackReply: fallbackAssistant,
-    });
-  }
-
-  await updateProfile(nextProfile);
-  if (previousStatus !== "complete" && nextProfile.completionStatus === "complete") {
-    await trackEvent("profile_completed", {
-      boardId,
-      userId: author.userId,
-      completionStatus: nextProfile.completionStatus,
-    });
-    await addBoardEvent(
-      boardId,
-      "system",
-      "System",
-      "profile_completed",
-      "The onboarding brief now covers the core fields well enough to create a reliable shared search profile.",
-    );
-  }
-
-  await prisma.chatMessage.create({
-    data: {
-      boardId,
-      role: "assistant",
-      authorName: "Advisor",
-      content: assistant,
-    },
-  });
-
-  await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${content}`);
-  await prisma.searchBoard.update({ where: { id: boardId }, data: { updatedAt: new Date() } });
+  await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${message}`);
+  await touchBoard(boardId);
 }
 
 function extractListingFromText(text: string) {
@@ -2460,6 +2181,7 @@ export async function addListingToBoard(
       ),
       touchBoard(boardId),
     ]);
+    await seedListingAdvisorActions(duplicateBoardListing.id, "refreshed");
     return;
   }
 
@@ -2575,6 +2297,10 @@ export async function addListingToBoard(
       provider: listing.sourceName,
     }),
     touchBoard(boardId),
+  ]);
+  await Promise.all([
+    seedListingAdvisorActions(boardListing.id, "saved"),
+    ensureApplicationChecklist(boardListing.id),
   ]);
 }
 
@@ -3157,6 +2883,7 @@ export async function updateBoardListingStatus(
     status,
   });
   await touchBoard(boardListing.boardId);
+  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function moveBoardListingToRecentlyDeleted(
@@ -3283,6 +3010,7 @@ export async function updateBoardListingWorkflow(
     workflowStatus,
   });
   await touchBoard(boardListing.boardId);
+  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function attachBoardListingSource(
@@ -3414,6 +3142,7 @@ export async function saveBoardListingReview(
     tourIntent: input.tourIntent,
   });
   await touchBoard(boardListing.boardId);
+  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function voteOnBoardListingDecision(
@@ -3747,6 +3476,7 @@ export async function saveBoardListingVote(
     vote: voteRecord.vote,
   });
   await touchBoard(boardListing.boardId);
+  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function addBoardListingComment(boardListingId: string, roommateId: string, content: string) {

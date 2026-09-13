@@ -1,3 +1,5 @@
+import type { AdvisorActionRecord, ListingInquiryRecord } from "@/lib/advisor-types";
+
 export type PriorityLevel = "low" | "medium" | "high";
 export type CommuteAccess = "car" | "transit" | "flexible" | "remote" | "skip";
 
@@ -487,6 +489,7 @@ export type BoardPageData = {
   listingReviewsByBoardListingId: Record<string, BoardListingReviewRecord[]>;
   listingDecisionsByBoardListingId: Record<string, BoardListingDecisionRecord[]>;
   listingAnalysisByBoardListingId: Record<string, GroupListingAnalysis>;
+  advisorActions: AdvisorActionRecord[];
   suggestedListings: SuggestedListingRecord[];
   currentDeckListings: SuggestedListingRecord[];
   currentBrowseRequest: ListingBrowseRequest | null;
@@ -494,8 +497,7 @@ export type BoardPageData = {
   missingFields: string[];
   completion: ProfileCompletion;
   scoutSubscription?: BoardSubscriptionRecord | null;
-  scoutRadarLeads?: ScoutRadarLeadRecord[];
-  brokerOutreachesByBoardListingId?: Record<string, BrokerOutreachRecordType[]>;
+  listingInquiriesByBoardListingId?: Record<string, ListingInquiryRecord[]>;
 };
 
 export type BoardSubscriptionStatus = "pending_split" | "active" | "paused" | "expired";
@@ -525,25 +527,4 @@ export type BoardSubscriptionRecord = {
   targetCents: number;
   daysRemaining: number;
   contributions: BoardSubscriptionContributionRecord[];
-};
-
-export type ScoutRadarLeadRecord = {
-  id: string;
-  boardId: string;
-  listingId: string;
-  matchScore: number;
-  matchReason: string;
-  status: "pending" | "promoted" | "dismissed";
-  discoveredAt: string;
-  listing: ListingRecord;
-};
-
-export type BrokerOutreachRecordType = {
-  id: string;
-  boardListingId: string;
-  userId: string;
-  userName?: string;
-  contactedAt: string;
-  method: "email" | "portal" | "phone";
-  notes: string | null;
 };

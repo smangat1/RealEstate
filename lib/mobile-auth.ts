@@ -1,6 +1,6 @@
 import "server-only";
 
-import { auth, syncAuthUserToProfile } from "@/lib/auth";
+import { getCurrentAppUser, syncAuthUserToProfile } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 function readBearerToken(request: Request) {
@@ -19,15 +19,7 @@ export async function getMobileAppUser(request: Request) {
       return syncAuthUserToProfile(data.user);
     }
   }
-  const session = await auth();
-  if (session?.user?.id) {
-    return {
-      id: session.user.id,
-      email: session.user.email ?? "",
-      name: session.user.name ?? "",
-    };
-  }
-  return null;
+  return getCurrentAppUser();
 }
 
 export async function requireMobileAppUser(request: Request) {

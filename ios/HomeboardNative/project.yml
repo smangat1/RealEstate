@@ -17,6 +17,7 @@ targets:
       - path: HomeboardNative/Sources/HomeboardModels.swift
       - path: HomeboardNative/Sources/HomeboardConfig.swift
       - path: HomeboardNative/Sources/HomeboardAPI.swift
+      - path: HomeboardNative/Sources/AdvisorWordingEngine.swift
       - path: HomeboardNative/Sources/InAppSafariView.swift
       - path: HomeboardNative/Shared/HomeboardSharedImportStore.swift
       - path: HomeboardNative/Shared/HomeboardListingIntelligence.swift
