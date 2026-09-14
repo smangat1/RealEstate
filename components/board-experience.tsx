@@ -1528,6 +1528,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
           inquiries={data.listingInquiriesByBoardListingId?.[focusedListing.id] ?? []}
           advisorActions={advisorActions.filter((action) => action.boardListingId === focusedListing.id)}
           advisorFeedback={advisorFeedback}
+          advisorWorkingActionId={workingAdvisorActionId}
           onAdvisorCommand={(action, command) => void handleAdvisorCommand(action, command)}
           onAdvisorDone={(action) => void updateAdvisorAction(action.id, "completed")}
           onClose={() => setFocusedListingId(null)}
@@ -1942,6 +1943,7 @@ function ListingDetailModal({
   inquiries,
   advisorActions,
   advisorFeedback,
+  advisorWorkingActionId,
   onAdvisorCommand,
   onAdvisorDone,
   onClose,
@@ -1954,6 +1956,7 @@ function ListingDetailModal({
   inquiries: ListingInquiryRecord[];
   advisorActions: AdvisorActionRecord[];
   advisorFeedback: string | null;
+  advisorWorkingActionId: string | null;
   onAdvisorCommand: (action: AdvisorActionRecord, command: AdvisorActionCommand) => void;
   onAdvisorDone: (action: AdvisorActionRecord) => void;
   onClose: () => void;
@@ -2089,7 +2092,7 @@ function ListingDetailModal({
                 <AdvisorActionCard
                   key={action.id}
                   action={action}
-                  working={false}
+                  working={advisorWorkingActionId === action.id}
                   onCommand={(command) => onAdvisorCommand(action, command)}
                   onDone={() => {
                     setLocalAdvisorActions((current) => current.filter((entry) => entry.id !== action.id));
