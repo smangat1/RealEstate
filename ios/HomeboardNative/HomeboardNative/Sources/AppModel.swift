@@ -1857,8 +1857,6 @@ final class AppModel {
     summary: String,
     fitLabel: String,
     sourceURL: String = "",
-    listingScope: String = "unit",
-    partialUnitParsing: Bool = false,
     groupNote: String = "",
     photoURL: String = "",
     unit: String = "",
@@ -1891,22 +1889,6 @@ final class AppModel {
       guard !cleaned.isEmpty, seenAmenities.insert(cleaned).inserted else { return nil }
       return cleaned
     }
-    var groundedModelInsights = modelInsights
-    if partialUnitParsing,
-       !groundedModelInsights.contains(where: { $0.label == "Partial unit availability" })
-    {
-      groundedModelInsights.insert(
-        HomeboardListingInsight(
-          category: "risk",
-          label: "Partial unit availability",
-          sentiment: -0.25,
-          confidence: 1,
-          evidence: "The saved building source may not include every current unit. Check the original page before deciding."
-        ),
-        at: 0
-      )
-    }
-    groundedModelInsights = Array(groundedModelInsights.prefix(16))
 
     guard !cleanedTitle.isEmpty else {
       boardError = "Add a listing title before saving it to the board."
@@ -1933,7 +1915,7 @@ final class AppModel {
           priceLine: cleanedPrice,
           amenities: cleanedAmenities,
           title: cleanedTitle,
-          modelInsights: groundedModelInsights
+          modelInsights: modelInsights
         ) {
           groupHighlights.append("\(offer.title) reduces monthly rent across the group")
         }
@@ -1970,12 +1952,9 @@ final class AppModel {
         return Array(groupHighlights.prefix(4))
       }(),
       amenities: cleanedAmenities,
-      modelInsights: groundedModelInsights,
+      modelInsights: modelInsights,
       openRisks: {
         var groupChecks: [String] = []
-        if partialUnitParsing {
-          groupChecks.append("Unit availability is partial; check the original building page for current openings")
-        }
         if cleanedBathrooms == "1" || (Double(cleanedBathrooms) ?? 0) == 1.0 {
           groupChecks.append("Single bathroom shared across roommates: align on morning routines")
         }
@@ -1990,8 +1969,6 @@ final class AppModel {
       }(),
       status: "saved",
       sourceURL: cleanedURL,
-      listingScope: listingScope,
-      partialUnitParsing: partialUnitParsing,
       groupNote: cleanedNote,
       photoURL: cleanedPhotoURL,
       unit: cleanedUnit,
@@ -3460,15 +3437,13 @@ final class AppModel {
     guard !shared.requiresReview else { return false }
     guard
       let address = shared.address?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !address.isEmpty
+      !address.isEmpty,
+      let price = shared.price,
+      let bedrooms = shared.bedrooms,
+      let bathrooms = shared.bathrooms
     else {
       return false
     }
-    let isBuildingReference = shared.listingScope?.lowercased() == "building"
-      && shared.unit?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
-    guard isBuildingReference
-      || (shared.price != nil && shared.bedrooms != nil && shared.bathrooms != nil)
-    else { return false }
 
     let sourceURL = shared.canonicalURL ?? shared.url
     let normalizedUnit = shared.unit?
@@ -3511,46 +3486,23 @@ final class AppModel {
     let photoURL = HomeboardSharedImportStore.hasPreviewImage(for: shared.id)
         ? HomeboardSharedImportStore.previewImageReference(for: shared.id)
         : remoteImage
-    var modelInsights = shared.modelInsights
-    if (isBuildingReference || shared.partialUnitParsing),
-       !modelInsights.contains(where: { $0.label == "Partial unit availability" })
-    {
-      modelInsights.insert(
-        HomeboardListingInsight(
-          category: "risk",
-          label: "Partial unit availability",
-          sentiment: -0.25,
-          confidence: 1,
-          evidence: "This building-level source may not include every current unit. Check the original page before deciding."
-        ),
-        at: 0
-      )
-    }
-    let summary = shared.summary
-      ?? (isBuildingReference
-        ? "Saved as a building reference. Unit availability may be partial; check the original source for current openings."
-        : "Collected from \(shared.sourceName ?? "the original listing source").")
 
     addManualListing(
       title: displayTitle,
       location: location,
-      priceLine: shared.price.map { "$\(Int($0.rounded()).formatted()) / month" } ?? "",
+      priceLine: "$\(Int(price.rounded()).formatted()) / month",
       commuteLine: "Compare group commutes",
-      summary: summary,
-      fitLabel: isBuildingReference
-        ? "Building reference"
-        : "New from \(shared.sourceName ?? "shared link")",
+      summary: shared.summary ?? "Collected from \(shared.sourceName ?? "the original listing source").",
+      fitLabel: "New from \(shared.sourceName ?? "shared link")",
       sourceURL: sourceURL,
-      listingScope: isBuildingReference ? "building" : "unit",
-      partialUnitParsing: isBuildingReference || shared.partialUnitParsing,
       photoURL: photoURL,
       unit: unit,
-      bedrooms: shared.bedrooms.map(formatted) ?? "",
-      bathrooms: shared.bathrooms.map(formatted) ?? "",
+      bedrooms: formatted(bedrooms),
+      bathrooms: formatted(bathrooms),
       squareFeet: shared.squareFeet,
       availableDate: shared.availableDate,
       amenities: shared.amenities,
-      modelInsights: modelInsights,
+      modelInsights: shared.modelInsights,
       address: address,
       latitude: shared.latitude,
       longitude: shared.longitude

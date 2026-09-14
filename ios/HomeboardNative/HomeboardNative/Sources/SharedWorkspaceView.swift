@@ -9342,11 +9342,10 @@ struct AddSharedListingSheet: View {
   }
 
   private var hasRequiredFacts: Bool {
-    let hasAddress = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    let isBuildingReference = (initialImport?.listingScope ?? importPreview?.scope)?.lowercased() == "building"
-      && unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    return hasAddress && (isBuildingReference
-      || (numericValue(price) != nil && Double(bedrooms) != nil && Double(bathrooms) != nil))
+    !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && numericValue(price) != nil
+      && Double(bedrooms) != nil
+      && Double(bathrooms) != nil
   }
 
   var body: some View {
@@ -9518,11 +9517,6 @@ struct AddSharedListingSheet: View {
                 summary: summary,
                 fitLabel: "Group contender",
                 sourceURL: sourceURL,
-                listingScope: (initialImport?.listingScope ?? importPreview?.scope) == "building"
-                  ? "building"
-                  : "unit",
-                partialUnitParsing: initialImport?.partialUnitParsing == true
-                  || (initialImport?.listingScope ?? importPreview?.scope) == "building",
                 groupNote: note,
                 photoURL: photoURL,
                 unit: unit,
@@ -9562,11 +9556,7 @@ struct AddSharedListingSheet: View {
           .opacity(hasRequiredFacts ? 1 : 0.55)
 
           if !hasRequiredFacts {
-            Text(
-              (initialImport?.listingScope ?? importPreview?.scope) == "building"
-                ? "Add the building address before saving this source. Unit details can remain partial."
-                : "An address, rent, bedroom count, and bathroom count are required before this listing can be saved."
-            )
+            Text("An address, rent, bedroom count, and bathroom count are required before this listing can be saved.")
               .font(.caption)
               .foregroundStyle(HomeboardPalette.secondaryText)
           }

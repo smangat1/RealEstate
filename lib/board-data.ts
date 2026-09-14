@@ -2075,8 +2075,6 @@ export async function addListingToBoard(
     availableDate?: string;
     amenities?: string[];
     modelInsights?: ListingModelInsight[];
-    listingScope?: "unit" | "building";
-    partialUnitParsing?: boolean;
     description?: string;
     imageUrl?: string;
     userNotes?: string;
@@ -2102,19 +2100,6 @@ export async function addListingToBoard(
         bathrooms: parsedBathrooms,
       })
     : null;
-  const listingScope = input.listingScope ?? importPreview?.scope ?? "unit";
-  const partialUnitParsing = input.partialUnitParsing === true || listingScope === "building";
-  let modelInsights = [...(input.modelInsights ?? [])];
-  if (partialUnitParsing && !modelInsights.some((insight) => insight.label === "Partial unit availability")) {
-    modelInsights.unshift({
-      category: "risk",
-      label: "Partial unit availability",
-      sentiment: -0.25,
-      confidence: 1,
-      evidence: "This is a building-level source; the saved unit list may not include every current opening.",
-    });
-  }
-  modelInsights = modelInsights.slice(0, 16);
   const normalizedSourceUrl = importPreview?.normalizedUrl ?? rawSourceUrl;
   const normalizedAddress = normalizeLooseText(
     input.address || importPreview?.suggestedAddress,
@@ -2159,7 +2144,7 @@ export async function addListingToBoard(
     const capturedImageUrl = input.imageUrl?.trim();
     const capturedTitle = input.listingTitle?.trim();
     const existingProviderData = duplicateBoardListing.listing.providerData;
-    const listingRefresh = modelInsights.length || capturedTitle || capturedImageUrl || partialUnitParsing
+    const listingRefresh = input.modelInsights?.length || capturedTitle || capturedImageUrl
       ? prisma.listing.update({
           where: { id: duplicateBoardListing.listing.id },
           data: {
@@ -2168,11 +2153,9 @@ export async function addListingToBoard(
               ...(existingProviderData && typeof existingProviderData === "object" && !Array.isArray(existingProviderData)
                 ? existingProviderData as Record<string, unknown>
                 : {}),
-              ...(modelInsights.length
-                ? { homeboardModelInsights: modelInsights }
+              ...(input.modelInsights?.length
+                ? { homeboardModelInsights: input.modelInsights }
                 : {}),
-              homeboardListingScope: listingScope,
-              homeboardPartialUnitParsing: partialUnitParsing,
               ...(capturedTitle
                 ? { homeboardListingTitle: capturedTitle }
                 : {}),
@@ -2220,9 +2203,7 @@ export async function addListingToBoard(
       description: input.description?.trim() || input.pastedText?.trim() || null,
       amenities: json(input.amenities ?? []),
       providerData: {
-        homeboardModelInsights: modelInsights,
-        homeboardListingScope: listingScope,
-        homeboardPartialUnitParsing: partialUnitParsing,
+        homeboardModelInsights: input.modelInsights ?? [],
         ...(rawAvailableDate ? { homeboardAvailableDateText: rawAvailableDate } : {}),
         ...(input.listingTitle?.trim()
           ? { homeboardListingTitle: input.listingTitle.trim() }
