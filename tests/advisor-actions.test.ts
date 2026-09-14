@@ -98,15 +98,41 @@ test("tour transcripts are organized deterministically without adding observatio
   assert.deepEqual(summary.followUps, ["Concern about street noise; ask about window repairs"]);
 });
 
-test("board chat and subscription activation never create Advisor auto-replies", () => {
+test("board chat invokes Advisor only for an explicit mention", () => {
   const boardData = readFileSync("lib/board-data.ts", "utf8");
   const subscription = readFileSync("lib/subscription-service.ts", "utf8");
   const boardExperience = readFileSync("components/board-experience.tsx", "utf8");
 
   assert.doesNotMatch(subscription, /chatMessage\.(?:create|createMany)/);
-  assert.doesNotMatch(boardData, /authorName:\s*["']Advisor["']/);
+  assert.match(boardData, /const ADVISOR_MENTION = \/\(\^\|\\s\)@advisor\\b\/i/);
+  assert.match(boardData, /if \(ADVISOR_MENTION\.test\(message\)\)[\s\S]*authorName:\s*["']Advisor["']/);
   assert.match(boardData, /role:\s*["']user["']/);
-  assert.doesNotMatch(boardExperience, /@advisor|Advisor is typing/i);
+  assert.match(boardExperience, /start with @Advisor/);
+  assert.doesNotMatch(boardExperience, /Advisor is typing/i);
+});
+
+test("Advisor stays out of ordinary board and listing workflows", () => {
+  const boardData = readFileSync("lib/board-data.ts", "utf8");
+  const boardExperience = readFileSync("components/board-experience.tsx", "utf8");
+  const nativeWorkspace = readFileSync(
+    "ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift",
+    "utf8",
+  );
+
+  assert.match(boardData, /advisorActions:\s*\[\]/);
+  assert.match(boardData, /scoutSubscription:\s*null/);
+  assert.doesNotMatch(boardExperience, /<ScoutBanner\b/);
+  assert.doesNotMatch(boardExperience, /id=["']advisor-updates-section["']/);
+  assert.doesNotMatch(nativeWorkspace, /ScoutBannerView\(subscription:/);
+  assert.doesNotMatch(nativeWorkspace, /title:\s*["']Advisor updates["']/i);
+
+  const ordinaryListingWorkflows = boardData.slice(
+    boardData.indexOf("export async function addListingToBoard"),
+    boardData.indexOf("export async function createBoardInvitation"),
+  ) + boardData.slice(
+    boardData.indexOf("export async function updateBoardListingStatus"),
+  );
+  assert.doesNotMatch(ordinaryListingWorkflows, /seedListingAdvisorActions/);
 });
 
 test("native Advisor wording uses Apple Intelligence with a deterministic fallback", () => {

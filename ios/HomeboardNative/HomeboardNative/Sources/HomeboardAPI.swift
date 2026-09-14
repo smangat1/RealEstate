@@ -6,6 +6,13 @@ enum HomeboardAPIError: LocalizedError {
   case unauthorized
   case missingSession
   case server(String)
+  case response(
+    endpoint: String,
+    status: Int,
+    contentType: String,
+    bodyExcerpt: String,
+    message: String?
+  )
 
   var errorDescription: String? {
     switch self {
@@ -19,13 +26,26 @@ enum HomeboardAPIError: LocalizedError {
       return "This account requires a live auth session before continuing."
     case .server(let message):
       return message
+    case .response(let endpoint, let status, let contentType, let bodyExcerpt, let message):
+      let details = "Endpoint \(endpoint) · status \(status) · content type \(contentType) · body \(bodyExcerpt)"
+      guard let message, !message.isEmpty else { return details }
+      return "\(message) \(details)"
     }
   }
+}
+
+enum MobileMembershipState: String, Codable {
+  case member
+  case authenticatedNoMembership = "authenticated_no_membership"
 }
 
 struct MobileSessionResponse: Decodable {
   var user: RemoteUserPayload
   var boards: [MobileBoardSummary]
+  // Older production servers predate this discriminator. A missing value is
+  // deliberately unknown rather than `authenticatedNoMembership`, so an empty
+  // legacy response can never force an existing account into onboarding.
+  var membershipState: MobileMembershipState?
   var activeBoard: MobileBoardLoadResponse?
 }
 
@@ -45,6 +65,11 @@ struct MobileListingInventoryResponse: Decodable {
   var nextCursor: String?
   var hasMore: Bool
   var source: String
+}
+
+struct MobileHealthResponse: Decodable {
+  var apiVersion: String
+  var serverCommit: String
 }
 
 struct MobileBoardMessageCreateRequest: Encodable {
@@ -679,6 +704,17 @@ final class HomeboardAPI {
       accessToken: accessToken,
       timeoutInterval: 8
     )
+  }
+
+  func fetchHealth() async throws -> MobileHealthResponse {
+    guard let url = URL(string: "/api/health", relativeTo: HomeboardConfig.backendBaseURL) else {
+      throw HomeboardAPIError.invalidURL
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.timeoutInterval = 8
+    return try await perform(request)
   }
 
   func fetchBootstrapSession(accessToken: String) async throws -> MobileSessionResponse {
@@ -1607,7 +1643,12 @@ final class HomeboardAPI {
       do {
         return try decoder.decode(Response.self, from: data)
       } catch {
-        throw HomeboardAPIError.invalidResponse
+        throw responseError(
+          request: request,
+          response: httpResponse,
+          data: data,
+          message: "The server response could not be decoded."
+        )
       }
     }
 
@@ -1615,7 +1656,35 @@ final class HomeboardAPI {
     if httpResponse.statusCode == 401 {
       throw HomeboardAPIError.unauthorized
     }
-    throw HomeboardAPIError.server(apiError)
+    throw responseError(
+      request: request,
+      response: httpResponse,
+      data: data,
+      message: apiError
+    )
+  }
+
+  private func responseError(
+    request: URLRequest,
+    response: HTTPURLResponse,
+    data: Data,
+    message: String?
+  ) -> HomeboardAPIError {
+    let method = request.httpMethod ?? "GET"
+    let path = request.url?.path.isEmpty == false ? request.url!.path : "/"
+    let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
+    let rawBody = String(data: data, encoding: .utf8) ?? "<\(data.count) non-text bytes>"
+    let compactBody = rawBody
+      .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let excerpt = compactBody.isEmpty ? "<empty>" : String(compactBody.prefix(240))
+    return .response(
+      endpoint: "\(method) \(path)",
+      status: response.statusCode,
+      contentType: contentType,
+      bodyExcerpt: excerpt,
+      message: message
+    )
   }
 
   private func dataForRequestWithTransientRetry(

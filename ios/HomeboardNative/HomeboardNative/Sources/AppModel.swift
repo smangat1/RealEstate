@@ -42,7 +42,61 @@ final class AppModel {
     case setup
   }
 
-  private struct PersistedState: Codable {
+  private struct VersionedPersistenceRecord<Payload: Codable>: Codable {
+    var schemaVersion: Int
+    var payload: Payload
+  }
+
+  private struct AccountSessionPersistence: Codable {
+    var currentScreen: Screen
+    var authMode: AuthMode
+    var boardTab: BoardTab?
+    var account: LocalAccount?
+    var authenticatedAuthUserID: String?
+    var membershipState: MobileMembershipState?
+    var availableBoards: [MobileBoardSummary]
+    var pendingConfirmationEmail: String?
+  }
+
+  private struct ProfilePersistence: Codable {
+    var profile: RentalProfile
+    var localProfilesByBoard: [String: RentalProfile]
+  }
+
+  private struct BoardsListingsPersistence: Codable {
+    var board: MobileBoard
+    var localShortlistsByBoard: [String: [ListingPreview]]
+    var localQuestionsByBoard: [String: [String]]
+    var localActivityByBoard: [String: [String]]
+    var localMembersByBoard: [String: [MemberPreferenceCard]]
+    var localChatMessagesByBoard: [String: [BoardMessage]]?
+    var localBoardsById: [String: MobileBoard]
+    var listingInventory: [ListingPreview]?
+    var listingInventoryNextCursor: String?
+    var listingInventoryHasMore: Bool?
+    var advisorHistoryByListingID: [String: [ListingChangeEntry]]?
+    var advisorChecklistByListingID: [String: [ApplicationChecklistEntry]]?
+    var advisorInquiriesByListingID: [String: [ListingInquiry]]?
+    var advisorTourNotesByListingID: [String: TourNoteSummary]?
+  }
+
+  private struct OnboardingPersistence: Codable {
+    var onboardingCreationRequestId: String?
+    var onboardingMessages: [OnboardingChatMessage]
+  }
+
+  private struct PendingOperationsPersistence: Codable {
+    var pendingListingCreatesByBoard: [String: [ListingPreview]]?
+    var pendingLocalListingRemovalIDs: Set<String>?
+    var pendingServerListingRemovalIDsByBoard: [String: Set<String>]?
+    var serverListingIDByLocalID: [String: String]?
+    var removedServerListingIDsByBoard: [String: Set<String>]?
+    var removedListingIdentityKeysByBoard: [String: Set<String>]?
+  }
+
+  /// Decoder for the single pre-v1 snapshot. It is retained only to migrate
+  /// existing installs into the independent records above.
+  private struct LegacyPersistedState: Codable {
     var currentScreen: Screen
     var authMode: AuthMode
     var boardTab: BoardTab?
@@ -85,9 +139,26 @@ final class AppModel {
   @ObservationIgnored private var removedListingIdentityKeysByBoard: [String: Set<String>] = [:]
   @ObservationIgnored private var recentlyDeletedPurgeBoardIDs = Set<String>()
   @ObservationIgnored private var restoredAuthUserID: String?
+  @ObservationIgnored private var unreadablePersistenceKeys = Set<String>()
   @ObservationIgnored private var sessionEpoch = UUID()
-  private let persistenceKey = "homeboard.native.state"
+  private let persistenceSchemaVersion = 1
+  private let legacyPersistenceKey = "homeboard.native.state"
+  private let accountSessionPersistenceKey = "homeboard.native.account-session"
+  private let profilePersistenceKey = "homeboard.native.profile"
+  private let boardsListingsPersistenceKey = "homeboard.native.boards-listings"
+  private let onboardingPersistenceKey = "homeboard.native.onboarding"
+  private let pendingOperationsPersistenceKey = "homeboard.native.pending-operations"
   private let pushTokenKey = "homeboard.native.push-device-token"
+
+  private var persistenceKeys: [String] {
+    [
+      accountSessionPersistenceKey,
+      profilePersistenceKey,
+      boardsListingsPersistenceKey,
+      onboardingPersistenceKey,
+      pendingOperationsPersistenceKey,
+    ]
+  }
 
   var currentScreen: Screen = .welcome
   var authMode: AuthMode = .createAccount
@@ -95,6 +166,7 @@ final class AppModel {
   var board: MobileBoard = .empty
   var account: LocalAccount?
   var authSession: NativeAuthSession?
+  var authenticatedMembershipState: MobileMembershipState?
   var availableBoards: [MobileBoardSummary] = []
   var pendingInviteCode = ""
   var pendingConfirmationEmail = ""
@@ -119,6 +191,10 @@ final class AppModel {
   var advisorChecklistByListingID: [String: [ApplicationChecklistEntry]] = [:]
   var advisorInquiriesByListingID: [String: [ListingInquiry]] = [:]
   var advisorTourNotesByListingID: [String: TourNoteSummary] = [:]
+  var advisorError: String?
+  var apiVersion: String?
+  var apiCommit: String?
+  var apiVersionError: String?
   var authError: String?
   var authFeedback: String?
   var showsPostAuthInvitePrompt = false
@@ -176,50 +252,18 @@ final class AppModel {
 
   init() {
     if ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") {
-      UserDefaults.standard.removeObject(forKey: persistenceKey)
+      for key in persistenceKeys + [legacyPersistenceKey] {
+        UserDefaults.standard.removeObject(forKey: key)
+      }
       UserDefaults.standard.set(0, forKey: "homeboard.debug.welcomePage")
       NativeAuthSessionStore.delete()
     }
     restore()
     removePersistedStressTestListings()
     purgeExpiredLocalRecentlyDeletedListings()
-    let restoredAppUserID = account?.id
     authSession = NativeAuthSessionStore.load()
-    let restoredIdentityMismatch = authSession.map { session in
-      if let restoredAuthUserID {
-        return restoredAuthUserID != session.userId
-      }
-
-      // Snapshots written before authenticatedAuthUserID was introduced only
-      // have the application user ID. Use the account email for this one-time
-      // migration instead of comparing IDs from two different namespaces.
-      let restoredEmail = account?.email
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased() ?? ""
-      let sessionEmail = session.email
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased()
-      return restoredEmail.isEmpty || restoredEmail != sessionEmail
-    } ?? false
-    let restoredRemoteBoardLacksMembership = authSession.map { _ in
-      board.id.map { boardID in
-        !boardID.hasPrefix("local-")
-          && !boardID.hasPrefix("preview-")
-          && restoredAppUserID.map { appUserID in
-            !board.members.contains(where: { $0.userId == appUserID })
-          } ?? true
-      } ?? false
-    } ?? false
-    if let session = authSession,
-       restoredIdentityMismatch || restoredRemoteBoardLacksMembership {
-      clearWorkspaceStateForAccountTransition()
-      account = LocalAccount(
-        id: nil,
-        name: session.displayName,
-        email: session.email
-      )
-      currentScreen = .welcome
-    }
+    // Cached membership is not proof of identity or authorization. Preserve it
+    // until a successful session response identifies the current app user.
     if authSession == nil {
       clearGuestPreviewState(preservingNonPreviewBoard: true)
       opensWelcomeOnAccessPage = false
@@ -267,9 +311,11 @@ final class AppModel {
         } else {
           try await loadBoard(id: firstBoard.id)
         }
-      } else {
+      } else if response.membershipState == .authenticatedNoMembership {
         seedOnboardingMessagesIfNeeded()
         currentScreen = .onboarding
+      } else {
+        boardError = "The server did not confirm this account's board membership. Your saved board is still available."
       }
     } catch HomeboardAPIError.unauthorized {
       do {
@@ -286,12 +332,16 @@ final class AppModel {
           } else {
             try await loadBoard(id: firstBoard.id)
           }
-        } else {
+        } else if response.membershipState == .authenticatedNoMembership {
           seedOnboardingMessagesIfNeeded()
           currentScreen = .onboarding
+        } else {
+          boardError = "The server did not confirm this account's board membership. Your saved board is still available."
         }
       } catch HomeboardAPIError.unauthorized {
-        clearSessionState()
+        // A failed refresh is not a successful identity transition. Preserve
+        // the Keychain session and every cached workspace record for retry.
+        boardError = "Homeboard could not renew this session. Your saved board is still on this device."
       } catch {
         boardError = readable(error)
       }
@@ -635,6 +685,11 @@ final class AppModel {
     showsPostAuthInvitePrompt = false
 
     guard let firstBoard = availableBoards.first else {
+      guard authenticatedMembershipState == .authenticatedNoMembership else {
+        authError = "Homeboard has not confirmed that this account has no boards. Your cached data was kept; retry the connection."
+        persist()
+        return
+      }
       profile.name = account?.name ?? profile.name
       seedOnboardingMessagesIfNeeded()
       currentScreen = .onboarding
@@ -698,9 +753,23 @@ final class AppModel {
     persist()
   }
 
+  func refreshVersionInfo() async {
+    apiVersionError = nil
+    do {
+      let health = try await api.fetchHealth()
+      apiVersion = health.apiVersion
+      apiCommit = health.serverCommit
+    } catch {
+      apiVersion = nil
+      apiCommit = nil
+      apiVersionError = readable(error)
+    }
+  }
+
   func openBoard(id: String) async {
     boardError = nil
     boardFeedback = nil
+    advisorError = nil
 
     if id.hasPrefix("local-"), let localBoard = localBoardsById[id] {
       board = localBoard
@@ -774,7 +843,7 @@ final class AppModel {
   }
 
   func triggerScoutScan(boardId: String) async {
-    boardError = nil
+    advisorError = nil
     boardFeedback = nil
 
     if boardId.hasPrefix("preview-") || boardId.hasPrefix("local-") {
@@ -782,7 +851,7 @@ final class AppModel {
       return
     }
     guard let session = authSession else {
-      boardError = "Sign in before running an Advisor scan."
+      advisorError = "Sign in before running an Advisor scan."
       return
     }
     do {
@@ -790,13 +859,14 @@ final class AppModel {
       await refreshCurrentBoardSilently()
       boardFeedback = "Advisor scan finished. Review Updates for any grounded listing changes or follow-ups."
     } catch {
-      boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+      advisorError = readable(error)
     }
   }
 
   func updateAdvisorAction(_ action: AdvisorAction, status: String) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       try await api.updateAdvisorAction(
@@ -809,16 +879,17 @@ final class AppModel {
       storeCurrentBoardSnapshot()
       persist()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func checkListingAgain(listingId: String) async {
     guard let session = authSession, let boardId = board.id else {
-      boardError = "Sign in before checking a live listing."
+      advisorError = "Sign in before checking a live listing."
       return
     }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let response = try await api.checkListing(
@@ -830,28 +901,33 @@ final class AppModel {
       await refreshCurrentBoardSilently()
       await loadAdvisorListingTools(listingId: listingId)
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func loadAdvisorListingTools(listingId: String) async {
     guard let session = authSession, let boardId = board.id else { return }
+    advisorError = nil
     do {
+      async let actions = api.loadAdvisorActions(accessToken: session.accessToken, boardId: boardId)
       async let history = api.loadListingHistory(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
       async let checklist = api.loadApplicationChecklist(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
       async let inquiries = api.loadListingInquiries(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
-      let result = try await (history, checklist, inquiries)
-      advisorHistoryByListingID[listingId] = result.0
-      advisorChecklistByListingID[listingId] = result.1
-      advisorInquiriesByListingID[listingId] = result.2
+      let result = try await (actions, history, checklist, inquiries)
+      board.advisorActions = result.0
+      advisorHistoryByListingID[listingId] = result.1
+      advisorChecklistByListingID[listingId] = result.2
+      advisorInquiriesByListingID[listingId] = result.3
+      persist()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func createInquiryDraft(listingId: String, templateKey: String) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let inquiry = try await api.createInquiryDraft(
@@ -864,7 +940,7 @@ final class AppModel {
       boardFeedback = "Draft created. Review every word before sending."
       await refreshCurrentBoardSilently()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
@@ -879,6 +955,7 @@ final class AppModel {
   ) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let updated = try await api.updateInquiry(
@@ -898,12 +975,13 @@ final class AppModel {
       boardFeedback = status == "sent" ? "Marked sent after your review." : status == "answered" ? "Reply parsed into grounded fields." : "Draft saved."
       await refreshCurrentBoardSilently()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func updateApplicationItem(listingId: String, item: ApplicationChecklistEntry, status: String) async {
     guard let session = authSession, let boardId = board.id else { return }
+    advisorError = nil
     do {
       let updated = try await api.updateApplicationChecklist(
         accessToken: session.accessToken,
@@ -916,13 +994,14 @@ final class AppModel {
         $0.id == updated.id ? updated : $0
       }
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
   func saveTourNote(listingId: String, transcript: String) async {
     guard let session = authSession, let boardId = board.id else { return }
     isAdvisorActionWorking = true
+    advisorError = nil
     defer { isAdvisorActionWorking = false }
     do {
       let summary = try await api.saveTourNote(
@@ -935,7 +1014,7 @@ final class AppModel {
       boardFeedback = "Tour notes organized: \(summary.pros.count) pros, \(summary.cons.count) cons, and \(summary.followUps.count) follow-ups."
       await refreshCurrentBoardSilently()
     } catch {
-      boardError = readable(error)
+      advisorError = readable(error)
     }
   }
 
@@ -1114,6 +1193,7 @@ final class AppModel {
     let session = authSession
     let pushToken = UserDefaults.standard.string(forKey: pushTokenKey)
     let apiClient = api
+    NativeAuthSessionStore.delete()
     clearSessionState()
     persist()
     if let session, let pushToken {
@@ -1178,6 +1258,7 @@ final class AppModel {
         try await api.deleteAccount(accessToken: session.accessToken)
         HomeboardShareDiagnosticStore.clear()
         HomeboardShareBootDiagnosticStore.clear()
+        NativeAuthSessionStore.delete()
         clearSessionState()
         boardFeedback = "Your account and Homeboard data were deleted."
       } catch {
@@ -1624,22 +1705,28 @@ final class AppModel {
   @discardableResult
   private func applySessionResponse(_ response: MobileSessionResponse, session: NativeAuthSession) -> Bool {
     guard authSession?.userId == session.userId else { return false }
-    let responseBoardIDs = Set(response.boards.map(\.id))
-    let currentRemoteBoardIsUnauthorized = board.id.map { boardID in
-      !boardID.hasPrefix("local-")
-        && !boardID.hasPrefix("preview-")
-        && !responseBoardIDs.contains(boardID)
-    } ?? false
-    let authenticatedAccountChanged = account?.id.map { $0 != response.user.id }
-      ?? (board.id != nil)
+    let authenticatedAccountChanged: Bool
+    if let cachedAppUserID = account?.id {
+      authenticatedAccountChanged = cachedAppUserID != response.user.id
+    } else if let restoredAuthUserID {
+      authenticatedAccountChanged = restoredAuthUserID != session.userId
+    } else {
+      authenticatedAccountChanged = false
+    }
 
-    if authenticatedAccountChanged || currentRemoteBoardIsUnauthorized {
+    // This is the only automatic workspace-clear path: both the auth session
+    // and application user have been confirmed by a successful API response.
+    if authenticatedAccountChanged {
       clearWorkspaceStateForAccountTransition()
     }
 
     authSession = session
+    restoredAuthUserID = session.userId
     account = LocalAccount(id: response.user.id, name: response.user.displayName, email: response.user.email)
-    availableBoards = response.boards
+    authenticatedMembershipState = response.membershipState
+    if !response.boards.isEmpty || response.membershipState == .authenticatedNoMembership {
+      availableBoards = response.boards
+    }
     if profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       profile.name = response.user.displayName
     }
@@ -1665,6 +1752,8 @@ final class AppModel {
     onboardingPersistenceTask?.cancel()
     onboardingPersistenceTask = nil
     authSession = nil
+    restoredAuthUserID = nil
+    authenticatedMembershipState = nil
     account = nil
     availableBoards = []
     pendingInviteCode = ""
@@ -1682,6 +1771,7 @@ final class AppModel {
     advisorChecklistByListingID = [:]
     advisorInquiriesByListingID = [:]
     advisorTourNotesByListingID = [:]
+    advisorError = nil
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -1721,6 +1811,7 @@ final class AppModel {
     onboardingPersistenceTask?.cancel()
     onboardingPersistenceTask = nil
     availableBoards = []
+    authenticatedMembershipState = nil
     onboardingCreationRequestId = nil
     board = .empty
     profile = RentalProfile()
@@ -1734,6 +1825,7 @@ final class AppModel {
     advisorChecklistByListingID = [:]
     advisorInquiriesByListingID = [:]
     advisorTourNotesByListingID = [:]
+    advisorError = nil
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -2871,7 +2963,10 @@ final class AppModel {
         availableBoards.removeAll { $0.id == boardId }
         board = .empty
         if let next = availableBoards.first { await openBoard(id: next.id) }
-        else { currentScreen = .onboarding }
+        else {
+          authenticatedMembershipState = .authenticatedNoMembership
+          currentScreen = .onboarding
+        }
         persist()
       } catch {
         guard authSession?.userId == session.userId else { return }
@@ -2889,7 +2984,10 @@ final class AppModel {
         availableBoards.removeAll { $0.id == boardId }
         board = .empty
         if let next = availableBoards.first { await openBoard(id: next.id) }
-        else { currentScreen = .onboarding }
+        else {
+          authenticatedMembershipState = .authenticatedNoMembership
+          currentScreen = .onboarding
+        }
         persist()
       } catch {
         guard authSession?.userId == session.userId else { return }
@@ -4232,14 +4330,15 @@ final class AppModel {
   }
 
   private func clearGuestPreviewState(preservingNonPreviewBoard: Bool = false) {
+    let isDisplayingPreview = board.id == "preview-workspace"
     localShortlistsByBoard.removeValue(forKey: "preview-workspace")
     localMembersByBoard.removeValue(forKey: "preview-workspace")
     localBoardsById.removeValue(forKey: "preview-workspace")
     localProfilesByBoard.removeValue(forKey: "preview-workspace")
-    account = nil
-    if preservingNonPreviewBoard, board.id != "preview-workspace" {
+    if preservingNonPreviewBoard, !isDisplayingPreview {
       return
     }
+    account = nil
     board = .empty
     listingInventory = []
     listingInventoryNextCursor = nil
@@ -4267,28 +4366,41 @@ final class AppModel {
   }
 
   func persist() {
-    let snapshot = PersistedState(
+    let accountSession = AccountSessionPersistence(
       currentScreen: currentScreen,
       authMode: authMode,
       boardTab: boardTab,
-      board: board,
       account: account,
-      authenticatedAuthUserID: authSession?.userId,
+      authenticatedAuthUserID: authSession?.userId ?? restoredAuthUserID,
+      membershipState: authenticatedMembershipState,
       availableBoards: availableBoards,
-      // Invite links are bearer credentials. Keep the pending token in memory
-      // for the current auth flow instead of writing it to UserDefaults.
-      pendingInviteCode: "",
-      pendingConfirmationEmail: pendingConfirmationEmail,
-      onboardingCreationRequestId: onboardingCreationRequestId,
+      pendingConfirmationEmail: pendingConfirmationEmail
+    )
+    let profileRecord = ProfilePersistence(
       profile: profile,
-      onboardingMessages: onboardingMessages,
+      localProfilesByBoard: localProfilesByBoard
+    )
+    let boardsListings = BoardsListingsPersistence(
+      board: board,
       localShortlistsByBoard: localShortlistsByBoard,
       localQuestionsByBoard: localQuestionsByBoard,
       localActivityByBoard: localActivityByBoard,
       localMembersByBoard: localMembersByBoard,
       localChatMessagesByBoard: localChatMessagesByBoard,
       localBoardsById: localBoardsById,
-      localProfilesByBoard: localProfilesByBoard,
+      listingInventory: listingInventory,
+      listingInventoryNextCursor: listingInventoryNextCursor,
+      listingInventoryHasMore: listingInventoryHasMore,
+      advisorHistoryByListingID: advisorHistoryByListingID,
+      advisorChecklistByListingID: advisorChecklistByListingID,
+      advisorInquiriesByListingID: advisorInquiriesByListingID,
+      advisorTourNotesByListingID: advisorTourNotesByListingID
+    )
+    let onboarding = OnboardingPersistence(
+      onboardingCreationRequestId: onboardingCreationRequestId,
+      onboardingMessages: onboardingMessages
+    )
+    let pendingOperations = PendingOperationsPersistence(
       pendingListingCreatesByBoard: pendingListingCreatesByBoard,
       pendingLocalListingRemovalIDs: pendingLocalListingRemovalIDs,
       pendingServerListingRemovalIDsByBoard: pendingServerListingRemovalIDsByBoard,
@@ -4297,43 +4409,181 @@ final class AppModel {
       removedListingIdentityKeysByBoard: removedListingIdentityKeysByBoard
     )
 
-    NativeAuthSessionStore.save(authSession)
-    guard let data = try? JSONEncoder().encode(snapshot) else { return }
-    UserDefaults.standard.set(data, forKey: persistenceKey)
+    writePersistenceRecord(accountSession, key: accountSessionPersistenceKey)
+    writePersistenceRecord(profileRecord, key: profilePersistenceKey)
+    writePersistenceRecord(boardsListings, key: boardsListingsPersistenceKey)
+    writePersistenceRecord(onboarding, key: onboardingPersistenceKey)
+    writePersistenceRecord(pendingOperations, key: pendingOperationsPersistenceKey)
+
+    // A failed or undecodable Keychain read must not be converted into a
+    // deletion just because unrelated app state was persisted.
+    if let authSession {
+      NativeAuthSessionStore.save(authSession)
+    }
   }
 
   private func restore() {
-    guard let data = UserDefaults.standard.data(forKey: persistenceKey),
-          let snapshot = try? JSONDecoder().decode(PersistedState.self, from: data) else {
-      return
+    let defaults = UserDefaults.standard
+    let legacyData = defaults.data(forKey: legacyPersistenceKey)
+    let legacySnapshot = legacyData.flatMap {
+      try? JSONDecoder().decode(LegacyPersistedState.self, from: $0)
+    }
+    if legacyData != nil, legacySnapshot == nil {
+      // Keep every missing destination untouched. The legacy bytes remain in
+      // place for a future decoder or support build to recover.
+      unreadablePersistenceKeys.formUnion(
+        persistenceKeys.filter { defaults.data(forKey: $0) == nil }
+      )
     }
 
-    currentScreen = snapshot.currentScreen
-    authMode = snapshot.authMode
-    boardTab = snapshot.boardTab ?? .board
-    board = snapshot.board
-    account = snapshot.account
-    restoredAuthUserID = snapshot.authenticatedAuthUserID
-    availableBoards = snapshot.availableBoards
+    var restoredBoardData = false
+
+    if let record: AccountSessionPersistence = readPersistenceRecord(
+      AccountSessionPersistence.self,
+      key: accountSessionPersistenceKey
+    ) {
+      currentScreen = record.currentScreen
+      authMode = record.authMode
+      boardTab = record.boardTab ?? .board
+      account = record.account
+      restoredAuthUserID = record.authenticatedAuthUserID
+      authenticatedMembershipState = record.membershipState
+      availableBoards = record.availableBoards
+      pendingConfirmationEmail = record.pendingConfirmationEmail ?? ""
+    } else if defaults.data(forKey: accountSessionPersistenceKey) == nil,
+              let snapshot = legacySnapshot {
+      currentScreen = snapshot.currentScreen
+      authMode = snapshot.authMode
+      boardTab = snapshot.boardTab ?? .board
+      account = snapshot.account
+      restoredAuthUserID = snapshot.authenticatedAuthUserID
+      availableBoards = snapshot.availableBoards
+      pendingConfirmationEmail = snapshot.pendingConfirmationEmail ?? ""
+    }
+
+    if let record: ProfilePersistence = readPersistenceRecord(
+      ProfilePersistence.self,
+      key: profilePersistenceKey
+    ) {
+      profile = record.profile
+      localProfilesByBoard = record.localProfilesByBoard
+    } else if defaults.data(forKey: profilePersistenceKey) == nil,
+              let snapshot = legacySnapshot {
+      profile = snapshot.profile
+      localProfilesByBoard = snapshot.localProfilesByBoard
+    }
+
+    if let record: BoardsListingsPersistence = readPersistenceRecord(
+      BoardsListingsPersistence.self,
+      key: boardsListingsPersistenceKey
+    ) {
+      board = record.board
+      localShortlistsByBoard = record.localShortlistsByBoard
+      localQuestionsByBoard = record.localQuestionsByBoard
+      localActivityByBoard = record.localActivityByBoard
+      localMembersByBoard = record.localMembersByBoard
+      localChatMessagesByBoard = record.localChatMessagesByBoard ?? [:]
+      localBoardsById = record.localBoardsById
+      listingInventory = record.listingInventory ?? record.board.suggestions ?? []
+      listingInventoryNextCursor = record.listingInventoryNextCursor
+      listingInventoryHasMore = record.listingInventoryHasMore ?? false
+      advisorHistoryByListingID = record.advisorHistoryByListingID ?? [:]
+      advisorChecklistByListingID = record.advisorChecklistByListingID ?? [:]
+      advisorInquiriesByListingID = record.advisorInquiriesByListingID ?? [:]
+      advisorTourNotesByListingID = record.advisorTourNotesByListingID ?? [:]
+      restoredBoardData = true
+    } else if defaults.data(forKey: boardsListingsPersistenceKey) == nil,
+              let snapshot = legacySnapshot {
+      board = snapshot.board
+      localShortlistsByBoard = snapshot.localShortlistsByBoard
+      localQuestionsByBoard = snapshot.localQuestionsByBoard
+      localActivityByBoard = snapshot.localActivityByBoard
+      localMembersByBoard = snapshot.localMembersByBoard
+      localChatMessagesByBoard = snapshot.localChatMessagesByBoard ?? [:]
+      localBoardsById = snapshot.localBoardsById
+      listingInventory = snapshot.board.suggestions ?? []
+      restoredBoardData = true
+    }
+
+    if let record: OnboardingPersistence = readPersistenceRecord(
+      OnboardingPersistence.self,
+      key: onboardingPersistenceKey
+    ) {
+      onboardingCreationRequestId = record.onboardingCreationRequestId
+      onboardingMessages = record.onboardingMessages
+    } else if defaults.data(forKey: onboardingPersistenceKey) == nil,
+              let snapshot = legacySnapshot {
+      onboardingCreationRequestId = snapshot.onboardingCreationRequestId
+      onboardingMessages = snapshot.onboardingMessages
+    }
+
+    if let record: PendingOperationsPersistence = readPersistenceRecord(
+      PendingOperationsPersistence.self,
+      key: pendingOperationsPersistenceKey
+    ) {
+      pendingListingCreatesByBoard = record.pendingListingCreatesByBoard ?? [:]
+      pendingLocalListingRemovalIDs = record.pendingLocalListingRemovalIDs ?? []
+      pendingServerListingRemovalIDsByBoard = record.pendingServerListingRemovalIDsByBoard ?? [:]
+      serverListingIDByLocalID = record.serverListingIDByLocalID ?? [:]
+      removedServerListingIDsByBoard = record.removedServerListingIDsByBoard ?? [:]
+      removedListingIdentityKeysByBoard = record.removedListingIdentityKeysByBoard ?? [:]
+    } else if defaults.data(forKey: pendingOperationsPersistenceKey) == nil,
+              let snapshot = legacySnapshot {
+      pendingListingCreatesByBoard = snapshot.pendingListingCreatesByBoard ?? [:]
+      pendingLocalListingRemovalIDs = snapshot.pendingLocalListingRemovalIDs ?? []
+      pendingServerListingRemovalIDsByBoard = snapshot.pendingServerListingRemovalIDsByBoard ?? [:]
+      serverListingIDByLocalID = snapshot.serverListingIDByLocalID ?? [:]
+      removedServerListingIDsByBoard = snapshot.removedServerListingIDsByBoard ?? [:]
+      removedListingIdentityKeysByBoard = snapshot.removedListingIdentityKeysByBoard ?? [:]
+    }
+
+    // Invite links are bearer credentials and intentionally never migrate out
+    // of the old blob into UserDefaults.
     pendingInviteCode = ""
-    pendingConfirmationEmail = snapshot.pendingConfirmationEmail ?? ""
-    onboardingCreationRequestId = snapshot.onboardingCreationRequestId
-    profile = snapshot.profile
-    onboardingMessages = snapshot.onboardingMessages
-    localShortlistsByBoard = snapshot.localShortlistsByBoard
-    localQuestionsByBoard = snapshot.localQuestionsByBoard
-    localActivityByBoard = snapshot.localActivityByBoard
-    localMembersByBoard = snapshot.localMembersByBoard
-    localChatMessagesByBoard = snapshot.localChatMessagesByBoard ?? [:]
-    localBoardsById = snapshot.localBoardsById
-    localProfilesByBoard = snapshot.localProfilesByBoard
-    pendingListingCreatesByBoard = snapshot.pendingListingCreatesByBoard ?? [:]
-    pendingLocalListingRemovalIDs = snapshot.pendingLocalListingRemovalIDs ?? []
-    pendingServerListingRemovalIDsByBoard = snapshot.pendingServerListingRemovalIDsByBoard ?? [:]
-    serverListingIDByLocalID = snapshot.serverListingIDByLocalID ?? [:]
-    removedServerListingIDsByBoard = snapshot.removedServerListingIDsByBoard ?? [:]
-    removedListingIdentityKeysByBoard = snapshot.removedListingIdentityKeysByBoard ?? [:]
-    applyLocalBoardContributions()
+    if restoredBoardData {
+      applyLocalBoardContributions()
+    }
+
+    if legacySnapshot != nil {
+      persist()
+      let migrationCompleted = persistenceKeys.allSatisfy {
+        defaults.data(forKey: $0) != nil && !unreadablePersistenceKeys.contains($0)
+      }
+      if migrationCompleted {
+        defaults.removeObject(forKey: legacyPersistenceKey)
+      }
+    }
+  }
+
+  private func readPersistenceRecord<Payload: Codable>(
+    _ type: Payload.Type,
+    key: String
+  ) -> Payload? {
+    guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    do {
+      let record = try JSONDecoder().decode(
+        VersionedPersistenceRecord<Payload>.self,
+        from: data
+      )
+      guard record.schemaVersion == persistenceSchemaVersion else {
+        unreadablePersistenceKeys.insert(key)
+        return nil
+      }
+      return record.payload
+    } catch {
+      unreadablePersistenceKeys.insert(key)
+      return nil
+    }
+  }
+
+  private func writePersistenceRecord<Payload: Codable>(_ payload: Payload, key: String) {
+    guard !unreadablePersistenceKeys.contains(key) else { return }
+    let record = VersionedPersistenceRecord(
+      schemaVersion: persistenceSchemaVersion,
+      payload: payload
+    )
+    guard let data = try? JSONEncoder().encode(record) else { return }
+    UserDefaults.standard.set(data, forKey: key)
   }
 
   private func boardStorageKey(for board: MobileBoard? = nil) -> String {
@@ -4519,8 +4769,16 @@ final class AppModel {
 }
 
 private enum NativeAuthSessionStore {
-  private static let service = Bundle.main.bundleIdentifier ?? "com.homeboard.native"
+  private struct StoredSessionRecord: Codable {
+    var schemaVersion: Int
+    var session: NativeAuthSession
+  }
+
+  // Keep the service independent of build metadata so an app update cannot
+  // strand an otherwise valid login merely because Info.plist changed.
+  private static let service = "com.homeboard.native"
   private static let account = "supabase.session"
+  private static let schemaVersion = 1
 
   static func load() -> NativeAuthSession? {
     var result: CFTypeRef?
@@ -4536,14 +4794,22 @@ private enum NativeAuthSessionStore {
     )
 
     guard status == errSecSuccess, let data = result as? Data else { return nil }
-    return try? JSONDecoder().decode(NativeAuthSession.self, from: data)
+    if let record = try? JSONDecoder().decode(StoredSessionRecord.self, from: data),
+       record.schemaVersion == schemaVersion {
+      return record.session
+    }
+    if let legacySession = try? JSONDecoder().decode(NativeAuthSession.self, from: data) {
+      save(legacySession)
+      return legacySession
+    }
+    // Preserve undecodable Keychain bytes. A successful explicit sign-in can
+    // replace them, while unrelated persistence must never delete them.
+    return nil
   }
 
-  static func save(_ session: NativeAuthSession?) {
-    guard let session, let data = try? JSONEncoder().encode(session) else {
-      delete()
-      return
-    }
+  static func save(_ session: NativeAuthSession) {
+    let record = StoredSessionRecord(schemaVersion: schemaVersion, session: session)
+    guard let data = try? JSONEncoder().encode(record) else { return }
 
     HomeboardSharedAuthStore.save(
       HomeboardSharedAuthContext(

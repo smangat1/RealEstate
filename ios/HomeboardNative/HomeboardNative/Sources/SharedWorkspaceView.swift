@@ -3335,9 +3335,6 @@ struct SharedShortlistView: View {
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
           }
-          // ── Scout Crowdfunder Banner ──
-          ScoutBannerView(subscription: appModel.board.scoutSubscription)
-
           if appModel.isBoardLoading && appModel.board.shortlist.isEmpty {
 
             ForEach(0..<3, id: \.self) { _ in
@@ -3697,14 +3694,13 @@ struct SharedUpdatesView: View {
   @Environment(AppModel.self) private var appModel
   @State private var updateDraft = ""
   @State private var showsSettings = false
-  @State private var selectedAdvisorListing: ListingPreview?
   @FocusState private var updateFieldFocused: Bool
   @AppStorage("homeboard.guide.updates.dismissed") private var updatesGuideDismissed = false
 
   private var timeline: [SharedTimelineItem] {
     var seenIDs = Set<String>()
     var items: [SharedTimelineItem] = []
-    for (index, msg) in appModel.board.chatMessages.filter({ $0.role == "user" }).enumerated() {
+    for (index, msg) in appModel.board.chatMessages.enumerated() {
       var itemID = "message-\(msg.id)"
       if seenIDs.contains(itemID) {
         itemID = "message-\(msg.id)-\(index)"
@@ -3747,27 +3743,6 @@ struct SharedUpdatesView: View {
               }
               .buttonStyle(HomeboardAreaButtonStyle())
               .accessibilityLabel("Board settings")
-            }
-
-            SharedSectionTitle(
-              title: "Advisor updates",
-              trailing: appModel.board.advisorActions.isEmpty
-                ? "All clear"
-                : "\(appModel.board.advisorActions.count) open"
-            )
-
-            if appModel.board.advisorActions.isEmpty {
-              SharedInlineEmpty(
-                icon: "checkmark.seal",
-                title: "No Advisor actions",
-                message: "Save or review a listing to get a fact-based fit summary and next steps."
-              )
-            } else {
-              ForEach(appModel.board.advisorActions) { action in
-                AdvisorActionCardView(action: action) { listing in
-                  selectedAdvisorListing = listing
-                }
-              }
             }
 
             SharedDecisionHub()
@@ -3835,7 +3810,7 @@ struct SharedUpdatesView: View {
 
         HStack(alignment: .center, spacing: 10) {
           TextField(
-            "Message your roommates...",
+            "Message roommates, or start with @Advisor...",
             text: $updateDraft
           )
           .focused($updateFieldFocused)
@@ -3897,12 +3872,6 @@ struct SharedUpdatesView: View {
     .toolbar(.hidden, for: .navigationBar)
     .sheet(isPresented: $showsSettings) {
       SharedSettingsSheet()
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(HomeboardPalette.background)
-    }
-    .sheet(item: $selectedAdvisorListing) { listing in
-      SharedListingDetailView(listing: listing)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
@@ -4527,6 +4496,31 @@ struct SharedSetupView: View {
           }
           .sharedSurface(cornerRadius: 20)
 
+          VStack(alignment: .leading, spacing: 10) {
+            SharedSectionTitle(title: "Build information", trailing: nil)
+            Text("App \(HomeboardConfig.appVersion) (\(HomeboardConfig.appBuild))")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Text("App commit: \(HomeboardConfig.appCommit)")
+              .font(.caption.monospaced())
+              .foregroundStyle(HomeboardPalette.secondaryText)
+            if let apiVersion = appModel.apiVersion, let apiCommit = appModel.apiCommit {
+              Text("API \(apiVersion) · commit \(apiCommit)")
+                .font(.caption.monospaced())
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            } else if let apiVersionError = appModel.apiVersionError {
+              Text("API version unavailable: \(apiVersionError)")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.danger)
+            } else {
+              Text("Checking API version…")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            }
+          }
+          .padding(14)
+          .sharedSurface(cornerRadius: 18)
+
           if !appModel.availableBoards.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
               SharedSectionTitle(title: "Your boards", trailing: "\(appModel.availableBoards.count)")
@@ -4646,6 +4640,9 @@ struct SharedSetupView: View {
     .toolbar(.hidden, for: .navigationBar)
     .onAppear {
       titleDraft = appModel.board.title
+    }
+    .task {
+      await appModel.refreshVersionInfo()
     }
     .sheet(isPresented: $showsBriefEditor) {
       OnboardingView(
@@ -7610,12 +7607,6 @@ struct SharedListingDetailView: View {
     appModel.board.shortlist.first(where: { $0.id == listing.id }) ?? listing
   }
 
-  private var advisorActions: [AdvisorAction] {
-    appModel.board.advisorActions.filter {
-      $0.boardListingId == liveListing.id || $0.listingId == liveListing.listingId
-    }
-  }
-
   var body: some View {
     ScrollView(.vertical, showsIndicators: false) {
       VStack(spacing: 0) {
@@ -7656,6 +7647,12 @@ struct SharedListingDetailView: View {
             }
 
             Menu {
+              Button {
+                showsAdvisorTools = true
+              } label: {
+                Label("Advisor tools", systemImage: "sparkles")
+              }
+
               Button(role: .destructive) {
                 confirmsRemoval = true
               } label: {
@@ -7699,46 +7696,6 @@ struct SharedListingDetailView: View {
         VStack(alignment: .leading, spacing: 22) {
           if let offer = liveListing.activeOffer {
             SharedActiveOfferBanner(offer: offer)
-          }
-
-          VStack(alignment: .leading, spacing: 12) {
-            SharedSectionTitle(
-              title: "Advisor",
-              trailing: advisorActions.isEmpty ? "No open actions" : "\(advisorActions.count) open"
-            )
-
-            ForEach(advisorActions) { action in
-              AdvisorActionCardView(action: action) { _ in }
-            }
-
-            HStack(spacing: 10) {
-              Button {
-                Task { await appModel.checkListingAgain(listingId: liveListing.listingId) }
-              } label: {
-                Label("Check listing again", systemImage: "arrow.clockwise")
-                  .font(.subheadline.weight(.bold))
-                  .foregroundStyle(Color.black)
-                  .frame(maxWidth: .infinity)
-                  .frame(height: 46)
-                  .background(HomeboardPalette.accent)
-                  .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              }
-              .buttonStyle(HomeboardAreaButtonStyle())
-              .disabled(appModel.isAdvisorActionWorking || liveListing.listingId.isEmpty)
-
-              Button {
-                showsAdvisorTools = true
-              } label: {
-                Label("Tools", systemImage: "checklist")
-                  .font(.subheadline.weight(.bold))
-                  .foregroundStyle(HomeboardPalette.primaryText)
-                  .padding(.horizontal, 14)
-                  .frame(height: 46)
-                  .background(Color.white.opacity(0.07))
-                  .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              }
-              .buttonStyle(HomeboardAreaButtonStyle())
-            }
           }
 
           HStack(spacing: 10) {
@@ -7971,10 +7928,6 @@ struct SharedListingDetailView: View {
         ratingDraft = SharedRatingDimension.normalized(current.values)
       }
     }
-    .task(id: liveListing.listingId) {
-      guard !liveListing.listingId.isEmpty else { return }
-      await appModel.loadAdvisorListingTools(listingId: liveListing.listingId)
-    }
     .sheet(isPresented: $showsAdvisorTools) {
       AdvisorListingToolsSheet(listing: liveListing)
         .presentationDetents([.large])
@@ -8001,6 +7954,11 @@ private struct AdvisorListingToolsSheet: View {
   @State private var tourNoteDraft = ""
 
   private var listingID: String { listing.listingId }
+  private var advisorActions: [AdvisorAction] {
+    appModel.board.advisorActions.filter {
+      $0.boardListingId == listing.id || $0.listingId == listingID
+    }
+  }
   private var history: [ListingChangeEntry] { appModel.advisorHistoryByListingID[listingID] ?? [] }
   private var checklist: [ApplicationChecklistEntry] { appModel.advisorChecklistByListingID[listingID] ?? [] }
   private var inquiries: [ListingInquiry] { appModel.advisorInquiriesByListingID[listingID] ?? [] }
@@ -8024,6 +7982,39 @@ private struct AdvisorListingToolsSheet: View {
             Text("All wording starts from saved listing and profile facts. Homeboard never sends a message automatically.")
               .font(.caption)
               .foregroundStyle(HomeboardPalette.secondaryText)
+          }
+
+          if let advisorError = appModel.advisorError {
+            SharedInlineEmpty(
+              icon: "exclamationmark.triangle.fill",
+              title: "Advisor API unavailable",
+              message: advisorError
+            )
+          }
+
+          VStack(alignment: .leading, spacing: 10) {
+            SharedSectionTitle(
+              title: "Listing tools",
+              trailing: advisorActions.isEmpty ? nil : "\(advisorActions.count) proactive"
+            )
+
+            Button {
+              Task { await appModel.checkListingAgain(listingId: listingID) }
+            } label: {
+              Label("Check listing again", systemImage: "arrow.clockwise")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(HomeboardPalette.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .disabled(appModel.isAdvisorActionWorking || listingID.isEmpty)
+
+            ForEach(advisorActions) { action in
+              AdvisorActionCardView(action: action) { _ in }
+            }
           }
 
           VStack(alignment: .leading, spacing: 10) {
@@ -8103,9 +8094,15 @@ private struct AdvisorListingToolsSheet: View {
           VStack(alignment: .leading, spacing: 10) {
             SharedSectionTitle(
               title: "Application checklist",
-              trailing: checklist.isEmpty ? "Loading" : "\(checklist.filter { $0.status == "missing" }.count) missing"
+              trailing: appModel.advisorError != nil
+                ? "Unavailable"
+                : checklist.isEmpty ? "No data" : "\(checklist.filter { $0.status == "missing" }.count) missing"
             )
-            if checklist.isEmpty {
+            if appModel.advisorError != nil {
+              Text("Application checklist data could not be loaded.")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            } else if checklist.isEmpty {
               SharedInlineEmpty(
                 icon: "doc.badge.plus",
                 title: "No checklist items yet",
@@ -8119,8 +8116,17 @@ private struct AdvisorListingToolsSheet: View {
           }
 
           VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(title: "Listing change history", trailing: history.isEmpty ? "No changes" : "\(history.count)")
-            if history.isEmpty {
+            SharedSectionTitle(
+              title: "Listing change history",
+              trailing: appModel.advisorError != nil
+                ? "Unavailable"
+                : history.isEmpty ? "No changes" : "\(history.count)"
+            )
+            if appModel.advisorError != nil {
+              Text("Listing history could not be loaded.")
+                .font(.caption)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+            } else if history.isEmpty {
               SharedInlineEmpty(
                 icon: "clock.arrow.circlepath",
                 title: "No recorded changes",

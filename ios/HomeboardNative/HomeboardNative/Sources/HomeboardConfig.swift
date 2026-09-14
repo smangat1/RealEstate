@@ -10,6 +10,18 @@ enum HomeboardConfig {
       ?? "0.0.13"
   }
 
+  static var appBuild: String {
+    Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+  }
+
+  static var appCommit: String {
+    let value = (Bundle.main.object(forInfoDictionaryKey: "HomeboardAppCommit") as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return value.isEmpty || value.contains("$(") || value == "local"
+      ? "local build"
+      : String(value.prefix(12))
+  }
+
   static let supabaseURL = URL(string: "https://zlhniurrhhstivtmixuh.supabase.co")!
   static let supabasePublishableKey = "sb_publishable_eNgMkBhv8l___GC0IjgIBQ_4jqCepCK"
 
