@@ -925,7 +925,7 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertTrue(result.analysis.missingFields.isEmpty)
   }
 
-  func testCompleteShareTriggeredImportSavesWithoutReview() {
+  func testShareTriggeredImportWaitsForReviewEvenWhenFactsAreComplete() {
     let pending = HomeboardSharedImportStore.PendingImport(
       url: "https://example.com/listing/3b",
       address: "219 Kent Avenue, Brooklyn, NY 11249",
@@ -935,7 +935,7 @@ final class HomeboardNativeTests: XCTestCase {
       extractionConfidence: "needs-review"
     )
 
-    XCTAssertFalse(pending.requiresReview)
+    XCTAssertTrue(pending.requiresReview)
   }
 
   @MainActor

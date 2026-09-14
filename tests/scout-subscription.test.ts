@@ -85,11 +85,13 @@ test("Advisor split route derives members on the server", () => {
   assert.match(serviceSource, /status:\s*"pending_split"/);
 });
 
-test("demo accounts and the native preview receive an active Advisor entitlement", () => {
+test("normal board loads do not require Advisor entitlement or action data", () => {
   const boardData = source("lib/board-data.ts");
   const appModel = source("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
 
-  assert.match(boardData, /getBoardSubscriptionState\(board.id\)/);
+  assert.doesNotMatch(boardData, /getBoardSubscriptionState\(board.id\)/);
+  assert.match(boardData, /advisorActions:\s*\[\]/);
+  assert.match(boardData, /scoutSubscription:\s*null/);
   assert.match(appModel, /boardWithDemoAdvisorEntitlement\(response\.board\)/);
   assert.doesNotMatch(appModel, /private var hasDemoAdvisorEntitlement/);
   assert.match(appModel, /id:\s*"demo-advisor-preview-workspace"/);

@@ -78,7 +78,6 @@ test("API failures and build versions are visible without exposing secrets", () 
   assert.match(settings, /App commit:/);
   assert.match(settings, /API version unavailable:/);
   assert.match(settings, /title: "Advisor API unavailable"/);
-  assert.match(settings, /title: "No Advisor data"/);
   assert.match(webBoard, /async function readAdvisorAPIResponse/);
   assert.match(webBoard, /status \$\{response\.status\} · content type \$\{contentType\} · body \$\{excerpt\}/);
   assert.match(webBoard, /advisorLoadError/);
