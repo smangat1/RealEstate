@@ -68,6 +68,13 @@ test("Advisor monitoring route remains callable without a paid Vercel schedule",
     crons?: Array<{ path: string; schedule: string }>;
   };
   assert.deepEqual(vercelJson.crons ?? [], []);
+
+  const workflow = source(".github/workflows/advisor-monitor.yml");
+  assert.match(workflow, /cron: "17 \*\/6 \* \* \*"/);
+  assert.match(workflow, /secrets\.ADVISOR_MONITOR_TOKEN/);
+  assert.match(src, /GITHUB_SCHEDULER_TOKEN_SHA256/);
+  assert.match(src, /timingSafeEqual/);
+  assert.doesNotMatch(workflow, /cat .*response|tee .*response/);
 });
 
 test("Advisor subscription is included in native board payloads", () => {
