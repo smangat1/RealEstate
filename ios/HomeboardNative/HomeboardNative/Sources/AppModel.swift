@@ -909,13 +909,15 @@ final class AppModel {
     guard let session = authSession, let boardId = board.id else { return }
     advisorError = nil
     do {
+      async let actions = api.loadAdvisorActions(accessToken: session.accessToken, boardId: boardId)
       async let history = api.loadListingHistory(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
       async let checklist = api.loadApplicationChecklist(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
       async let inquiries = api.loadListingInquiries(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
-      let result = try await (history, checklist, inquiries)
-      advisorHistoryByListingID[listingId] = result.0
-      advisorChecklistByListingID[listingId] = result.1
-      advisorInquiriesByListingID[listingId] = result.2
+      let result = try await (actions, history, checklist, inquiries)
+      board.advisorActions = result.0
+      advisorHistoryByListingID[listingId] = result.1
+      advisorChecklistByListingID[listingId] = result.2
+      advisorInquiriesByListingID[listingId] = result.3
       persist()
     } catch {
       advisorError = readable(error)

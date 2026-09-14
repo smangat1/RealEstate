@@ -887,7 +887,7 @@ private struct ConversationView: View {
               .font(.system(size: 30, weight: .bold, design: .serif))
               .foregroundStyle(HomeboardPalette.primaryText)
 
-            Text("Everyone speaks in one thread, and the advisor can keep shaping the brief from what the group says.")
+            Text("Everyone speaks in one thread. Start a message with @Advisor only when you want its help.")
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
 
@@ -927,7 +927,7 @@ private struct ConversationView: View {
         VStack(spacing: 10) {
           HStack(alignment: .center, spacing: 10) {
             TextField(
-              "Update the group: budget, commute, neighborhoods, shortlist thoughts...",
+              "Message roommates, or start with @Advisor...",
               text: $appModel.boardMessageDraft
             )
             .submitLabel(.send)
@@ -972,7 +972,7 @@ private struct ConversationView: View {
                 .tint(HomeboardPalette.accent)
             }
 
-              Text("Shared updates keep the whole group aligned in one place.")
+              Text("Messages stay roommate-to-roommate unless someone explicitly calls @Advisor.")
               .font(.footnote)
               .foregroundStyle(HomeboardPalette.tertiaryText)
 

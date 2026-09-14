@@ -526,7 +526,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
   useEffect(() => {
     setLocalMessages(data.messages);
   }, [data.messages]);
-  const recentMessages = localMessages.filter((message) => message.role === "user").slice(-12);
+  const recentMessages = localMessages.slice(-12);
   const [advisorActions, setAdvisorActions] = useState(data.advisorActions);
   const [workingAdvisorActionId, setWorkingAdvisorActionId] = useState<string | null>(null);
   const [advisorFeedback, setAdvisorFeedback] = useState<string | null>(null);
@@ -1219,14 +1219,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : (
                   <p>Nothing is on the shortlist yet. Import an exact listing link so the group can react to a real source.</p>
                 )}
-                {/* ── Scout Crowdfunder Banner ── */}
-                <ScoutBanner
-                  boardId={data.board.id}
-                  currentUserId={currentUser?.id ?? null}
-                  subscription={data.scoutSubscription ?? null}
-                />
-
-
                 {data.recentlyDeletedBoardListings.length > 0 ? (
                   <div
                     className="recently-deleted-box"
@@ -1340,32 +1332,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : null}
               </section>
 
-              <section id="advisor-updates-section" className="rail-card board-home-section">
-                <div className="rail-card-header">
-                  <h2>Advisor Updates</h2>
-                  <span>{advisorActions.length} open</span>
-                </div>
-                <p className="mini-meta">
-                  Facts and next steps computed from the shared board. On supported Apple devices, wording may be polished on-device without changing these facts.
-                </p>
-                {advisorFeedback ? <p className="settings-help-copy">{advisorFeedback}</p> : null}
-                {advisorActions.length > 0 ? (
-                  <div style={{ display: "grid", gap: "12px" }}>
-                    {advisorActions.slice(0, 12).map((action) => (
-                      <AdvisorActionCard
-                        key={action.id}
-                        action={action}
-                        working={workingAdvisorActionId === action.id}
-                        onCommand={(command) => void handleAdvisorCommand(action, command)}
-                        onDone={() => void updateAdvisorAction(action.id, "completed")}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p>No Advisor actions need attention. Saving or reviewing a listing will create a grounded fit summary here.</p>
-                )}
-              </section>
-
               <section className="rail-card board-home-section">
                 <div className="rail-card-header">
                   <h2>Roommate Chat</h2>
@@ -1374,9 +1340,9 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
 
                 <div className="board-home-chat-preview" ref={chatThreadRef}>
                   {recentMessages.map((message) => (
-                    <article key={message.id} className="modern-message user">
+                    <article key={message.id} className={`modern-message ${message.role === "user" ? "user" : "assistant"}`}>
                       <div className="message-body" style={{ width: "100%" }}>
-                        <span className="message-role">{message.authorName ?? "Board member"}</span>
+                        <span className="message-role">{message.authorName ?? (message.role === "user" ? "Board member" : "Advisor")}</span>
                         <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
                       </div>
                     </article>
@@ -1389,11 +1355,11 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                     onChange={(event) => setChatInput(event.target.value)}
                     onKeyDown={handleChatKeyDown}
                     rows={3}
-                    placeholder="Message your roommates..."
+                    placeholder="Message roommates, or start with @Advisor..."
                   />
                   <div className="chat-input-footer">
                     <div className="chat-hints">
-                      <span>Roommates only. Advisor recommendations appear as separate action cards above.</span>
+                      <span>Messages stay roommate-to-roommate unless someone explicitly calls @Advisor.</span>
                     </div>
                     <button type="button" onClick={() => submitChat()} disabled={isPending}>
                       {isPending ? "Updating..." : "Send"}
@@ -1561,6 +1527,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
           comments={data.listingCommentsByBoardListingId[focusedListing.id] ?? []}
           inquiries={data.listingInquiriesByBoardListingId?.[focusedListing.id] ?? []}
           advisorActions={advisorActions.filter((action) => action.boardListingId === focusedListing.id)}
+          advisorFeedback={advisorFeedback}
           onAdvisorCommand={(action, command) => void handleAdvisorCommand(action, command)}
           onAdvisorDone={(action) => void updateAdvisorAction(action.id, "completed")}
           onClose={() => setFocusedListingId(null)}
@@ -1974,6 +1941,7 @@ function ListingDetailModal({
   comments,
   inquiries,
   advisorActions,
+  advisorFeedback,
   onAdvisorCommand,
   onAdvisorDone,
   onClose,
@@ -1985,6 +1953,7 @@ function ListingDetailModal({
   comments: BoardListingCommentRecord[];
   inquiries: ListingInquiryRecord[];
   advisorActions: AdvisorActionRecord[];
+  advisorFeedback: string | null;
   onAdvisorCommand: (action: AdvisorActionRecord, command: AdvisorActionCommand) => void;
   onAdvisorDone: (action: AdvisorActionRecord) => void;
   onClose: () => void;
@@ -1999,20 +1968,27 @@ function ListingDetailModal({
   const [advisorToolFeedback, setAdvisorToolFeedback] = useState<string | null>(null);
   const [advisorLoadError, setAdvisorLoadError] = useState<string | null>(null);
   const [advisorToolWorking, setAdvisorToolWorking] = useState(false);
+  const [showsAdvisorTools, setShowsAdvisorTools] = useState(false);
+  const [localAdvisorActions, setLocalAdvisorActions] = useState(advisorActions);
 
   useEffect(() => {
+    if (!showsAdvisorTools) return;
     const base = `/api/mobile/boards/${boardId}/listings/${listing.id}/advisor`;
     void Promise.all([
       fetch(`${base}/history`).then((response) => readAdvisorAPIResponse<{ changes?: ListingChangeRecord[] }>(response)),
       fetch(`${base}/application`).then((response) => readAdvisorAPIResponse<{ items?: ApplicationChecklistItemRecord[] }>(response)),
-    ]).then(([historyResult, checklistResult]) => {
+      fetch(`/api/mobile/boards/${boardId}/advisor/actions?boardListingId=${encodeURIComponent(boardListing.id)}`).then((response) => readAdvisorAPIResponse<{ actions?: AdvisorActionRecord[] }>(response)),
+      fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/outreach`).then((response) => readAdvisorAPIResponse<{ inquiries?: ListingInquiryRecord[] }>(response)),
+    ]).then(([historyResult, checklistResult, actionResult, inquiryResult]) => {
       setHistory(historyResult.changes ?? []);
       setChecklist(checklistResult.items ?? []);
+      setLocalAdvisorActions(actionResult.actions ?? []);
+      setLocalInquiries(inquiryResult.inquiries ?? []);
       setAdvisorLoadError(null);
     }).catch((loadError: unknown) => {
       setAdvisorLoadError(loadError instanceof Error ? loadError.message : "Advisor API request failed.");
     });
-  }, [boardId, listing.id]);
+  }, [boardId, boardListing.id, listing.id, showsAdvisorTools]);
 
   async function createInquiry(templateKey: string) {
     setAdvisorToolWorking(true);
@@ -2084,28 +2060,41 @@ function ListingDetailModal({
             <h2>{headline}</h2>
             <p>{listing.address ?? "Address still missing"}</p>
           </div>
-          <button type="button" className="deck-close" onClick={onClose}>
-            Close
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" className="secondary-button" onClick={() => setShowsAdvisorTools((current) => !current)}>
+              {showsAdvisorTools ? "Hide Advisor tools" : "Advisor tools"}
+            </button>
+            <button type="button" className="deck-close" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="detail-modal-grid">
-          {advisorLoadError ? (
+          {showsAdvisorTools && advisorLoadError ? (
             <div className="detail-panel" style={{ gridColumn: "1 / -1" }} role="alert">
               <strong>Advisor API unavailable</strong>
               <p className="mini-meta">{advisorLoadError}</p>
             </div>
           ) : null}
-          {advisorActions.length > 0 ? (
+          {showsAdvisorTools && advisorFeedback ? (
+            <div className="detail-panel" style={{ gridColumn: "1 / -1" }}>
+              <p className="mini-meta">{advisorFeedback}</p>
+            </div>
+          ) : null}
+          {showsAdvisorTools && localAdvisorActions.length > 0 ? (
             <div className="detail-panel" style={{ gridColumn: "1 / -1", display: "grid", gap: "10px" }}>
-              <strong>Advisor actions</strong>
-              {advisorActions.map((action) => (
+              <strong>Proactive Advisor actions</strong>
+              {localAdvisorActions.map((action) => (
                 <AdvisorActionCard
                   key={action.id}
                   action={action}
                   working={false}
                   onCommand={(command) => onAdvisorCommand(action, command)}
-                  onDone={() => onAdvisorDone(action)}
+                  onDone={() => {
+                    setLocalAdvisorActions((current) => current.filter((entry) => entry.id !== action.id));
+                    onAdvisorDone(action);
+                  }}
                 />
               ))}
             </div>
@@ -2181,6 +2170,8 @@ function ListingDetailModal({
             <p>{listing.description ?? "No description saved for this listing yet."}</p>
           </div>
 
+          {showsAdvisorTools ? (
+            <>
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
             <strong>Agent outreach</strong>
             <p className="mini-meta">Choose a grounded starting point. Drafts use only saved listing and profile facts and are never sent automatically.</p>
@@ -2273,6 +2264,8 @@ function ListingDetailModal({
             </button>
             {advisorToolFeedback ? <p className="settings-help-copy">{advisorToolFeedback}</p> : null}
           </div>
+            </>
+          ) : null}
 
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
 
