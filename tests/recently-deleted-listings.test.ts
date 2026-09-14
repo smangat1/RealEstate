@@ -32,7 +32,7 @@ const workspace = read(
 test("recently deleted listings have an explicit indexed retention timestamp", () => {
   assert.match(schema, /deletedAt\s+DateTime\?/);
   assert.match(schema, /@@index\(\[boardId, deletedAt\]\)/);
-  assert.match(migration, /ADD COLUMN "deletedAt" TIMESTAMP\(3\)/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP\(3\)/);
   assert.match(migration, /"BoardListing_boardId_deletedAt_idx"/);
 });
 
