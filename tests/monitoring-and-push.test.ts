@@ -54,6 +54,7 @@ test("native crash and hang diagnostics are retained until authenticated upload"
 test("API failures and build versions are visible without exposing secrets", () => {
   const health = read("app/api/health/route.ts");
   const buildInfo = read("lib/build-info.ts");
+  const envContract = read("scripts/check-env-contract.ts");
   const api = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardAPI.swift");
   const config = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
   const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
@@ -63,6 +64,9 @@ test("API failures and build versions are visible without exposing secrets", () 
   assert.match(health, /serverCommit: getServerCommit\(\)/);
   assert.match(buildInfo, /VERCEL_GIT_COMMIT_SHA/);
   assert.doesNotMatch(buildInfo, /SECRET|TOKEN|PASSWORD/);
+  assert.match(envContract, /trustedBuildMetadataVariables = new Set\(\[\s*"GIT_COMMIT_SHA",\s*"SOURCE_VERSION",\s*"VERCEL_GIT_COMMIT_SHA",\s*\]\)/);
+  assert.match(envContract, /!trustedBuildMetadataVariables\.has\(name\)/);
+  assert.match(envContract, /!documentedVariables\.has\(name\)/);
   assert.match(api, /Endpoint \\\(endpoint\) · status \\\(status\) · content type \\\(contentType\) · body \\\(bodyExcerpt\)/);
   assert.match(api, /String\(compactBody\.prefix\(240\)\)/);
   assert.match(api, /func fetchHealth/);

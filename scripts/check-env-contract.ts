@@ -1,11 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
-const platformVariables = new Set([
-  "NEXT_RUNTIME",
-  "NODE_ENV",
-  "VERCEL_ENV",
-  "NEXT_PUBLIC_VERCEL_ENV",
+const platformVariables = new Set(["NEXT_RUNTIME", "NODE_ENV", "VERCEL_ENV", "NEXT_PUBLIC_VERCEL_ENV"]);
+const trustedBuildMetadataVariables = new Set([
   "GIT_COMMIT_SHA",
   "SOURCE_VERSION",
   "VERCEL_GIT_COMMIT_SHA",
@@ -31,7 +28,12 @@ const documentedVariables = new Set(
   [...example.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((match) => match[1]),
 );
 const undocumented = [...usedVariables]
-  .filter((name) => !platformVariables.has(name) && !documentedVariables.has(name))
+  .filter(
+    (name) =>
+      !platformVariables.has(name)
+      && !trustedBuildMetadataVariables.has(name)
+      && !documentedVariables.has(name),
+  )
   .sort();
 const unsafePublicVariables = [...documentedVariables]
   .filter((name) => name.startsWith("NEXT_PUBLIC_") && /(?:SECRET|PRIVATE|PASSWORD|TOKEN)/.test(name))

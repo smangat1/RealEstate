@@ -681,3 +681,4 @@ model PushDevice {
 
   @@index([userId, lastSeenAt])
 }
+

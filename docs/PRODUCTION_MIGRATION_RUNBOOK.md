@@ -6,23 +6,23 @@ This runbook is intentionally manual. Run it from the exact release commit that 
 
 The production rollout has three separate steps:
 
-1. Apply the five pending Prisma migrations.
+1. Reconcile the manually created Scout tables with Prisma's migration ledger, then apply the remaining Prisma migrations.
 2. Apply the one pending Supabase security migration.
 3. Deploy the matching application release, then verify its health and core endpoints.
 
-Expected Prisma migrations, in order:
+The production database currently has `20260912170000_advisor_demo_accounts` recorded as applied. The following five migrations are expected to appear as pending before the reconciliation step:
 
 1. `20260905120000_preserve_listing_decisions`
 2. `20260909160000_recently_deleted_listings`
 3. `20260912000000_homeboard_scout_monetization`
-4. `20260912170000_advisor_demo_accounts`
+4. `20260912190000_reconcile_scout_schema`
 5. `20260912200000_advisor_actions`
 
 Expected Supabase migration:
 
 - `202609090001_lock_down_public_schema.sql`
 
-If either dry-run/status check reports a different pending set, stop and reconcile migration history before applying anything.
+The four Scout tables already exist in production and contain subscription data, but their original migration is absent from `_prisma_migrations`. Do not let `migrate deploy` attempt to create those tables again. If any status, table, or row-count check differs from this condition, stop and investigate instead of resolving the migration.
 
 ## Before the maintenance window
 
@@ -37,15 +37,31 @@ If either dry-run/status check reports a different pending set, stop and reconci
 
 Set the production `DATABASE_URL` only in the operator's secure shell or secret manager. Never paste it into a command history, document, ticket, or repository file.
 
+Before changing the migration ledger, verify the manually created tables and capture their row counts through the approved SQL console:
+
+```sql
+select to_regclass('public."BoardSubscription"') as board_subscription,
+       to_regclass('public."BoardSubscriptionContribution"') as subscription_contribution,
+       to_regclass('public."ScoutDiscoveredLead"') as scout_lead,
+       to_regclass('public."BrokerOutreachRecord"') as broker_outreach;
+
+select (select count(*) from "BoardSubscription") as subscriptions,
+       (select count(*) from "BoardSubscriptionContribution") as contributions,
+       (select count(*) from "ScoutDiscoveredLead") as leads,
+       (select count(*) from "BrokerOutreachRecord") as outreach;
+```
+
 From the release checkout:
 
 ```sh
+npx prisma migrate status
+npx prisma migrate resolve --applied 20260912000000_homeboard_scout_monetization
 npx prisma migrate status
 npx prisma migrate deploy
 npx prisma migrate status
 ```
 
-The first status command must report exactly the five migrations listed above as pending. The deploy command must report all five as applied. The final status command must report that the database schema is up to date.
+The first status command must report exactly the five migrations listed above as pending. Before the resolve command, verify that all four Scout tables exist, that their foreign keys are valid, and record their row counts. `migrate resolve` records the already-created Scout schema without running its `CREATE TABLE` statements. The second status command must then report the other four migrations as pending. The deploy command applies those four, including the schema reconciliation migration. The final status command must report that the database schema is up to date.
 
 Verify through the approved SQL console:
 
@@ -57,6 +73,7 @@ where migration_name in (
   '20260909160000_recently_deleted_listings',
   '20260912000000_homeboard_scout_monetization',
   '20260912170000_advisor_demo_accounts',
+  '20260912190000_reconcile_scout_schema',
   '20260912200000_advisor_actions'
 )
 order by started_at;
@@ -112,7 +129,7 @@ curl -i https://<PRODUCTION_HOST>/api/health
 
 ## Rollback and failure handling
 
-Application rollback is the first response to an application regression: route traffic to the previous deployment. The five Prisma migrations are designed to remain compatible with the prior server release, and the security migration affects direct browser-role access rather than the server's database role.
+Application rollback is the first response to an application regression: route traffic to the previous deployment. The Prisma changes are designed to remain compatible with the prior server release, and the security migration affects direct browser-role access rather than the server's database role.
 
 Do not drop the new tables or columns: they may already contain Advisor, inquiry, tour, or checklist data. Do not edit `_prisma_migrations` or `supabase_migrations.schema_migrations` by hand. Do not run either reset command against production.
 

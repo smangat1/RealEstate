@@ -12,7 +12,6 @@ export type ListingSourceProvider =
 export type ListingImportPreview = {
   normalizedUrl: string;
   provider: ListingSourceProvider;
-  scope: "unit" | "building";
   suggestedAddress: string | null;
   suggestedUnit: string | null;
   missingEssentialFields: Array<"address" | "unit" | "rent" | "bedrooms" | "bathrooms">;
@@ -89,7 +88,10 @@ function sameNumber(left: number | null, right: number | null) {
   return left != null && right != null && Math.abs(left - right) < 0.001;
 }
 
-/** Deliberately favors false negatives when claiming two records are the same unit. */
+/**
+ * Deliberately favors false negatives over links to the wrong apartment.
+ * Building-level matches and candidates with incomplete specifications never pass.
+ */
 export function evaluateExactListingMatch(
   target: ListingMatchFacts,
   candidate: ListingMatchFacts,
@@ -259,18 +261,25 @@ export function isZillowBuildingDetailUrl(input: string) {
     && /^[a-z0-9_-]{4,40}$/i.test(segments[3]);
 }
 
+function hasCompleteSelectedUnitFacts(facts: ListingMatchFacts | undefined) {
+  if (!facts) return false;
+  const identity = normalizedListingAddressParts(facts.address, facts.unit);
+  return Boolean(identity.street && identity.unit)
+    && [facts.price, facts.bedrooms, facts.bathrooms].every(
+      (value) => value !== null && Number.isFinite(value),
+    );
+}
+
 export function assertSpecificListingUrl(
   input: string,
   selectedUnitFacts?: ListingMatchFacts,
 ) {
-  void selectedUnitFacts;
   const canonicalUrl = canonicalizeListingUrl(input);
-  // Zillow community pages are durable, specific sources even when only part
-  // of their changing unit inventory can be parsed. Save them as building
-  // references; never pretend they identify an exact apartment.
-  if (isGenericListingUrl(canonicalUrl) && !isZillowBuildingDetailUrl(canonicalUrl)) {
+  const isConfirmedBuildingUnit = isZillowBuildingDetailUrl(canonicalUrl)
+    && hasCompleteSelectedUnitFacts(selectedUnitFacts);
+  if (isGenericListingUrl(canonicalUrl) && !isConfirmedBuildingUnit) {
     throw new Error(
-      "Open an exact rental unit or Zillow building page. Search results cannot be attached as listing sources.",
+      "Open the page for the exact rental unit. Search results and building-wide pages cannot be attached as listing sources.",
     );
   }
   return canonicalUrl;
@@ -329,27 +338,20 @@ export function previewListingImport(input: {
   const hints = pathHints(parsed);
   const address = input.address?.trim() || hints.address;
   const unit = input.unit?.trim() || hints.unit;
-  const scope = isZillowBuildingDetailUrl(parsed.toString()) && !unit
-    ? "building"
-    : "unit";
   const missingEssentialFields: ListingImportPreview["missingEssentialFields"] = [];
   if (!address) missingEssentialFields.push("address");
-  if (scope === "unit") {
-    if (input.price == null) missingEssentialFields.push("rent");
-    if (input.bedrooms == null) missingEssentialFields.push("bedrooms");
-    if (input.bathrooms == null) missingEssentialFields.push("bathrooms");
-  }
+  if (input.price == null) missingEssentialFields.push("rent");
+  if (input.bedrooms == null) missingEssentialFields.push("bedrooms");
+  if (input.bathrooms == null) missingEssentialFields.push("bathrooms");
 
   return {
     normalizedUrl: canonicalizeListingUrl(parsed.toString()),
     provider: detectListingProvider(parsed.toString()),
-    scope,
     suggestedAddress: address || null,
     suggestedUnit: unit || null,
     missingEssentialFields,
-    notice: scope === "building"
-      ? "Homeboard will save this building page as a reference. Unit availability may be partial and must be checked on the source."
-      : "Homeboard keeps this exact source attached to the board. Confirm only facts the source did not provide.",
+    notice:
+      "Homeboard keeps this exact source attached to the board. Confirm the available facts before saving; the unit may stay blank when the source does not provide one.",
   };
 }
 

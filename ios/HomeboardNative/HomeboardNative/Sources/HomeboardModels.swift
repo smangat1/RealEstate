@@ -357,8 +357,6 @@ struct ListingPreview: Identifiable, Hashable, Codable {
   var status: String = "saved"
   var workflowStatus: String = "suggested"
   var sourceURL: String = ""
-  var listingScope: String = "unit"
-  var partialUnitParsing: Bool = false
   var exactSources: [ListingSourceLink] = []
   var generatedSearches: [GeneratedListingSearchLink] = []
   var verification: ListingVerificationSummary = .unverified
@@ -397,8 +395,6 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     openRisks: [String],
     status: String = "saved",
     sourceURL: String = "",
-    listingScope: String = "unit",
-    partialUnitParsing: Bool = false,
     groupNote: String = "",
     photoURL: String = "",
     unit: String = "",
@@ -425,8 +421,6 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     self.openRisks = openRisks
     self.status = status
     self.sourceURL = sourceURL
-    self.listingScope = listingScope
-    self.partialUnitParsing = partialUnitParsing
     self.groupNote = groupNote
     self.photoURL = photoURL
     self.unit = unit
@@ -468,8 +462,6 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     case status
     case workflowStatus
     case sourceURL = "sourceUrl"
-    case listingScope
-    case partialUnitParsing
     case exactSources
     case generatedSearches
     case verification
@@ -511,8 +503,6 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     status = try container.decodeIfPresent(String.self, forKey: .status) ?? "saved"
     workflowStatus = try container.decodeIfPresent(String.self, forKey: .workflowStatus) ?? "suggested"
     sourceURL = try container.decodeIfPresent(String.self, forKey: .sourceURL) ?? ""
-    listingScope = try container.decodeIfPresent(String.self, forKey: .listingScope) ?? "unit"
-    partialUnitParsing = try container.decodeIfPresent(Bool.self, forKey: .partialUnitParsing) ?? false
     exactSources = try container.decodeIfPresent([ListingSourceLink].self, forKey: .exactSources) ?? []
     generatedSearches = try container.decodeIfPresent([GeneratedListingSearchLink].self, forKey: .generatedSearches) ?? []
     verification = try container.decodeIfPresent(ListingVerificationSummary.self, forKey: .verification) ?? .unverified

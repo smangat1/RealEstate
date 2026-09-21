@@ -927,7 +927,7 @@ private struct ConversationView: View {
         VStack(spacing: 10) {
           HStack(alignment: .center, spacing: 10) {
             TextField(
-              "Update the group: budget, commute, neighborhoods, shortlist thoughts...",
+              "Message your roommates...",
               text: $appModel.boardMessageDraft
             )
             .submitLabel(.send)
@@ -972,7 +972,7 @@ private struct ConversationView: View {
                 .tint(HomeboardPalette.accent)
             }
 
-              Text("Shared updates keep the whole group aligned in one place.")
+            Text("Roommates only.")
               .font(.footnote)
               .foregroundStyle(HomeboardPalette.tertiaryText)
 

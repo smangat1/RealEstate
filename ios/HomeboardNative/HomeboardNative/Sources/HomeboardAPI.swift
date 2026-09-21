@@ -42,7 +42,10 @@ enum MobileMembershipState: String, Codable {
 struct MobileSessionResponse: Decodable {
   var user: RemoteUserPayload
   var boards: [MobileBoardSummary]
-  var membershipState: MobileMembershipState
+  // Older production servers predate this discriminator. A missing value is
+  // deliberately unknown rather than `authenticatedNoMembership`, so an empty
+  // legacy response can never force an existing account into onboarding.
+  var membershipState: MobileMembershipState?
   var activeBoard: MobileBoardLoadResponse?
 }
 
@@ -89,8 +92,6 @@ private struct MobileListingCreateRequest: Encodable {
   var availableDate: String?
   var amenities: [String]?
   var modelInsights: [HomeboardListingInsight]?
-  var listingScope: String?
-  var partialUnitParsing: Bool?
   var description: String?
   var sourceUrl: String?
   var imageUrl: String?
@@ -129,7 +130,6 @@ private struct ListingImportPreviewRequest: Encodable {
 struct ListingImportPreviewResponse: Decodable {
   var normalizedUrl: String
   var provider: String
-  var scope: String?
   var suggestedAddress: String?
   var suggestedUnit: String?
   var missingEssentialFields: [String]
@@ -749,8 +749,6 @@ final class HomeboardAPI {
         availableDate: listing.availableDate,
         amenities: listing.amenities.isEmpty ? nil : listing.amenities,
         modelInsights: listing.modelInsights.isEmpty ? nil : listing.modelInsights,
-        listingScope: listing.listingScope,
-        partialUnitParsing: listing.partialUnitParsing,
         description: listing.summary,
         sourceUrl: listing.sourceURL.isEmpty ? nil : listing.sourceURL,
         imageUrl: listing.photoURL.isEmpty ? nil : listing.photoURL,

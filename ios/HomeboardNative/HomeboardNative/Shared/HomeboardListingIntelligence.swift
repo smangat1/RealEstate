@@ -170,11 +170,11 @@ enum HomeboardListingIntelligence {
     if !analysis.options.isEmpty {
       analysis.scope = "building"
       analysis.message = analysis.options.count == 1
-        ? "We found one complete available option. It is ready to save."
+        ? "We found one available option. Confirm it before saving."
         : "This page contains multiple homes. Choose the exact option you want to share."
     } else if analysis.missingFields.isEmpty {
       analysis.scope = analysis.scope == "building" ? "building" : "unit"
-      analysis.message = "We found the required listing facts. It is ready to save."
+      analysis.message = "We found the listing facts. Give them a quick review before saving."
     } else {
       analysis.message = fallbackMessage
     }
@@ -220,7 +220,7 @@ enum HomeboardListingIntelligence {
     )
     if rescanned.missingFields.isEmpty {
       rescanned.message =
-        "The second scan found the remaining core listing details. It is ready to save."
+        "The second scan found the remaining core listing details. Give them a quick review."
     } else {
       rescanned.message =
         "Homeboard took a second look. Still missing: "
