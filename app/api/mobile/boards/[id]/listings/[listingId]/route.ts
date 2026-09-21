@@ -14,7 +14,7 @@ import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 import { isSafeHttpUrl } from "@/lib/input-safety";
 
 const patchSchema = z.object({
-  status: z.enum(["new", "interested", "maybe", "rejected", "toured", "applied"]).optional(),
+  status: z.enum(["new", "interested", "maybe", "rejected", "toured", "applied", "Outreach Sent", "outreach_sent"]).optional(),
   workflowStatus: z.enum(["suggested", "source_confirmed", "considering", "shortlisted", "viewing", "applying"]).optional(),
   address: z.string().trim().max(240).optional(),
   city: z.string().trim().max(160).optional(),
@@ -58,7 +58,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ error: "Restore this listing before editing it." }, { status: 409 });
     }
 
-    if (parsed.data.status) await updateBoardListingStatus(listingId, parsed.data.status, user.id);
+    if (parsed.data.status) {
+      const nextStatus = parsed.data.status === "Outreach Sent" ? "outreach_sent" : parsed.data.status;
+      await updateBoardListingStatus(listingId, nextStatus, user.id);
+    }
     if (parsed.data.workflowStatus) {
       await updateBoardListingWorkflow(listingId, parsed.data.workflowStatus, user.displayName);
     }

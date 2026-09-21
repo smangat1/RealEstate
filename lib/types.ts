@@ -221,7 +221,7 @@ export type BoardListingRecord = {
   id: string;
   boardId: string;
   listingId: string;
-  userStatus: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied";
+  userStatus: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied" | "outreach_sent";
   workflowStatus: ListingWorkflowStatus;
   userNotes: string | null;
   aiSummary: string | null;

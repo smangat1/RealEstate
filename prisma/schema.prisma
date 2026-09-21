@@ -42,6 +42,7 @@ enum BoardListingStatus {
   rejected
   toured
   applied
+  outreach_sent
 }
 
 enum ListingWorkflowStatus {
@@ -184,6 +185,7 @@ model User {
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
   catalogSourcesVerified    CatalogListingSource[]     @relation("CatalogSourceVerifiedBy")
+  walletLedgers             BoardWalletLedger[]
 }
 
 model DevicePairing {
@@ -224,6 +226,8 @@ model SearchBoard {
   invitations               BoardInvitation[]
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
+  walletLedgers             BoardWalletLedger[]
+  advisorSubscription       AdvisorSubscription?
 
   @@index([userId])
 }
@@ -492,8 +496,9 @@ model ChatMessage {
   authorUserId String?
   authorName   String?
   content      String
-  createdAt    DateTime    @default(now())
-  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                @default(now())
+  board          SearchBoard             @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  advisorPayload AdvisorMessagePayload?
 
   @@index([boardId, createdAt])
 }
@@ -680,5 +685,39 @@ model PushDevice {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, lastSeenAt])
+}
+
+model BoardWalletLedger {
+  id              String      @id @default(cuid())
+  boardId         String
+  userId          String
+  amount          Int
+  stripePaymentId String
+  createdAt       DateTime    @default(now())
+  board           SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+  @@index([userId])
+  @@index([stripePaymentId])
+}
+
+model AdvisorSubscription {
+  id         String      @id @default(cuid())
+  boardId    String      @unique
+  validUntil DateTime?
+  isActive   Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  board      SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+}
+
+model AdvisorMessagePayload {
+  id        String      @id @default(cuid())
+  messageId String      @unique
+  payload   Json
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 }
 
