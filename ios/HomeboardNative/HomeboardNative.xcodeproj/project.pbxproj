@@ -65,6 +65,7 @@
 		BB00C219498B248279BC3A3B /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
 		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
+		D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */; };
 		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
 		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		E5ADE81D14E97FFB8B2FAB6D /* SharePreprocessor.js in Resources */ = {isa = PBXBuildFile; fileRef = C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */; };
@@ -177,6 +178,7 @@
 		896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		92AD297999D5B2DCD97EE617 /* HomeboardNativeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDispatcher.swift; sourceTree = "<group>"; };
 		958E86AF374173284BD9D79E /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardActiveOffer.swift; sourceTree = "<group>"; };
@@ -304,6 +306,7 @@
 				498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */,
 				B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */,
 				3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */,
+				935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */,
 				EA1F1A64964C190A30B424C5 /* RootView.swift */,
 				CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */,
 				95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */,
@@ -705,6 +708,7 @@
 				585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */,
 				259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */,
 				72AC6E1E462E68DB7EC54788 /* MacDevicePairingView.swift in Sources */,
+				D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */,
 				6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */,
 				DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */,
 				13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */,
