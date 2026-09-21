@@ -1,4 +1,3 @@
-import { getBoardSubscriptionState } from "@/lib/subscription-service";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
@@ -33,7 +32,6 @@ import {
   createBlankProfile,
   finalizeProfileState,
   generateComparison,
-  generateListingAnalysis,
   encodeNotesPayload,
   getMissingFields,
   getProfileCompletion,
@@ -51,11 +49,6 @@ import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
 import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
-import {
-  ensureApplicationChecklist,
-  getAdvisorActions,
-  seedListingAdvisorActions,
-} from "@/lib/advisor-service";
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
   listingSourceTrustWarning,
@@ -1696,48 +1689,6 @@ export async function getBoardPageData(
   const currentBrowseRequest = browseRequests.at(-1) ?? null;
   const commuteMode = getCommuteServiceMode(demoMode);
 
-  // Advisor subscription, actions, and listing workflow data.
-  const [persistedScoutSubscription, listingInquiriesByBoardListingId, advisorActions] = await Promise.all([
-    getBoardSubscriptionState(board.id),
-    prisma.brokerOutreachRecord.findMany({
-      where: { boardListing: { boardId: board.id } },
-      include: { user: { select: { displayName: true } } },
-      orderBy: { createdAt: "desc" },
-    }).then((records) => {
-      const grouped: NonNullable<BoardPageData["listingInquiriesByBoardListingId"]> = {};
-      for (const r of records) {
-        if (!grouped[r.boardListingId]) grouped[r.boardListingId] = [];
-        grouped[r.boardListingId].push({
-          id: r.id,
-          boardListingId: r.boardListingId,
-          userId: r.userId,
-          userName: r.user?.displayName,
-          status: r.status,
-          templateKey: r.templateKey,
-          subject: r.subject,
-          body: r.body,
-          contactedAt: r.contactedAt?.toISOString() ?? null,
-          sentAt: r.sentAt?.toISOString() ?? null,
-          answeredAt: r.answeredAt?.toISOString() ?? null,
-          staleAt: r.staleAt?.toISOString() ?? null,
-          lastFollowUpAt: r.lastFollowUpAt?.toISOString() ?? null,
-          method: r.method as "email" | "portal" | "phone",
-          notes: r.notes,
-          replyText: r.replyText,
-          replyFacts: r.replyFacts && typeof r.replyFacts === "object" && !Array.isArray(r.replyFacts)
-            ? r.replyFacts as unknown as NonNullable<typeof grouped[string]>[number]["replyFacts"]
-            : null,
-          createdAt: r.createdAt.toISOString(),
-          updatedAt: r.updatedAt.toISOString(),
-        });
-      }
-      return grouped;
-    }).catch(() => ({})),
-    getAdvisorActions({ boardId: board.id }).catch(() => []),
-  ]);
-
-  const scoutSubscription = persistedScoutSubscription;
-
   return {
     isDemoMode: demoMode,
     commuteMode,
@@ -1773,7 +1724,6 @@ export async function getBoardPageData(
     listingReviewsByBoardListingId,
     listingDecisionsByBoardListingId,
     listingAnalysisByBoardListingId,
-    advisorActions,
     suggestedListings,
     currentDeckListings: buildDeckListings(suggestedListings, browseRequests),
     currentBrowseRequest,
@@ -1782,8 +1732,6 @@ export async function getBoardPageData(
       : generateComparison(effectiveProfile, boardListings),
     missingFields: getMissingFields(effectiveProfile),
     completion: getProfileCompletion(effectiveProfile),
-    scoutSubscription,
-    listingInquiriesByBoardListingId,
   };
 }
 
@@ -2198,7 +2146,6 @@ export async function addListingToBoard(
       ),
       touchBoard(boardId),
     ]);
-    await seedListingAdvisorActions(duplicateBoardListing.id, "refreshed");
     return;
   }
 
@@ -2316,10 +2263,6 @@ export async function addListingToBoard(
       provider: listing.sourceName,
     }),
     touchBoard(boardId),
-  ]);
-  await Promise.all([
-    seedListingAdvisorActions(boardListing.id, "saved"),
-    ensureApplicationChecklist(boardListing.id),
   ]);
 }
 
@@ -2902,7 +2845,6 @@ export async function updateBoardListingStatus(
     status,
   });
   await touchBoard(boardListing.boardId);
-  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function moveBoardListingToRecentlyDeleted(
@@ -3029,7 +2971,6 @@ export async function updateBoardListingWorkflow(
     workflowStatus,
   });
   await touchBoard(boardListing.boardId);
-  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function attachBoardListingSource(
@@ -3161,7 +3102,6 @@ export async function saveBoardListingReview(
     tourIntent: input.tourIntent,
   });
   await touchBoard(boardListing.boardId);
-  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function voteOnBoardListingDecision(
@@ -3495,7 +3435,6 @@ export async function saveBoardListingVote(
     vote: voteRecord.vote,
   });
   await touchBoard(boardListing.boardId);
-  await seedListingAdvisorActions(boardListingId, "refreshed");
 }
 
 export async function addBoardListingComment(boardListingId: string, roommateId: string, content: string) {

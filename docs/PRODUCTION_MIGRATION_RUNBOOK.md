@@ -8,7 +8,7 @@ The production rollout has three separate steps:
 
 1. Apply the five pending Prisma migrations.
 2. Apply the one pending Supabase security migration.
-3. Deploy the matching application release, then verify its health and Advisor endpoints.
+3. Deploy the matching application release, then verify its health and core endpoints.
 
 Expected Prisma migrations, in order:
 
@@ -106,10 +106,9 @@ After deploying the exact recorded release commit:
 
 ```sh
 curl -i https://<PRODUCTION_HOST>/api/health
-curl -i https://<PRODUCTION_HOST>/api/mobile/boards/<BOARD_ID>/advisor/actions
 ```
 
-`/api/health` must return JSON with HTTP 200, the expected app/API version, and the deployed commit. The unauthenticated Advisor request may return 401, but it must return JSON rather than an HTML 404 page. Complete an authenticated smoke test with a designated test account: load its existing board, retain cached data through a forced offline launch, save one complete exact listing in one tap, and open Advisor actions.
+`/api/health` must return JSON with HTTP 200, the expected app/API version, and the deployed commit. Complete an authenticated smoke test with a designated test account: load its existing board, retain cached data through a forced offline launch, and save one complete exact listing in one tap.
 
 ## Rollback and failure handling
 

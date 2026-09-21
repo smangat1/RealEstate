@@ -1,5 +1,3 @@
-import type { AdvisorActionRecord, ListingInquiryRecord } from "@/lib/advisor-types";
-
 export type PriorityLevel = "low" | "medium" | "high";
 export type CommuteAccess = "car" | "transit" | "flexible" | "remote" | "skip";
 
@@ -489,42 +487,10 @@ export type BoardPageData = {
   listingReviewsByBoardListingId: Record<string, BoardListingReviewRecord[]>;
   listingDecisionsByBoardListingId: Record<string, BoardListingDecisionRecord[]>;
   listingAnalysisByBoardListingId: Record<string, GroupListingAnalysis>;
-  advisorActions: AdvisorActionRecord[];
   suggestedListings: SuggestedListingRecord[];
   currentDeckListings: SuggestedListingRecord[];
   currentBrowseRequest: ListingBrowseRequest | null;
   comparison: string;
   missingFields: string[];
   completion: ProfileCompletion;
-  scoutSubscription?: BoardSubscriptionRecord | null;
-  listingInquiriesByBoardListingId?: Record<string, ListingInquiryRecord[]>;
-};
-
-export type BoardSubscriptionStatus = "pending_split" | "active" | "paused" | "expired";
-
-export type BoardSubscriptionContributionRecord = {
-  id: string;
-  subscriptionId: string;
-  userId: string;
-  userName?: string;
-  amountCents: number;
-  status: "pledged" | "paid";
-  paymentMethod: string | null;
-  paidAt: string | null;
-  transactionId: string | null;
-};
-
-export type BoardSubscriptionRecord = {
-  id: string;
-  boardId: string;
-  status: BoardSubscriptionStatus;
-  tier: "scout_weekly";
-  amountCents: number;
-  currency: string;
-  startedAt: string | null;
-  expiresAt: string | null;
-  fundedCents: number;
-  targetCents: number;
-  daysRemaining: number;
-  contributions: BoardSubscriptionContributionRecord[];
 };

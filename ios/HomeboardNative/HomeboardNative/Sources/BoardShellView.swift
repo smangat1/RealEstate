@@ -887,7 +887,7 @@ private struct ConversationView: View {
               .font(.system(size: 30, weight: .bold, design: .serif))
               .foregroundStyle(HomeboardPalette.primaryText)
 
-            Text("Everyone speaks in one thread, and the advisor can keep shaping the brief from what the group says.")
+            Text("Everyone speaks in one thread so the group can discuss listings and decisions together.")
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
 
@@ -1005,7 +1005,7 @@ private struct ConversationView: View {
     HStack {
       if message.role == "assistant" || message.role == "system" {
         VStack(alignment: .leading, spacing: 8) {
-          Text((message.authorName?.isEmpty == false ? message.authorName! : "Advisor").uppercased())
+          Text((message.authorName?.isEmpty == false ? message.authorName! : "System").uppercased())
             .font(.caption.weight(.bold))
             .tracking(2)
             .foregroundStyle(HomeboardPalette.accent)

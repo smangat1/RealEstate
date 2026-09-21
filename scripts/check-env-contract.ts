@@ -1,7 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
-const platformVariables = new Set(["NEXT_RUNTIME", "NODE_ENV", "VERCEL_ENV", "NEXT_PUBLIC_VERCEL_ENV"]);
+const platformVariables = new Set([
+  "NEXT_RUNTIME",
+  "NODE_ENV",
+  "VERCEL_ENV",
+  "NEXT_PUBLIC_VERCEL_ENV",
+  "GIT_COMMIT_SHA",
+  "SOURCE_VERSION",
+  "VERCEL_GIT_COMMIT_SHA",
+]);
 const sourceFiles = execFileSync(
   "git",
   ["ls-files", "*.ts", "*.tsx", "*.js", "*.mjs", "*.cjs"],

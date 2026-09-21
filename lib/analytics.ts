@@ -29,14 +29,7 @@ export type AnalyticsEventName =
   | "bug_report_submitted"
   | "native_diagnostic_uploaded"
   | "analytics_exported"
-  | "runtime_status_viewed"
-  | "scout_split_initiated"
-  | "scout_subscription_activated"
-  | "scout_balance_covered"
-  | "scout_price_drop_detected"
-  | "scout_price_increase_detected"
-  | "advisor_listing_changes_detected"
-  | "broker_outreach_recorded";
+  | "runtime_status_viewed";
 
 type AnalyticsPayload = Record<string, unknown>;
 
