@@ -121,16 +121,6 @@ export default async function SettingsPage({
                   <article className="invite-summary-card">
                     <div className="invite-summary-head">
                       <div>
-                        <strong>Advisor actions</strong>
-                        <span>Server-computed facts with optional on-device Apple Intelligence wording</span>
-                      </div>
-                      <span>Grounded</span>
-                    </div>
-                    <p>Web uses deterministic copy. Supported Apple devices can vary wording without changing server facts.</p>
-                  </article>
-                  <article className="invite-summary-card">
-                    <div className="invite-summary-head">
-                      <div>
                         <strong>Commute engine</strong>
                         <span>Route timing for group commute tradeoff analysis</span>
                       </div>

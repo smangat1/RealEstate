@@ -3335,6 +3335,7 @@ struct SharedShortlistView: View {
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
           }
+
           if appModel.isBoardLoading && appModel.board.shortlist.isEmpty {
 
             ForEach(0..<3, id: \.self) { _ in
@@ -3700,7 +3701,7 @@ struct SharedUpdatesView: View {
   private var timeline: [SharedTimelineItem] {
     var seenIDs = Set<String>()
     var items: [SharedTimelineItem] = []
-    for (index, msg) in appModel.board.chatMessages.enumerated() {
+    for (index, msg) in appModel.board.chatMessages.filter({ $0.role == "user" }).enumerated() {
       var itemID = "message-\(msg.id)"
       if seenIDs.contains(itemID) {
         itemID = "message-\(msg.id)-\(index)"
@@ -3810,7 +3811,7 @@ struct SharedUpdatesView: View {
 
         HStack(alignment: .center, spacing: 10) {
           TextField(
-            "Message roommates, or start with @Advisor...",
+            "Message your roommates...",
             text: $updateDraft
           )
           .focused($updateFieldFocused)
@@ -3901,166 +3902,6 @@ struct SharedUpdatesView: View {
         updateDraft = message
         updateFieldFocused = true
       }
-    }
-  }
-}
-
-private struct AdvisorActionCardView: View {
-  let action: AdvisorAction
-  let onOpenListing: (ListingPreview) -> Void
-
-  @Environment(AppModel.self) private var appModel
-  @Environment(\.openURL) private var openURL
-  @State private var presentation: AdvisorActionPresentation?
-  @State private var archiveCommand: AdvisorActionCommand?
-
-  private var accent: Color {
-    switch action.priority {
-    case "critical": HomeboardPalette.danger
-    case "high": Color.orange
-    default: HomeboardPalette.accent
-    }
-  }
-
-  private var relatedListing: ListingPreview? {
-    appModel.board.shortlist.first {
-      $0.id == action.boardListingId || $0.listingId == action.listingId
-    }
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 11) {
-      HStack(alignment: .top, spacing: 10) {
-        Image(systemName: "sparkles")
-          .font(.subheadline.weight(.bold))
-          .foregroundStyle(accent)
-          .frame(width: 34, height: 34)
-          .background(accent.opacity(0.13))
-          .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-        VStack(alignment: .leading, spacing: 3) {
-          Text(action.kind.replacingOccurrences(of: "_", with: " ").uppercased())
-            .font(.system(size: 9, weight: .bold))
-            .tracking(0.9)
-            .foregroundStyle(accent)
-          Text(action.title)
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(HomeboardPalette.primaryText)
-        }
-
-        Spacer(minLength: 4)
-
-        Button("Done") {
-          Task { await appModel.updateAdvisorAction(action, status: "completed") }
-        }
-        .font(.caption2.weight(.bold))
-        .foregroundStyle(HomeboardPalette.secondaryText)
-        .buttonStyle(HomeboardAreaButtonStyle())
-      }
-
-      Text(presentation?.summary ?? action.summary)
-        .font(.subheadline)
-        .foregroundStyle(HomeboardPalette.secondaryText)
-        .fixedSize(horizontal: false, vertical: true)
-
-      Text("Why it matters: \(presentation?.whyItMatters ?? action.whyItMatters)")
-        .font(.caption)
-        .foregroundStyle(HomeboardPalette.tertiaryText)
-        .fixedSize(horizontal: false, vertical: true)
-
-      if !action.facts.isEmpty {
-        SharedFlowLayout(spacing: 6) {
-          ForEach(Array(action.facts.prefix(8))) { fact in
-            Text("\(fact.label): \(fact.value)")
-              .font(.caption2.weight(.semibold))
-              .foregroundStyle(fact.severity == "critical" ? HomeboardPalette.danger : HomeboardPalette.secondaryText)
-              .padding(.horizontal, 8)
-              .padding(.vertical, 5)
-              .background(Color.white.opacity(0.055))
-              .clipShape(Capsule())
-          }
-        }
-      }
-
-      HStack(spacing: 8) {
-        advisorButton(action.primaryAction, primary: true)
-        ForEach(Array(action.secondaryActions.enumerated()), id: \.offset) { _, command in
-          advisorButton(command, primary: false)
-        }
-      }
-
-      HStack {
-        Text(presentation?.engine ?? "Deterministic")
-          .font(.system(size: 9, weight: .semibold))
-          .foregroundStyle(HomeboardPalette.tertiaryText)
-        Spacer()
-        if let source = action.sourceLinks.first, let url = URL(string: source.url) {
-          Button(source.label) { openURL(url) }
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.accent)
-            .buttonStyle(HomeboardAreaButtonStyle())
-        }
-      }
-    }
-    .padding(14)
-    .sharedSurface(cornerRadius: 18)
-    .overlay {
-      RoundedRectangle(cornerRadius: 18, style: .continuous)
-        .stroke(accent.opacity(0.28), lineWidth: 1)
-    }
-    .task(id: action.updatedAt) {
-      presentation = await HomeboardAdvisorWording.presentation(for: action)
-    }
-    .confirmationDialog(
-      "Archive this listing for the whole board?",
-      isPresented: Binding(
-        get: { archiveCommand != nil },
-        set: { if !$0 { archiveCommand = nil } }
-      ),
-      titleVisibility: .visible
-    ) {
-      Button("Archive listing", role: .destructive) {
-        if let listing = relatedListing {
-          appModel.removeManualListing(id: listing.id)
-          Task { await appModel.updateAdvisorAction(action, status: "completed") }
-        }
-        archiveCommand = nil
-      }
-      Button("Cancel", role: .cancel) { archiveCommand = nil }
-    } message: {
-      Text("The listing will move to Recently Deleted and its shared decision history will remain recoverable.")
-    }
-  }
-
-  private func advisorButton(_ command: AdvisorActionCommand, primary: Bool) -> some View {
-    Button {
-      perform(command)
-    } label: {
-      Text(command.label)
-        .font(.caption.weight(.bold))
-        .foregroundStyle(primary ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(primary ? HomeboardPalette.accent : Color.white.opacity(0.07))
-        .clipShape(Capsule())
-    }
-    .buttonStyle(HomeboardAreaButtonStyle())
-    .disabled(appModel.isAdvisorActionWorking)
-  }
-
-  private func perform(_ command: AdvisorActionCommand) {
-    switch command.type {
-    case "check_listing":
-      guard let listingId = command.payload["listingId"] ?? action.listingId else { return }
-      Task { await appModel.checkListingAgain(listingId: listingId) }
-    case "open_source":
-      if let rawURL = command.payload["url"], let url = URL(string: rawURL) { openURL(url) }
-    case "dismiss":
-      Task { await appModel.updateAdvisorAction(action, status: "dismissed") }
-    case "archive_listing":
-      archiveCommand = command
-    default:
-      if let listing = relatedListing { onOpenListing(listing) }
     }
   }
 }
@@ -7600,7 +7441,6 @@ struct SharedListingDetailView: View {
   @State private var isWritingVeto = false
   @State private var vetoReason = ""
   @State private var showsMoreAboutListing = false
-  @State private var showsAdvisorTools = false
   @State private var confirmsRemoval = false
 
   private var liveListing: ListingPreview {
@@ -7647,12 +7487,6 @@ struct SharedListingDetailView: View {
             }
 
             Menu {
-              Button {
-                showsAdvisorTools = true
-              } label: {
-                Label("Advisor tools", systemImage: "sparkles")
-              }
-
               Button(role: .destructive) {
                 confirmsRemoval = true
               } label: {
@@ -7928,12 +7762,6 @@ struct SharedListingDetailView: View {
         ratingDraft = SharedRatingDimension.normalized(current.values)
       }
     }
-    .sheet(isPresented: $showsAdvisorTools) {
-      AdvisorListingToolsSheet(listing: liveListing)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(HomeboardPalette.background)
-    }
     .alert("Move this listing?", isPresented: $confirmsRemoval) {
       Button("Cancel", role: .cancel) {}
       Button("Move", role: .destructive) {
@@ -7946,494 +7774,6 @@ struct SharedListingDetailView: View {
   }
 }
 
-private struct AdvisorListingToolsSheet: View {
-  let listing: ListingPreview
-
-  @Environment(AppModel.self) private var appModel
-  @Environment(\.dismiss) private var dismiss
-  @State private var tourNoteDraft = ""
-
-  private var listingID: String { listing.listingId }
-  private var advisorActions: [AdvisorAction] {
-    appModel.board.advisorActions.filter {
-      $0.boardListingId == listing.id || $0.listingId == listingID
-    }
-  }
-  private var history: [ListingChangeEntry] { appModel.advisorHistoryByListingID[listingID] ?? [] }
-  private var checklist: [ApplicationChecklistEntry] { appModel.advisorChecklistByListingID[listingID] ?? [] }
-  private var inquiries: [ListingInquiry] { appModel.advisorInquiriesByListingID[listingID] ?? [] }
-
-  private let templates = [
-    ("availability", "Availability", "Confirm rent, fees, move-in date, and viewing times."),
-    ("tour_request", "Tour request", "Ask for current in-person or virtual tour times."),
-    ("fee_clarification", "Fee questions", "Request an itemized move-in and recurring-fee list."),
-    ("application_requirements", "Application requirements", "Ask for documents, screening rules, and deadlines."),
-    ("follow_up", "Follow up", "Draft a grounded follow-up without inventing urgency."),
-  ]
-
-  var body: some View {
-    NavigationStack {
-      ScrollView(.vertical, showsIndicators: false) {
-        VStack(alignment: .leading, spacing: 22) {
-          VStack(alignment: .leading, spacing: 6) {
-            Text(listing.title)
-              .font(.headline)
-              .foregroundStyle(HomeboardPalette.primaryText)
-            Text("All wording starts from saved listing and profile facts. Homeboard never sends a message automatically.")
-              .font(.caption)
-              .foregroundStyle(HomeboardPalette.secondaryText)
-          }
-
-          if let advisorError = appModel.advisorError {
-            SharedInlineEmpty(
-              icon: "exclamationmark.triangle.fill",
-              title: "Advisor API unavailable",
-              message: advisorError
-            )
-          }
-
-          VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(
-              title: "Listing tools",
-              trailing: advisorActions.isEmpty ? nil : "\(advisorActions.count) proactive"
-            )
-
-            Button {
-              Task { await appModel.checkListingAgain(listingId: listingID) }
-            } label: {
-              Label("Check listing again", systemImage: "arrow.clockwise")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(HomeboardPalette.accent)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(HomeboardAreaButtonStyle())
-            .disabled(appModel.isAdvisorActionWorking || listingID.isEmpty)
-
-            ForEach(advisorActions) { action in
-              AdvisorActionCardView(action: action) { _ in }
-            }
-          }
-
-          VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(title: "Inquiry templates", trailing: "Review required")
-            ForEach(templates, id: \.0) { template in
-              Button {
-                Task { await appModel.createInquiryDraft(listingId: listingID, templateKey: template.0) }
-              } label: {
-                HStack(spacing: 12) {
-                  Image(systemName: "envelope.badge")
-                    .foregroundStyle(HomeboardPalette.accent)
-                    .frame(width: 28)
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text(template.1)
-                      .font(.subheadline.weight(.bold))
-                      .foregroundStyle(HomeboardPalette.primaryText)
-                    Text(template.2)
-                      .font(.caption)
-                      .foregroundStyle(HomeboardPalette.secondaryText)
-                      .multilineTextAlignment(.leading)
-                  }
-                  Spacer(minLength: 6)
-                  Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(HomeboardPalette.accent)
-                }
-                .padding(12)
-                .background(Color.white.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              }
-              .buttonStyle(HomeboardAreaButtonStyle())
-              .disabled(appModel.isAdvisorActionWorking)
-            }
-          }
-
-          if !inquiries.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-              SharedSectionTitle(title: "Inquiry drafts", trailing: "\(inquiries.count)")
-              ForEach(inquiries) { inquiry in
-                AdvisorInquiryEditor(listingID: listingID, inquiry: inquiry)
-              }
-            }
-          }
-
-          VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(title: "Tour notes", trailing: "Dictate or type")
-            TextEditor(text: $tourNoteDraft)
-              .font(.subheadline)
-              .foregroundStyle(HomeboardPalette.primaryText)
-              .scrollContentBackground(.hidden)
-              .frame(minHeight: 110)
-              .padding(10)
-              .background(Color.white.opacity(0.06))
-              .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              .accessibilityLabel("Tour voice notes or transcript")
-
-            Button {
-              let transcript = tourNoteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-              guard !transcript.isEmpty else { return }
-              Task { await appModel.saveTourNote(listingId: listingID, transcript: transcript) }
-            } label: {
-              Label("Structure tour notes", systemImage: "text.badge.checkmark")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(HomeboardPalette.accent)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(HomeboardAreaButtonStyle())
-            .disabled(tourNoteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || appModel.isAdvisorActionWorking)
-
-            if let summary = appModel.advisorTourNotesByListingID[listingID] {
-              AdvisorTourNoteSummaryView(summary: summary)
-            }
-          }
-
-          VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(
-              title: "Application checklist",
-              trailing: appModel.advisorError != nil
-                ? "Unavailable"
-                : checklist.isEmpty ? "No data" : "\(checklist.filter { $0.status == "missing" }.count) missing"
-            )
-            if appModel.advisorError != nil {
-              Text("Application checklist data could not be loaded.")
-                .font(.caption)
-                .foregroundStyle(HomeboardPalette.secondaryText)
-            } else if checklist.isEmpty {
-              SharedInlineEmpty(
-                icon: "doc.badge.plus",
-                title: "No checklist items yet",
-                message: "Items appear once the listing and roommate profiles are synced."
-              )
-            } else {
-              ForEach(checklist) { item in
-                AdvisorApplicationRow(listingID: listingID, item: item)
-              }
-            }
-          }
-
-          VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(
-              title: "Listing change history",
-              trailing: appModel.advisorError != nil
-                ? "Unavailable"
-                : history.isEmpty ? "No changes" : "\(history.count)"
-            )
-            if appModel.advisorError != nil {
-              Text("Listing history could not be loaded.")
-                .font(.caption)
-                .foregroundStyle(HomeboardPalette.secondaryText)
-            } else if history.isEmpty {
-              SharedInlineEmpty(
-                icon: "clock.arrow.circlepath",
-                title: "No recorded changes",
-                message: "Run Check listing again to compare price, fees, availability, and status."
-              )
-            } else {
-              ForEach(history) { change in
-                VStack(alignment: .leading, spacing: 7) {
-                  Text(change.explanation)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(HomeboardPalette.primaryText)
-                  Text("\(change.beforeValue?.advisorDisplayText ?? "Not recorded") → \(change.afterValue?.advisorDisplayText ?? "Not recorded")")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(HomeboardPalette.accent)
-                  Text(change.whyItMatters)
-                    .font(.caption)
-                    .foregroundStyle(HomeboardPalette.secondaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color.white.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-              }
-            }
-          }
-        }
-        .padding(18)
-        .padding(.bottom, 30)
-      }
-      .background(HomeboardPalette.background.ignoresSafeArea())
-      .navigationTitle("Advisor tools")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Done") { dismiss() }
-        }
-      }
-    }
-    .task(id: listingID) {
-      guard !listingID.isEmpty else { return }
-      await appModel.loadAdvisorListingTools(listingId: listingID)
-    }
-  }
-}
-
-private struct AdvisorInquiryEditor: View {
-  let listingID: String
-  let inquiry: ListingInquiry
-
-  @Environment(AppModel.self) private var appModel
-  @Environment(\.openURL) private var openURL
-  @State private var subject: String
-  @State private var messageBody: String
-  @State private var replyText: String
-  @State private var confirmsSent = false
-
-  init(listingID: String, inquiry: ListingInquiry) {
-    self.listingID = listingID
-    self.inquiry = inquiry
-    _subject = State(initialValue: inquiry.subject ?? "")
-    _messageBody = State(initialValue: inquiry.body ?? "")
-    _replyText = State(initialValue: inquiry.replyText ?? "")
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Text(inquiry.templateKey.replacingOccurrences(of: "_", with: " ").capitalized)
-          .font(.caption.weight(.bold))
-          .foregroundStyle(HomeboardPalette.accent)
-        Spacer()
-        Text(inquiry.status.capitalized)
-          .font(.caption2.weight(.bold))
-          .foregroundStyle(HomeboardPalette.secondaryText)
-      }
-
-      TextField("Subject", text: $subject)
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(HomeboardPalette.primaryText)
-        .padding(11)
-        .background(Color.white.opacity(0.055))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-      TextEditor(text: $messageBody)
-        .font(.subheadline)
-        .foregroundStyle(HomeboardPalette.primaryText)
-        .scrollContentBackground(.hidden)
-        .frame(minHeight: 150)
-        .padding(9)
-        .background(Color.white.opacity(0.055))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-      HStack(spacing: 8) {
-        Button("Save draft") {
-          Task {
-            await appModel.updateInquiry(
-              listingId: listingID,
-              inquiry: inquiry,
-              status: "drafted",
-              subject: subject,
-              body: messageBody
-            )
-          }
-        }
-        .advisorSecondaryButton()
-
-        Button("Open in Mail") {
-          if let url = mailtoURL { openURL(url) }
-        }
-        .advisorSecondaryButton()
-
-        Button("Review & mark sent") { confirmsSent = true }
-          .advisorPrimaryButton()
-      }
-      .disabled(subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-      Divider().overlay(Color.white.opacity(0.08))
-
-      Text("Paste the agent reply")
-        .font(.caption.weight(.bold))
-        .foregroundStyle(HomeboardPalette.secondaryText)
-      TextEditor(text: $replyText)
-        .font(.caption)
-        .foregroundStyle(HomeboardPalette.primaryText)
-        .scrollContentBackground(.hidden)
-        .frame(minHeight: 86)
-        .padding(9)
-        .background(Color.white.opacity(0.045))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-      Button("Parse availability, fees, tours, and next steps") {
-        Task {
-          await appModel.updateInquiry(
-            listingId: listingID,
-            inquiry: inquiry,
-            status: "answered",
-            subject: subject,
-            body: messageBody,
-            replyText: replyText
-          )
-        }
-      }
-      .advisorSecondaryButton()
-      .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-      if let facts = inquiry.replyFacts {
-        AdvisorReplyFactsView(facts: facts)
-      }
-    }
-    .padding(13)
-    .sharedSurface(cornerRadius: 17)
-    .confirmationDialog(
-      "Confirm you reviewed this message",
-      isPresented: $confirmsSent,
-      titleVisibility: .visible
-    ) {
-      Button("I reviewed it - mark sent") {
-        Task {
-          await appModel.updateInquiry(
-            listingId: listingID,
-            inquiry: inquiry,
-            status: "sent",
-            subject: subject,
-            body: messageBody,
-            reviewConfirmed: true
-          )
-        }
-      }
-      Button("Keep editing", role: .cancel) {}
-    } message: {
-      Text("Homeboard does not send this message. Only confirm after you reviewed the facts and sent it yourself.")
-    }
-  }
-
-  private var mailtoURL: URL? {
-    var components = URLComponents()
-    components.scheme = "mailto"
-    components.queryItems = [
-      URLQueryItem(name: "subject", value: subject),
-      URLQueryItem(name: "body", value: messageBody),
-    ]
-    return components.url
-  }
-}
-
-private struct AdvisorApplicationRow: View {
-  let listingID: String
-  let item: ApplicationChecklistEntry
-
-  @Environment(AppModel.self) private var appModel
-
-  var body: some View {
-    HStack(spacing: 10) {
-      Image(systemName: item.status == "missing" ? "circle" : "checkmark.circle.fill")
-        .foregroundStyle(item.status == "missing" ? HomeboardPalette.danger : HomeboardPalette.success)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(item.label)
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(HomeboardPalette.primaryText)
-        if let detail = item.detail, !detail.isEmpty {
-          Text(detail)
-            .font(.caption)
-            .foregroundStyle(HomeboardPalette.secondaryText)
-        }
-      }
-      Spacer(minLength: 6)
-      Menu(item.status.capitalized) {
-        ForEach(["missing", "ready", "submitted", "waived"], id: \.self) { status in
-          Button(status.capitalized) {
-            Task { await appModel.updateApplicationItem(listingId: listingID, item: item, status: status) }
-          }
-        }
-      }
-      .font(.caption.weight(.bold))
-      .foregroundStyle(HomeboardPalette.accent)
-    }
-    .padding(12)
-    .background(Color.white.opacity(0.05))
-    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-  }
-}
-
-private struct AdvisorTourNoteSummaryView: View {
-  let summary: TourNoteSummary
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      advisorList("Pros", summary.pros, color: HomeboardPalette.success)
-      advisorList("Cons", summary.cons, color: Color.orange)
-      advisorList("Concerns", summary.concerns, color: HomeboardPalette.danger)
-      advisorList("Follow-ups", summary.followUps, color: HomeboardPalette.accent)
-    }
-    .padding(12)
-    .background(Color.white.opacity(0.05))
-    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-  }
-
-  @ViewBuilder
-  private func advisorList(_ title: String, _ values: [String], color: Color) -> some View {
-    if !values.isEmpty {
-      Text(title)
-        .font(.caption.weight(.bold))
-        .foregroundStyle(color)
-      ForEach(values, id: \.self) { value in
-        Text("• \(value)")
-          .font(.caption)
-          .foregroundStyle(HomeboardPalette.secondaryText)
-      }
-    }
-  }
-}
-
-private struct AdvisorReplyFactsView: View {
-  let facts: AgentReplyFacts
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
-      if let availability = facts.availability {
-        Text("Availability: \(availability)")
-      }
-      ForEach(facts.fees, id: \.self) { Text("Fee: \($0)") }
-      ForEach(facts.tourTimes, id: \.self) { Text("Tour: \($0)") }
-      ForEach(facts.requirements, id: \.self) { Text("Requirement: \($0)") }
-      ForEach(facts.nextSteps, id: \.self) { Text("Next: \($0)") }
-      ForEach(facts.unansweredQuestions, id: \.self) { Text("Open question: \($0)") }
-    }
-    .font(.caption)
-    .foregroundStyle(HomeboardPalette.secondaryText)
-  }
-}
-
-private extension CodableValue {
-  var advisorDisplayText: String {
-    switch self {
-    case .string(let value): value
-    case .number(let value): value.rounded() == value ? String(Int(value)) : String(value)
-    case .bool(let value): value ? "Yes" : "No"
-    case .object(let value): value.keys.sorted().map { "\($0): \(value[$0]?.advisorDisplayText ?? "")" }.joined(separator: ", ")
-    case .array(let value): value.map(\.advisorDisplayText).joined(separator: ", ")
-    case .null: "Not recorded"
-    }
-  }
-}
-
-private extension View {
-  func advisorPrimaryButton() -> some View {
-    self
-      .font(.caption.weight(.bold))
-      .foregroundStyle(Color.black)
-      .padding(.horizontal, 9)
-      .frame(minHeight: 38)
-      .background(HomeboardPalette.accent)
-      .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-      .buttonStyle(HomeboardAreaButtonStyle())
-  }
-
-  func advisorSecondaryButton() -> some View {
-    self
-      .font(.caption.weight(.bold))
-      .foregroundStyle(HomeboardPalette.primaryText)
-      .padding(.horizontal, 9)
-      .frame(minHeight: 38)
-      .background(Color.white.opacity(0.07))
-      .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-      .buttonStyle(HomeboardAreaButtonStyle())
-  }
-}
 
 private struct SharedSafariDestination: Identifiable {
   let id = UUID()
@@ -9273,10 +8613,11 @@ struct AddSharedListingSheet: View {
   }
 
   private var hasRequiredFacts: Bool {
-    !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && numericValue(price) != nil
-      && Double(bedrooms) != nil
-      && Double(bathrooms) != nil
+    let hasAddress = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    let isBuildingReference = (initialImport?.listingScope ?? importPreview?.scope)?.lowercased() == "building"
+      && unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    return hasAddress && (isBuildingReference
+      || (numericValue(price) != nil && Double(bedrooms) != nil && Double(bathrooms) != nil))
   }
 
   var body: some View {
@@ -9448,6 +8789,11 @@ struct AddSharedListingSheet: View {
                 summary: summary,
                 fitLabel: "Group contender",
                 sourceURL: sourceURL,
+                listingScope: (initialImport?.listingScope ?? importPreview?.scope) == "building"
+                  ? "building"
+                  : "unit",
+                partialUnitParsing: initialImport?.partialUnitParsing == true
+                  || (initialImport?.listingScope ?? importPreview?.scope) == "building",
                 groupNote: note,
                 photoURL: photoURL,
                 unit: unit,
@@ -9487,7 +8833,11 @@ struct AddSharedListingSheet: View {
           .opacity(hasRequiredFacts ? 1 : 0.55)
 
           if !hasRequiredFacts {
-            Text("An address, rent, bedroom count, and bathroom count are required before this listing can be saved.")
+            Text(
+              (initialImport?.listingScope ?? importPreview?.scope) == "building"
+                ? "Add the building address before saving this source. Unit details can remain partial."
+                : "An address, rent, bedroom count, and bathroom count are required before this listing can be saved."
+            )
               .font(.caption)
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
@@ -12100,147 +11450,5 @@ private extension View {
       RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         .stroke(HomeboardPalette.border, lineWidth: 1)
     }
-  }
-}
-
-// ──────────────────────────────────────────────────
-// MARK: - Scout Crowdfunder Banner
-// ──────────────────────────────────────────────────
-
-private struct ScoutBannerView: View {
-  let subscription: ScoutSubscription?
-  @Environment(AppModel.self) private var appModel
-  @State private var isWorking = false
-
-  private var currentUserID: String? {
-    appModel.authSession?.userId ?? appModel.account?.id
-  }
-
-  private var currentContribution: ScoutContribution? {
-    subscription?.contribution(for: currentUserID)
-  }
-
-  private var actionTitle: String {
-    guard let subscription else { return "Start split" }
-    if subscription.isActive { return "Scan now" }
-    if subscription.isExpired || subscription.isPaused { return "Renew" }
-    if subscription.isPending {
-      if currentContribution?.status == "paid" {
-        return subscription.remainingCents > 0
-          ? "Cover rest \(subscription.formatted(cents: subscription.remainingCents))"
-          : "Activating…"
-      }
-      let share = currentContribution?.amountCents ?? subscription.amountCents
-      return "Fund \(subscription.formatted(cents: share)) share"
-    }
-    return "Start split"
-  }
-
-  private func performAction() async {
-    guard let boardId = appModel.board.id else { return }
-    isWorking = true
-    defer { isWorking = false }
-
-    if subscription?.isActive == true {
-      await appModel.triggerScoutScan(boardId: boardId)
-    } else if subscription?.isPending == true {
-      let coverRemaining = currentContribution?.status == "paid"
-      _ = await appModel.fundAdvisor(boardId: boardId, coverRemaining: coverRemaining)
-    } else {
-      _ = await appModel.startAdvisorSplit(boardId: boardId)
-    }
-  }
-
-  var body: some View {
-    let isActive = subscription?.isActive == true
-    let isPending = subscription?.isPending == true
-    let isExpired = subscription?.isExpired == true || subscription?.isPaused == true
-    let isDemoEntitlement = subscription?.id.hasPrefix("demo-advisor-") == true
-
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .top, spacing: 10) {
-        VStack(alignment: .leading, spacing: 3) {
-          HStack(spacing: 6) {
-            if isActive {
-              Image(systemName: "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(HomeboardPalette.accent)
-            }
-            Text(isActive ? "Advisor on" : isExpired ? "Advisor paused" : "Homeboard Advisor")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(HomeboardPalette.primaryText)
-            Spacer()
-            Button {
-              Task { await performAction() }
-            } label: {
-              Text(isWorking ? (isActive ? "Scanning…" : "Working…") : actionTitle)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(isActive ? HomeboardPalette.accent : HomeboardPalette.primaryText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(isActive ? HomeboardPalette.accent.opacity(0.1) : Color.white.opacity(0.08))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(isActive ? HomeboardPalette.accent.opacity(0.5) : HomeboardPalette.border, lineWidth: 1))
-            }
-            .buttonStyle(HomeboardAreaButtonStyle())
-            .disabled(isWorking || (isPending && currentContribution?.status == "paid" && subscription?.remainingCents == 0))
-          }
-
-          Group {
-            if isActive, let sub = subscription {
-              Text(isDemoEntitlement
-                ? "Included with this demo board"
-                : "\(sub.daysRemaining) day\(sub.daysRemaining == 1 ? "" : "s") left")
-            } else if isExpired {
-              Text("Your previous pass ended. Renew when the group wants another seven days.")
-            } else if isPending, let sub = subscription {
-              let pct = Int(sub.fundedPercent * 100)
-              if currentContribution?.status == "paid" {
-                Text("Your share is funded · \(pct)% complete · waiting on the group")
-              } else {
-                let share = currentContribution?.amountCents ?? sub.amountCents
-                Text("Split in progress · \(pct)% funded · your share \(sub.formatted(cents: share))")
-              }
-            } else {
-              Text("Scheduled listing checks, grounded change alerts, and review-first outreach drafts: split $4.99/week.")
-            }
-          }
-          .font(.caption)
-          .foregroundStyle(HomeboardPalette.secondaryText)
-          .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-
-      if isPending, let sub = subscription {
-        GeometryReader { geo in
-          ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-              .fill(Color.white.opacity(0.08))
-              .frame(height: 4)
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-              .fill(HomeboardPalette.accent)
-              .frame(width: geo.size.width * sub.fundedPercent, height: 4)
-          }
-        }
-        .frame(height: 4)
-      }
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 11)
-    .background(
-      isActive
-        ? HomeboardPalette.surface.opacity(0.72)
-        : Color.white.opacity(0.025)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .stroke(
-          isActive
-            ? HomeboardPalette.border
-            : Color.white.opacity(0.1),
-          lineWidth: 1
-        )
-    )
-    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 }

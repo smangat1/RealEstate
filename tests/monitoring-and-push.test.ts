@@ -59,7 +59,6 @@ test("API failures and build versions are visible without exposing secrets", () 
   const config = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
   const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
   const settings = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
-  const webBoard = read("components/board-experience.tsx");
 
   assert.match(health, /apiVersion: API_VERSION/);
   assert.match(health, /serverCommit: getServerCommit\(\)/);
@@ -72,15 +71,10 @@ test("API failures and build versions are visible without exposing secrets", () 
   assert.match(api, /String\(compactBody\.prefix\(240\)\)/);
   assert.match(api, /func fetchHealth/);
   assert.match(config, /static var appCommit/);
-  assert.match(appModel, /var advisorError: String\?/);
   assert.match(appModel, /func refreshVersionInfo/);
   assert.match(settings, /title: "Build information"/);
   assert.match(settings, /App commit:/);
   assert.match(settings, /API version unavailable:/);
-  assert.match(settings, /title: "Advisor API unavailable"/);
-  assert.match(webBoard, /async function readAdvisorAPIResponse/);
-  assert.match(webBoard, /status \$\{response\.status\} · content type \$\{contentType\} · body \$\{excerpt\}/);
-  assert.match(webBoard, /advisorLoadError/);
 });
 
 test("settings sends authenticated bug reports and returns a tracking receipt", () => {

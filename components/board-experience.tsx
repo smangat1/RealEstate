@@ -23,15 +23,7 @@ import type {
   BoardListingRecord,
   BoardListingVoteRecord,
   BoardPageData,
-  BoardSubscriptionRecord,
 } from "@/lib/types";
-import type {
-  AdvisorActionCommand,
-  AdvisorActionRecord,
-  ApplicationChecklistItemRecord,
-  ListingChangeRecord,
-  ListingInquiryRecord,
-} from "@/lib/advisor-types";
 
 type BoardExperienceProps = {
   currentUser: AuthUserRecord | null;
@@ -86,38 +78,6 @@ function formatCommuteModeHelp(mode: BoardPageData["commuteMode"]) {
     return "Demo mode is using staged commute values instead of live routing calls.";
   }
   return "Add OPENROUTESERVICE_API_KEY to turn live commute timing on for this workspace.";
-}
-
-async function readAdvisorAPIResponse<T>(response: Response): Promise<T> {
-  const contentType = response.headers.get("content-type") ?? "unknown";
-  const body = await response.text();
-  const excerpt = body.replace(/\s+/g, " ").trim().slice(0, 240) || "<empty>";
-  let decoded: unknown = null;
-  try {
-    decoded = body ? JSON.parse(body) : null;
-  } catch {
-    decoded = null;
-  }
-  const endpoint = (() => {
-    try {
-      const url = new URL(response.url);
-      return url.pathname;
-    } catch {
-      return response.url || "unknown endpoint";
-    }
-  })();
-  const detail = `Endpoint ${endpoint} · status ${response.status} · content type ${contentType} · body ${excerpt}`;
-  if (!response.ok) {
-    const message = decoded && typeof decoded === "object" && !Array.isArray(decoded)
-      && typeof (decoded as { error?: unknown }).error === "string"
-      ? (decoded as { error: string }).error
-      : "Advisor API request failed.";
-    throw new Error(`${message} ${detail}`);
-  }
-  if (decoded === null) {
-    throw new Error(`Advisor API returned an unreadable response. ${detail}`);
-  }
-  return decoded as T;
 }
 
 function formatBudgetRange(profile: BoardPageData["profile"]) {
@@ -478,8 +438,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
     });
   }, [data.boardListings, data.listingVotesByBoardListingId, shortlistStatusFilter, sortMode, voteFilter]);
-  const isDemoMode = data.isDemoMode;
-  const currentRoommateId = data.roommates.find((roommate) => roommate.linkedUserId === currentUser?.id)?.id ?? data.roommates[0]?.id ?? "";
   const shortlistCountLabel = shortlistItems.length === 1 ? "1 active listing" : `${shortlistItems.length} active listings`;
   const focusedListing = useMemo(() => {
     return (
@@ -526,13 +484,7 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
   useEffect(() => {
     setLocalMessages(data.messages);
   }, [data.messages]);
-  const recentMessages = localMessages.slice(-12);
-  const [advisorActions, setAdvisorActions] = useState(data.advisorActions);
-  const [workingAdvisorActionId, setWorkingAdvisorActionId] = useState<string | null>(null);
-  const [advisorFeedback, setAdvisorFeedback] = useState<string | null>(null);
-  useEffect(() => {
-    setAdvisorActions(data.advisorActions);
-  }, [data.advisorActions]);
+  const recentMessages = localMessages.filter((message) => message.role === "user").slice(-12);
   const readinessLabel =
     membersNeedingSetup.length === 0
       ? "Group-ready"
@@ -711,65 +663,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
       return;
     }
     chatInputRef.current?.focus();
-  }
-
-  async function updateAdvisorAction(actionId: string, status: "completed" | "dismissed") {
-    const response = await fetch(`/api/mobile/boards/${data.board.id}/advisor/actions`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actionId, status }),
-    });
-    await readAdvisorAPIResponse(response);
-    setAdvisorActions((current) => current.filter((action) => action.id !== actionId));
-  }
-
-  async function runAdvisorCommand(action: AdvisorActionRecord, command: AdvisorActionCommand) {
-    const listingId = command.payload.listingId || action.listingId;
-    const boardListingId = command.payload.boardListingId || action.boardListingId;
-    if (command.type === "open_source") {
-      const url = command.payload.url;
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      return;
-    }
-    if (["open_listing", "review_inquiry", "review_follow_up", "review_reply", "open_application_checklist"].includes(command.type)) {
-      if (boardListingId) setFocusedListingId(boardListingId);
-      return;
-    }
-    if (command.type === "dismiss") {
-      await updateAdvisorAction(action.id, "dismissed");
-      return;
-    }
-    if (command.type === "archive_listing") {
-      if (!listingId || !window.confirm("Archive this listing for the whole board? Its shared history will remain recoverable.")) return;
-      const response = await fetch(`/api/mobile/boards/${data.board.id}/listings/${listingId}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Unable to archive this listing.");
-      await updateAdvisorAction(action.id, "completed");
-      router.refresh();
-      return;
-    }
-    if (command.type === "check_listing") {
-      if (!listingId) return;
-      const response = await fetch(`/api/mobile/boards/${data.board.id}/listings/${listingId}/advisor/check`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const result = await readAdvisorAPIResponse<{ message?: string }>(response);
-      setAdvisorFeedback(result?.message ?? "Listing checked.");
-      router.refresh();
-    }
-  }
-
-  async function handleAdvisorCommand(action: AdvisorActionRecord, command: AdvisorActionCommand) {
-    setWorkingAdvisorActionId(action.id);
-    setAdvisorFeedback(null);
-    try {
-      await runAdvisorCommand(action, command);
-    } catch (commandError) {
-      setAdvisorFeedback(commandError instanceof Error ? commandError.message : "Unable to run this Advisor action.");
-    } finally {
-      setWorkingAdvisorActionId(null);
-    }
   }
 
   return (
@@ -1219,6 +1112,8 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                 ) : (
                   <p>Nothing is on the shortlist yet. Import an exact listing link so the group can react to a real source.</p>
                 )}
+
+
                 {data.recentlyDeletedBoardListings.length > 0 ? (
                   <div
                     className="recently-deleted-box"
@@ -1340,9 +1235,9 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
 
                 <div className="board-home-chat-preview" ref={chatThreadRef}>
                   {recentMessages.map((message) => (
-                    <article key={message.id} className={`modern-message ${message.role === "user" ? "user" : "assistant"}`}>
+                    <article key={message.id} className="modern-message user">
                       <div className="message-body" style={{ width: "100%" }}>
-                        <span className="message-role">{message.authorName ?? (message.role === "user" ? "Board member" : "Advisor")}</span>
+                        <span className="message-role">{message.authorName ?? "Board member"}</span>
                         <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
                       </div>
                     </article>
@@ -1355,11 +1250,11 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
                     onChange={(event) => setChatInput(event.target.value)}
                     onKeyDown={handleChatKeyDown}
                     rows={3}
-                    placeholder="Message roommates, or start with @Advisor..."
+                    placeholder="Message your roommates..."
                   />
                   <div className="chat-input-footer">
                     <div className="chat-hints">
-                      <span>Messages stay roommate-to-roommate unless someone explicitly calls @Advisor.</span>
+                      <span>Roommates only.</span>
                     </div>
                     <button type="button" onClick={() => submitChat()} disabled={isPending}>
                       {isPending ? "Updating..." : "Send"}
@@ -1525,12 +1420,6 @@ export function BoardExperience({ currentUser, data, recentBoards, notice = null
           commute={data.boardListingCommutesByBoardListingId[focusedListing.id]}
           votes={data.listingVotesByBoardListingId[focusedListing.id] ?? []}
           comments={data.listingCommentsByBoardListingId[focusedListing.id] ?? []}
-          inquiries={data.listingInquiriesByBoardListingId?.[focusedListing.id] ?? []}
-          advisorActions={advisorActions.filter((action) => action.boardListingId === focusedListing.id)}
-          advisorFeedback={advisorFeedback}
-          advisorWorkingActionId={workingAdvisorActionId}
-          onAdvisorCommand={(action, command) => void handleAdvisorCommand(action, command)}
-          onAdvisorDone={(action) => void updateAdvisorAction(action.id, "completed")}
           onClose={() => setFocusedListingId(null)}
         />
       ) : null}
@@ -1577,375 +1466,12 @@ function CommentFeed({ comments }: { comments: BoardListingCommentRecord[] }) {
   );
 }
 
-function ScoutBanner({
-  boardId,
-  currentUserId,
-  subscription,
-}: {
-  boardId: string;
-  currentUserId: string | null;
-  subscription: BoardSubscriptionRecord | null;
-}) {
-  const [liveSubscription, setLiveSubscription] = useState<BoardSubscriptionRecord | null>(subscription);
-  const [isWorking, setIsWorking] = useState(false);
-  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-
-  useEffect(() => {
-    setLiveSubscription(subscription);
-  }, [subscription]);
-
-  const isActive = liveSubscription?.status === "active";
-  const isPending = liveSubscription?.status === "pending_split";
-  const isExpired = liveSubscription?.status === "expired" || liveSubscription?.status === "paused";
-  const isDemoEntitlement = liveSubscription?.id.startsWith("demo-advisor-") ?? false;
-  const fundedPct = liveSubscription && liveSubscription.targetCents > 0
-    ? Math.min(100, Math.round((liveSubscription.fundedCents / liveSubscription.targetCents) * 100))
-    : 0;
-  const currentContribution = liveSubscription?.contributions.find((entry) => entry.userId === currentUserId) ?? null;
-  const currentSharePaid = currentContribution?.status === "paid";
-  const remainingCents = liveSubscription
-    ? Math.max(0, liveSubscription.targetCents - liveSubscription.fundedCents)
-    : 0;
-
-  function formatCents(value: number) {
-    return `$${(value / 100).toFixed(2)}`;
-  }
-
-  async function handleTriggerScan() {
-    setIsWorking(true);
-    setFeedback(null);
-    try {
-      const res = await fetch(`/api/mobile/boards/${boardId}/scout/scan`, {
-        method: "POST",
-      });
-      const data = await readAdvisorAPIResponse<{ message?: string }>(res);
-      setFeedback({ tone: "success", message: data.message ?? "Advisor scan complete." });
-      setTimeout(() => {
-        window.location.reload();
-      }, 1200);
-    } catch (error) {
-      setFeedback({
-        tone: "error",
-        message: error instanceof Error ? error.message : "Unable to run an Advisor scan.",
-      });
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
-  async function handleSubscriptionAction() {
-    if (!currentUserId) {
-      setFeedback({ tone: "error", message: "Sign in to manage Advisor for this board." });
-      return;
-    }
-
-    setIsWorking(true);
-    setFeedback(null);
-    try {
-      const isContribution = isPending;
-      const response = await fetch(
-        isContribution
-          ? `/api/mobile/boards/${boardId}/subscription/contribute`
-          : `/api/mobile/boards/${boardId}/subscription`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            isContribution
-              ? { action: currentSharePaid ? "cover" : "contribute", paymentMethod: "web" }
-              : {},
-          ),
-        },
-      );
-      const result = await readAdvisorAPIResponse<{
-        subscription?: BoardSubscriptionRecord;
-      }>(response);
-      if (!result.subscription) {
-        throw new Error("Advisor API returned no subscription data.");
-      }
-
-      setLiveSubscription(result.subscription);
-      setFeedback({
-        tone: "success",
-        message: result.subscription.status === "active"
-          ? "Advisor is active for the next seven days."
-          : isContribution
-            ? "Your share is funded."
-            : "Split started. Fund your share when you’re ready.",
-      });
-    } catch (error) {
-      setFeedback({
-        tone: "error",
-        message: error instanceof Error ? error.message : "Unable to update Advisor.",
-      });
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
-  const actionLabel = isActive
-    ? isWorking ? "Scanning…" : "Scan now"
-    : isWorking
-      ? "Working…"
-      : isPending
-        ? currentSharePaid
-          ? remainingCents > 0 ? `Cover rest ${formatCents(remainingCents)}` : "Activating…"
-          : `Fund ${formatCents(currentContribution?.amountCents ?? liveSubscription?.amountCents ?? 499)} share`
-        : isExpired
-          ? "Renew"
-          : "Start split";
-
-  return (
-    <div
-      style={{
-        marginTop: "20px",
-        padding: "16px 18px",
-        borderRadius: "14px",
-        border: isActive
-          ? "1px solid rgba(255, 255, 255, 0.1)"
-          : "1px dashed rgba(255, 255, 255, 0.13)",
-        background: isActive
-          ? "rgba(255, 255, 255, 0.035)"
-          : "rgba(255, 255, 255, 0.025)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-          gap: "8px",
-        }}
-      >
-        <div>
-          <strong style={{ fontSize: "0.92rem" }}>
-            {isActive ? "Advisor on" : isExpired ? "Advisor paused" : "Homeboard Advisor"}
-          </strong>
-          <p style={{ margin: "3px 0 0 0", fontSize: "0.78rem", opacity: 0.75 }}>
-            {isActive
-              ? isDemoEntitlement
-                ? "Included with this demo board"
-                : `${liveSubscription?.daysRemaining ?? 0} day${liveSubscription?.daysRemaining === 1 ? "" : "s"} left`
-              : isExpired
-              ? "Your previous pass ended. Renew when the group wants another seven days."
-              : isPending
-              ? currentSharePaid
-                ? `Your share is funded · ${fundedPct}% complete · waiting on the group`
-                : `Split in progress · ${fundedPct}% funded · your share ${formatCents(currentContribution?.amountCents ?? liveSubscription?.amountCents ?? 499)}`
-              : "Scheduled listing checks, grounded change alerts, and review-first outreach drafts: split $4.99/week across the group."}
-          </p>
-          {isPending && liveSubscription && (
-            <div
-              style={{
-                marginTop: "8px",
-                height: "4px",
-                borderRadius: "4px",
-                background: "rgba(255,255,255,0.1)",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  height: "100%",
-                  width: `${fundedPct}%`,
-                  borderRadius: "4px",
-                  background: "var(--accent)",
-                  transition: "width 0.4s",
-                }}
-              />
-            </div>
-          )}
-          {feedback && (
-            <p style={{ margin: "6px 0 0 0", fontSize: "0.76rem", color: feedback.tone === "error" ? "#fc8181" : "#68d391", fontWeight: 600 }}>
-              {feedback.message}
-            </p>
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void (isActive ? handleTriggerScan() : handleSubscriptionAction())}
-            disabled={isWorking || (isPending && currentSharePaid && remainingCents === 0)}
-            style={{
-              fontSize: "0.78rem",
-              padding: "6px 12px",
-              borderRadius: "8px",
-              cursor: isWorking ? "default" : "pointer",
-              border: isActive ? "1px solid rgba(99, 179, 237, 0.5)" : "1px solid rgba(255,255,255,0.2)",
-              background: isActive ? "rgba(99, 179, 237, 0.1)" : "rgba(255,255,255,0.05)",
-              color: isActive ? "#63b3ed" : "inherit",
-              fontWeight: 600,
-            }}
-          >
-            {actionLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AdvisorActionCard({
-  action,
-  working,
-  onCommand,
-  onDone,
-}: {
-  action: AdvisorActionRecord;
-  working: boolean;
-  onCommand: (command: AdvisorActionCommand) => void;
-  onDone: () => void;
-}) {
-  const tone = action.priority === "critical"
-    ? "#ff7a7e"
-    : action.priority === "high"
-      ? "#f6c177"
-      : "var(--accent)";
-  return (
-    <article style={{ padding: "15px", borderRadius: "14px", border: `1px solid ${tone}55`, background: "rgba(255,255,255,0.035)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "flex-start" }}>
-        <div>
-          <span style={{ color: tone, fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            {action.kind.replaceAll("_", " ")} · {action.priority}
-          </span>
-          <h3 style={{ margin: "4px 0 6px", fontSize: "1rem" }}>{action.title}</h3>
-        </div>
-        <button type="button" className="secondary-button" disabled={working} onClick={onDone} style={{ padding: "4px 8px", fontSize: "0.72rem" }}>
-          Done
-        </button>
-      </div>
-      <p style={{ margin: "0 0 7px" }}>{action.summary}</p>
-      <p className="mini-meta" style={{ margin: "0 0 10px" }}><strong>Why it matters:</strong> {action.whyItMatters}</p>
-      {action.facts.length > 0 ? (
-        <div className="detail-chip-wrap" style={{ marginBottom: "10px" }}>
-          {action.facts.slice(0, 8).map((fact) => (
-            <span key={fact.key} className="saved-pill">{fact.label}: {fact.value}</span>
-          ))}
-        </div>
-      ) : null}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-        <button type="button" className="primary-sidebar-button" disabled={working} onClick={() => onCommand(action.primaryAction)}>
-          {working ? "Working…" : action.primaryAction.label}
-        </button>
-        {action.secondaryActions.map((command, index) => (
-          <button key={`${command.type}-${index}`} type="button" className="secondary-button" disabled={working} onClick={() => onCommand(command)}>
-            {command.label}
-          </button>
-        ))}
-        {action.sourceLinks.slice(0, 2).map((source) => (
-          <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="secondary-button">{source.label}</a>
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function InquiryEditor({
-  boardId,
-  listingId,
-  inquiry,
-  onChange,
-}: {
-  boardId: string;
-  listingId: string;
-  inquiry: ListingInquiryRecord;
-  onChange: (inquiry: ListingInquiryRecord) => void;
-}) {
-  const [subject, setSubject] = useState(inquiry.subject ?? "");
-  const [body, setBody] = useState(inquiry.body ?? "");
-  const [replyText, setReplyText] = useState(inquiry.replyText ?? "");
-  const [working, setWorking] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  async function save(status: ListingInquiryRecord["status"]) {
-    if (status === "sent" && !window.confirm("I reviewed this draft and confirm that I, not Homeboard, am sending it.")) return;
-    if (status === "answered" && !replyText.trim()) {
-      setFeedback("Paste the agent reply before marking this inquiry answered.");
-      return;
-    }
-    setWorking(true);
-    setFeedback(null);
-    try {
-      const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listingId}/outreach`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inquiryId: inquiry.id,
-          status,
-          subject,
-          body,
-          method: inquiry.method,
-          ...(status === "answered" ? { replyText } : {}),
-          ...(status === "sent" ? { reviewConfirmed: true } : {}),
-        }),
-      });
-      const result = await readAdvisorAPIResponse<{ inquiry?: ListingInquiryRecord }>(response);
-      if (!result.inquiry) throw new Error("Advisor API returned no inquiry data.");
-      onChange(result.inquiry);
-      setFeedback(status === "sent" ? "Marked sent after your review." : status === "answered" ? "Reply parsed into grounded fields." : "Draft saved.");
-    } catch (updateError) {
-      setFeedback(updateError instanceof Error ? updateError.message : "Unable to update inquiry.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return (
-    <article style={{ padding: "12px", borderRadius: "11px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-        <strong style={{ textTransform: "capitalize" }}>{inquiry.templateKey.replaceAll("_", " ")}</strong>
-        <span className="saved-pill">{inquiry.status}</span>
-      </div>
-      <label style={{ display: "grid", gap: "4px", marginTop: "8px" }}>
-        <span className="mini-meta">Subject</span>
-        <input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={300} />
-      </label>
-      <label style={{ display: "grid", gap: "4px", marginTop: "8px" }}>
-        <span className="mini-meta">Draft: review and edit before sending</span>
-        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} maxLength={8000} />
-      </label>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginTop: "8px" }}>
-        <button type="button" className="secondary-button" disabled={working} onClick={() => void save("drafted")}>Save draft</button>
-        <a className="secondary-button" href={mailto}>Open reviewed draft in Mail</a>
-        <button type="button" className="primary-sidebar-button" disabled={working} onClick={() => void save("sent")}>Mark sent</button>
-      </div>
-      {inquiry.status !== "drafted" ? (
-        <label style={{ display: "grid", gap: "4px", marginTop: "10px" }}>
-          <span className="mini-meta">Agent reply</span>
-          <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} rows={4} placeholder="Paste the agent's reply to extract availability, fees, tours, requirements, and next steps." />
-          <button type="button" className="secondary-button" disabled={working || !replyText.trim()} onClick={() => void save("answered")}>Parse reply and mark answered</button>
-        </label>
-      ) : null}
-      {inquiry.replyFacts ? (
-        <div className="detail-chip-wrap" style={{ marginTop: "8px" }}>
-          {inquiry.replyFacts.availability ? <span className="saved-pill">Availability: {inquiry.replyFacts.availability}</span> : null}
-          {inquiry.replyFacts.fees.map((value) => <span key={value} className="saved-pill">Fee: {value}</span>)}
-          {inquiry.replyFacts.tourTimes.map((value) => <span key={value} className="saved-pill">Tour: {value}</span>)}
-          {inquiry.replyFacts.requirements.map((value) => <span key={value} className="saved-pill">Requirement: {value}</span>)}
-          {inquiry.replyFacts.nextSteps.map((value) => <span key={value} className="saved-pill">Next: {value}</span>)}
-        </div>
-      ) : null}
-      {feedback ? <p className="settings-help-copy">{feedback}</p> : null}
-    </article>
-  );
-}
-
 function ListingDetailModal({
   boardId,
   boardListing,
   commute,
   votes,
   comments,
-  inquiries,
-  advisorActions,
-  advisorFeedback,
-  advisorWorkingActionId,
-  onAdvisorCommand,
-  onAdvisorDone,
   onClose,
 }: {
   boardId: string;
@@ -1953,105 +1479,11 @@ function ListingDetailModal({
   commute: BoardPageData["boardListingCommutesByBoardListingId"][string] | undefined;
   votes: BoardListingVoteRecord[];
   comments: BoardListingCommentRecord[];
-  inquiries: ListingInquiryRecord[];
-  advisorActions: AdvisorActionRecord[];
-  advisorFeedback: string | null;
-  advisorWorkingActionId: string | null;
-  onAdvisorCommand: (action: AdvisorActionRecord, command: AdvisorActionCommand) => void;
-  onAdvisorDone: (action: AdvisorActionRecord) => void;
   onClose: () => void;
 }) {
   const listing = boardListing.listing;
   const headline = [listing.neighborhood, listing.city].filter(Boolean).join(", ") || listing.address || "Untitled listing";
   const feeEntries = Object.entries(listing.fees ?? {}).filter(([, value]) => value !== null && value !== "");
-  const [localInquiries, setLocalInquiries] = useState(inquiries);
-  const [history, setHistory] = useState<ListingChangeRecord[]>([]);
-  const [checklist, setChecklist] = useState<ApplicationChecklistItemRecord[]>([]);
-  const [tourNote, setTourNote] = useState("");
-  const [advisorToolFeedback, setAdvisorToolFeedback] = useState<string | null>(null);
-  const [advisorLoadError, setAdvisorLoadError] = useState<string | null>(null);
-  const [advisorToolWorking, setAdvisorToolWorking] = useState(false);
-  const [showsAdvisorTools, setShowsAdvisorTools] = useState(false);
-  const [localAdvisorActions, setLocalAdvisorActions] = useState(advisorActions);
-
-  useEffect(() => {
-    if (!showsAdvisorTools) return;
-    const base = `/api/mobile/boards/${boardId}/listings/${listing.id}/advisor`;
-    void Promise.all([
-      fetch(`${base}/history`).then((response) => readAdvisorAPIResponse<{ changes?: ListingChangeRecord[] }>(response)),
-      fetch(`${base}/application`).then((response) => readAdvisorAPIResponse<{ items?: ApplicationChecklistItemRecord[] }>(response)),
-      fetch(`/api/mobile/boards/${boardId}/advisor/actions?boardListingId=${encodeURIComponent(boardListing.id)}`).then((response) => readAdvisorAPIResponse<{ actions?: AdvisorActionRecord[] }>(response)),
-      fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/outreach`).then((response) => readAdvisorAPIResponse<{ inquiries?: ListingInquiryRecord[] }>(response)),
-    ]).then(([historyResult, checklistResult, actionResult, inquiryResult]) => {
-      setHistory(historyResult.changes ?? []);
-      setChecklist(checklistResult.items ?? []);
-      setLocalAdvisorActions(actionResult.actions ?? []);
-      setLocalInquiries(inquiryResult.inquiries ?? []);
-      setAdvisorLoadError(null);
-    }).catch((loadError: unknown) => {
-      setAdvisorLoadError(loadError instanceof Error ? loadError.message : "Advisor API request failed.");
-    });
-  }, [boardId, boardListing.id, listing.id, showsAdvisorTools]);
-
-  async function createInquiry(templateKey: string) {
-    setAdvisorToolWorking(true);
-    setAdvisorToolFeedback(null);
-    try {
-      const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/outreach`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateKey }),
-      });
-      const result = await readAdvisorAPIResponse<{ inquiry?: ListingInquiryRecord }>(response);
-      if (!result.inquiry) throw new Error("Advisor API returned no inquiry data.");
-      setLocalInquiries((current) => [result.inquiry!, ...current]);
-      setAdvisorToolFeedback("Draft created from saved listing and profile facts. Review every word before sending.");
-    } catch (draftError) {
-      setAdvisorToolFeedback(draftError instanceof Error ? draftError.message : "Unable to create inquiry draft.");
-    } finally {
-      setAdvisorToolWorking(false);
-    }
-  }
-
-  async function saveTourNotes() {
-    const transcript = tourNote.trim();
-    if (!transcript) return;
-    setAdvisorToolWorking(true);
-    setAdvisorToolFeedback(null);
-    try {
-      const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/advisor/tour-notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript }),
-      });
-      const result = await readAdvisorAPIResponse<{ summary?: { pros: string[]; cons: string[]; concerns: string[]; followUps: string[] } }>(response);
-      setTourNote("");
-      setAdvisorToolFeedback(`Tour notes organized: ${result.summary?.pros.length ?? 0} pros, ${result.summary?.cons.length ?? 0} cons, and ${result.summary?.followUps.length ?? 0} follow-ups.`);
-    } catch (noteError) {
-      setAdvisorToolFeedback(noteError instanceof Error ? noteError.message : "Unable to organize tour notes.");
-    } finally {
-      setAdvisorToolWorking(false);
-    }
-  }
-
-  async function updateChecklistItem(item: ApplicationChecklistItemRecord, status: ApplicationChecklistItemRecord["status"]) {
-    const response = await fetch(`/api/mobile/boards/${boardId}/listings/${listing.id}/advisor/application`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId: item.id, status }),
-    });
-    try {
-      const result = await readAdvisorAPIResponse<{ item?: ApplicationChecklistItemRecord }>(response);
-      if (!result.item) {
-        setAdvisorToolFeedback("Advisor API returned no checklist item.");
-        return;
-      }
-      setChecklist((current) => current.map((entry) => entry.id === item.id ? result.item! : entry));
-    } catch (updateError) {
-      setAdvisorToolFeedback(updateError instanceof Error ? updateError.message : "Unable to update the application checklist.");
-      return;
-    }
-  }
 
 
   return (
@@ -2063,45 +1495,12 @@ function ListingDetailModal({
             <h2>{headline}</h2>
             <p>{listing.address ?? "Address still missing"}</p>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button type="button" className="secondary-button" onClick={() => setShowsAdvisorTools((current) => !current)}>
-              {showsAdvisorTools ? "Hide Advisor tools" : "Advisor tools"}
-            </button>
-            <button type="button" className="deck-close" onClick={onClose}>
-              Close
-            </button>
-          </div>
+          <button type="button" className="deck-close" onClick={onClose}>
+            Close
+          </button>
         </div>
 
         <div className="detail-modal-grid">
-          {showsAdvisorTools && advisorLoadError ? (
-            <div className="detail-panel" style={{ gridColumn: "1 / -1" }} role="alert">
-              <strong>Advisor API unavailable</strong>
-              <p className="mini-meta">{advisorLoadError}</p>
-            </div>
-          ) : null}
-          {showsAdvisorTools && advisorFeedback ? (
-            <div className="detail-panel" style={{ gridColumn: "1 / -1" }}>
-              <p className="mini-meta">{advisorFeedback}</p>
-            </div>
-          ) : null}
-          {showsAdvisorTools && localAdvisorActions.length > 0 ? (
-            <div className="detail-panel" style={{ gridColumn: "1 / -1", display: "grid", gap: "10px" }}>
-              <strong>Proactive Advisor actions</strong>
-              {localAdvisorActions.map((action) => (
-                <AdvisorActionCard
-                  key={action.id}
-                  action={action}
-                  working={advisorWorkingActionId === action.id}
-                  onCommand={(command) => onAdvisorCommand(action, command)}
-                  onDone={() => {
-                    setLocalAdvisorActions((current) => current.filter((entry) => entry.id !== action.id));
-                    onAdvisorDone(action);
-                  }}
-                />
-              ))}
-            </div>
-          ) : null}
           <div className="detail-panel">
             <strong>Snapshot</strong>
             <div className="compare-stat-list">
@@ -2172,103 +1571,6 @@ function ListingDetailModal({
             <strong>Listing note</strong>
             <p>{listing.description ?? "No description saved for this listing yet."}</p>
           </div>
-
-          {showsAdvisorTools ? (
-            <>
-          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
-            <strong>Agent outreach</strong>
-            <p className="mini-meta">Choose a grounded starting point. Drafts use only saved listing and profile facts and are never sent automatically.</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
-              {[
-                ["availability", "Check availability"],
-                ["tour_request", "Request a tour"],
-                ["fee_clarification", "Clarify fees"],
-                ["application_requirements", "Ask requirements"],
-              ].map(([key, label]) => (
-                <button key={key} type="button" className="secondary-button" disabled={advisorToolWorking} onClick={() => void createInquiry(key)}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            {localInquiries.map((inquiry) => (
-              <InquiryEditor
-                key={`${inquiry.id}-${inquiry.updatedAt}`}
-                boardId={boardId}
-                listingId={listing.id}
-                inquiry={inquiry}
-                onChange={(updated) => setLocalInquiries((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
-              />
-            ))}
-          </div>
-
-          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <strong>Listing change history</strong>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={advisorToolWorking}
-              onClick={() => onAdvisorCommand({
-                schemaVersion: 1,
-                id: `manual-check-${boardListing.id}`,
-                boardId,
-                boardListingId: boardListing.id,
-                listingId: listing.id,
-                kind: "listing_change",
-                status: "open",
-                priority: "medium",
-                title: "Manual listing check",
-                summary: "",
-                whyItMatters: "",
-                facts: [],
-                sourceLinks: [],
-                primaryAction: { type: "check_listing", label: "Check listing again", payload: { listingId: listing.id, boardListingId: boardListing.id }, requiresReview: false },
-                secondaryActions: [],
-                engine: "deterministic",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                completedAt: null,
-              }, { type: "check_listing", label: "Check listing again", payload: { listingId: listing.id, boardListingId: boardListing.id }, requiresReview: false })}
-            >
-              Check listing again
-            </button>
-            {history.length > 0 ? history.map((change) => (
-              <div key={change.id} style={{ padding: "9px", borderRadius: "9px", background: "rgba(255,255,255,0.04)" }}>
-                <strong style={{ fontSize: "0.8rem" }}>{change.explanation}</strong>
-                <p className="mini-meta" style={{ margin: "3px 0 0" }}>{change.whyItMatters}</p>
-              </div>
-            )) : advisorLoadError
-              ? <p className="mini-meta">Listing history could not be loaded.</p>
-              : <p className="mini-meta">No price, fee, availability, or status changes recorded yet.</p>}
-          </div>
-
-          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <strong>Application checklist</strong>
-            {checklist.length > 0 ? checklist.map((item) => (
-              <label key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", fontSize: "0.8rem" }}>
-                <span>{item.label}</span>
-                <select value={item.status} onChange={(event) => void updateChecklistItem(item, event.target.value as ApplicationChecklistItemRecord["status"])}>
-                  <option value="missing">Missing</option>
-                  <option value="ready">Ready</option>
-                  <option value="submitted">Submitted</option>
-                  <option value="waived">Waived</option>
-                </select>
-              </label>
-            )) : advisorLoadError
-              ? <p className="mini-meta">Application checklist data could not be loaded.</p>
-              : <p className="mini-meta">No checklist items are available yet.</p>}
-          </div>
-
-          <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "8px", gridColumn: "1 / -1" }}>
-            <strong>Tour notes</strong>
-            <p className="mini-meta">Paste or dictate your notes. Homeboard organizes only the words you provide into pros, cons, concerns, and follow-ups.</p>
-            <textarea value={tourNote} onChange={(event) => setTourNote(event.target.value)} rows={4} placeholder="The kitchen was bright. Bedroom two felt small. Ask whether the windows are being repaired..." />
-            <button type="button" className="secondary-button" disabled={advisorToolWorking || !tourNote.trim()} onClick={() => void saveTourNotes()}>
-              Organize tour notes
-            </button>
-            {advisorToolFeedback ? <p className="settings-help-copy">{advisorToolFeedback}</p> : null}
-          </div>
-            </>
-          ) : null}
 
           <div className="detail-panel" style={{ display: "flex", flexDirection: "column", gap: "10px", gridColumn: "1 / -1" }}>
 

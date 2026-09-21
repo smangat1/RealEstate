@@ -105,53 +105,6 @@ enum PriceHistorySource {
   api
 }
 
-enum AdvisorActionKind {
-  fit_summary
-  listing_change
-  conflict
-  inquiry_draft
-  follow_up_draft
-  reply_summary
-  decision_digest
-  archive_suggestion
-  tour_note_summary
-  application_checklist
-}
-
-enum AdvisorActionStatus {
-  open
-  completed
-  dismissed
-}
-
-enum AdvisorActionPriority {
-  low
-  medium
-  high
-  critical
-}
-
-enum ListingChangeKind {
-  price
-  fee
-  availability
-  status
-}
-
-enum InquiryStatus {
-  drafted
-  sent
-  answered
-  stale
-}
-
-enum ApplicationItemStatus {
-  missing
-  ready
-  submitted
-  waived
-}
-
 enum RoommatePriority {
   low
   medium
@@ -231,8 +184,6 @@ model User {
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
   catalogSourcesVerified    CatalogListingSource[]     @relation("CatalogSourceVerifiedBy")
-  subscriptionContributions BoardSubscriptionContribution[]
-  brokerOutreaches          BrokerOutreachRecord[]
 }
 
 model DevicePairing {
@@ -273,9 +224,6 @@ model SearchBoard {
   invitations               BoardInvitation[]
   catalogSourceAttestations CatalogSourceAttestation[]
   catalogSourceReports      CatalogSourceReport[]
-  subscriptions             BoardSubscription[]
-  scoutLeads                ScoutDiscoveredLead[]
-  advisorActions            AdvisorAction[]
 
   @@index([userId])
 }
@@ -372,7 +320,6 @@ model Listing {
   boardListings      BoardListing[]
   priceHistory       PriceHistory[]
   catalogSources     CatalogListingSource[]
-  scoutLeads         ScoutDiscoveredLead[]
 
   @@unique([sourceName, externalId])
   @@index([source])
@@ -404,12 +351,6 @@ model BoardListing {
   verifications      BoardListingVerification[]
   reviews            BoardListingReview[]
   decisions          BoardListingDecision[]
-  brokerOutreaches   BrokerOutreachRecord[]
-  advisorActions     AdvisorAction[]
-  listingSnapshots   ListingSnapshot[]
-  listingChanges     ListingChange[]
-  tourNotes          ListingTourNote[]
-  applicationItems   ListingApplicationItem[]
 
   @@unique([boardId, listingId])
   @@index([boardId, userStatus])
@@ -741,180 +682,3 @@ model PushDevice {
   @@index([userId, lastSeenAt])
 }
 
-model BoardSubscription {
-  id            String                          @id @default(cuid())
-  boardId       String
-  status        String                          @default("pending_split") // pending_split | active | paused | expired
-  tier          String                          @default("scout_weekly")
-  amountCents   Int                             @default(499)
-  currency      String                          @default("usd")
-  startedAt     DateTime?
-  expiresAt     DateTime?
-  createdAt     DateTime                        @default(now())
-  updatedAt     DateTime                        @updatedAt
-  board         SearchBoard                     @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  contributions BoardSubscriptionContribution[]
-
-  @@index([boardId, status])
-  @@index([expiresAt])
-}
-
-model BoardSubscriptionContribution {
-  id             String            @id @default(cuid())
-  subscriptionId String
-  userId         String
-  amountCents    Int
-  status         String            @default("pledged") // pledged | paid
-  paymentMethod  String?
-  paidAt         DateTime?
-  transactionId  String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  subscription   BoardSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([subscriptionId, status])
-  @@index([userId])
-}
-
-model ScoutDiscoveredLead {
-  id           String      @id @default(cuid())
-  boardId      String
-  listingId    String
-  matchScore   Int         @default(85)
-  matchReason  String
-  status       String      @default("pending") // pending | promoted | dismissed
-  discoveredAt DateTime    @default(now())
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  listing      Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
-
-  @@unique([boardId, listingId])
-  @@index([boardId, status])
-  @@index([listingId])
-}
-
-model BrokerOutreachRecord {
-  id             String       @id @default(cuid())
-  boardListingId String
-  userId         String
-  status         InquiryStatus @default(drafted)
-  templateKey    String       @default("availability")
-  subject        String?
-  body           String?
-  contactedAt    DateTime?
-  sentAt         DateTime?
-  answeredAt     DateTime?
-  staleAt        DateTime?
-  lastFollowUpAt DateTime?
-  method         String       @default("email") // email | portal | phone
-  notes          String?
-  replyText      String?
-  replyFacts     Json?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  boardListing   BoardListing @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([boardListingId, status, createdAt])
-  @@index([userId])
-}
-
-model AdvisorAction {
-  id               String                @id @default(cuid())
-  boardId          String
-  boardListingId   String?
-  kind             AdvisorActionKind
-  status           AdvisorActionStatus   @default(open)
-  priority         AdvisorActionPriority @default(medium)
-  title            String
-  summary          String
-  whyItMatters     String
-  facts            Json
-  sourceLinks      Json
-  primaryAction    Json
-  secondaryActions Json
-  engine           String                @default("deterministic")
-  fingerprint      String                @unique
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  completedAt      DateTime?
-  board            SearchBoard           @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  boardListing     BoardListing?          @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-
-  @@index([boardId, status, createdAt])
-  @@index([boardListingId, status, createdAt])
-}
-
-model ListingSnapshot {
-  id               String       @id @default(cuid())
-  boardListingId   String
-  sourceUrl        String?
-  price            Int?
-  fees             Json
-  availableDate    DateTime?
-  listingStatus    ListingStatus
-  providerStatus   String?
-  sourceFacts      Json
-  fingerprint      String
-  observedAt       DateTime     @default(now())
-  boardListing     BoardListing @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-  changes          ListingChange[]
-
-  @@unique([boardListingId, fingerprint, observedAt])
-  @@index([boardListingId, observedAt])
-}
-
-model ListingChange {
-  id               String            @id @default(cuid())
-  boardListingId   String
-  snapshotId       String
-  kind             ListingChangeKind
-  field            String
-  beforeValue      Json
-  afterValue       Json
-  explanation      String
-  whyItMatters     String
-  sourceUrl        String?
-  detectedAt       DateTime          @default(now())
-  boardListing     BoardListing      @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-  snapshot         ListingSnapshot   @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-
-  @@index([boardListingId, detectedAt])
-  @@index([snapshotId])
-  @@unique([snapshotId, field])
-}
-
-model ListingTourNote {
-  id             String       @id @default(cuid())
-  boardListingId String
-  authorUserId   String
-  transcript     String
-  pros           Json
-  cons           Json
-  concerns       Json
-  followUps      Json
-  createdAt      DateTime     @default(now())
-  boardListing   BoardListing @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-
-  @@index([boardListingId, createdAt])
-  @@index([authorUserId])
-}
-
-model ListingApplicationItem {
-  id             String                @id @default(cuid())
-  boardListingId String
-  key            String
-  label          String
-  detail         String?
-  status         ApplicationItemStatus @default(missing)
-  assignedUserId String?
-  required       Boolean               @default(true)
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  boardListing   BoardListing          @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
-
-  @@unique([boardListingId, key])
-  @@index([boardListingId, status])
-}

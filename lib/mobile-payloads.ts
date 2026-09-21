@@ -178,8 +178,6 @@ export type MobileBoardPayload = {
     fairnessScore: number | null;
     confidence: "high" | "medium" | "low";
   }[];
-  advisorActions: BoardPageData["advisorActions"];
-  scoutSubscription: BoardPageData["scoutSubscription"];
 };
 
 function currencyLine(min?: number, max?: number) {
@@ -847,9 +845,5 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
       fairnessScore: analysis?.fairnessScore ?? null,
       confidence: analysis?.confidence ?? "low",
     })),
-    advisorActions: data.advisorActions,
-    // The native banner cannot distinguish an active entitlement from a
-    // prospect unless subscription state travels with every board refresh.
-    scoutSubscription: data.scoutSubscription ?? null,
   };
 }

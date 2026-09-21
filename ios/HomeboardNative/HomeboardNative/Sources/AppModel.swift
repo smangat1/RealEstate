@@ -74,10 +74,6 @@ final class AppModel {
     var listingInventory: [ListingPreview]?
     var listingInventoryNextCursor: String?
     var listingInventoryHasMore: Bool?
-    var advisorHistoryByListingID: [String: [ListingChangeEntry]]?
-    var advisorChecklistByListingID: [String: [ApplicationChecklistEntry]]?
-    var advisorInquiriesByListingID: [String: [ListingInquiry]]?
-    var advisorTourNotesByListingID: [String: TourNoteSummary]?
   }
 
   private struct OnboardingPersistence: Codable {
@@ -186,12 +182,6 @@ final class AppModel {
   var isBoardLoading = false
   var isRestoredBoardRefreshing = false
   var isPostingBoardUpdate = false
-  var isAdvisorActionWorking = false
-  var advisorHistoryByListingID: [String: [ListingChangeEntry]] = [:]
-  var advisorChecklistByListingID: [String: [ApplicationChecklistEntry]] = [:]
-  var advisorInquiriesByListingID: [String: [ListingInquiry]] = [:]
-  var advisorTourNotesByListingID: [String: TourNoteSummary] = [:]
-  var advisorError: String?
   var apiVersion: String?
   var apiCommit: String?
   var apiVersionError: String?
@@ -769,7 +759,6 @@ final class AppModel {
   func openBoard(id: String) async {
     boardError = nil
     boardFeedback = nil
-    advisorError = nil
 
     if id.hasPrefix("local-"), let localBoard = localBoardsById[id] {
       board = localBoard
@@ -839,239 +828,6 @@ final class AppModel {
       }
     } catch {
       // Keep silent refresh silent so the UI does not feel noisy.
-    }
-  }
-
-  func triggerScoutScan(boardId: String) async {
-    advisorError = nil
-    boardFeedback = nil
-
-    if boardId.hasPrefix("preview-") || boardId.hasPrefix("local-") {
-      boardFeedback = "Preview listings use their saved facts; live checks require a signed-in board."
-      return
-    }
-    guard let session = authSession else {
-      advisorError = "Sign in before running an Advisor scan."
-      return
-    }
-    do {
-      try await api.triggerScoutScan(accessToken: session.accessToken, boardId: boardId)
-      await refreshCurrentBoardSilently()
-      boardFeedback = "Advisor scan finished. Review Updates for any grounded listing changes or follow-ups."
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func updateAdvisorAction(_ action: AdvisorAction, status: String) async {
-    guard let session = authSession, let boardId = board.id else { return }
-    isAdvisorActionWorking = true
-    advisorError = nil
-    defer { isAdvisorActionWorking = false }
-    do {
-      try await api.updateAdvisorAction(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        actionId: action.id,
-        status: status
-      )
-      board.advisorActions.removeAll { $0.id == action.id }
-      storeCurrentBoardSnapshot()
-      persist()
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func checkListingAgain(listingId: String) async {
-    guard let session = authSession, let boardId = board.id else {
-      advisorError = "Sign in before checking a live listing."
-      return
-    }
-    isAdvisorActionWorking = true
-    advisorError = nil
-    defer { isAdvisorActionWorking = false }
-    do {
-      let response = try await api.checkListing(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        listingId: listingId
-      )
-      boardFeedback = response.message
-      await refreshCurrentBoardSilently()
-      await loadAdvisorListingTools(listingId: listingId)
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func loadAdvisorListingTools(listingId: String) async {
-    guard let session = authSession, let boardId = board.id else { return }
-    advisorError = nil
-    do {
-      async let actions = api.loadAdvisorActions(accessToken: session.accessToken, boardId: boardId)
-      async let history = api.loadListingHistory(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
-      async let checklist = api.loadApplicationChecklist(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
-      async let inquiries = api.loadListingInquiries(accessToken: session.accessToken, boardId: boardId, listingId: listingId)
-      let result = try await (actions, history, checklist, inquiries)
-      board.advisorActions = result.0
-      advisorHistoryByListingID[listingId] = result.1
-      advisorChecklistByListingID[listingId] = result.2
-      advisorInquiriesByListingID[listingId] = result.3
-      persist()
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func createInquiryDraft(listingId: String, templateKey: String) async {
-    guard let session = authSession, let boardId = board.id else { return }
-    isAdvisorActionWorking = true
-    advisorError = nil
-    defer { isAdvisorActionWorking = false }
-    do {
-      let inquiry = try await api.createInquiryDraft(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        listingId: listingId,
-        templateKey: templateKey
-      )
-      advisorInquiriesByListingID[listingId, default: []].insert(inquiry, at: 0)
-      boardFeedback = "Draft created. Review every word before sending."
-      await refreshCurrentBoardSilently()
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func updateInquiry(
-    listingId: String,
-    inquiry: ListingInquiry,
-    status: String,
-    subject: String,
-    body: String,
-    replyText: String? = nil,
-    reviewConfirmed: Bool? = nil
-  ) async {
-    guard let session = authSession, let boardId = board.id else { return }
-    isAdvisorActionWorking = true
-    advisorError = nil
-    defer { isAdvisorActionWorking = false }
-    do {
-      let updated = try await api.updateInquiry(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        listingId: listingId,
-        inquiryId: inquiry.id,
-        status: status,
-        subject: subject,
-        body: body,
-        replyText: replyText,
-        reviewConfirmed: reviewConfirmed
-      )
-      advisorInquiriesByListingID[listingId] = advisorInquiriesByListingID[listingId, default: []].map {
-        $0.id == updated.id ? updated : $0
-      }
-      boardFeedback = status == "sent" ? "Marked sent after your review." : status == "answered" ? "Reply parsed into grounded fields." : "Draft saved."
-      await refreshCurrentBoardSilently()
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func updateApplicationItem(listingId: String, item: ApplicationChecklistEntry, status: String) async {
-    guard let session = authSession, let boardId = board.id else { return }
-    advisorError = nil
-    do {
-      let updated = try await api.updateApplicationChecklist(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        listingId: listingId,
-        itemId: item.id,
-        status: status
-      )
-      advisorChecklistByListingID[listingId] = advisorChecklistByListingID[listingId, default: []].map {
-        $0.id == updated.id ? updated : $0
-      }
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  func saveTourNote(listingId: String, transcript: String) async {
-    guard let session = authSession, let boardId = board.id else { return }
-    isAdvisorActionWorking = true
-    advisorError = nil
-    defer { isAdvisorActionWorking = false }
-    do {
-      let summary = try await api.saveTourNote(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        listingId: listingId,
-        transcript: transcript
-      )
-      advisorTourNotesByListingID[listingId] = summary
-      boardFeedback = "Tour notes organized: \(summary.pros.count) pros, \(summary.cons.count) cons, and \(summary.followUps.count) follow-ups."
-      await refreshCurrentBoardSilently()
-    } catch {
-      advisorError = readable(error)
-    }
-  }
-
-  @discardableResult
-  func startAdvisorSplit(boardId: String) async -> Bool {
-    guard let session = authSession else {
-      boardError = "Sign in before starting an Advisor split."
-      return false
-    }
-
-    boardError = nil
-    boardFeedback = nil
-    do {
-      let subscription = try await api.startAdvisorSplit(
-        accessToken: session.accessToken,
-        boardId: boardId
-      )
-      guard board.id == boardId, authSession?.userId == session.userId else { return false }
-      board.scoutSubscription = subscription
-      storeCurrentBoardSnapshot()
-      persist()
-      boardFeedback = subscription.isActive
-        ? "Advisor is already active for this board."
-        : "The Advisor split is ready. Fund your share to keep it moving."
-      return true
-    } catch {
-      boardError = readable(error)
-      return false
-    }
-  }
-
-  @discardableResult
-  func fundAdvisor(boardId: String, coverRemaining: Bool = false) async -> Bool {
-    guard let session = authSession else {
-      boardError = "Sign in before funding Advisor."
-      return false
-    }
-
-    boardError = nil
-    boardFeedback = nil
-    do {
-      let subscription = try await api.fundAdvisor(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        coverRemaining: coverRemaining
-      )
-      guard board.id == boardId, authSession?.userId == session.userId else { return false }
-      board.scoutSubscription = subscription
-      storeCurrentBoardSnapshot()
-      persist()
-      boardFeedback = subscription.isActive
-        ? "Advisor is active for the next seven days."
-        : "Your Advisor share is funded. Waiting for the rest of the group."
-      return true
-    } catch {
-      boardError = readable(error)
-      return false
     }
   }
 
@@ -1178,7 +934,7 @@ final class AppModel {
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
             board.id == boardId else { return }
-      board = boardWithDemoAdvisorEntitlement(response.board)
+      board = response.board
       profile = RentalProfile(remote: response.profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
@@ -1400,7 +1156,7 @@ final class AppModel {
 
   private func applyOnboardingConfirmation(_ response: MobileOnboardingConfirmResponse) {
     profile = RentalProfile(remote: response.profile)
-    board = boardWithDemoAdvisorEntitlement(response.board)
+    board = response.board
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     if let boardId = response.board.id {
@@ -1509,7 +1265,7 @@ final class AppModel {
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
             board.id == boardId else { return }
-      board = boardWithDemoAdvisorEntitlement(response.board)
+      board = response.board
       profile = RentalProfile(remote: response.profile)
       storeCurrentBoardSnapshot()
       boardFeedback = "Board brief saved."
@@ -1767,11 +1523,6 @@ final class AppModel {
     localActivityByBoard = [:]
     localMembersByBoard = [:]
     localChatMessagesByBoard = [:]
-    advisorHistoryByListingID = [:]
-    advisorChecklistByListingID = [:]
-    advisorInquiriesByListingID = [:]
-    advisorTourNotesByListingID = [:]
-    advisorError = nil
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -1821,11 +1572,6 @@ final class AppModel {
     localActivityByBoard = [:]
     localMembersByBoard = [:]
     localChatMessagesByBoard = [:]
-    advisorHistoryByListingID = [:]
-    advisorChecklistByListingID = [:]
-    advisorInquiriesByListingID = [:]
-    advisorTourNotesByListingID = [:]
-    advisorError = nil
     localBoardsById = [:]
     localProfilesByBoard = [:]
     pendingListingCreatesByBoard = [:]
@@ -3568,19 +3314,13 @@ final class AppModel {
     persist()
   }
 
-  private func boardWithDemoAdvisorEntitlement(_ remoteBoard: MobileBoard) -> MobileBoard {
-    // Server entitlement is shared by the board, subscription API, and scan API.
-    // Preview boards carry their own local demo entitlement.
-    remoteBoard
-  }
-
   private func boardByApplyingRemovalTombstones(
     _ remoteBoard: MobileBoard,
     storageKey: String
   ) -> MobileBoard {
     let removedIDs = removedServerListingIDsByBoard[storageKey] ?? []
     let removedIdentityKeys = removedListingIdentityKeysByBoard[storageKey] ?? []
-    var filtered = boardWithDemoAdvisorEntitlement(remoteBoard)
+    var filtered = remoteBoard
     guard !removedIDs.isEmpty || !removedIdentityKeys.isEmpty else { return filtered }
     filtered.shortlist.removeAll {
       removedIDs.contains($0.id)
@@ -4257,27 +3997,6 @@ final class AppModel {
       jordan: ["value": 1, "commute": 3, "space": 4, "neighborhood": 4, "amenities": 4, "confidence": 2]
     )
 
-    let demoStartedAt = ISO8601DateFormatter().string(from: Date())
-    let demoExpiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(7 * 24 * 60 * 60))
-    let demoAdvisor = ScoutSubscription(
-      id: "demo-advisor-preview-workspace",
-      boardId: "preview-workspace",
-      status: "active",
-      tier: "scout_weekly",
-      amountCents: 499,
-      currency: "usd",
-      startedAt: demoStartedAt,
-      expiresAt: demoExpiresAt,
-      fundedCents: 499,
-      targetCents: 499,
-      daysRemaining: 7,
-      contributions: [
-        ScoutContribution(id: "preview-advisor-sam", subscriptionId: "demo-advisor-preview-workspace", userId: "preview-sam", userName: "Sam", amountCents: 167, status: "paid"),
-        ScoutContribution(id: "preview-advisor-maya", subscriptionId: "demo-advisor-preview-workspace", userId: "preview-maya", userName: "Maya", amountCents: 166, status: "paid"),
-        ScoutContribution(id: "preview-advisor-jordan", subscriptionId: "demo-advisor-preview-workspace", userId: "preview-jordan", userName: "Jordan", amountCents: 166, status: "paid")
-      ]
-    )
-
     account = nil
     authSession = nil
     opensWelcomeOnAccessPage = false
@@ -4302,8 +4021,7 @@ final class AppModel {
       openQuestions: ["Which tradeoff matters more: the Brooklyn location or the lower Hamilton Heights rent?"],
       members: members,
       shortlist: [hamilton, astoria, brooklyn],
-      invitations: [],
-      scoutSubscription: demoAdvisor
+      invitations: []
     )
     localShortlistsByBoard["preview-workspace"] = board.shortlist
     localMembersByBoard["preview-workspace"] = members
@@ -4390,11 +4108,7 @@ final class AppModel {
       localBoardsById: localBoardsById,
       listingInventory: listingInventory,
       listingInventoryNextCursor: listingInventoryNextCursor,
-      listingInventoryHasMore: listingInventoryHasMore,
-      advisorHistoryByListingID: advisorHistoryByListingID,
-      advisorChecklistByListingID: advisorChecklistByListingID,
-      advisorInquiriesByListingID: advisorInquiriesByListingID,
-      advisorTourNotesByListingID: advisorTourNotesByListingID
+      listingInventoryHasMore: listingInventoryHasMore
     )
     let onboarding = OnboardingPersistence(
       onboardingCreationRequestId: onboardingCreationRequestId,
@@ -4487,10 +4201,6 @@ final class AppModel {
       listingInventory = record.listingInventory ?? record.board.suggestions ?? []
       listingInventoryNextCursor = record.listingInventoryNextCursor
       listingInventoryHasMore = record.listingInventoryHasMore ?? false
-      advisorHistoryByListingID = record.advisorHistoryByListingID ?? [:]
-      advisorChecklistByListingID = record.advisorChecklistByListingID ?? [:]
-      advisorInquiriesByListingID = record.advisorInquiriesByListingID ?? [:]
-      advisorTourNotesByListingID = record.advisorTourNotesByListingID ?? [:]
       restoredBoardData = true
     } else if defaults.data(forKey: boardsListingsPersistenceKey) == nil,
               let snapshot = legacySnapshot {

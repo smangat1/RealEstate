@@ -32,7 +32,6 @@ import {
   createBlankProfile,
   finalizeProfileState,
   generateComparison,
-  generateListingAnalysis,
   encodeNotesPayload,
   getMissingFields,
   getProfileCompletion,
@@ -50,8 +49,7 @@ import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
 import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
-import { seedListingAdvisorActions } from "@/lib/advisor-service";
-import type { AdvisorActionRecord } from "@/lib/advisor-types";
+
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
   listingSourceTrustWarning,
@@ -1727,7 +1725,6 @@ export async function getBoardPageData(
     listingReviewsByBoardListingId,
     listingDecisionsByBoardListingId,
     listingAnalysisByBoardListingId,
-    advisorActions: [],
     suggestedListings,
     currentDeckListings: buildDeckListings(suggestedListings, browseRequests),
     currentBrowseRequest,
@@ -1736,8 +1733,6 @@ export async function getBoardPageData(
       : generateComparison(effectiveProfile, boardListings),
     missingFields: getMissingFields(effectiveProfile),
     completion: getProfileCompletion(effectiveProfile),
-    scoutSubscription: null,
-    listingInquiriesByBoardListingId: {},
   };
 }
 
@@ -1960,60 +1955,6 @@ export async function saveBoardProfile(boardId: string, actingUserId: string, ne
   return finalizedProfile;
 }
 
-const ADVISOR_MENTION = /(^|\s)@advisor\b/i;
-
-function listingMentionScore(
-  message: string,
-  listing: { address: string | null; unit: string | null; neighborhood: string | null },
-) {
-  const normalizedMessage = normalizeLooseText(message);
-  return [listing.address, listing.unit, listing.neighborhood]
-    .map(normalizeLooseText)
-    .filter((value) => value.length >= 2 && normalizedMessage.includes(value))
-    .length;
-}
-
-function advisorChatReply(action: AdvisorActionRecord) {
-  const facts = action.facts
-    .slice(0, 6)
-    .map((fact) => `${fact.label}: ${fact.value}`);
-  return [
-    `Advisor: ${action.title}`,
-    action.summary,
-    action.whyItMatters ? `Why it matters: ${action.whyItMatters}` : null,
-    ...facts,
-  ].filter(Boolean).join("\n");
-}
-
-async function answerAdvisorMention(boardId: string, message: string) {
-  const savedListings = await prisma.boardListing.findMany({
-    where: {
-      boardId,
-      deletedAt: null,
-      userStatus: { not: "rejected" },
-    },
-    include: { listing: true },
-    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-  });
-
-  if (savedListings.length === 0) {
-    return "Advisor needs a saved listing before it can run listing tools.";
-  }
-
-  const target = [...savedListings].sort((left, right) => (
-    listingMentionScore(message, right.listing) - listingMentionScore(message, left.listing)
-  ))[0];
-  const actions = await seedListingAdvisorActions(target.id, "refreshed");
-  const action = actions.find((entry) => entry.kind === "conflict")
-    ?? actions.find((entry) => entry.kind === "fit_summary")
-    ?? actions.find((entry) => entry.kind === "decision_digest")
-    ?? actions[0];
-
-  return action
-    ? advisorChatReply(action)
-    : "Advisor found the saved listing, but there is no computed guidance to share yet.";
-}
-
 export async function sendChat(boardId: string, content: string, author: { userId: string; authorName: string }) {
   if (!(await ensureBoard(boardId, author.userId))) throw new Error("Workspace not found.");
   const message = content.trim();
@@ -2028,22 +1969,6 @@ export async function sendChat(boardId: string, content: string, author: { userI
     },
   });
   await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${message}`);
-  if (ADVISOR_MENTION.test(message)) {
-    let advisorReply: string;
-    try {
-      advisorReply = await answerAdvisorMention(boardId, message);
-    } catch {
-      advisorReply = "Advisor could not load its listing data. Your roommate message was still posted.";
-    }
-    await prisma.chatMessage.create({
-      data: {
-        boardId,
-        role: "assistant",
-        authorName: "Advisor",
-        content: advisorReply,
-      },
-    });
-  }
   await touchBoard(boardId);
 }
 
