@@ -334,7 +334,7 @@ struct AdvisorWalletPanel: View {
   @Environment(AppModel.self) private var appModel
   @AppStorage("homeboard.advisor.onboarding.v2.completed") private var advisorOnboardingCompleted = false
 
-  @State private var amountDollars = 4
+  @State private var amountCents = 100
   @State private var isPreparingPayment = false
   @State private var paymentMessage: String?
   @State private var showsAdvisorOnboarding = false
@@ -380,21 +380,28 @@ struct AdvisorWalletPanel: View {
           Spacer()
         }
       } else {
-        HStack(spacing: 10) {
-          Stepper(value: $amountDollars, in: 1...100) {
-            Text("$\(amountDollars)")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(HomeboardPalette.primaryText)
-          }
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Roommates can chip in separately. The shared total unlocks one full week at $4.")
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
 
-          Button {
-            Task { await fundAdvisor() }
-          } label: {
-            Label("Fund Advisor", systemImage: "creditcard.fill")
-              .font(.subheadline.weight(.semibold))
+          HStack(spacing: 10) {
+            Stepper(value: $amountCents, in: 50...maximumContributionCents, step: 50) {
+              Text(Self.money(amountCents))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+            }
+
+            Button {
+              Task { await fundAdvisor() }
+            } label: {
+              Label("Chip In", systemImage: "creditcard.fill")
+                .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(AdvisorCTAButtonStyle())
+            .disabled(isPreparingPayment)
           }
-          .buttonStyle(AdvisorCTAButtonStyle())
-          .disabled(isPreparingPayment)
         }
       }
 
@@ -411,6 +418,10 @@ struct AdvisorWalletPanel: View {
         showsAdvisorOnboarding = true
       }
       await appModel.refreshAdvisorWalletStatus()
+      clampContributionAmount()
+    }
+    .onChange(of: appModel.advisorWalletStatus?.remainingCents) { _, _ in
+      clampContributionAmount()
     }
     .sheet(
       isPresented: $showsAdvisorOnboarding,
@@ -433,6 +444,14 @@ struct AdvisorWalletPanel: View {
     return "\(Self.money(status.rolling7DayTotalCents)) of \(Self.money(status.thresholdCents)) funded this week."
   }
 
+  private var maximumContributionCents: Int {
+    max(50, min(400, appModel.advisorWalletStatus?.remainingCents ?? 400))
+  }
+
+  private func clampContributionAmount() {
+    amountCents = min(maximumContributionCents, max(50, amountCents))
+  }
+
   private func fundAdvisor() async {
     let publishableKey = HomeboardConfig.stripePublishableKey
     guard !publishableKey.isEmpty else {
@@ -443,7 +462,7 @@ struct AdvisorWalletPanel: View {
     paymentMessage = nil
     defer { isPreparingPayment = false }
 
-    guard let clientSecret = await appModel.advisorFundingClientSecret(amountCents: amountDollars * 100) else {
+    guard let clientSecret = await appModel.advisorFundingClientSecret(amountCents: amountCents) else {
       paymentMessage = "Unable to start payment."
       return
     }
@@ -544,7 +563,7 @@ private struct AdvisorOnboardingView: View {
       icon: "creditcard.fill",
       summary: "Advisor access belongs to the board, so roommates can contribute toward the same unlock.",
       details: [
-        ("$4 rolling threshold", "Contributions totaling $4 during the latest seven days unlock Advisor for the board."),
+        ("$4 rolling threshold", "Roommates can contribute separately. When the shared total reaches exactly $4, Advisor unlocks for the board."),
         ("Seven days of access", "Once the threshold is reached, the subscription is active for seven days. The wallet shows progress and the current state."),
         ("Confirmed payments only", "Funding uses Stripe’s PaymentSheet. The wallet refreshes after PaymentSheet confirms completion, never after cancel or failure."),
       ]
@@ -667,7 +686,9 @@ private struct AdvisorOnboardingView: View {
           }
         }
       }
-      .padding(20)
+      .padding(.horizontal, 20)
+      .padding(.top, 20)
+      .padding(.bottom, 36)
     }
     .scrollBounceBehavior(.basedOnSize)
   }

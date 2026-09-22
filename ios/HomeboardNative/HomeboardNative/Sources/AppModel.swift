@@ -200,7 +200,10 @@ final class AppModel {
   var advisorWalletStatus: AdvisorWalletStatus?
   var isAdvisorWalletLoading = false
   var isAdvisorProcessing = false
-  var advisorFundingAmountCents = 400
+  var advisorFundingAmountCents = 100
+  var isAdvisorAccessActive: Bool {
+    advisorWalletStatus?.subscription.active == true
+  }
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
   var listingInventoryHasMore = false
@@ -905,6 +908,11 @@ final class AppModel {
       boardError = "Open a real board before sending messages."
       return
     }
+    let isAdvisor = message.lowercased().hasPrefix("@advisor")
+    guard !isAdvisor || isAdvisorAccessActive else {
+      boardError = nil
+      return
+    }
     let requestEpoch = sessionEpoch
 
     boardError = nil
@@ -923,7 +931,6 @@ final class AppModel {
     )
     storeCurrentBoardSnapshot()
 
-    let isAdvisor = message.localizedCaseInsensitiveContains("@advisor")
     if isAdvisor {
       isAdvisorProcessing = true
     }

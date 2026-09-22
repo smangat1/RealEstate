@@ -14,6 +14,7 @@ const models = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardMode
 const dispatcher = source("ios/HomeboardNative/HomeboardNative/Sources/MessageDispatcher.swift");
 const config = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
 const stripeWebhook = source("app/api/webhook/stripe/route.ts");
+const fundingRoute = source("app/api/mobile/boards/[id]/wallet/fund/route.ts");
 
 test("iOS decodes Advisor data from the standard board response envelope", () => {
   const response = api.match(/struct MobileBoardLoadResponse[\s\S]*?\n}/)?.[0] ?? "";
@@ -89,4 +90,26 @@ test("canceled launch refreshes stay out of the group chat", () => {
 
 test("successful funding renews an existing subscription expiry", () => {
   assert.match(stripeWebhook, /update:\s*\{\s*isActive: true,\s*validUntil,/);
+});
+
+test("locked Advisor commands are stopped in-app before reaching the API", () => {
+  const sharedView = source("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+  assert.match(sharedView, /private var isAdvisorCommandBlocked/);
+  assert.match(sharedView, /Advisor needs an active board week/);
+  assert.match(sharedView, /\|\| isAdvisorCommandBlocked/);
+  assert.match(sharedView, /hasPrefix\("@advisor"\), !appModel\.isAdvisorAccessActive/);
+  assert.match(appModel, /guard !isAdvisor \|\| isAdvisorAccessActive else/);
+});
+
+test("roommates can split one board week without overfunding it", () => {
+  assert.match(card, /Stepper\(value: \$amountCents, in: 50\.\.\.maximumContributionCents, step: 50\)/);
+  assert.match(card, /shared total unlocks one full week at \$4/);
+  assert.match(fundingRoute, /const ADVISOR_WEEK_CENTS = 400/);
+  assert.match(fundingRoute, /\.multipleOf\(MIN_CONTRIBUTION_CENTS/);
+  assert.match(fundingRoute, /parsed\.data\.amountCents > remainingCents/);
+  assert.match(fundingRoute, /validUntil >= now/);
+});
+
+test("Advisor onboarding content clears the page progress controls", () => {
+  assert.match(card, /\.padding\(\.bottom, 36\)/);
 });

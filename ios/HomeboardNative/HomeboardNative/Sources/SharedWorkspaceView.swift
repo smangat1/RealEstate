@@ -3695,6 +3695,7 @@ struct SharedUpdatesView: View {
   @Environment(AppModel.self) private var appModel
   @State private var updateDraft = ""
   @State private var showsSettings = false
+  @State private var scrollsToAdvisorWallet = false
   @FocusState private var updateFieldFocused: Bool
   @AppStorage("homeboard.guide.updates.dismissed") private var updatesGuideDismissed = false
 
@@ -3749,6 +3750,7 @@ struct SharedUpdatesView: View {
             SharedDecisionHub()
 
             AdvisorWalletPanel()
+              .id("advisor-wallet")
 
             SharedSectionTitle(
               title: "Conversation",
@@ -3829,6 +3831,13 @@ struct SharedUpdatesView: View {
             }
           }
         }
+        .onChange(of: scrollsToAdvisorWallet) { _, requested in
+          guard requested else { return }
+          withAnimation(.easeOut(duration: 0.25)) {
+            scrollProxy.scrollTo("advisor-wallet", anchor: .top)
+          }
+          scrollsToAdvisorWallet = false
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
           withAnimation(.easeOut(duration: 0.25)) {
             scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
@@ -3838,11 +3847,45 @@ struct SharedUpdatesView: View {
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(alignment: .leading, spacing: 7) {
-        if showsAdvisorSuggestions {
+        if isAdvisorCommandBlocked {
+          HStack(alignment: .top, spacing: 10) {
+            Image(systemName: appModel.isAdvisorWalletLoading ? "clock.fill" : "lock.fill")
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.accent)
+              .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+              Text(appModel.isAdvisorWalletLoading ? "Checking Advisor access" : "Advisor needs an active board week")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+              Text(appModel.isAdvisorWalletLoading
+                   ? "Wait a moment while Homeboard checks the shared wallet."
+                   : "Roommates can chip in above. Advisor unlocks when the board reaches the $4 weekly goal.")
+                .font(.caption2)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 6)
+
+            if !appModel.isAdvisorWalletLoading {
+              Button("View wallet") {
+                updateFieldFocused = false
+                scrollsToAdvisorWallet = true
+              }
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.accent)
+              .buttonStyle(HomeboardAreaButtonStyle())
+            }
+          }
+          .padding(12)
+          .background(HomeboardPalette.accent.opacity(0.12))
+          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else if showsAdvisorSuggestions {
           advisorSuggestionsBar
         }
 
-        if let error = appModel.boardError {
+        if let error = appModel.boardError, !isAdvisorCommandBlocked {
           Text(error)
             .font(.caption.weight(.semibold))
             .foregroundStyle(HomeboardPalette.danger)
@@ -3900,8 +3943,12 @@ struct SharedUpdatesView: View {
           .disabled(
             updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
               || appModel.isPostingBoardUpdate
+              || isAdvisorCommandBlocked
           )
-          .opacity(updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+          .opacity(
+            updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              || isAdvisorCommandBlocked ? 0.5 : 1
+          )
         }
       }
       .padding(.horizontal, 14)
@@ -3933,6 +3980,13 @@ struct SharedUpdatesView: View {
   private func submitUpdate() {
     let message = updateDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
+
+    if message.lowercased().hasPrefix("@advisor"), !appModel.isAdvisorAccessActive {
+      appModel.boardError = nil
+      updateFieldFocused = true
+      return
+    }
+
     updateDraft = ""
     updateFieldFocused = false
 
@@ -3956,6 +4010,14 @@ struct SharedUpdatesView: View {
   private var showsAdvisorSuggestions: Bool {
     let text = updateDraft.trimmingCharacters(in: .whitespaces)
     return text.hasPrefix("@") || text.lowercased().contains("@advisor")
+  }
+
+  private var isAdvisorCommandBlocked: Bool {
+    updateDraft
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+      .hasPrefix("@advisor")
+      && !appModel.isAdvisorAccessActive
   }
 
   private struct AdvisorPromptSuggestion: Identifiable {

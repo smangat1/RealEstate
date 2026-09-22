@@ -4,18 +4,20 @@ import { z } from 'zod';
 import { ensureBoard } from '@/lib/board-data';
 import { requireMobileAppUser } from '@/lib/mobile-auth';
 import { sendOperationalAlert } from '@/lib/monitoring';
+import { prisma } from '@/lib/prisma';
 import { getStripe } from '@/lib/stripe';
 
-// Contribution amount boundaries (cents).
-const MIN_CONTRIBUTION_CENTS = 50; // $0.50 - Stripe minimum
-const MAX_CONTRIBUTION_CENTS = 10_000; // $100.00 - per-contribution cap
+const ADVISOR_WEEK_CENTS = 400;
+const ROLLING_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
+const MIN_CONTRIBUTION_CENTS = 50;
 
 const schema = z.object({
   amountCents: z
     .number()
     .int()
     .min(MIN_CONTRIBUTION_CENTS, `Minimum contribution is $${(MIN_CONTRIBUTION_CENTS / 100).toFixed(2)}.`)
-    .max(MAX_CONTRIBUTION_CENTS, `Maximum single contribution is $${(MAX_CONTRIBUTION_CENTS / 100).toFixed(2)}.`),
+    .max(ADVISOR_WEEK_CENTS, 'A board week costs $4.00.')
+    .multipleOf(MIN_CONTRIBUTION_CENTS, 'Contributions must be in $0.50 increments.'),
 });
 
 export async function POST(
@@ -34,6 +36,41 @@ export async function POST(
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error.issues[0]?.message ?? 'Invalid contribution amount.' },
+        { status: 400 },
+      );
+    }
+
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - ROLLING_WINDOW_MS);
+    const [subscription, ledger] = await Promise.all([
+      prisma.advisorSubscription.findUnique({
+        where: { boardId: id },
+        select: { validUntil: true },
+      }),
+      prisma.boardWalletLedger.aggregate({
+        where: { boardId: id, createdAt: { gte: windowStart } },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    if (subscription?.validUntil && subscription.validUntil >= now) {
+      return NextResponse.json(
+        { error: 'Advisor is already active for this board.' },
+        { status: 409 },
+      );
+    }
+
+    const rollingTotalCents = ledger._sum.amount ?? 0;
+    const remainingCents = Math.max(0, ADVISOR_WEEK_CENTS - rollingTotalCents);
+    if (remainingCents === 0) {
+      return NextResponse.json(
+        { error: 'This board week is already fully funded.' },
+        { status: 409 },
+      );
+    }
+    if (parsed.data.amountCents > remainingCents) {
+      return NextResponse.json(
+        { error: `Only $${(remainingCents / 100).toFixed(2)} remains for this board week.` },
         { status: 400 },
       );
     }
