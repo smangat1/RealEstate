@@ -124,6 +124,7 @@ struct AdvisorCardView: View {
             ForEach(Self.tones, id: \.self) { tone in
               let isSelected = selectedTone == tone
               Button {
+                guard selectedTone != tone else { return }
                 selectedTone = tone
                 scheduleRegeneration()
               } label: {
@@ -157,12 +158,14 @@ struct AdvisorCardView: View {
             HStack(spacing: 8) {
               ForEach(toggles.indices, id: \.self) { index in
                 let isEnabled = toggles[index].enabled
+                let isRequired = toggles[index].required
                 Button {
+                  guard !isRequired else { return }
                   toggles[index].enabled.toggle()
                   scheduleRegeneration()
                 } label: {
                   HStack(spacing: 5) {
-                    Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: isRequired ? "lock.fill" : (isEnabled ? "checkmark.circle.fill" : "circle"))
                       .font(.caption2)
                     Text(toggles[index].label)
                       .font(.caption.weight(.medium))
@@ -177,6 +180,8 @@ struct AdvisorCardView: View {
                   }
                 }
                 .buttonStyle(HomeboardAreaButtonStyle())
+                .disabled(isRequired)
+                .accessibilityHint(isRequired ? "Required qualification" : "Regenerates the draft")
               }
             }
           }
@@ -269,10 +274,7 @@ struct AdvisorCardView: View {
         return
       } catch {
         guard revision == regenerationRevision, !Task.isCancelled else { return }
-        let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        if !msg.lowercased().contains("cancel") {
-          dispatchMessage = msg
-        }
+        dispatchMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       }
 
       if revision == regenerationRevision {
@@ -323,16 +325,19 @@ struct AdvisorCardView: View {
   }
 
   private func isDraftReady(_ payload: AdvisorMessagePayload) -> Bool {
-    !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    payload.executionStatus != "needs_input"
+      && !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 }
 
 struct AdvisorWalletPanel: View {
   @Environment(AppModel.self) private var appModel
+  @AppStorage("homeboard.advisor.onboarding.v2.completed") private var advisorOnboardingCompleted = false
 
   @State private var amountDollars = 4
   @State private var isPreparingPayment = false
   @State private var paymentMessage: String?
+  @State private var showsAdvisorOnboarding = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -347,6 +352,16 @@ struct AdvisorWalletPanel: View {
         }
 
         Spacer()
+
+        Button {
+          showsAdvisorOnboarding = true
+        } label: {
+          Image(systemName: "info.circle")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+        .buttonStyle(HomeboardAreaButtonStyle())
+        .accessibilityLabel("How Advisor works")
 
         if appModel.isAdvisorWalletLoading {
           ProgressView()
@@ -392,7 +407,19 @@ struct AdvisorWalletPanel: View {
     .padding(16)
     .homeboardPanel(cornerRadius: 24)
     .task {
+      if !advisorOnboardingCompleted {
+        showsAdvisorOnboarding = true
+      }
       await appModel.refreshAdvisorWalletStatus()
+    }
+    .sheet(
+      isPresented: $showsAdvisorOnboarding,
+      onDismiss: { advisorOnboardingCompleted = true }
+    ) {
+      AdvisorOnboardingView()
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
     }
   }
 
@@ -473,6 +500,176 @@ struct AdvisorWalletPanel: View {
       return topViewController(base: presented)
     }
     return baseController
+  }
+}
+
+private struct AdvisorOnboardingStep {
+  let eyebrow: String
+  let title: String
+  let icon: String
+  let summary: String
+  let details: [(title: String, body: String)]
+}
+
+private struct AdvisorOnboardingView: View {
+  @Environment(\.dismiss) private var dismiss
+  @State private var page = 0
+
+  private static let steps = [
+    AdvisorOnboardingStep(
+      eyebrow: "Shared intelligence",
+      title: "Meet Homeboard Advisor",
+      icon: "sparkles",
+      summary: "Advisor turns the facts already on your board into a reviewable outreach draft.",
+      details: [
+        ("Grounded in your board", "It uses saved listing facts, agent contact details, the group brief, commute needs, and the listing analysis."),
+        ("Clear when context is missing", "If the board lacks a required fact, the card asks for it instead of making one up."),
+        ("Nothing sends automatically", "Advisor prepares copy. You choose whether to open Messages or Mail and remain in control of the final send."),
+      ]
+    ),
+    AdvisorOnboardingStep(
+      eyebrow: "Qualifications and voice",
+      title: "Bring the important facts",
+      icon: "checklist.checked",
+      summary: "Complete the group profile and save the listing you want to contact before asking for outreach.",
+      details: [
+        ("Required qualifications", "The group’s exact income multiple and credit score stay in qualified outreach when available; required controls are locked."),
+        ("Requirements that matter", "Budget, move-in timing, must-haves, dealbreakers, commute limits, and readiness give the draft useful context."),
+        ("Four distinct tones", "Professional is polished, Casual is brief and friendly, Stern is direct and urgent, and Passive-Aggressive notes a lack of response without inventing history."),
+      ]
+    ),
+    AdvisorOnboardingStep(
+      eyebrow: "Board-funded access",
+      title: "Unlock it together",
+      icon: "creditcard.fill",
+      summary: "Advisor access belongs to the board, so roommates can contribute toward the same unlock.",
+      details: [
+        ("$4 rolling threshold", "Contributions totaling $4 during the latest seven days unlock Advisor for the board."),
+        ("Seven days of access", "Once the threshold is reached, the subscription is active for seven days. The wallet shows progress and the current state."),
+        ("Confirmed payments only", "Funding uses Stripe’s PaymentSheet. The wallet refreshes after PaymentSheet confirms completion, never after cancel or failure."),
+      ]
+    ),
+    AdvisorOnboardingStep(
+      eyebrow: "Draft to action",
+      title: "Ask, tune, then send",
+      icon: "paperplane.fill",
+      summary: "Use @advisor in the group conversation, or tap a suggested request to get started.",
+      details: [
+        ("Tune the card", "Changing tone or an optional include control regenerates the draft. Rapid changes are debounced so only the latest choice applies."),
+        ("Review the recipient", "Confirm the agent, brokerage, phone or email, and every statement in the draft before opening a compose sheet."),
+        ("Status follows the real send", "A listing becomes Outreach Sent only when the Messages or Mail delegate confirms it was sent, not when you cancel, save, or encounter a failure."),
+      ]
+    ),
+  ]
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        TabView(selection: $page) {
+          ForEach(Self.steps.indices, id: \.self) { index in
+            onboardingPage(Self.steps[index])
+              .tag(index)
+          }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+
+        HStack(spacing: 7) {
+          ForEach(Self.steps.indices, id: \.self) { index in
+            Capsule()
+              .fill(index == page ? HomeboardPalette.accent : Color.white.opacity(0.14))
+              .frame(width: index == page ? 24 : 7, height: 7)
+              .animation(.easeOut(duration: 0.2), value: page)
+          }
+        }
+        .padding(.bottom, 18)
+
+        HStack(spacing: 10) {
+          if page > 0 {
+            Button("Back") {
+              withAnimation(.easeOut(duration: 0.2)) { page -= 1 }
+            }
+            .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
+          }
+
+          Button(page == Self.steps.count - 1 ? "Start using Advisor" : "Continue") {
+            if page == Self.steps.count - 1 {
+              dismiss()
+            } else {
+              withAnimation(.easeOut(duration: 0.2)) { page += 1 }
+            }
+          }
+          .buttonStyle(AdvisorCTAButtonStyle())
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+      }
+      .background(WorkspaceBackgroundView())
+      .navigationTitle("Advisor guide")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            dismiss()
+          } label: {
+            Image(systemName: "xmark")
+          }
+          .accessibilityLabel("Close Advisor guide")
+        }
+      }
+    }
+  }
+
+  private func onboardingPage(_ step: AdvisorOnboardingStep) -> some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        Image(systemName: step.icon)
+          .font(.system(size: 34, weight: .semibold))
+          .foregroundStyle(HomeboardPalette.accent)
+          .frame(width: 64, height: 64)
+          .background(HomeboardPalette.accent.opacity(0.14))
+          .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 8) {
+          Text(step.eyebrow.uppercased())
+            .font(.caption.weight(.bold))
+            .tracking(1.4)
+            .foregroundStyle(HomeboardPalette.accent)
+          Text(step.title)
+            .font(.system(size: 30, weight: .bold, design: .serif))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text(step.summary)
+            .font(.body)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        VStack(alignment: .leading, spacing: 12) {
+          ForEach(step.details.indices, id: \.self) { index in
+            HStack(alignment: .top, spacing: 12) {
+              Image(systemName: "checkmark.circle.fill")
+                .font(.subheadline)
+                .foregroundStyle(HomeboardPalette.success)
+                .padding(.top, 2)
+              VStack(alignment: .leading, spacing: 4) {
+                Text(step.details[index].title)
+                  .font(.subheadline.weight(.bold))
+                  .foregroundStyle(HomeboardPalette.primaryText)
+                Text(step.details[index].body)
+                  .font(.footnote)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+                  .fixedSize(horizontal: false, vertical: true)
+              }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          }
+        }
+      }
+      .padding(20)
+    }
+    .scrollBounceBehavior(.basedOnSize)
   }
 }
 

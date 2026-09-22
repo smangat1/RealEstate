@@ -1424,6 +1424,8 @@ final class HomeboardAPI {
     } catch {
       if let urlError = error as? URLError {
         switch urlError.code {
+        case .cancelled:
+          throw CancellationError()
         case .timedOut:
           throw HomeboardAPIError.server(
             "Homeboard’s server took too long to respond. Tap Retry to reconnect."

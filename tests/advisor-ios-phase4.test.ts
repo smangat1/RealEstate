@@ -13,6 +13,7 @@ const card = source("ios/HomeboardNative/HomeboardNative/Sources/AdvisorCardView
 const models = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardModels.swift");
 const dispatcher = source("ios/HomeboardNative/HomeboardNative/Sources/MessageDispatcher.swift");
 const config = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
+const stripeWebhook = source("app/api/webhook/stripe/route.ts");
 
 test("iOS decodes Advisor data from the standard board response envelope", () => {
   const response = api.match(/struct MobileBoardLoadResponse[\s\S]*?\n}/)?.[0] ?? "";
@@ -63,4 +64,29 @@ test("legacy or malformed Advisor payloads fall back without fabricating control
   assert.doesNotMatch(card, /message\.advisorPayload \?\? AdvisorMessagePayload/);
   assert.match(card, /if let payload, !payload\.draftText\.trimmingCharacters/);
   assert.match(card, /legacyMessage/);
+});
+
+test("Advisor has a separate replayable onboarding with the funding and send contract", () => {
+  assert.match(card, /homeboard\.advisor\.onboarding\.v2\.completed/);
+  assert.match(card, /struct AdvisorOnboardingView/);
+  assert.match(card, /\$4 rolling threshold/);
+  assert.match(card, /Seven days of access/);
+  assert.match(card, /Nothing sends automatically/);
+  assert.match(card, /Status follows the real send/);
+  assert.match(card, /showsAdvisorOnboarding = true/);
+});
+
+test("required Advisor facts cannot be toggled off or sent while input is missing", () => {
+  assert.match(card, /guard !isRequired else \{ return \}/);
+  assert.match(card, /\.disabled\(isRequired\)/);
+  assert.match(card, /payload\.executionStatus != "needs_input"/);
+});
+
+test("canceled launch refreshes stay out of the group chat", () => {
+  assert.match(api, /case \.cancelled:\s*throw CancellationError\(\)/);
+  assert.match(appModel, /func refreshAdvisorWalletStatus[\s\S]*?catch is CancellationError/);
+});
+
+test("successful funding renews an existing subscription expiry", () => {
+  assert.match(stripeWebhook, /update:\s*\{\s*isActive: true,\s*validUntil,/);
 });

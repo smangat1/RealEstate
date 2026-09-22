@@ -95,6 +95,7 @@ export async function POST(request: Request) {
         },
         update: {
           isActive: true,
+          validUntil,
         },
       });
 

@@ -1013,6 +1013,10 @@ final class AppModel {
         accessToken: session.accessToken,
         boardId: boardId
       )
+    } catch is CancellationError {
+      // SwiftUI cancels view-bound wallet refreshes during launch/navigation.
+      // Cancellation is lifecycle control, not a chat-facing failure.
+      return
     } catch {
       boardError = readable(error)
     }
