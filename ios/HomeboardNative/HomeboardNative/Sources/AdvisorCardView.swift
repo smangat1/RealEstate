@@ -40,6 +40,7 @@ struct AdvisorCardView: View {
     }
   }
 
+  @ViewBuilder
   private func advisorCard(_ currentPayload: AdvisorMessagePayload) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .center, spacing: 8) {
@@ -62,15 +63,22 @@ struct AdvisorCardView: View {
           ProgressView()
             .tint(HomeboardPalette.accent)
             .scaleEffect(0.8)
-        } else {
-          let needsInput = currentPayload.executionStatus == "needs_input"
+        } else if currentPayload.executionStatus == "needs_input" {
           HStack(spacing: 4) {
-            Image(systemName: needsInput ? "info.circle.fill" : "checkmark.circle.fill")
+            Image(systemName: "info.circle.fill")
               .font(.caption2)
-            Text(needsInput ? "Needs info" : "Ready to send")
+            Text("Needs info")
               .font(.caption2.weight(.semibold))
           }
-          .foregroundStyle(needsInput ? HomeboardPalette.accentSecondary : HomeboardPalette.success)
+          .foregroundStyle(HomeboardPalette.accentSecondary)
+        } else {
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.caption2)
+            Text("Ready to send")
+              .font(.caption2.weight(.semibold))
+          }
+          .foregroundStyle(HomeboardPalette.success)
         }
       }
 
@@ -131,24 +139,25 @@ struct AdvisorCardView: View {
 
           ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-              ForEach($toggles) { $toggle in
+              ForEach(toggles.indices, id: \.self) { index in
+                let isEnabled = toggles[index].enabled
                 Button {
-                  toggle.enabled.toggle()
+                  toggles[index].enabled.toggle()
                   scheduleRegeneration()
                 } label: {
                   HStack(spacing: 5) {
-                    Image(systemName: toggle.enabled ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
                       .font(.caption2)
-                    Text(toggle.label)
+                    Text(toggles[index].label)
                       .font(.caption.weight(.medium))
                   }
                   .padding(.horizontal, 10)
                   .padding(.vertical, 6)
-                  .background(toggle.enabled ? HomeboardPalette.accent.opacity(0.18) : Color.white.opacity(0.05))
-                  .foregroundStyle(toggle.enabled ? HomeboardPalette.accent : HomeboardPalette.secondaryText)
+                  .background(isEnabled ? HomeboardPalette.accent.opacity(0.18) : Color.white.opacity(0.05))
+                  .foregroundStyle(isEnabled ? HomeboardPalette.accent : HomeboardPalette.secondaryText)
                   .clipShape(Capsule())
                   .overlay {
-                    Capsule().stroke(toggle.enabled ? HomeboardPalette.accent.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+                    Capsule().stroke(isEnabled ? HomeboardPalette.accent.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
                   }
                 }
                 .buttonStyle(HomeboardAreaButtonStyle())
@@ -454,7 +463,15 @@ private struct AdvisorCTAButtonStyle: ButtonStyle {
       .foregroundStyle(isPrimary ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
       .padding(.horizontal, 12)
       .padding(.vertical, 12)
-      .background(isPrimary ? HomeboardPalette.accentGradient.opacity(configuration.isPressed ? 0.78 : 1) : Color.white.opacity(0.08))
+      .background {
+        if isPrimary {
+          HomeboardPalette.accentGradient
+            .opacity(configuration.isPressed ? 0.78 : 1)
+        } else {
+          Color.white
+            .opacity(configuration.isPressed ? 0.05 : 0.08)
+        }
+      }
       .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
   }
 }
