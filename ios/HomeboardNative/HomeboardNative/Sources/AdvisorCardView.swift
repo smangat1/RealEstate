@@ -63,13 +63,14 @@ struct AdvisorCardView: View {
             .tint(HomeboardPalette.accent)
             .scaleEffect(0.8)
         } else {
+          let needsInput = currentPayload.executionStatus == "needs_input"
           HStack(spacing: 4) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: needsInput ? "info.circle.fill" : "checkmark.circle.fill")
               .font(.caption2)
-            Text(currentPayload.executionStatus == "needs_input" ? "Needs info" : "Ready to send")
+            Text(needsInput ? "Needs info" : "Ready to send")
               .font(.caption2.weight(.semibold))
           }
-          .foregroundStyle(currentPayload.executionStatus == "needs_input" ? HomeboardPalette.warning : HomeboardPalette.success)
+          .foregroundStyle(needsInput ? HomeboardPalette.accentSecondary : HomeboardPalette.success)
         }
       }
 
@@ -115,7 +116,7 @@ struct AdvisorCardView: View {
                     }
                   }
               }
-              .buttonStyle(.plain)
+              .buttonStyle(HomeboardAreaButtonStyle())
             }
           }
         }
@@ -150,7 +151,7 @@ struct AdvisorCardView: View {
                     Capsule().stroke(toggle.enabled ? HomeboardPalette.accent.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
                   }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeboardAreaButtonStyle())
               }
             }
           }

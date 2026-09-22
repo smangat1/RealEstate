@@ -4001,7 +4001,7 @@ struct SharedUpdatesView: View {
                   .stroke(HomeboardPalette.accent.opacity(0.35), lineWidth: 1)
               }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HomeboardAreaButtonStyle())
           }
         }
       }
