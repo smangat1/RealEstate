@@ -16,8 +16,6 @@ import { prisma } from "@/lib/prisma";
 const schema = z.object({
   content: z.string().trim().min(1).max(4000),
   tone: z.string().trim().max(40).optional(),
-  incomeMultiple: z.union([z.string().trim().max(40), z.number().positive().max(200)]).optional(),
-  creditScore: z.union([z.string().trim().max(80), z.number().int().min(300).max(850)]).optional(),
 });
 
 function isAdvisorMessage(content: string) {
@@ -68,8 +66,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         boardData,
         command: parsed.data.content,
         tone: parsed.data.tone ? normalizeAdvisorTone(parsed.data.tone) : undefined,
-        incomeMultiple: parsed.data.incomeMultiple,
-        creditScore: parsed.data.creditScore,
         now,
       });
 
@@ -137,7 +133,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         }
       });
 
-      return NextResponse.json(payload);
+      const next = await getBoardPageData(id, user.id);
+      if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+      return NextResponse.json({
+        board: buildMobileBoardPayload(next),
+        profile: next.profile,
+        missingFields: next.missingFields,
+        advisorPayload: payload,
+      });
     }
 
     await sendChat(id, parsed.data.content, { userId: user.id, authorName: user.displayName });

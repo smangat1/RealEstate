@@ -27,7 +27,7 @@ export const ADVISOR_TONE_INSTRUCTIONS: Record<AdvisorTone, string> = {
   Professional: "polished, broker-appropriate",
   Casual: "brief, friendly, like texting a peer",
   Stern: "direct, no-nonsense corporate, urgency",
-  "Passive-Aggressive": "notes the recipient's lack of response while reiterating readiness",
+  "Passive-Aggressive": "dryly direct without inventing prior outreach or readiness",
 };
 
 export type AdvisorFinancialQualifications = {
@@ -119,8 +119,6 @@ type AdvisorEngineInput = {
   boardData: BoardPageData;
   command: string;
   tone?: AdvisorTone | string | null;
-  incomeMultiple?: string | number | null;
-  creditScore?: string | number | null;
   now?: Date;
 };
 
@@ -182,6 +180,27 @@ function normalizeCreditScore(value: string | number | null | undefined) {
     : `${Math.min(...scores)}-${Math.max(...scores)}`;
 }
 
+function profileFinancialQualifications(profile: RentalProfile): AdvisorFinancialQualifications {
+  const structured = profile as RentalProfile & {
+    financialQualifications?: Partial<AdvisorFinancialQualifications>;
+    rentalQualifications?: Partial<AdvisorFinancialQualifications>;
+    incomeMultiple?: string | number | null;
+    creditScore?: string | number | null;
+  };
+  return {
+    incomeMultiple: normalizeIncomeMultiple(
+      structured.financialQualifications?.incomeMultiple
+      ?? structured.rentalQualifications?.incomeMultiple
+      ?? structured.incomeMultiple,
+    ),
+    creditScore: normalizeCreditScore(
+      structured.financialQualifications?.creditScore
+      ?? structured.rentalQualifications?.creditScore
+      ?? structured.creditScore,
+    ),
+  };
+}
+
 export function extractAdvisorFinancialQualifications(
   text: string,
 ): AdvisorFinancialQualifications {
@@ -213,7 +232,6 @@ export function parseAdvisorCommand(content: string) {
   return {
     command: command || "Draft broker outreach for the strongest saved listing.",
     tone: normalizeAdvisorTone(toneMatch?.[1]),
-    financialQualifications: extractAdvisorFinancialQualifications(command),
   };
 }
 
@@ -353,7 +371,11 @@ export function compileAdvisorPrompt(input: {
   };
 }
 
-function findRequestedListing(boardData: BoardPageData, command: string) {
+function findRequestedListing(
+  boardData: BoardPageData,
+  command: string,
+  strongestListings: AdvisorGroupContext["leverage"]["strongestListings"],
+) {
   const normalized = command.toLowerCase();
   return boardData.boardListings.find((entry) => {
     const candidates = [
@@ -363,7 +385,11 @@ function findRequestedListing(boardData: BoardPageData, command: string) {
       entry.listing.city,
     ].filter((value): value is string => Boolean(value?.trim()));
     return candidates.some((value) => normalized.includes(value.toLowerCase()));
-  }) ?? boardData.boardListings.find((entry) =>
+  }) ?? (
+    strongestListings[0]
+      ? boardData.boardListings.find((entry) => entry.id === strongestListings[0].boardListingId)
+      : null
+  ) ?? boardData.boardListings.find((entry) =>
     ["interested", "toured", "applied", "outreach_sent"].includes(entry.userStatus),
   ) ?? boardData.boardListings[0] ?? null;
 }
@@ -379,7 +405,11 @@ function generateDraft(input: {
   financialQualifications: Required<AdvisorFinancialQualifications>;
   command: string;
 }) {
-  const listing = findRequestedListing(input.boardData, input.command);
+  const listing = findRequestedListing(
+    input.boardData,
+    input.command,
+    input.context.leverage.strongestListings,
+  );
   const subject = listing ? listingLabel(listing) : "the rental";
   const finance = formatFinancialSentence(input.financialQualifications);
   const moveIn = input.context.requirements.moveIn
@@ -388,16 +418,24 @@ function generateDraft(input: {
   const sender = input.boardData.profile.name && input.boardData.profile.name !== "Unknown"
     ? input.boardData.profile.name
     : "The prospective tenants";
+  const readiness = input.context.leverage.applicationReadiness;
+  const hasApplicationMaterials = readiness.hasOfferLetter === true && readiness.hasProofOfIncome === true;
+  const canApplyWithoutDelay = hasApplicationMaterials && readiness.needsGuarantor === false;
+  const readinessSentence = canApplyWithoutDelay
+    ? " Our offer letter and proof of income are ready, and we do not need a guarantor."
+    : hasApplicationMaterials
+      ? " Our offer letter and proof of income are ready."
+      : "";
 
   if (input.tone === "Casual") {
-    return `Hi! Checking in about ${subject}. ${finance}${moveIn} We are ready to move quickly. Is it still available, and when could we tour? Thanks, ${sender}`;
+    return `Hi! Checking in about ${subject}. ${finance}${moveIn}${readinessSentence} Is it still available, and when could we tour? Thanks, ${sender}`;
   }
 
   if (input.tone === "Stern") {
     return [
       "Hello,",
       "",
-      `We need a current status on ${subject}. ${finance}${moveIn} Our application materials are ready, and we can proceed immediately.`,
+      `We need a current status on ${subject}. ${finance}${moveIn}${readinessSentence}`,
       "",
       "Please confirm availability and the earliest tour time today.",
       "",
@@ -409,7 +447,7 @@ function generateDraft(input: {
     return [
       "Hello,",
       "",
-      `I am following up again regarding ${subject}, as we have not received a response to our earlier outreach. ${finance}${moveIn} We remain fully prepared to tour and apply without delay.`,
+      `I am checking on ${subject}. ${finance}${moveIn}${readinessSentence}`,
       "",
       "Please let us know whether the rental is still available so we can plan accordingly.",
       "",
@@ -441,20 +479,7 @@ function toggleOptions(): AdvisorToggleOption[] {
 export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<AdvisorMessagePayloadData> {
   const parsed = parseAdvisorCommand(input.command);
   const tone = normalizeAdvisorTone(input.tone ?? parsed.tone);
-  const profileFacts = extractAdvisorFinancialQualifications([
-    input.boardData.profile.notes ?? "",
-    ...input.boardData.roommates.map((roommate) => roommate.notes ?? ""),
-  ].join("\n"));
-  const financialQualifications = {
-    incomeMultiple:
-      normalizeIncomeMultiple(input.incomeMultiple)
-      ?? parsed.financialQualifications.incomeMultiple
-      ?? profileFacts.incomeMultiple,
-    creditScore:
-      normalizeCreditScore(input.creditScore)
-      ?? parsed.financialQualifications.creditScore
-      ?? profileFacts.creditScore,
-  };
+  const financialQualifications = profileFinancialQualifications(input.boardData.profile);
   const context = await aggregateAdvisorGroupContext({
     boardData: input.boardData,
     financialQualifications,

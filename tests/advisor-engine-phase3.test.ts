@@ -24,7 +24,7 @@ test("Advisor compiles group profile, commute, and listing analysis into one gro
   assert.match(engineSource, /polished, broker-appropriate/);
   assert.match(engineSource, /brief, friendly, like texting a peer/);
   assert.match(engineSource, /direct, no-nonsense corporate, urgency/);
-  assert.match(engineSource, /notes the recipient's lack of response while reiterating readiness/);
+  assert.match(engineSource, /dryly direct without inventing prior outreach or readiness/);
   assert.match(engineSource, /draftText:/);
   assert.match(engineSource, /toggleOptions:/);
   assert.match(engineSource, /executionStatus:/);
@@ -37,7 +37,8 @@ test("Advisor messages gate on expiry and persist the exact structured response"
   assert.match(messagesRouteSource, /advisorPayload:\s*\{/);
   assert.match(messagesRouteSource, /draftText/);
   assert.match(messagesRouteSource, /executionStatus/);
-  assert.match(messagesRouteSource, /return NextResponse\.json\(payload\)/);
+  assert.match(messagesRouteSource, /board: buildMobileBoardPayload\(next\)/);
+  assert.match(messagesRouteSource, /advisorPayload: payload/);
 });
 
 test("Advisor wallet reports a rolling seven-day threshold without trusting isActive", () => {
