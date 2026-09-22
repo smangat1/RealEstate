@@ -972,7 +972,8 @@ final class AppModel {
       accessToken: session.accessToken,
       boardId: boardId,
       content: command,
-      tone: tone
+      tone: tone,
+      regenerateOnly: true
     )
   }
 

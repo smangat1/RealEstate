@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 const schema = z.object({
   content: z.string().trim().min(1).max(4000),
   tone: z.string().trim().max(40).optional(),
+  regenerateOnly: z.boolean().optional(),
 });
 
 function isAdvisorMessage(content: string) {
@@ -71,6 +72,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
       const messageId = randomUUID();
       const payload = { messageId, ...result };
+
+      if (parsed.data.regenerateOnly) {
+        return NextResponse.json({
+          board: buildMobileBoardPayload(boardData),
+          advisorPayload: payload,
+        });
+      }
+
       await prisma.$transaction([
         prisma.chatMessage.create({
           data: {

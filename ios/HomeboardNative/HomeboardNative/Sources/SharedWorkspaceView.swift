@@ -3826,6 +3826,10 @@ struct SharedUpdatesView: View {
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(alignment: .leading, spacing: 7) {
+        if showsAdvisorSuggestions {
+          advisorSuggestionsBar
+        }
+
         if let error = appModel.boardError {
           Text(error)
             .font(.caption.weight(.semibold))
@@ -3835,7 +3839,7 @@ struct SharedUpdatesView: View {
 
         HStack(alignment: .center, spacing: 10) {
           TextField(
-            "Message your roommates...",
+            "Message your roommates or @advisor...",
             text: $updateDraft
           )
           .focused($updateFieldFocused)
@@ -3935,6 +3939,75 @@ struct SharedUpdatesView: View {
         updateFieldFocused = true
       }
     }
+  }
+
+  private var showsAdvisorSuggestions: Bool {
+    let text = updateDraft.trimmingCharacters(in: .whitespaces)
+    return text.hasPrefix("@") || text.lowercased().contains("@advisor")
+  }
+
+  private struct AdvisorPromptSuggestion: Identifiable {
+    let id: String
+    let icon: String
+    let title: String
+    let prompt: String
+  }
+
+  private var advisorSuggestions: [AdvisorPromptSuggestion] {
+    [
+      .init(id: "outreach", icon: "envelope.fill", title: "Draft outreach", prompt: "@advisor draft outreach for our top listing"),
+      .init(id: "tour", icon: "calendar.badge.clock", title: "Request tour", prompt: "@advisor request tour availability for this weekend"),
+      .init(id: "policy", icon: "pawprint.fill", title: "Pet & laundry", prompt: "@advisor check pet policy and in-unit laundry"),
+      .init(id: "qualifications", icon: "doc.text.fill", title: "Proof of income", prompt: "@advisor summarize our group income multiple and credit"),
+      .init(id: "followup", icon: "arrow.clockwise", title: "Follow up", prompt: "@advisor draft follow-up on our application status"),
+      .init(id: "compare", icon: "arrow.left.arrow.right", title: "Compare options", prompt: "@advisor compare our top listings and tradeoffs"),
+    ]
+  }
+
+  @ViewBuilder
+  private var advisorSuggestionsBar: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Label("Advisor capabilities", systemImage: "sparkles")
+          .font(.caption2.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+        Spacer()
+        Text("Tap to fill")
+          .font(.caption2)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+      }
+      .padding(.horizontal, 4)
+
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 8) {
+          ForEach(advisorSuggestions) { suggestion in
+            Button {
+              updateDraft = suggestion.prompt
+              updateFieldFocused = true
+            } label: {
+              HStack(spacing: 6) {
+                Image(systemName: suggestion.icon)
+                  .font(.caption2)
+                Text(suggestion.title)
+                  .font(.caption.weight(.semibold))
+              }
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(HomeboardPalette.accent.opacity(0.18))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+              .overlay {
+                Capsule()
+                  .stroke(HomeboardPalette.accent.opacity(0.35), lineWidth: 1)
+              }
+            }
+            .buttonStyle(.plain)
+          }
+        }
+      }
+    }
+    .padding(.horizontal, 4)
+    .padding(.bottom, 4)
   }
 }
 

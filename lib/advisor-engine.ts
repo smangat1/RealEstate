@@ -192,12 +192,12 @@ function profileFinancialQualifications(profile: RentalProfile): AdvisorFinancia
       structured.financialQualifications?.incomeMultiple
       ?? structured.rentalQualifications?.incomeMultiple
       ?? structured.incomeMultiple,
-    ),
+    ) ?? "40x",
     creditScore: normalizeCreditScore(
       structured.financialQualifications?.creditScore
       ?? structured.rentalQualifications?.creditScore
       ?? structured.creditScore,
-    ),
+    ) ?? "700+",
   };
 }
 
@@ -468,8 +468,8 @@ function generateDraft(input: {
 
 function toggleOptions(): AdvisorToggleOption[] {
   return [
-    { id: "include_income_multiple", label: "Income multiple", enabled: true, required: true },
-    { id: "include_credit_score", label: "Credit score", enabled: true, required: true },
+    { id: "include_income_multiple", label: "Income multiple", enabled: true, required: false },
+    { id: "include_credit_score", label: "Credit score", enabled: true, required: false },
     { id: "include_requirements", label: "Group requirements", enabled: true, required: false },
     { id: "include_commute", label: "Commute fit", enabled: false, required: false },
     { id: "request_tour", label: "Request a tour", enabled: true, required: false },

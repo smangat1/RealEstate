@@ -36,78 +36,145 @@ struct AdvisorCardView: View {
       }
     }
     .onDisappear {
-      regenerationRevision += 1
-      regenerationTask?.cancel()
+      // Keep generation alive if user scrolls within thread
     }
   }
 
   private func advisorCard(_ currentPayload: AdvisorMessagePayload) -> some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .center) {
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Advisor draft")
-            .font(.caption.weight(.bold))
-            .tracking(1.6)
-            .foregroundStyle(HomeboardPalette.accent)
-          Text(currentPayload.executionStatus == "needs_input" ? "Needs group info" : "Ready to send")
-            .font(.footnote)
-            .foregroundStyle(HomeboardPalette.secondaryText)
-        }
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .center, spacing: 8) {
+        Circle()
+          .fill(HomeboardPalette.accent)
+          .frame(width: 24, height: 24)
+          .overlay {
+            Image(systemName: "sparkles")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(HomeboardPalette.buttonText)
+          }
+
+        Text("Advisor")
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
 
         Spacer()
 
         if isRegenerating {
           ProgressView()
             .tint(HomeboardPalette.accent)
+            .scaleEffect(0.8)
+        } else {
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.caption2)
+            Text(currentPayload.executionStatus == "needs_input" ? "Needs info" : "Ready to send")
+              .font(.caption2.weight(.semibold))
+          }
+          .foregroundStyle(currentPayload.executionStatus == "needs_input" ? HomeboardPalette.warning : HomeboardPalette.success)
         }
-      }
-
-      Text(currentPayload.draftText)
-        .font(.body)
-        .foregroundStyle(HomeboardPalette.primaryText)
-        .fixedSize(horizontal: false, vertical: true)
-
-      Picker("Tone", selection: $selectedTone) {
-        ForEach(Self.tones, id: \.self) { tone in
-          Text(tone.replacingOccurrences(of: "-", with: " ")).tag(tone)
-        }
-      }
-      .pickerStyle(.segmented)
-      .onChange(of: selectedTone) { _, _ in
-        scheduleRegeneration()
       }
 
       VStack(alignment: .leading, spacing: 8) {
-        ForEach($toggles) { $toggle in
-          Toggle(toggle.label, isOn: $toggle.enabled)
-            .disabled(toggle.required)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(HomeboardPalette.primaryText)
-            .tint(HomeboardPalette.accent)
+        Text(currentPayload.draftText)
+          .font(.body)
+          .foregroundStyle(HomeboardPalette.primaryText)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Color.white.opacity(0.06))
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .stroke(HomeboardPalette.accent.opacity(0.25), lineWidth: 1)
+      }
+
+      VStack(alignment: .leading, spacing: 5) {
+        Text("TONE")
+          .font(.system(size: 10, weight: .bold))
+          .tracking(1.2)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 8) {
+            ForEach(Self.tones, id: \.self) { tone in
+              let isSelected = selectedTone == tone
+              Button {
+                selectedTone = tone
+                scheduleRegeneration()
+              } label: {
+                Text(tone.replacingOccurrences(of: "-", with: " "))
+                  .font(.caption.weight(isSelected ? .bold : .medium))
+                  .padding(.horizontal, 12)
+                  .padding(.vertical, 7)
+                  .background(isSelected ? HomeboardPalette.accent : Color.white.opacity(0.06))
+                  .foregroundStyle(isSelected ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
+                  .clipShape(Capsule())
+                  .overlay {
+                    if !isSelected {
+                      Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    }
+                  }
+              }
+              .buttonStyle(.plain)
+            }
+          }
         }
       }
-      .onChange(of: toggles) { _, _ in
-        scheduleRegeneration()
+
+      if !toggles.isEmpty {
+        VStack(alignment: .leading, spacing: 5) {
+          Text("INCLUDE")
+            .font(.system(size: 10, weight: .bold))
+            .tracking(1.2)
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+              ForEach($toggles) { $toggle in
+                Button {
+                  toggle.enabled.toggle()
+                  scheduleRegeneration()
+                } label: {
+                  HStack(spacing: 5) {
+                    Image(systemName: toggle.enabled ? "checkmark.circle.fill" : "circle")
+                      .font(.caption2)
+                    Text(toggle.label)
+                      .font(.caption.weight(.medium))
+                  }
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 6)
+                  .background(toggle.enabled ? HomeboardPalette.accent.opacity(0.18) : Color.white.opacity(0.05))
+                  .foregroundStyle(toggle.enabled ? HomeboardPalette.accent : HomeboardPalette.secondaryText)
+                  .clipShape(Capsule())
+                  .overlay {
+                    Capsule().stroke(toggle.enabled ? HomeboardPalette.accent.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+                  }
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+        }
       }
 
       HStack(spacing: 10) {
-        Button {
-          sendViaEmail()
-        } label: {
-          Label("Send via Email", systemImage: "envelope.fill")
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(AdvisorCTAButtonStyle())
-        .disabled(!MessageDispatcher.canSendMail || !isDraftReady(currentPayload))
-
         Button {
           sendViaMessage()
         } label: {
           Label("Send via iMessage", systemImage: "message.fill")
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(AdvisorCTAButtonStyle())
+        .buttonStyle(AdvisorCTAButtonStyle(isPrimary: true))
         .disabled(!MessageDispatcher.canSendText || !isDraftReady(currentPayload))
+
+        Button {
+          sendViaEmail()
+        } label: {
+          Label("Send via Email", systemImage: "envelope.fill")
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
+        .disabled(!MessageDispatcher.canSendMail || !isDraftReady(currentPayload))
       }
 
       if let dispatchMessage {
@@ -116,8 +183,8 @@ struct AdvisorCardView: View {
           .foregroundStyle(HomeboardPalette.secondaryText)
       }
     }
-    .padding(18)
-    .homeboardPanel(cornerRadius: 24)
+    .padding(16)
+    .homeboardPanel(cornerRadius: 22)
   }
 
   private var legacyMessage: some View {
@@ -143,7 +210,7 @@ struct AdvisorCardView: View {
     let tone = selectedTone
     let selectedToggles = toggles
     regenerationTask = Task {
-      do { try await Task.sleep(nanoseconds: 650_000_000) }
+      do { try await Task.sleep(nanoseconds: 350_000_000) }
       catch { return }
       guard revision == regenerationRevision, !Task.isCancelled else { return }
       isRegenerating = true
@@ -156,7 +223,6 @@ struct AdvisorCardView: View {
         )
         guard revision == regenerationRevision, !Task.isCancelled else { return }
         guard var next = response.advisorPayload else {
-          dispatchMessage = "Advisor returned an unreadable draft."
           isRegenerating = false
           return
         }
@@ -177,7 +243,10 @@ struct AdvisorCardView: View {
         return
       } catch {
         guard revision == regenerationRevision, !Task.isCancelled else { return }
-        dispatchMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if !msg.lowercased().contains("cancel") {
+          dispatchMessage = msg
+        }
       }
 
       if revision == regenerationRevision {
@@ -215,15 +284,14 @@ struct AdvisorCardView: View {
         appModel.markAdvisorOutreachSent(for: payload)
       }
     case .cancelled:
-      dispatchMessage = "Draft was not sent."
+      dispatchMessage = nil
     case .failed(let reason):
       dispatchMessage = reason ?? "Unable to send this draft."
     }
   }
 
   private func isDraftReady(_ payload: AdvisorMessagePayload) -> Bool {
-    payload.executionStatus != "needs_input"
-      && !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 }
 
@@ -377,13 +445,15 @@ struct AdvisorWalletPanel: View {
 }
 
 private struct AdvisorCTAButtonStyle: ButtonStyle {
+  var isPrimary: Bool = true
+
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .font(.subheadline.weight(.semibold))
-      .foregroundStyle(HomeboardPalette.buttonText)
+      .foregroundStyle(isPrimary ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
       .padding(.horizontal, 12)
       .padding(.vertical, 12)
-      .background(HomeboardPalette.accentGradient.opacity(configuration.isPressed ? 0.78 : 1))
+      .background(isPrimary ? HomeboardPalette.accentGradient.opacity(configuration.isPressed ? 0.78 : 1) : Color.white.opacity(0.08))
       .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
   }
 }

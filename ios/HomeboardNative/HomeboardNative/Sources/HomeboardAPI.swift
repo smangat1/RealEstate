@@ -76,10 +76,12 @@ struct MobileHealthResponse: Decodable {
 struct MobileBoardMessageCreateRequest: Encodable {
   var content: String
   var tone: String?
+  var regenerateOnly: Bool?
 
-  init(content: String, tone: String? = nil) {
+  init(content: String, tone: String? = nil, regenerateOnly: Bool? = nil) {
     self.content = content
     self.tone = tone
+    self.regenerateOnly = regenerateOnly
   }
 }
 
@@ -736,13 +738,14 @@ final class HomeboardAPI {
     accessToken: String,
     boardId: String,
     content: String,
-    tone: String? = nil
+    tone: String? = nil,
+    regenerateOnly: Bool? = nil
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardMessageCreateRequest(content: content, tone: tone)
+      body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly)
     )
   }
 
