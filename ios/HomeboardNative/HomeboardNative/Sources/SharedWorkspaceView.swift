@@ -3748,12 +3748,14 @@ struct SharedUpdatesView: View {
 
             SharedDecisionHub()
 
+            AdvisorWalletPanel()
+
             SharedSectionTitle(
               title: "Conversation",
-              trailing: timeline.isEmpty ? "No messages yet" : "\(timeline.count) message\(timeline.count == 1 ? "" : "s")"
+              trailing: appModel.board.chatMessages.isEmpty ? "No messages yet" : "\(appModel.board.chatMessages.count) message\(appModel.board.chatMessages.count == 1 ? "" : "s")"
             )
 
-            if appModel.isBoardLoading && timeline.isEmpty {
+            if appModel.isBoardLoading && appModel.board.chatMessages.isEmpty {
               VStack(spacing: 12) {
                 ForEach(0..<3, id: \.self) { _ in
                   HStack(alignment: .top, spacing: 12) {
@@ -3768,18 +3770,33 @@ struct SharedUpdatesView: View {
                   .sharedSurface(cornerRadius: 18)
                 }
               }
-            } else if timeline.isEmpty {
+            } else if appModel.board.chatMessages.isEmpty {
               SharedInlineEmpty(
                 icon: "bubble.left.and.bubble.right",
                 title: "Start the group conversation",
                 message: "Send the first message so everyone starts with the same context."
               )
             } else {
-              ForEach(timeline) { item in
-                SharedTimelineRow(item: item)
-                  .id(item.id)
+              ForEach(appModel.board.chatMessages) { msg in
+                if msg.authorName == "Advisor" {
+                  AdvisorCardView(message: msg)
+                    .id("message-\(msg.id)")
+                } else {
+                  SharedTimelineRow(
+                    item: SharedTimelineItem(
+                      id: "message-\(msg.id)",
+                      author: msg.authorName?.isEmpty == false ? msg.authorName! : "Member",
+                      content: msg.content
+                    )
+                  )
+                  .id("message-\(msg.id)")
+                }
               }
             }
+
+            Color.clear
+              .frame(height: 1)
+              .id("chat-bottom-anchor")
 
           }
           .padding(.horizontal, 16)
@@ -3791,11 +3808,18 @@ struct SharedUpdatesView: View {
         .refreshable {
           await appModel.refreshCurrentBoard()
         }
-        .onChange(of: timeline.count) { _, _ in
-          if let last = timeline.last {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-              scrollProxy.scrollTo(last.id, anchor: .bottom)
-            }
+        .task {
+          try? await Task.sleep(nanoseconds: 180_000_000)
+          scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+        }
+        .onChange(of: appModel.board.chatMessages.count) { _, _ in
+          withAnimation(.easeOut(duration: 0.25)) {
+            scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+          }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+          withAnimation(.easeOut(duration: 0.25)) {
+            scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
           }
         }
       }
@@ -3895,6 +3919,14 @@ struct SharedUpdatesView: View {
     guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
     updateDraft = ""
     updateFieldFocused = false
+
+    if message.lowercased().hasPrefix("@advisor") {
+      appModel.boardMessageDraft = message
+      Task {
+        await appModel.sendBoardMessage()
+      }
+      return
+    }
 
     Task {
       let posted = await appModel.addBoardUpdate(message)

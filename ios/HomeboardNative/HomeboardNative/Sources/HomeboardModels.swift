@@ -660,6 +660,7 @@ struct AdvisorWalletStatus: Hashable, Codable {
   var subscription: AdvisorSubscriptionStatus
 
   var progressFraction: Double {
+    if isUnlocked { return 1.0 }
     guard thresholdCents > 0 else { return 0 }
     return min(1, max(0, Double(rolling7DayTotalCents) / Double(thresholdCents)))
   }

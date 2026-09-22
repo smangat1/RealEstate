@@ -257,21 +257,30 @@ struct AdvisorWalletPanel: View {
       ProgressView(value: appModel.advisorWalletStatus?.progressFraction ?? 0)
         .tint(appModel.advisorWalletStatus?.isUnlocked == true ? HomeboardPalette.success : HomeboardPalette.accent)
 
-      HStack(spacing: 10) {
-        Stepper(value: $amountDollars, in: 1...100) {
-          Text("$\(amountDollars)")
+      if appModel.advisorWalletStatus?.isUnlocked == true {
+        HStack {
+          Label("Advisor Unlocked", systemImage: "checkmark.seal.fill")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.primaryText)
+            .foregroundStyle(HomeboardPalette.success)
+          Spacer()
         }
+      } else {
+        HStack(spacing: 10) {
+          Stepper(value: $amountDollars, in: 1...100) {
+            Text("$\(amountDollars)")
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+          }
 
-        Button {
-          Task { await fundAdvisor() }
-        } label: {
-          Label("Fund Advisor", systemImage: "creditcard.fill")
-            .font(.subheadline.weight(.semibold))
+          Button {
+            Task { await fundAdvisor() }
+          } label: {
+            Label("Fund Advisor", systemImage: "creditcard.fill")
+              .font(.subheadline.weight(.semibold))
+          }
+          .buttonStyle(AdvisorCTAButtonStyle())
+          .disabled(isPreparingPayment)
         }
-        .buttonStyle(AdvisorCTAButtonStyle())
-        .disabled(isPreparingPayment)
       }
 
       if let paymentMessage {
