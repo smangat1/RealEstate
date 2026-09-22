@@ -7,8 +7,8 @@ import { sendOperationalAlert } from '@/lib/monitoring';
 import { getStripe } from '@/lib/stripe';
 
 // Contribution amount boundaries (cents).
-const MIN_CONTRIBUTION_CENTS = 50; // $0.50 — Stripe minimum
-const MAX_CONTRIBUTION_CENTS = 10_000; // $100.00 — per-contribution cap
+const MIN_CONTRIBUTION_CENTS = 50; // $0.50 - Stripe minimum
+const MAX_CONTRIBUTION_CENTS = 10_000; // $100.00 - per-contribution cap
 
 const schema = z.object({
   amountCents: z

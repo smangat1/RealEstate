@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const purpose = intent.metadata?.purpose;
 
   if (!boardId || !userId || purpose !== 'advisor_subscription') {
-    // Not an Advisor contribution — skip silently so future webhook types can be added.
+    // Not an Advisor contribution - skip silently so future webhook types can be added.
     return NextResponse.json({ received: true });
   }
 
@@ -142,7 +142,7 @@ async function notifyBoardSubscriptionActivated(boardId: string) {
   for (const recipientId of recipientIds) {
     await notifyBoardChat({
       boardId,
-      authorUserId: '', // system notification — show to everyone
+      authorUserId: '', // system notification - show to everyone
       authorName: 'Homeboard',
       content: `\u2728 Advisor is now active for \${board.title}. Your group has unlocked @advisor for the next 7 days.`,
     }).catch(() => { /* absorb per-recipient failures */ });
