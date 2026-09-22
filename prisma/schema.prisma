@@ -692,7 +692,7 @@ model BoardWalletLedger {
   boardId         String
   userId          String
   amount          Int
-  stripePaymentId String
+  stripePaymentId String      @unique
   createdAt       DateTime    @default(now())
   board           SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
   user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)

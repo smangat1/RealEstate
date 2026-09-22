@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { after, NextResponse } from 'next/server';
 
 import { notifyBoardChat } from '@/lib/apns';
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
   } catch (error) {
     // Stripe sends this error when the signature is invalid or the secret is wrong.
     const message = error instanceof Error ? error.message : 'Invalid signature';
-    return NextResponse.json({ error: `Webhook verification failed: \${message}` }, { status: 400 });
+    return NextResponse.json({ error: `Webhook verification failed: ${message}` }, { status: 400 });
   }
 
   // We only act on succeeded PaymentIntents. All other event types are ignored.
@@ -49,23 +51,22 @@ export async function POST(request: Request) {
   const amountCents = intent.amount_received ?? intent.amount;
 
   try {
-    // Idempotency guard: skip if we already recorded this PaymentIntent.
-    const existing = await prisma.boardWalletLedger.findFirst({
+    // Record the contribution idempotently for Stripe retries.
+    const ledgerId = randomUUID();
+    const ledger = await prisma.boardWalletLedger.upsert({
       where: { stripePaymentId: intent.id },
-    });
-    if (existing) {
-      return NextResponse.json({ received: true });
-    }
-
-    // Record the contribution.
-    await prisma.boardWalletLedger.create({
-      data: {
+      create: {
+        id: ledgerId,
         boardId,
         userId,
         amount: amountCents,
         stripePaymentId: intent.id,
       },
+      update: {},
     });
+    if (ledger.id !== ledgerId) {
+      return NextResponse.json({ received: true });
+    }
 
     // Rolling-window total for this board.
     const windowStart = new Date();
@@ -94,7 +95,6 @@ export async function POST(request: Request) {
         },
         update: {
           isActive: true,
-          validUntil,
         },
       });
 
@@ -129,22 +129,14 @@ async function notifyBoardSubscriptionActivated(boardId: string) {
     where: { id: boardId },
     select: {
       title: true,
-      userId: true,
-      members: { select: { userId: true } },
     },
   });
   if (!board) return;
 
-  const recipientIds = Array.from(
-    new Set([board.userId, ...board.members.map((m) => m.userId)]),
-  );
-
-  for (const recipientId of recipientIds) {
-    await notifyBoardChat({
-      boardId,
-      authorUserId: '', // system notification - show to everyone
-      authorName: 'Homeboard',
-      content: `\u2728 Advisor is now active for \${board.title}. Your group has unlocked @advisor for the next 7 days.`,
-    }).catch(() => { /* absorb per-recipient failures */ });
-  }
+  await notifyBoardChat({
+    boardId,
+    authorUserId: '', // system notification - show to everyone
+    authorName: 'Homeboard',
+    content: `\u2728 Advisor is now active for ${board.title}. Your group has unlocked @advisor for the next 7 days.`,
+  }).catch(() => { /* absorb per-recipient failures */ });
 }

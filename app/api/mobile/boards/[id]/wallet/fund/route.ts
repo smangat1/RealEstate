@@ -14,8 +14,8 @@ const schema = z.object({
   amountCents: z
     .number()
     .int()
-    .min(MIN_CONTRIBUTION_CENTS, `Minimum contribution is \$\${(MIN_CONTRIBUTION_CENTS / 100).toFixed(2)}.`)
-    .max(MAX_CONTRIBUTION_CENTS, `Maximum single contribution is \$\${(MAX_CONTRIBUTION_CENTS / 100).toFixed(2)}.`),
+    .min(MIN_CONTRIBUTION_CENTS, `Minimum contribution is $${(MIN_CONTRIBUTION_CENTS / 100).toFixed(2)}.`)
+    .max(MAX_CONTRIBUTION_CENTS, `Maximum single contribution is $${(MAX_CONTRIBUTION_CENTS / 100).toFixed(2)}.`),
 });
 
 export async function POST(
@@ -49,7 +49,7 @@ export async function POST(
         userDisplayName: user.displayName,
         purpose: 'advisor_subscription',
       },
-      description: `Homeboard Advisor contribution for board \${id}`,
+      description: `Homeboard Advisor contribution for board ${id}`,
     });
 
     return NextResponse.json({
