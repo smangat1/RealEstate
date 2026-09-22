@@ -3794,6 +3794,11 @@ struct SharedUpdatesView: View {
               }
             }
 
+            if appModel.isAdvisorProcessing {
+              AdvisorTypingBubble()
+                .id("advisor-typing-indicator")
+            }
+
             Color.clear
               .frame(height: 1)
               .id("chat-bottom-anchor")
@@ -3815,6 +3820,13 @@ struct SharedUpdatesView: View {
         .onChange(of: appModel.board.chatMessages.count) { _, _ in
           withAnimation(.easeOut(duration: 0.25)) {
             scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+          }
+        }
+        .onChange(of: appModel.isAdvisorProcessing) { _, isProcessing in
+          if isProcessing {
+            withAnimation(.easeOut(duration: 0.25)) {
+              scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+            }
           }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
@@ -7765,6 +7777,11 @@ struct SharedListingDetailView: View {
 
           DisclosureGroup(isExpanded: $showsMoreAboutListing) {
             VStack(alignment: .leading, spacing: 18) {
+              if let contact = liveListing.contact ?? listing.contact,
+                 contact.agentName != nil || contact.agentPhone != nil || contact.agentEmail != nil || contact.brokerage != nil {
+                SharedListingContactPanel(contact: contact, listingTitle: liveListing.title)
+              }
+
               SharedListingSourcePanel(listing: liveListing)
 
               if let split = liveListing.rentSplit ?? listing.rentSplit {
@@ -7879,6 +7896,90 @@ struct SharedListingDetailView: View {
   }
 }
 
+
+private struct SharedListingContactPanel: View {
+  let contact: ListingContactInfo
+  let listingTitle: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 13) {
+      SharedSectionTitle(
+        title: "Agent & Reachout",
+        trailing: contact.brokerage
+      )
+
+      VStack(alignment: .leading, spacing: 4) {
+        if let name = contact.agentName, !name.isEmpty {
+          HStack(spacing: 6) {
+            Image(systemName: "person.crop.circle.fill")
+              .font(.subheadline)
+              .foregroundStyle(HomeboardPalette.accent)
+            Text(name)
+              .font(.headline)
+              .foregroundStyle(HomeboardPalette.primaryText)
+          }
+        }
+
+        if let brokerage = contact.brokerage, !brokerage.isEmpty, contact.agentName == nil {
+          Text(brokerage)
+            .font(.subheadline)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+      }
+
+      HStack(spacing: 10) {
+        if let phone = contact.agentPhone, !phone.isEmpty {
+          let cleanedPhone = phone.filter { $0.isNumber || $0 == "+" }
+          if let telURL = URL(string: "tel:\(cleanedPhone)") {
+            Link(destination: telURL) {
+              Label("Call", systemImage: "phone.fill")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .clipShape(Capsule())
+            }
+          }
+
+          Button {
+            MessageDispatcher.presentMessage(recipients: [phone], body: "") { _ in }
+          } label: {
+            Label("Text", systemImage: "message.fill")
+              .font(.caption.weight(.semibold))
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(Color.white.opacity(0.08))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+
+        if let email = contact.agentEmail, !email.isEmpty {
+          Button {
+            MessageDispatcher.presentMail(
+              recipients: [email],
+              subject: "Inquiry: \(listingTitle)",
+              body: ""
+            ) { _ in }
+          } label: {
+            Label("Email", systemImage: "envelope.fill")
+              .font(.caption.weight(.semibold))
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(Color.white.opacity(0.08))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+      }
+    }
+    .padding(16)
+    .sharedSurface(cornerRadius: 18)
+  }
+}
 
 private struct SharedSafariDestination: Identifiable {
   let id = UUID()

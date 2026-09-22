@@ -217,6 +217,13 @@ export type Listing = {
 
 export type ListingRecord = Listing;
 
+export type ListingContactInfo = {
+  agentName?: string | null;
+  agentPhone?: string | null;
+  agentEmail?: string | null;
+  brokerage?: string | null;
+};
+
 export type BoardListingRecord = {
   id: string;
   boardId: string;

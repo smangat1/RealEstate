@@ -269,6 +269,10 @@ enum HomeboardSharedImportStore {
     var modelInsights: [HomeboardListingInsight]
     var listingScope: String?
     var extractionConfidence: String?
+    var agentName: String?
+    var agentPhone: String?
+    var agentEmail: String?
+    var brokerage: String?
 
     var requiresReview: Bool {
       extractionConfidence?.lowercased() == "needs-review"
@@ -298,7 +302,11 @@ enum HomeboardSharedImportStore {
       amenities: [String] = [],
       modelInsights: [HomeboardListingInsight] = [],
       listingScope: String? = nil,
-      extractionConfidence: String? = nil
+      extractionConfidence: String? = nil,
+      agentName: String? = nil,
+      agentPhone: String? = nil,
+      agentEmail: String? = nil,
+      brokerage: String? = nil
     ) {
       self.id = id
       self.url = url
@@ -324,6 +332,10 @@ enum HomeboardSharedImportStore {
       self.modelInsights = modelInsights
       self.listingScope = listingScope
       self.extractionConfidence = extractionConfidence
+      self.agentName = agentName
+      self.agentPhone = agentPhone
+      self.agentEmail = agentEmail
+      self.brokerage = brokerage
     }
 
     init?(message: [String: Any], boardId: String?) {
@@ -339,6 +351,15 @@ enum HomeboardSharedImportStore {
         guard let value = message[key] as? String else { return nil }
         let result = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return result.isEmpty ? nil : result
+      }
+
+      let contactDict = message["contact"] as? [String: Any]
+      func contactString(_ key: String) -> String? {
+        if let val = contactDict?[key] as? String {
+          let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !trimmed.isEmpty { return trimmed }
+        }
+        return cleaned(key)
       }
 
       func number(_ key: String) -> Double? {
@@ -374,7 +395,11 @@ enum HomeboardSharedImportStore {
         amenities: (message["amenities"] as? [String]) ?? [],
         modelInsights: Self.decodeInsights(message["modelInsights"]),
         listingScope: cleaned("listingScope"),
-        extractionConfidence: cleaned("extractionConfidence")
+        extractionConfidence: cleaned("extractionConfidence"),
+        agentName: contactString("agentName"),
+        agentPhone: contactString("agentPhone"),
+        agentEmail: contactString("agentEmail"),
+        brokerage: contactString("brokerage")
       )
     }
 

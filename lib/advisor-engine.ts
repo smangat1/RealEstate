@@ -10,9 +10,11 @@ import type {
   BoardListingRecord,
   BoardPageData,
   GroupListingAnalysis,
+  ListingContactInfo,
   RentalProfile,
   RoommateRecord,
 } from "@/lib/types";
+import { listingContactInfo } from "@/lib/mobile-payloads";
 
 export const ADVISOR_TONES = [
   "Professional",
@@ -72,6 +74,7 @@ export type AdvisorGroupContext = {
       rankingLabel: GroupListingAnalysis["rankingLabel"];
       fairnessScore: number | null;
       confidence: GroupListingAnalysis["confidence"];
+      contact?: ListingContactInfo | null;
     }>;
   };
   requirements: {
@@ -107,6 +110,7 @@ export type AdvisorMessagePayloadData = {
   executionStatus: "draft_ready" | "needs_input";
   missingInputs: Array<"incomeMultiple" | "creditScore">;
   promptVersion: "advisor-v2-p3";
+  contact?: ListingContactInfo | null;
   context: AdvisorGroupContext;
 };
 
@@ -301,6 +305,7 @@ export async function aggregateAdvisorGroupContext(input: {
       rankingLabel: analysis.rankingLabel,
       fairnessScore: analysis.fairnessScore,
       confidence: analysis.confidence,
+      contact: listingContactInfo(entry.listing),
     }));
 
   return {
@@ -426,14 +431,18 @@ function generateDraft(input: {
     : hasApplicationMaterials
       ? " Our offer letter and proof of income are ready."
       : "";
+  const contact = listing ? listingContactInfo(listing.listing) : null;
+  const firstName = contact?.agentName ? contact.agentName.trim().split(/\s+/)[0] : null;
+  const greeting = firstName ? `Hi ${firstName},` : null;
 
   if (input.tone === "Casual") {
-    return `Hi! Checking in about ${subject}. ${finance}${moveIn}${readinessSentence} Is it still available, and when could we tour? Thanks, ${sender}`;
+    const start = greeting ? `${greeting} Checking in about ${subject}.` : `Hi! Checking in about ${subject}.`;
+    return `${start} ${finance}${moveIn}${readinessSentence} Is it still available, and when could we tour? Thanks, ${sender}`;
   }
 
   if (input.tone === "Stern") {
     return [
-      "Hello,",
+      greeting ?? "Hello,",
       "",
       `We need a current status on ${subject}. ${finance}${moveIn}${readinessSentence}`,
       "",
@@ -445,7 +454,7 @@ function generateDraft(input: {
 
   if (input.tone === "Passive-Aggressive") {
     return [
-      "Hello,",
+      greeting ?? "Hello,",
       "",
       `I am checking on ${subject}. ${finance}${moveIn}${readinessSentence}`,
       "",
@@ -456,7 +465,7 @@ function generateDraft(input: {
   }
 
   return [
-    "Hello,",
+    greeting ?? "Hello,",
     "",
     `I am reaching out regarding ${subject}. ${finance}${moveIn} Our group is organized and prepared to move promptly on the right home.`,
     "",
@@ -501,6 +510,13 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     throw new Error("Advisor tone constraint was not compiled.");
   }
 
+  const targetListing = findRequestedListing(
+    input.boardData,
+    parsed.command,
+    context.leverage.strongestListings,
+  );
+  const targetContact = targetListing ? listingContactInfo(targetListing.listing) : null;
+
   return {
     schemaVersion: 1,
     draftText: missingInputs.length > 0
@@ -517,6 +533,7 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     executionStatus: missingInputs.length > 0 ? "needs_input" : "draft_ready",
     missingInputs,
     promptVersion: "advisor-v2-p3",
+    contact: targetContact,
     context,
   };
 }

@@ -83,6 +83,22 @@ struct AdvisorCardView: View {
       }
 
       VStack(alignment: .leading, spacing: 8) {
+        if let contact = currentPayload.contact {
+          let contactLabel = [contact.agentName, contact.brokerage]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " • ")
+          if !contactLabel.isEmpty {
+            HStack(spacing: 5) {
+              Image(systemName: "person.crop.circle")
+                .font(.caption2)
+              Text("To: \(contactLabel)")
+                .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(HomeboardPalette.accent)
+          }
+        }
+
         Text(currentPayload.draftText)
           .font(.body)
           .foregroundStyle(HomeboardPalette.primaryText)
@@ -267,8 +283,11 @@ struct AdvisorCardView: View {
 
   private func sendViaEmail() {
     guard let payload, isDraftReady(payload) else { return }
+    let recipients = [payload.contact?.agentEmail]
+      .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
     MessageDispatcher.presentMail(
-      recipients: [],
+      recipients: recipients,
       subject: "Homeboard rental outreach",
       body: payload.draftText
     ) { result in
@@ -278,8 +297,11 @@ struct AdvisorCardView: View {
 
   private func sendViaMessage() {
     guard let payload, isDraftReady(payload) else { return }
+    let recipients = [payload.contact?.agentPhone]
+      .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
     MessageDispatcher.presentMessage(
-      recipients: [],
+      recipients: recipients,
       body: payload.draftText
     ) { result in
       handleDispatchResult(result)
@@ -473,5 +495,52 @@ private struct AdvisorCTAButtonStyle: ButtonStyle {
         }
       }
       .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+  }
+}
+
+struct AdvisorTypingBubble: View {
+  @State private var dotPhase: Int = 0
+
+  var body: some View {
+    HStack(alignment: .bottom, spacing: 8) {
+      Circle()
+        .fill(HomeboardPalette.accent)
+        .frame(width: 24, height: 24)
+        .overlay {
+          Image(systemName: "sparkles")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(HomeboardPalette.buttonText)
+        }
+
+      HStack(spacing: 5) {
+        ForEach(0..<3, id: \.self) { index in
+          Circle()
+            .fill(HomeboardPalette.secondaryText)
+            .frame(width: 7, height: 7)
+            .scaleEffect(dotPhase == index ? 1.3 : 0.8)
+            .opacity(dotPhase == index ? 1.0 : 0.4)
+            .animation(
+              .easeInOut(duration: 0.45)
+                .repeatForever(autoreverses: true)
+                .delay(Double(index) * 0.18),
+              value: dotPhase
+            )
+        }
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 11)
+      .background(Color.white.opacity(0.06))
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .stroke(HomeboardPalette.accent.opacity(0.2), lineWidth: 1)
+      }
+
+      Spacer()
+    }
+    .onAppear {
+      dotPhase = 2
+    }
+    .padding(.vertical, 4)
   }
 }

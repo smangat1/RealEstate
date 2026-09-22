@@ -115,6 +115,10 @@ private struct MobileListingCreateRequest: Encodable {
   var sourceUrl: String?
   var imageUrl: String?
   var groupNote: String?
+  var agentName: String?
+  var agentPhone: String?
+  var agentEmail: String?
+  var brokerage: String?
 }
 
 private struct MobileListingPatchRequest: Encodable {
@@ -796,7 +800,11 @@ final class HomeboardAPI {
         description: listing.summary,
         sourceUrl: listing.sourceURL.isEmpty ? nil : listing.sourceURL,
         imageUrl: listing.photoURL.isEmpty ? nil : listing.photoURL,
-        groupNote: listing.groupNote.isEmpty ? nil : listing.groupNote
+        groupNote: listing.groupNote.isEmpty ? nil : listing.groupNote,
+        agentName: listing.contact?.agentName,
+        agentPhone: listing.contact?.agentPhone,
+        agentEmail: listing.contact?.agentEmail,
+        brokerage: listing.contact?.brokerage
       )
     )
   }

@@ -460,7 +460,11 @@ enum HomeboardExtensionSyncClient {
         modelInsights: listing.modelInsights,
         description: listing.summary,
         sourceUrl: listing.canonicalURL ?? listing.url,
-        imageUrl: listing.imageURL
+        imageUrl: listing.imageURL,
+        agentName: listing.agentName,
+        agentPhone: listing.agentPhone,
+        agentEmail: listing.agentEmail,
+        brokerage: listing.brokerage
       )
     )
     let _: SaveResponse = try await decodedResponse(for: request)
@@ -788,6 +792,10 @@ private struct ListingRequest: Encodable {
   var description: String?
   var sourceUrl: String
   var imageUrl: String?
+  var agentName: String?
+  var agentPhone: String?
+  var agentEmail: String?
+  var brokerage: String?
 }
 
 private struct SaveResponse: Decodable {

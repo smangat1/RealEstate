@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { BoardPageData, ListingModelInsight, ListingRecord, SearchProfileData, SearchBoardSummary } from "@/lib/types";
+import type { BoardPageData, ListingContactInfo, ListingModelInsight, ListingRecord, SearchProfileData, SearchBoardSummary } from "@/lib/types";
 import { getProfileCompletion } from "@/lib/rental-logic";
 import { allocateRentFairly } from "@/lib/group-affordability";
 import { pendingBoardQuestions } from "@/lib/board-decisions";
@@ -43,6 +43,7 @@ export type MobileListingPreviewPayload = {
   highlights: string[];
   amenities: string[];
   modelInsights: ListingModelInsight[];
+  contact?: ListingContactInfo | null;
   openRisks: string[];
   status: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied" | "outreach_sent";
   workflowStatus: "suggested" | "source_confirmed" | "considering" | "shortlisted" | "viewing" | "applying" | "decided";
@@ -331,6 +332,25 @@ function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {
   }).slice(0, 16);
 }
 
+export function listingContactInfo(listing: Pick<ListingRecord, "providerData">): ListingContactInfo | null {
+  if (!listing.providerData || typeof listing.providerData !== "object" || Array.isArray(listing.providerData)) {
+    return null;
+  }
+  const raw = (listing.providerData as Record<string, unknown>).homeboardContactInfo;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const data = raw as Record<string, unknown>;
+  const agentName = typeof data.agentName === "string" && data.agentName.trim() ? data.agentName.trim() : null;
+  const agentPhone = typeof data.agentPhone === "string" && data.agentPhone.trim() ? data.agentPhone.trim() : null;
+  const agentEmail = typeof data.agentEmail === "string" && data.agentEmail.trim() ? data.agentEmail.trim() : null;
+  const brokerage = typeof data.brokerage === "string" && data.brokerage.trim() ? data.brokerage.trim() : null;
+  if (!agentName && !agentPhone && !agentEmail && !brokerage) {
+    return null;
+  }
+  return { agentName, agentPhone, agentEmail, brokerage };
+}
+
 function mapSuggestedListingForMobile(
   entry: BoardPageData["suggestedListings"][number],
   data: BoardPageData,
@@ -399,6 +419,7 @@ function mapSuggestedListingForMobile(
     reviews: [],
     decisions: [],
     analysis: entry.analysis ?? null,
+    contact: listingContactInfo(listing),
     rentSplit: allocateRentFairly(
       listing.price,
       data.roommates.filter((roommate) => roommate.roleLabel !== "commute point"),
@@ -490,6 +511,7 @@ export function mapListingInventoryForMobile(
     reviews: [],
     decisions: [],
     analysis: null,
+    contact: listingContactInfo(listing),
     rentSplit: null,
   };
 }
@@ -580,6 +602,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
     reviews: [],
     decisions: [],
     analysis: null,
+    contact: listingContactInfo(entry.listing),
     rentSplit: null,
     deletedAt: entry.deletedAt,
   }));
@@ -823,6 +846,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
             };
           }),
           analysis: data.listingAnalysisByBoardListingId[entry.id] ?? null,
+          contact: listingContactInfo(entry.listing),
           rentSplit: allocateRentFairly(entry.listing.price, householdRoommates),
         };
       }),

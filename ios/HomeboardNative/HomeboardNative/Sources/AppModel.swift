@@ -199,6 +199,7 @@ final class AppModel {
   var boardMessageDraft = ""
   var advisorWalletStatus: AdvisorWalletStatus?
   var isAdvisorWalletLoading = false
+  var isAdvisorProcessing = false
   var advisorFundingAmountCents = 400
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
@@ -922,9 +923,17 @@ final class AppModel {
     )
     storeCurrentBoardSnapshot()
 
+    let isAdvisor = message.localizedCaseInsensitiveContains("@advisor")
+    if isAdvisor {
+      isAdvisorProcessing = true
+    }
+
     isBoardLoading = true
     defer {
       isBoardLoading = false
+      if isAdvisor {
+        isAdvisorProcessing = false
+      }
       persist()
     }
 
@@ -1711,7 +1720,8 @@ final class AppModel {
     modelInsights: [HomeboardListingInsight] = [],
     address: String = "",
     latitude: Double? = nil,
-    longitude: Double? = nil
+    longitude: Double? = nil,
+    contact: ListingContactInfo? = nil
   ) {
     let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1820,7 +1830,8 @@ final class AppModel {
       squareFeet: squareFeet,
       availableDate: availableDate,
       latitude: latitude,
-      longitude: longitude
+      longitude: longitude,
+      contact: contact
     )
 
     let key = boardStorageKey()
@@ -3327,8 +3338,19 @@ final class AppModel {
     let remoteImage = shared.imageURL?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let photoURL = HomeboardSharedImportStore.hasPreviewImage(for: shared.id)
-        ? HomeboardSharedImportStore.previewImageReference(for: shared.id)
-        : remoteImage
+      ? HomeboardSharedImportStore.previewImageReference(for: shared.id)
+      : remoteImage
+    let contactInfo: ListingContactInfo?
+    if shared.agentName != nil || shared.agentPhone != nil || shared.agentEmail != nil || shared.brokerage != nil {
+      contactInfo = ListingContactInfo(
+        agentName: shared.agentName,
+        agentPhone: shared.agentPhone,
+        agentEmail: shared.agentEmail,
+        brokerage: shared.brokerage
+      )
+    } else {
+      contactInfo = nil
+    }
 
     addManualListing(
       title: displayTitle,
@@ -3348,7 +3370,8 @@ final class AppModel {
       modelInsights: shared.modelInsights,
       address: address,
       latitude: shared.latitude,
-      longitude: shared.longitude
+      longitude: shared.longitude,
+      contact: contactInfo
     )
     pendingSharedListingImport = nil
     pendingMacPairingRequest = nil

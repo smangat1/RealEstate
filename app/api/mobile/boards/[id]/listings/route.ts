@@ -43,6 +43,10 @@ const listingSchema = z.object({
   sourceUrl: z.string().trim().max(2_000).refine(isSafeHttpUrl).or(z.literal("")).optional(),
   imageUrl: z.string().trim().max(2_000).refine(isSafeHttpUrl).or(z.literal("")).optional(),
   groupNote: z.string().trim().max(5_000).optional(),
+  agentName: z.string().trim().max(160).optional(),
+  agentPhone: z.string().trim().max(80).optional(),
+  agentEmail: z.string().trim().max(160).optional(),
+  brokerage: z.string().trim().max(160).optional(),
 });
 
 const inventoryQuerySchema = z
@@ -373,6 +377,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       description: parsed.data.description,
       imageUrl: parsed.data.imageUrl,
       userNotes: parsed.data.groupNote,
+      agentName: parsed.data.agentName,
+      agentPhone: parsed.data.agentPhone,
+      agentEmail: parsed.data.agentEmail,
+      brokerage: parsed.data.brokerage,
       actorRoommateId: roommate?.id,
       actorUserId: user.id,
     });

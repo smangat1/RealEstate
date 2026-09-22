@@ -340,6 +340,13 @@ struct GroupListingAnalysis: Hashable, Codable {
   var members: [RoommateListingAnalysis]
 }
 
+struct ListingContactInfo: Hashable, Codable {
+  var agentName: String?
+  var agentPhone: String?
+  var agentEmail: String?
+  var brokerage: String?
+}
+
 struct ListingPreview: Identifiable, Hashable, Codable {
   var id: String
   var listingId: String
@@ -377,6 +384,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
   var decisions: [ListingDecisionSummary] = []
   var analysis: GroupListingAnalysis? = nil
   var rentSplit: RentSplitPreview? = nil
+  var contact: ListingContactInfo? = nil
   var deletedAt: String? = nil
 
   init(
@@ -404,6 +412,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     availableDate: String? = nil,
     latitude: Double? = nil,
     longitude: Double? = nil,
+    contact: ListingContactInfo? = nil,
     deletedAt: String? = nil
   ) {
     self.id = id
@@ -430,6 +439,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     self.availableDate = availableDate
     self.latitude = latitude
     self.longitude = longitude
+    self.contact = contact
     self.deletedAt = deletedAt
   }
 
@@ -482,6 +492,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     case decisions
     case analysis
     case rentSplit
+    case contact
     case deletedAt
   }
 
@@ -523,6 +534,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     decisions = try container.decodeIfPresent([ListingDecisionSummary].self, forKey: .decisions) ?? []
     analysis = try container.decodeIfPresent(GroupListingAnalysis.self, forKey: .analysis)
     rentSplit = try container.decodeIfPresent(RentSplitPreview.self, forKey: .rentSplit)
+    contact = try container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
   }
 }
@@ -600,6 +612,7 @@ struct AdvisorMessagePayload: Hashable, Codable {
   var executionStatus: String? = nil
   var missingInputs: [String]? = nil
   var promptVersion: String? = nil
+  var contact: ListingContactInfo? = nil
   var context: AdvisorContext? = nil
 }
 
@@ -613,6 +626,7 @@ extension AdvisorMessagePayload {
     case executionStatus
     case missingInputs
     case promptVersion
+    case contact
     case context
   }
 
@@ -628,6 +642,7 @@ extension AdvisorMessagePayload {
     executionStatus = try? container.decodeIfPresent(String.self, forKey: .executionStatus)
     missingInputs = try? container.decodeIfPresent([String].self, forKey: .missingInputs)
     promptVersion = try? container.decodeIfPresent(String.self, forKey: .promptVersion)
+    contact = try? container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
   }
 }
@@ -650,6 +665,7 @@ struct AdvisorLeverage: Hashable, Codable {
 struct AdvisorStrongListing: Hashable, Codable {
   var boardListingId: String
   var listing: String
+  var contact: ListingContactInfo? = nil
 }
 
 struct AdvisorWalletStatus: Hashable, Codable {

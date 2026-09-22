@@ -2027,6 +2027,10 @@ export async function addListingToBoard(
     description?: string;
     imageUrl?: string;
     userNotes?: string;
+    agentName?: string;
+    agentPhone?: string;
+    agentEmail?: string;
+    brokerage?: string;
     actorRoommateId?: string;
     actorUserId: string;
   },
@@ -2093,7 +2097,19 @@ export async function addListingToBoard(
     const capturedImageUrl = input.imageUrl?.trim();
     const capturedTitle = input.listingTitle?.trim();
     const existingProviderData = duplicateBoardListing.listing.providerData;
-    const listingRefresh = input.modelInsights?.length || capturedTitle || capturedImageUrl
+    const hasContact = Boolean(input.agentName || input.agentPhone || input.agentEmail || input.brokerage);
+    const existingContact = existingProviderData && typeof existingProviderData === "object" && !Array.isArray(existingProviderData)
+      ? (existingProviderData as Record<string, unknown>).homeboardContactInfo as Record<string, unknown> | undefined
+      : undefined;
+    const mergedContact = hasContact
+      ? {
+          agentName: input.agentName?.trim() || (typeof existingContact?.agentName === "string" ? existingContact.agentName : null),
+          agentPhone: input.agentPhone?.trim() || (typeof existingContact?.agentPhone === "string" ? existingContact.agentPhone : null),
+          agentEmail: input.agentEmail?.trim() || (typeof existingContact?.agentEmail === "string" ? existingContact.agentEmail : null),
+          brokerage: input.brokerage?.trim() || (typeof existingContact?.brokerage === "string" ? existingContact.brokerage : null),
+        }
+      : existingContact;
+    const listingRefresh = input.modelInsights?.length || capturedTitle || capturedImageUrl || hasContact
       ? prisma.listing.update({
           where: { id: duplicateBoardListing.listing.id },
           data: {
@@ -2108,7 +2124,10 @@ export async function addListingToBoard(
               ...(capturedTitle
                 ? { homeboardListingTitle: capturedTitle }
                 : {}),
-            },
+              ...(mergedContact
+                ? { homeboardContactInfo: mergedContact }
+                : {}),
+            } as Prisma.InputJsonValue,
           },
         })
       : Promise.resolve();
@@ -2156,7 +2175,17 @@ export async function addListingToBoard(
         ...(input.listingTitle?.trim()
           ? { homeboardListingTitle: input.listingTitle.trim() }
           : {}),
-      },
+        ...(input.agentName || input.agentPhone || input.agentEmail || input.brokerage
+          ? {
+              homeboardContactInfo: {
+                agentName: input.agentName?.trim() || null,
+                agentPhone: input.agentPhone?.trim() || null,
+                agentEmail: input.agentEmail?.trim() || null,
+                brokerage: input.brokerage?.trim() || null,
+              },
+            }
+          : {}),
+      } as Prisma.InputJsonValue,
       fees: json({ brokerFee: null, applicationFee: null, deposit: null, utilitiesIncluded: null }),
       images: json(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
       propertyType: null,
