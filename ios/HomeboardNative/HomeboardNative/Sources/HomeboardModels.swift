@@ -588,6 +588,90 @@ struct BoardMessage: Identifiable, Hashable, Codable {
   var authorName: String?
   var content: String
   var createdAt: String
+  var advisorPayload: AdvisorMessagePayload? = nil
+}
+
+struct AdvisorMessagePayload: Hashable, Codable {
+  var messageId: String? = nil
+  var schemaVersion: Int? = nil
+  var draftText: String = ""
+  var tone: String = "Professional"
+  var toggleOptions: [AdvisorToggleOption] = []
+  var executionStatus: String? = nil
+  var missingInputs: [String]? = nil
+  var promptVersion: String? = nil
+  var context: AdvisorContext? = nil
+}
+
+extension AdvisorMessagePayload {
+  private enum CodingKeys: String, CodingKey {
+    case messageId
+    case schemaVersion
+    case draftText
+    case tone
+    case toggleOptions
+    case executionStatus
+    case missingInputs
+    case promptVersion
+    case context
+  }
+
+  init(from decoder: Decoder) throws {
+    self.init()
+    guard let container = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+
+    messageId = try? container.decodeIfPresent(String.self, forKey: .messageId)
+    schemaVersion = try? container.decodeIfPresent(Int.self, forKey: .schemaVersion)
+    draftText = (try? container.decodeIfPresent(String.self, forKey: .draftText)) ?? ""
+    tone = (try? container.decodeIfPresent(String.self, forKey: .tone)) ?? "Professional"
+    toggleOptions = (try? container.decodeIfPresent([AdvisorToggleOption].self, forKey: .toggleOptions)) ?? []
+    executionStatus = try? container.decodeIfPresent(String.self, forKey: .executionStatus)
+    missingInputs = try? container.decodeIfPresent([String].self, forKey: .missingInputs)
+    promptVersion = try? container.decodeIfPresent(String.self, forKey: .promptVersion)
+    context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
+  }
+}
+
+struct AdvisorToggleOption: Identifiable, Hashable, Codable {
+  var id: String
+  var label: String
+  var enabled: Bool
+  var required: Bool
+}
+
+struct AdvisorContext: Hashable, Codable {
+  var leverage: AdvisorLeverage?
+}
+
+struct AdvisorLeverage: Hashable, Codable {
+  var strongestListings: [AdvisorStrongListing]?
+}
+
+struct AdvisorStrongListing: Hashable, Codable {
+  var boardListingId: String
+  var listing: String
+}
+
+struct AdvisorWalletStatus: Hashable, Codable {
+  var rolling7DayTotalCents: Int
+  var thresholdCents: Int
+  var remainingCents: Int
+  var windowStartedAt: String
+  var subscription: AdvisorSubscriptionStatus
+
+  var progressFraction: Double {
+    guard thresholdCents > 0 else { return 0 }
+    return min(1, max(0, Double(rolling7DayTotalCents) / Double(thresholdCents)))
+  }
+
+  var isUnlocked: Bool {
+    subscription.active
+  }
+}
+
+struct AdvisorSubscriptionStatus: Hashable, Codable {
+  var active: Bool
+  var validUntil: String?
 }
 
 // ──────────────────────────────────────────────────

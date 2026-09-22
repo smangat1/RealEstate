@@ -6,6 +6,10 @@ options:
 settings:
   base:
     SWIFT_VERSION: 5.0
+packages:
+  Stripe:
+    url: https://github.com/stripe/stripe-ios
+    from: 24.0.0
 targets:
   HomeboardNative:
     type: application
@@ -33,6 +37,7 @@ targets:
       - path: HomeboardNative/Sources/SharedWorkspaceView.swift
       - path: HomeboardNative/Sources/HomeboardActiveOffer.swift
       - path: HomeboardNative/Sources/MessageDispatcher.swift
+      - path: HomeboardNative/Sources/AdvisorCardView.swift
       - path: HomeboardNative/Resources/Assets.xcassets
         buildPhase: resources
       - path: HomeboardNative/Resources/PrivacyInfo.xcprivacy
@@ -50,6 +55,7 @@ targets:
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         HOMEBOARD_APP_COMMIT: local
         HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_STRIPE_PUBLISHABLE_KEY: ""
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
@@ -65,6 +71,8 @@ targets:
       - target: HomeboardShareExtension
       - target: HomeboardActionExtension
       - target: HomeboardSafariExtension
+      - package: Stripe
+        product: StripePaymentSheet
   HomeboardShareExtension:
     type: app-extension
     platform: iOS

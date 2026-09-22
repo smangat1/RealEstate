@@ -14,6 +14,7 @@
 		13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */; };
 		161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */; };
 		185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */; };
+		1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */; };
 		1EC933E2D2158B93F82E8994 /* HomeboardActionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */; };
 		2A5AF129395DD2397F963D4E /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
@@ -68,6 +69,7 @@
 		D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */; };
 		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
 		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		E5216B5B1E0A8ED493C21B8F /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = C61EED1E57E992C638024AA8 /* StripePaymentSheet */; };
 		E5ADE81D14E97FFB8B2FAB6D /* SharePreprocessor.js in Resources */ = {isa = PBXBuildFile; fileRef = C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */; };
 		F0E38EF838CE4A52F313FD07 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
 		F109A7AD071A6E5861A32430 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
@@ -192,8 +194,20 @@
 		CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedWorkspaceView.swift; sourceTree = "<group>"; };
 		D2CF740AFC2099E6B35681BD /* HomeboardNative.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HomeboardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA1F1A64964C190A30B424C5 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorCardView.swift; sourceTree = "<group>"; };
 		F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		576F7DD9CE4C2FA4B822C5BE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E5216B5B1E0A8ED493C21B8F /* StripePaymentSheet in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0153C76EE17D084594B4F24E /* Resources */ = {
@@ -294,6 +308,7 @@
 			isa = PBXGroup;
 			children = (
 				40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */,
+				EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */,
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
 				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
@@ -449,6 +464,7 @@
 			buildPhases = (
 				B7512B1F7EE85DFD894AA67E /* Sources */,
 				403384A673FE13C255C61089 /* Resources */,
+				576F7DD9CE4C2FA4B822C5BE /* Frameworks */,
 				046C94C336501011012AA13D /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -460,6 +476,7 @@
 			);
 			name = HomeboardNative;
 			packageProductDependencies = (
+				C61EED1E57E992C638024AA8 /* StripePaymentSheet */,
 			);
 			productName = HomeboardNative;
 			productReference = D2CF740AFC2099E6B35681BD /* HomeboardNative.app */;
@@ -554,6 +571,9 @@
 			);
 			mainGroup = A57FD7D580497D69506B66AB;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				6B3222FA0F2EC5ED8A53D228 /* XCRemoteSwiftPackageReference "stripe-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B4EBDCF9F5C9DA446E68381F /* Products */;
 			projectDirPath = "";
@@ -692,6 +712,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */,
+				1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */,
 				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
 				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,
@@ -966,6 +987,7 @@
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				HOMEBOARD_APP_COMMIT = local;
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_STRIPE_PUBLISHABLE_KEY = "";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1127,6 +1149,7 @@
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				HOMEBOARD_APP_COMMIT = local;
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_STRIPE_PUBLISHABLE_KEY = "";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1379,6 +1402,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		6B3222FA0F2EC5ED8A53D228 /* XCRemoteSwiftPackageReference "stripe-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 24.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C61EED1E57E992C638024AA8 /* StripePaymentSheet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6B3222FA0F2EC5ED8A53D228 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripePaymentSheet;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8CD380EF1611310C99AA1F8A /* Project object */;
 }

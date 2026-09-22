@@ -58,6 +58,7 @@ struct MobileBoardLoadResponse: Decodable {
   var board: MobileBoard
   var profile: RemoteRentalProfilePayload
   var missingFields: [String]
+  var advisorPayload: AdvisorMessagePayload?
 }
 
 struct MobileListingInventoryResponse: Decodable {
@@ -74,6 +75,22 @@ struct MobileHealthResponse: Decodable {
 
 struct MobileBoardMessageCreateRequest: Encodable {
   var content: String
+  var tone: String?
+
+  init(content: String, tone: String? = nil) {
+    self.content = content
+    self.tone = tone
+  }
+}
+
+private struct MobileAdvisorFundRequest: Encodable {
+  var amountCents: Int
+}
+
+struct MobileAdvisorFundResponse: Decodable {
+  var clientSecret: String
+  var paymentIntentId: String
+  var amountCents: Int
 }
 
 private struct MobileListingCreateRequest: Encodable {
@@ -718,13 +735,37 @@ final class HomeboardAPI {
   func sendBoardMessage(
     accessToken: String,
     boardId: String,
-    content: String
+    content: String,
+    tone: String? = nil
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardMessageCreateRequest(content: content)
+      body: MobileBoardMessageCreateRequest(content: content, tone: tone)
+    )
+  }
+
+  func fetchAdvisorWalletStatus(
+    accessToken: String,
+    boardId: String
+  ) async throws -> AdvisorWalletStatus {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/wallet",
+      accessToken: accessToken
+    )
+  }
+
+  func createAdvisorFundingIntent(
+    accessToken: String,
+    boardId: String,
+    amountCents: Int
+  ) async throws -> MobileAdvisorFundResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/wallet/fund",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileAdvisorFundRequest(amountCents: amountCents)
     )
   }
 

@@ -197,6 +197,9 @@ final class AppModel {
   var incomingLinkError: String?
   var boardFeedback: String?
   var boardMessageDraft = ""
+  var advisorWalletStatus: AdvisorWalletStatus?
+  var isAdvisorWalletLoading = false
+  var advisorFundingAmountCents = 400
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
   var listingInventoryHasMore = false
@@ -935,6 +938,9 @@ final class AppModel {
             authSession?.userId == session.userId,
             board.id == boardId else { return }
       board = response.board
+      if let advisorPayload = response.advisorPayload {
+        applyAdvisorPayload(advisorPayload)
+      }
       profile = RentalProfile(remote: response.profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
@@ -943,6 +949,89 @@ final class AppModel {
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       boardMessageDraft = message
     }
+  }
+
+  func regenerateAdvisorDraft(
+    originalCommand: String,
+    tone: String,
+    toggles: [AdvisorToggleOption]
+  ) async throws -> MobileBoardLoadResponse {
+    guard let session = authSession, let boardId = board.id else {
+      throw HomeboardAPIError.missingSession
+    }
+
+    let enabledLabels = toggles
+      .filter(\.enabled)
+      .map(\.label)
+      .joined(separator: ", ")
+    let command = enabledLabels.isEmpty
+      ? originalCommand
+      : "\(originalCommand)\nInclude: \(enabledLabels)"
+
+    return try await api.sendBoardMessage(
+      accessToken: session.accessToken,
+      boardId: boardId,
+      content: command,
+      tone: tone
+    )
+  }
+
+  @discardableResult
+  func applyAdvisorRegenerationResponse(
+    _ response: MobileBoardLoadResponse,
+    payload: AdvisorMessagePayload,
+    expectedBoardId: String
+  ) -> AdvisorMessagePayload? {
+    guard board.id == expectedBoardId, response.board.id == expectedBoardId else { return nil }
+    board = response.board
+    applyAdvisorPayload(payload)
+    profile = RentalProfile(remote: response.profile)
+    storeCurrentBoardSnapshot()
+    persist()
+    return payload
+  }
+
+  func refreshAdvisorWalletStatus() async {
+    guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
+      advisorWalletStatus = nil
+      return
+    }
+    isAdvisorWalletLoading = true
+    defer { isAdvisorWalletLoading = false }
+    do {
+      advisorWalletStatus = try await api.fetchAdvisorWalletStatus(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func advisorFundingClientSecret(amountCents: Int) async -> String? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before funding Advisor."
+      return nil
+    }
+    do {
+      let response = try await api.createAdvisorFundingIntent(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        amountCents: amountCents
+      )
+      return response.clientSecret
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload) {
+    guard let listingId = payload.context?.leverage?.strongestListings?.first?.boardListingId else {
+      boardError = "Advisor could not identify the listing for this outreach."
+      return
+    }
+    updateManualListingStatus(id: listingId, status: "Outreach Sent")
   }
 
   func signOut() {
@@ -1454,6 +1543,11 @@ final class AppModel {
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     currentScreen = .board
+    if let boardId = response.board.id, !boardId.hasPrefix("local-"), !boardId.hasPrefix("preview-") {
+      Task { await refreshAdvisorWalletStatus() }
+    } else {
+      advisorWalletStatus = nil
+    }
     resumePendingListingMutations(boardId: id)
     scheduleRecentlyDeletedPurge(boardId: id)
   }
@@ -3303,6 +3397,9 @@ final class AppModel {
     guard authSession != nil, response.board.id == board.id else { return }
     let key = boardStorageKey()
     board = boardByApplyingRemovalTombstones(response.board, storageKey: key)
+    if let advisorPayload = response.advisorPayload {
+      applyAdvisorPayload(advisorPayload)
+    }
     profile = RentalProfile(remote: response.profile)
     if kinds.contains(.shortlist) {
       localShortlistsByBoard[key] = pendingListingCreatesByBoard[key] ?? []
@@ -3312,6 +3409,24 @@ final class AppModel {
     if kinds.contains(.members) { localMembersByBoard[key] = [] }
     storeCurrentBoardSnapshot()
     persist()
+  }
+
+  private func applyAdvisorPayload(_ payload: AdvisorMessagePayload) {
+    let hasDraft = !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    if let messageId = payload.messageId,
+       let index = board.chatMessages.firstIndex(where: { $0.id == messageId }) {
+      board.chatMessages[index].advisorPayload = payload
+      if hasDraft {
+        board.chatMessages[index].content = payload.draftText
+      }
+      return
+    }
+    if let index = board.chatMessages.lastIndex(where: { $0.role == "assistant" && $0.authorName == "Advisor" }) {
+      board.chatMessages[index].advisorPayload = payload
+      if hasDraft {
+        board.chatMessages[index].content = payload.draftText
+      }
+    }
   }
 
   private func boardByApplyingRemovalTombstones(
@@ -3413,6 +3528,7 @@ final class AppModel {
     case "touring": return "toured"
     case "passed": return "rejected"
     case "top choice": return "interested"
+    case "outreach sent": return "outreach_sent"
     default: return status.lowercased()
     }
   }
