@@ -3,16 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { after, NextResponse } from 'next/server';
 
 import { notifyBoardChat } from '@/lib/apns';
+import {
+  applyAdvisorContribution,
+  realAdvisorLedgerWhere,
+} from '@/lib/advisor-wallet';
 import { sendOperationalAlert } from '@/lib/monitoring';
 import { prisma } from '@/lib/prisma';
 import { constructStripeEvent } from '@/lib/stripe';
-
-// Rolling window for the subscription threshold check.
-const SUBSCRIPTION_WINDOW_DAYS = 7;
-// Amount (in cents) required within the rolling window to activate the subscription.
-const SUBSCRIPTION_THRESHOLD_CENTS = 400; // $4.00
-// Subscription validity from the moment the threshold is first reached.
-const SUBSCRIPTION_DURATION_DAYS = 7;
 
 export const dynamic = 'force-dynamic';
 
@@ -51,55 +48,46 @@ export async function POST(request: Request) {
   const amountCents = intent.amount_received ?? intent.amount;
 
   try {
-    // Record the contribution idempotently for Stripe retries.
-    const ledgerId = randomUUID();
-    const ledger = await prisma.boardWalletLedger.upsert({
-      where: { stripePaymentId: intent.id },
-      create: {
-        id: ledgerId,
-        boardId,
-        userId,
-        amount: amountCents,
-        stripePaymentId: intent.id,
+    const result = await applyAdvisorContribution({
+      boardId,
+      userId,
+      amountCents,
+      paymentId: intent.id,
+      testMode: false,
+      now: new Date(),
+    }, {
+      recordLedger: async (contribution) => {
+        const ledgerId = randomUUID();
+        const ledger = await prisma.boardWalletLedger.upsert({
+          where: { stripePaymentId: contribution.paymentId },
+          create: {
+            id: ledgerId,
+            boardId: contribution.boardId,
+            userId: contribution.userId,
+            amount: contribution.amountCents,
+            stripePaymentId: contribution.paymentId,
+          },
+          update: {},
+        });
+        return ledger.id === ledgerId;
       },
-      update: {},
-    });
-    if (ledger.id !== ledgerId) {
-      return NextResponse.json({ received: true });
-    }
-
-    // Rolling-window total for this board.
-    const windowStart = new Date();
-    windowStart.setDate(windowStart.getDate() - SUBSCRIPTION_WINDOW_DAYS);
-
-    const aggregate = await prisma.boardWalletLedger.aggregate({
-      where: {
-        boardId,
-        createdAt: { gte: windowStart },
+      getRealRollingTotal: async (targetBoardId, windowStart) => {
+        const aggregate = await prisma.boardWalletLedger.aggregate({
+          where: realAdvisorLedgerWhere(targetBoardId, windowStart),
+          _sum: { amount: true },
+        });
+        return aggregate._sum.amount ?? 0;
       },
-      _sum: { amount: true },
+      upsertSubscription: async (targetBoardId, validUntil) => {
+        await prisma.advisorSubscription.upsert({
+          where: { boardId: targetBoardId },
+          create: { boardId: targetBoardId, isActive: true, validUntil },
+          update: { isActive: true, validUntil },
+        });
+      },
     });
 
-    const windowTotal = aggregate._sum.amount ?? 0;
-
-    if (windowTotal >= SUBSCRIPTION_THRESHOLD_CENTS) {
-      const validUntil = new Date();
-      validUntil.setDate(validUntil.getDate() + SUBSCRIPTION_DURATION_DAYS);
-
-      await prisma.advisorSubscription.upsert({
-        where: { boardId },
-        create: {
-          boardId,
-          isActive: true,
-          validUntil,
-        },
-        update: {
-          isActive: true,
-          validUntil,
-        },
-      });
-
-      // Notify all board members via push.
+    if (result.activated) {
       after(async () => {
         try {
           await notifyBoardSubscriptionActivated(boardId);

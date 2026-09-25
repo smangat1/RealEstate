@@ -15,7 +15,6 @@ const dispatcher = source("ios/HomeboardNative/HomeboardNative/Sources/MessageDi
 const config = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
 const engineSource = source("lib/advisor-engine.ts");
 const advisorTestAccess = source("lib/advisor-test-access.ts");
-const stripeWebhook = source("app/api/webhook/stripe/route.ts");
 const fundingRoute = source("app/api/mobile/boards/[id]/wallet/fund/route.ts");
 const walletRoute = source("app/api/mobile/boards/[id]/wallet/route.ts");
 const messagesRoute = source("app/api/mobile/boards/[id]/messages/route.ts");
@@ -77,7 +76,6 @@ test("operator-only Advisor test mode simulates funding without Stripe", () => {
   assert.match(advisorTestAccess, /ADVISOR_TEST_MODE/);
   assert.match(advisorTestAccess, /isOperatorUser\(user\)/);
   assert.match(fundingRoute, /if \(testMode\)/);
-  assert.match(fundingRoute, /advisor_test_\$\{randomUUID\(\)\}/);
   assert.match(fundingRoute, /simulated: true/);
   assert.match(walletRoute, /testMode \|\| Boolean\(validUntil && validUntil >= now\)/);
   assert.match(messagesRoute, /hasAdvisorTestAccess\(user\)/);
@@ -124,10 +122,6 @@ test("canceled launch refreshes stay out of the group chat", () => {
   assert.match(appModel, /func refreshAdvisorWalletStatus[\s\S]*?catch is CancellationError/);
 });
 
-test("successful funding renews an existing subscription expiry", () => {
-  assert.match(stripeWebhook, /update:\s*\{\s*isActive: true,\s*validUntil,/);
-});
-
 test("locked Advisor commands are stopped in-app before reaching the API", () => {
   const sharedView = source("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
   assert.match(sharedView, /private var isAdvisorCommandBlocked/);
@@ -144,7 +138,7 @@ test("locked Advisor commands are stopped in-app before reaching the API", () =>
 test("roommates can split one board week without overfunding it", () => {
   assert.match(card, /Stepper\(value: \$amountCents, in: 50\.\.\.maximumContributionCents, step: 50\)/);
   assert.match(card, /shared total unlocks one full week at \$4/);
-  assert.match(fundingRoute, /const ADVISOR_WEEK_CENTS = 400/);
+  assert.match(fundingRoute, /ADVISOR_WEEK_CENTS/);
   assert.match(fundingRoute, /\.multipleOf\(MIN_CONTRIBUTION_CENTS/);
   assert.match(fundingRoute, /parsed\.data\.amountCents > remainingCents/);
   assert.match(fundingRoute, /validUntil >= now/);

@@ -5,13 +5,18 @@ import { z } from 'zod';
 
 import { ensureBoard } from '@/lib/board-data';
 import { hasAdvisorTestAccess } from '@/lib/advisor-test-access';
+import {
+  ADVISOR_TEST_PAYMENT_PREFIX,
+  ADVISOR_WEEK_CENTS,
+  ADVISOR_WINDOW_MS,
+  applyAdvisorContribution,
+  realAdvisorLedgerWhere,
+} from '@/lib/advisor-wallet';
 import { requireMobileAppUser } from '@/lib/mobile-auth';
 import { sendOperationalAlert } from '@/lib/monitoring';
 import { prisma } from '@/lib/prisma';
 import { getStripe } from '@/lib/stripe';
 
-const ADVISOR_WEEK_CENTS = 400;
-const ROLLING_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 const MIN_CONTRIBUTION_CENTS = 50;
 
 const schema = z.object({
@@ -45,19 +50,19 @@ export async function POST(
 
     const now = new Date();
     const testMode = hasAdvisorTestAccess(user);
-    const windowStart = new Date(now.getTime() - ROLLING_WINDOW_MS);
+    const windowStart = new Date(now.getTime() - ADVISOR_WINDOW_MS);
     const [subscription, ledger] = await Promise.all([
       prisma.advisorSubscription.findUnique({
         where: { boardId: id },
         select: { validUntil: true },
       }),
       prisma.boardWalletLedger.aggregate({
-        where: { boardId: id, createdAt: { gte: windowStart } },
+        where: realAdvisorLedgerWhere(id, windowStart),
         _sum: { amount: true },
       }),
     ]);
 
-    if (!testMode && subscription?.validUntil && subscription.validUntil >= now) {
+    if (subscription?.validUntil && subscription.validUntil >= now) {
       return NextResponse.json(
         { error: 'Advisor is already active for this board.' },
         { status: 409 },
@@ -80,25 +85,33 @@ export async function POST(
     }
 
     if (testMode) {
-      const simulatedPaymentId = `advisor_test_${randomUUID()}`;
-      await prisma.boardWalletLedger.create({
-        data: {
-          boardId: id,
-          userId: user.id,
-          amount: parsed.data.amountCents,
-          stripePaymentId: simulatedPaymentId,
+      const simulatedPaymentId = `${ADVISOR_TEST_PAYMENT_PREFIX}${randomUUID()}`;
+      await applyAdvisorContribution({
+        boardId: id,
+        userId: user.id,
+        amountCents: parsed.data.amountCents,
+        paymentId: simulatedPaymentId,
+        testMode: true,
+        now,
+      }, {
+        recordLedger: async (contribution) => {
+          await prisma.boardWalletLedger.create({
+            data: {
+              boardId: contribution.boardId,
+              userId: contribution.userId,
+              amount: contribution.amountCents,
+              stripePaymentId: contribution.paymentId,
+            },
+          });
+          return true;
+        },
+        getRealRollingTotal: async () => {
+          throw new Error('Test funding must not aggregate real contributions.');
+        },
+        upsertSubscription: async () => {
+          throw new Error('Test funding must not create subscriptions.');
         },
       });
-
-      const nextTotalCents = rollingTotalCents + parsed.data.amountCents;
-      if (nextTotalCents >= ADVISOR_WEEK_CENTS) {
-        const validUntil = new Date(now.getTime() + ROLLING_WINDOW_MS);
-        await prisma.advisorSubscription.upsert({
-          where: { boardId: id },
-          create: { boardId: id, isActive: true, validUntil },
-          update: { isActive: true, validUntil },
-        });
-      }
 
       return NextResponse.json({
         clientSecret: null,
