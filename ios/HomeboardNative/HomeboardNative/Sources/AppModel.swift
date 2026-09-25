@@ -970,7 +970,8 @@ final class AppModel {
   func regenerateAdvisorDraft(
     originalCommand: String,
     tone: String,
-    toggles: [AdvisorToggleOption]
+    toggles: [AdvisorToggleOption],
+    originatingMessageId: String?
   ) async throws -> MobileBoardLoadResponse {
     guard let session = authSession, let boardId = board.id else {
       throw HomeboardAPIError.missingSession
@@ -989,7 +990,8 @@ final class AppModel {
       boardId: boardId,
       content: command,
       tone: tone,
-      regenerateOnly: true
+      regenerateOnly: true,
+      originatingMessageId: originatingMessageId
     )
   }
 
@@ -1000,7 +1002,17 @@ final class AppModel {
     expectedBoardId: String
   ) -> AdvisorMessagePayload? {
     guard board.id == expectedBoardId, response.board.id == expectedBoardId else { return nil }
-    board = response.board
+    // Preserve suggestions and recentlyDeleted from the current board: the regen
+    // endpoint fetches a full board, but we still merge defensively so a race
+    // cannot inadvertently wipe listings the user can see.
+    var merged = response.board
+    if merged.suggestions == nil || (merged.suggestions?.isEmpty ?? true) {
+      merged.suggestions = board.suggestions
+    }
+    if merged.recentlyDeleted == nil || (merged.recentlyDeleted?.isEmpty ?? true) {
+      merged.recentlyDeleted = board.recentlyDeleted
+    }
+    board = merged
     applyAdvisorPayload(payload)
     profile = RentalProfile(remote: response.profile)
     storeCurrentBoardSnapshot()
@@ -1048,7 +1060,11 @@ final class AppModel {
   }
 
   func markAdvisorOutreachSent(for payload: AdvisorMessagePayload) {
-    guard let listingId = payload.context?.leverage?.strongestListings?.first?.boardListingId else {
+    // Prefer the specific target carried in the payload; fall back to the strongest
+    // listing for legacy cards that predate targetListingBoardId.
+    let listingId = payload.targetListingBoardId
+      ?? payload.context?.leverage?.strongestListings?.first?.boardListingId
+    guard let listingId else {
       boardError = "Advisor could not identify the listing for this outreach."
       return
     }
@@ -3448,19 +3464,15 @@ final class AppModel {
 
   private func applyAdvisorPayload(_ payload: AdvisorMessagePayload) {
     let hasDraft = !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    if let messageId = payload.messageId,
-       let index = board.chatMessages.firstIndex(where: { $0.id == messageId }) {
-      board.chatMessages[index].advisorPayload = payload
-      if hasDraft {
-        board.chatMessages[index].content = payload.draftText
-      }
+    guard let messageId = payload.messageId,
+          let index = board.chatMessages.firstIndex(where: { $0.id == messageId }) else {
+      // messageId is absent or does not match any known message; skip rather
+      // than clobber an unrelated advisor card.
       return
     }
-    if let index = board.chatMessages.lastIndex(where: { $0.role == "assistant" && $0.authorName == "Advisor" }) {
-      board.chatMessages[index].advisorPayload = payload
-      if hasDraft {
-        board.chatMessages[index].content = payload.draftText
-      }
+    board.chatMessages[index].advisorPayload = payload
+    if hasDraft {
+      board.chatMessages[index].content = payload.draftText
     }
   }
 

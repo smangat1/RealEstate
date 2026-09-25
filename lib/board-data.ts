@@ -1352,7 +1352,7 @@ export async function getBoardPageData(
         },
         orderBy: { createdAt: "desc" },
       },
-      chatMessages: { orderBy: { createdAt: "desc" }, take: 250 },
+      chatMessages: { orderBy: { createdAt: "desc" }, take: 250, include: { advisorPayload: true } },
       boardListings: {
         where: {
           OR: [
@@ -1447,6 +1447,7 @@ export async function getBoardPageData(
     authorName: message.authorName,
     content: message.content,
     createdAt: message.createdAt.toISOString(),
+    advisorPayload: message.advisorPayload?.payload ?? null,
   }));
 
   const mapBoardListing = (entry: (typeof board.boardListings)[number]): BoardListingRecord => ({

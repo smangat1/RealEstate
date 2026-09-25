@@ -614,6 +614,8 @@ struct AdvisorMessagePayload: Hashable, Codable {
   var promptVersion: String? = nil
   var contact: ListingContactInfo? = nil
   var context: AdvisorContext? = nil
+  /// The boardListingId of the listing this draft specifically targets.
+  var targetListingBoardId: String? = nil
 }
 
 extension AdvisorMessagePayload {
@@ -628,6 +630,7 @@ extension AdvisorMessagePayload {
     case promptVersion
     case contact
     case context
+    case targetListingBoardId
   }
 
   init(from decoder: Decoder) throws {
@@ -644,6 +647,7 @@ extension AdvisorMessagePayload {
     promptVersion = try? container.decodeIfPresent(String.self, forKey: .promptVersion)
     contact = try? container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
+    targetListingBoardId = try? container.decodeIfPresent(String.self, forKey: .targetListingBoardId)
   }
 }
 

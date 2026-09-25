@@ -77,11 +77,13 @@ struct MobileBoardMessageCreateRequest: Encodable {
   var content: String
   var tone: String?
   var regenerateOnly: Bool?
+  var originatingMessageId: String?
 
-  init(content: String, tone: String? = nil, regenerateOnly: Bool? = nil) {
+  init(content: String, tone: String? = nil, regenerateOnly: Bool? = nil, originatingMessageId: String? = nil) {
     self.content = content
     self.tone = tone
     self.regenerateOnly = regenerateOnly
+    self.originatingMessageId = originatingMessageId
   }
 }
 
@@ -743,13 +745,14 @@ final class HomeboardAPI {
     boardId: String,
     content: String,
     tone: String? = nil,
-    regenerateOnly: Bool? = nil
+    regenerateOnly: Bool? = nil,
+    originatingMessageId: String? = nil
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly)
+      body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly, originatingMessageId: originatingMessageId)
     )
   }
 

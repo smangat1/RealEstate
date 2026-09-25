@@ -17,6 +17,8 @@ const schema = z.object({
   content: z.string().trim().min(1).max(4000),
   tone: z.string().trim().max(40).optional(),
   regenerateOnly: z.boolean().optional(),
+  /** The chat message id of the card being regenerated; echoed back so the client can match correctly. */
+  originatingMessageId: z.string().trim().max(64).optional(),
 });
 
 function isAdvisorMessage(content: string) {
@@ -70,12 +72,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         now,
       });
 
-      const messageId = randomUUID();
+      // Use the originating message id so the client can match its existing chat bubble.
+      const messageId = parsed.data.originatingMessageId ?? randomUUID();
       const payload = { messageId, ...result };
 
       if (parsed.data.regenerateOnly) {
+        const next = await getBoardPageData(id, user.id);
+        if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
         return NextResponse.json({
-          board: buildMobileBoardPayload(boardData),
+          board: buildMobileBoardPayload(next),
+          profile: next.profile,
+          missingFields: next.missingFields,
           advisorPayload: payload,
         });
       }

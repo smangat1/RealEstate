@@ -167,7 +167,7 @@ test("in-memory throttling and board payloads have hard growth bounds", () => {
 
   assert.match(throttle, /MAX_THROTTLE_ENTRIES = 10_000/);
   assert.match(throttle, /throttleStore\.delete\(oldestKey\)/);
-  assert.match(boardData, /chatMessages: \{ orderBy: \{ createdAt: "desc" \}, take: 250 \}/);
+  assert.match(boardData, /chatMessages: \{ orderBy: \{ createdAt: "desc" \}, take: 250, include: \{ advisorPayload: true \} \}/);
   assert.match(boardData, /comments: \{ include: \{ roommate: true \}, orderBy: \{ createdAt: "desc" \}, take: 100 \}/);
   assert.match(boardData, /\[\.\.\.board\.chatMessages\]\.reverse\(\)/);
 });

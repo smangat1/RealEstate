@@ -240,6 +240,10 @@ struct AdvisorCardView: View {
     regenerationTask?.cancel()
     let tone = selectedTone
     let selectedToggles = toggles
+    // Use the card's original @advisor command so a card about a specific listing
+    // stays about that listing when tone or toggles change.
+    let originalCommand = message.content
+    let originatingMessageId = payload?.messageId
     regenerationTask = Task {
       do { try await Task.sleep(nanoseconds: 350_000_000) }
       catch { return }
@@ -248,9 +252,10 @@ struct AdvisorCardView: View {
 
       do {
         let response = try await appModel.regenerateAdvisorDraft(
-          originalCommand: "@advisor Draft broker outreach for the strongest saved listing.",
+          originalCommand: originalCommand,
           tone: tone,
-          toggles: selectedToggles
+          toggles: selectedToggles,
+          originatingMessageId: originatingMessageId
         )
         guard revision == regenerationRevision, !Task.isCancelled else { return }
         guard var next = response.advisorPayload else {
