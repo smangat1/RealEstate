@@ -25,6 +25,12 @@ enum HomeboardConfig {
   static let supabaseURL = URL(string: "https://zlhniurrhhstivtmixuh.supabase.co")!
   static let supabasePublishableKey = "sb_publishable_eNgMkBhv8l___GC0IjgIBQ_4jqCepCK"
 
+  static var stripePublishableKey: String {
+    let value = (Bundle.main.object(forInfoDictionaryKey: "HomeboardStripePublishableKey") as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return value.contains("$(") ? "" : value
+  }
+
   static var backendBaseURL: URL {
     #if DEBUG
     if let override = ProcessInfo.processInfo.environment["HOMEBOARD_API_BASE_URL"],

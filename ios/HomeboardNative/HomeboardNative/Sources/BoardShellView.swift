@@ -902,6 +902,8 @@ private struct ConversationView: View {
             .padding(18)
             .homeboardPanel()
           } else {
+            AdvisorWalletPanel()
+
             ForEach(appModel.board.chatMessages) { message in
               boardMessageBubble(message)
                 .id(message.id)
@@ -1004,19 +1006,23 @@ private struct ConversationView: View {
   private func boardMessageBubble(_ message: BoardMessage) -> some View {
     HStack {
       if message.role == "assistant" || message.role == "system" {
-        VStack(alignment: .leading, spacing: 8) {
-          Text((message.authorName?.isEmpty == false ? message.authorName! : "System").uppercased())
-            .font(.caption.weight(.bold))
-            .tracking(2)
-            .foregroundStyle(HomeboardPalette.accent)
+        if message.authorName == "Advisor" {
+          AdvisorCardView(message: message)
+        } else {
+          VStack(alignment: .leading, spacing: 8) {
+            Text((message.authorName?.isEmpty == false ? message.authorName! : "System").uppercased())
+              .font(.caption.weight(.bold))
+              .tracking(2)
+              .foregroundStyle(HomeboardPalette.accent)
 
-          Text(message.content)
-            .font(.body)
-            .foregroundStyle(HomeboardPalette.primaryText)
-            .fixedSize(horizontal: false, vertical: true)
+            Text(message.content)
+              .font(.body)
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .padding(18)
+          .homeboardPanel(cornerRadius: 24)
         }
-        .padding(18)
-        .homeboardPanel(cornerRadius: 24)
 
         Spacer(minLength: 42)
       } else {

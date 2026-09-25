@@ -58,6 +58,7 @@ struct MobileBoardLoadResponse: Decodable {
   var board: MobileBoard
   var profile: RemoteRentalProfilePayload
   var missingFields: [String]
+  var advisorPayload: AdvisorMessagePayload?
 }
 
 struct MobileListingInventoryResponse: Decodable {
@@ -74,6 +75,27 @@ struct MobileHealthResponse: Decodable {
 
 struct MobileBoardMessageCreateRequest: Encodable {
   var content: String
+  var tone: String?
+  var regenerateOnly: Bool?
+  var originatingMessageId: String?
+
+  init(content: String, tone: String? = nil, regenerateOnly: Bool? = nil, originatingMessageId: String? = nil) {
+    self.content = content
+    self.tone = tone
+    self.regenerateOnly = regenerateOnly
+    self.originatingMessageId = originatingMessageId
+  }
+}
+
+private struct MobileAdvisorFundRequest: Encodable {
+  var amountCents: Int
+}
+
+struct MobileAdvisorFundResponse: Decodable {
+  var clientSecret: String?
+  var paymentIntentId: String
+  var amountCents: Int
+  var simulated: Bool? = false
 }
 
 private struct MobileListingCreateRequest: Encodable {
@@ -96,6 +118,10 @@ private struct MobileListingCreateRequest: Encodable {
   var sourceUrl: String?
   var imageUrl: String?
   var groupNote: String?
+  var agentName: String?
+  var agentPhone: String?
+  var agentEmail: String?
+  var brokerage: String?
 }
 
 private struct MobileListingPatchRequest: Encodable {
@@ -718,13 +744,39 @@ final class HomeboardAPI {
   func sendBoardMessage(
     accessToken: String,
     boardId: String,
-    content: String
+    content: String,
+    tone: String? = nil,
+    regenerateOnly: Bool? = nil,
+    originatingMessageId: String? = nil
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardMessageCreateRequest(content: content)
+      body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly, originatingMessageId: originatingMessageId)
+    )
+  }
+
+  func fetchAdvisorWalletStatus(
+    accessToken: String,
+    boardId: String
+  ) async throws -> AdvisorWalletStatus {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/wallet",
+      accessToken: accessToken
+    )
+  }
+
+  func createAdvisorFundingIntent(
+    accessToken: String,
+    boardId: String,
+    amountCents: Int
+  ) async throws -> MobileAdvisorFundResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/wallet/fund",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileAdvisorFundRequest(amountCents: amountCents)
     )
   }
 
@@ -752,7 +804,11 @@ final class HomeboardAPI {
         description: listing.summary,
         sourceUrl: listing.sourceURL.isEmpty ? nil : listing.sourceURL,
         imageUrl: listing.photoURL.isEmpty ? nil : listing.photoURL,
-        groupNote: listing.groupNote.isEmpty ? nil : listing.groupNote
+        groupNote: listing.groupNote.isEmpty ? nil : listing.groupNote,
+        agentName: listing.contact?.agentName,
+        agentPhone: listing.contact?.agentPhone,
+        agentEmail: listing.contact?.agentEmail,
+        brokerage: listing.contact?.brokerage
       )
     )
   }
@@ -1372,6 +1428,8 @@ final class HomeboardAPI {
     } catch {
       if let urlError = error as? URLError {
         switch urlError.code {
+        case .cancelled:
+          throw CancellationError()
         case .timedOut:
           throw HomeboardAPIError.server(
             "Homeboard’s server took too long to respond. Tap Retry to reconnect."

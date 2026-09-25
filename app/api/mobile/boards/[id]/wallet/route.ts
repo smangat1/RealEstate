@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { ensureBoard } from "@/lib/board-data";
+import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
+import { ADVISOR_WEEK_CENTS, ADVISOR_WINDOW_MS, realAdvisorLedgerWhere } from "@/lib/advisor-wallet";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
-
-const ADVISOR_THRESHOLD_CENTS = 400;
-const ROLLING_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +18,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
 
     const now = new Date();
-    const windowStart = new Date(now.getTime() - ROLLING_WINDOW_MS);
+    const windowStart = new Date(now.getTime() - ADVISOR_WINDOW_MS);
     const [ledger, subscription] = await Promise.all([
       prisma.boardWalletLedger.aggregate({
-        where: { boardId: id, createdAt: { gte: windowStart } },
+        where: realAdvisorLedgerWhere(id, windowStart),
         _sum: { amount: true },
       }),
       prisma.advisorSubscription.findUnique({
@@ -32,16 +31,18 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     ]);
     const rolling7DayTotalCents = ledger._sum.amount ?? 0;
     const validUntil = subscription?.validUntil ?? null;
+    const testMode = hasAdvisorTestAccess(user);
 
     return NextResponse.json({
       rolling7DayTotalCents,
-      thresholdCents: ADVISOR_THRESHOLD_CENTS,
-      remainingCents: Math.max(0, ADVISOR_THRESHOLD_CENTS - rolling7DayTotalCents),
+      thresholdCents: ADVISOR_WEEK_CENTS,
+      remainingCents: Math.max(0, ADVISOR_WEEK_CENTS - rolling7DayTotalCents),
       windowStartedAt: windowStart.toISOString(),
       subscription: {
-        active: Boolean(validUntil && validUntil >= now),
+        active: testMode || Boolean(validUntil && validUntil >= now),
         validUntil: validUntil?.toISOString() ?? null,
       },
+      testMode,
     });
   } catch (error) {
     await sendOperationalAlert(error, {

@@ -22,6 +22,8 @@
 	<string>$(AppIdentifierPrefix)com.homeboard.native.shared</string>
 	<key>HomeboardPublicWebURL</key>
 	<string>$(HOMEBOARD_PUBLIC_WEB_URL)</string>
+	<key>HomeboardStripePublishableKey</key>
+	<string>$(HOMEBOARD_STRIPE_PUBLISHABLE_KEY)</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

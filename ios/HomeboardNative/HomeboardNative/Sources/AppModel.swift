@@ -197,6 +197,13 @@ final class AppModel {
   var incomingLinkError: String?
   var boardFeedback: String?
   var boardMessageDraft = ""
+  var advisorWalletStatus: AdvisorWalletStatus?
+  var isAdvisorWalletLoading = false
+  var isAdvisorProcessing = false
+  var advisorFundingAmountCents = 100
+  var isAdvisorAccessActive: Bool {
+    advisorWalletStatus?.subscription.active == true
+  }
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
   var listingInventoryHasMore = false
@@ -901,6 +908,11 @@ final class AppModel {
       boardError = "Open a real board before sending messages."
       return
     }
+    let isAdvisor = message.lowercased().hasPrefix("@advisor")
+    guard !isAdvisor || isAdvisorAccessActive else {
+      boardError = nil
+      return
+    }
     let requestEpoch = sessionEpoch
 
     boardError = nil
@@ -919,9 +931,16 @@ final class AppModel {
     )
     storeCurrentBoardSnapshot()
 
+    if isAdvisor {
+      isAdvisorProcessing = true
+    }
+
     isBoardLoading = true
     defer {
       isBoardLoading = false
+      if isAdvisor {
+        isAdvisorProcessing = false
+      }
       persist()
     }
 
@@ -935,6 +954,9 @@ final class AppModel {
             authSession?.userId == session.userId,
             board.id == boardId else { return }
       board = response.board
+      if let advisorPayload = response.advisorPayload {
+        applyAdvisorPayload(advisorPayload)
+      }
       profile = RentalProfile(remote: response.profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
@@ -943,6 +965,134 @@ final class AppModel {
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       boardMessageDraft = message
     }
+  }
+
+  func regenerateAdvisorDraft(
+    originalCommand: String,
+    tone: String,
+    toggles: [AdvisorToggleOption],
+    originatingMessageId: String?
+  ) async throws -> MobileBoardLoadResponse {
+    guard let session = authSession, let boardId = board.id else {
+      throw HomeboardAPIError.missingSession
+    }
+
+    let command = try Self.advisorRegenerationCommand(
+      originalCommand: originalCommand,
+      toggles: toggles
+    )
+
+    return try await api.sendBoardMessage(
+      accessToken: session.accessToken,
+      boardId: boardId,
+      content: command,
+      tone: tone,
+      regenerateOnly: true,
+      originatingMessageId: originatingMessageId
+    )
+  }
+
+  static func advisorRegenerationCommand(
+    originalCommand: String,
+    toggles: [AdvisorToggleOption]
+  ) throws -> String {
+    let trimmedCommand = originalCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmedCommand.range(
+      of: #"^@advisor\b"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil else {
+      throw HomeboardAPIError.server("Advisor regeneration requires the original @advisor request.")
+    }
+
+    let baseCommand: String
+    if let includeRange = trimmedCommand.range(of: "\nInclude:", options: .caseInsensitive) {
+      baseCommand = String(trimmedCommand[..<includeRange.lowerBound])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      baseCommand = trimmedCommand
+    }
+
+    let enabledLabels = toggles
+      .filter(\.enabled)
+      .map(\.label)
+      .joined(separator: ", ")
+    let explicitInclusions = enabledLabels.isEmpty ? "nothing" : enabledLabels
+    return "\(baseCommand)\nInclude: \(explicitInclusions)"
+  }
+
+  @discardableResult
+  func applyAdvisorRegenerationResponse(
+    _ response: MobileBoardLoadResponse,
+    payload: AdvisorMessagePayload,
+    expectedBoardId: String
+  ) -> AdvisorMessagePayload? {
+    guard board.id == expectedBoardId, response.board.id == expectedBoardId else { return nil }
+    // Preserve suggestions and recentlyDeleted from the current board: the regen
+    // endpoint fetches a full board, but we still merge defensively so a race
+    // cannot inadvertently wipe listings the user can see.
+    var merged = response.board
+    if merged.suggestions == nil || (merged.suggestions?.isEmpty ?? true) {
+      merged.suggestions = board.suggestions
+    }
+    if merged.recentlyDeleted == nil || (merged.recentlyDeleted?.isEmpty ?? true) {
+      merged.recentlyDeleted = board.recentlyDeleted
+    }
+    board = merged
+    applyAdvisorPayload(payload)
+    profile = RentalProfile(remote: response.profile)
+    storeCurrentBoardSnapshot()
+    persist()
+    return payload
+  }
+
+  func refreshAdvisorWalletStatus() async {
+    guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
+      advisorWalletStatus = nil
+      return
+    }
+    isAdvisorWalletLoading = true
+    defer { isAdvisorWalletLoading = false }
+    do {
+      advisorWalletStatus = try await api.fetchAdvisorWalletStatus(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+    } catch is CancellationError {
+      // SwiftUI cancels view-bound wallet refreshes during launch/navigation.
+      // Cancellation is lifecycle control, not a chat-facing failure.
+      return
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func createAdvisorFunding(amountCents: Int) async -> MobileAdvisorFundResponse? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before funding Advisor."
+      return nil
+    }
+    do {
+      return try await api.createAdvisorFundingIntent(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        amountCents: amountCents
+      )
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload) {
+    // Prefer the specific target carried in the payload; fall back to the strongest
+    // listing for legacy cards that predate targetListingBoardId.
+    let listingId = payload.targetListingBoardId
+      ?? payload.context?.leverage?.strongestListings?.first?.boardListingId
+    guard let listingId else {
+      boardError = "Advisor could not identify the listing for this outreach."
+      return
+    }
+    updateManualListingStatus(id: listingId, status: "Outreach Sent")
   }
 
   func signOut() {
@@ -1454,6 +1604,11 @@ final class AppModel {
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     currentScreen = .board
+    if let boardId = response.board.id, !boardId.hasPrefix("local-"), !boardId.hasPrefix("preview-") {
+      Task { await refreshAdvisorWalletStatus() }
+    } else {
+      advisorWalletStatus = nil
+    }
     resumePendingListingMutations(boardId: id)
     scheduleRecentlyDeletedPurge(boardId: id)
   }
@@ -1616,7 +1771,8 @@ final class AppModel {
     modelInsights: [HomeboardListingInsight] = [],
     address: String = "",
     latitude: Double? = nil,
-    longitude: Double? = nil
+    longitude: Double? = nil,
+    contact: ListingContactInfo? = nil
   ) {
     let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1725,7 +1881,8 @@ final class AppModel {
       squareFeet: squareFeet,
       availableDate: availableDate,
       latitude: latitude,
-      longitude: longitude
+      longitude: longitude,
+      contact: contact
     )
 
     let key = boardStorageKey()
@@ -3232,8 +3389,19 @@ final class AppModel {
     let remoteImage = shared.imageURL?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     let photoURL = HomeboardSharedImportStore.hasPreviewImage(for: shared.id)
-        ? HomeboardSharedImportStore.previewImageReference(for: shared.id)
-        : remoteImage
+      ? HomeboardSharedImportStore.previewImageReference(for: shared.id)
+      : remoteImage
+    let contactInfo: ListingContactInfo?
+    if shared.agentName != nil || shared.agentPhone != nil || shared.agentEmail != nil || shared.brokerage != nil {
+      contactInfo = ListingContactInfo(
+        agentName: shared.agentName,
+        agentPhone: shared.agentPhone,
+        agentEmail: shared.agentEmail,
+        brokerage: shared.brokerage
+      )
+    } else {
+      contactInfo = nil
+    }
 
     addManualListing(
       title: displayTitle,
@@ -3253,7 +3421,8 @@ final class AppModel {
       modelInsights: shared.modelInsights,
       address: address,
       latitude: shared.latitude,
-      longitude: shared.longitude
+      longitude: shared.longitude,
+      contact: contactInfo
     )
     pendingSharedListingImport = nil
     pendingMacPairingRequest = nil
@@ -3303,6 +3472,9 @@ final class AppModel {
     guard authSession != nil, response.board.id == board.id else { return }
     let key = boardStorageKey()
     board = boardByApplyingRemovalTombstones(response.board, storageKey: key)
+    if let advisorPayload = response.advisorPayload {
+      applyAdvisorPayload(advisorPayload)
+    }
     profile = RentalProfile(remote: response.profile)
     if kinds.contains(.shortlist) {
       localShortlistsByBoard[key] = pendingListingCreatesByBoard[key] ?? []
@@ -3312,6 +3484,20 @@ final class AppModel {
     if kinds.contains(.members) { localMembersByBoard[key] = [] }
     storeCurrentBoardSnapshot()
     persist()
+  }
+
+  private func applyAdvisorPayload(_ payload: AdvisorMessagePayload) {
+    let hasDraft = !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    guard let messageId = payload.messageId,
+          let index = board.chatMessages.firstIndex(where: { $0.id == messageId }) else {
+      // messageId is absent or does not match any known message; skip rather
+      // than clobber an unrelated advisor card.
+      return
+    }
+    board.chatMessages[index].advisorPayload = payload
+    if hasDraft {
+      board.chatMessages[index].content = payload.draftText
+    }
   }
 
   private func boardByApplyingRemovalTombstones(
@@ -3413,6 +3599,7 @@ final class AppModel {
     case "touring": return "toured"
     case "passed": return "rejected"
     case "top choice": return "interested"
+    case "outreach sent": return "outreach_sent"
     default: return status.lowercased()
     }
   }

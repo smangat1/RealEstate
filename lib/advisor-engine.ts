@@ -10,9 +10,11 @@ import type {
   BoardListingRecord,
   BoardPageData,
   GroupListingAnalysis,
+  ListingContactInfo,
   RentalProfile,
   RoommateRecord,
 } from "@/lib/types";
+import { listingContactInfo } from "@/lib/mobile-payloads";
 
 export const ADVISOR_TONES = [
   "Professional",
@@ -72,6 +74,7 @@ export type AdvisorGroupContext = {
       rankingLabel: GroupListingAnalysis["rankingLabel"];
       fairnessScore: number | null;
       confidence: GroupListingAnalysis["confidence"];
+      contact?: ListingContactInfo | null;
     }>;
   };
   requirements: {
@@ -101,12 +104,17 @@ export type AdvisorGroupContext = {
 
 export type AdvisorMessagePayloadData = {
   schemaVersion: 1;
+  /** The original user-authored @advisor command, without regeneration filters. */
+  originalCommand: string;
   draftText: string;
   tone: AdvisorTone;
   toggleOptions: AdvisorToggleOption[];
   executionStatus: "draft_ready" | "needs_input";
   missingInputs: Array<"incomeMultiple" | "creditScore">;
   promptVersion: "advisor-v2-p3";
+  contact?: ListingContactInfo | null;
+  /** boardListingId of the listing this draft specifically targets. */
+  targetListingBoardId?: string | null;
   context: AdvisorGroupContext;
 };
 
@@ -154,7 +162,6 @@ function roommateAsRentalProfile(
     notes: roommate.notes,
   };
 }
-
 function qualificationText(value: string | number | null | undefined) {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value !== "string") return null;
@@ -192,12 +199,12 @@ function profileFinancialQualifications(profile: RentalProfile): AdvisorFinancia
       structured.financialQualifications?.incomeMultiple
       ?? structured.rentalQualifications?.incomeMultiple
       ?? structured.incomeMultiple,
-    ),
+    ) ?? null,
     creditScore: normalizeCreditScore(
       structured.financialQualifications?.creditScore
       ?? structured.rentalQualifications?.creditScore
       ?? structured.creditScore,
-    ),
+    ) ?? null,
   };
 }
 
@@ -227,11 +234,19 @@ export function normalizeAdvisorTone(value: string | null | undefined): AdvisorT
 }
 
 export function parseAdvisorCommand(content: string) {
-  const command = content.replace(/^\s*@advisor\b[\s,:-]*/i, "").trim();
+  // Strip any regeneration-appended "Include: ..." suffix before extracting tone.
+  const [baseContent, includeClause] = content.split(/\nInclude:\s*/i);
+  const originalCommand = baseContent.trim();
+  const command = baseContent.replace(/^\s*@advisor\b[\s,:-]*/i, "").trim();
   const toneMatch = command.match(/\b(?:tone\s*[:=]\s*)?(professional|casual|stern|passive[\s-]+aggressive)\b/i);
+  const inclusionLabels: string[] = includeClause
+    ? includeClause.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : [];
   return {
+    originalCommand,
     command: command || "Draft broker outreach for the strongest saved listing.",
     tone: normalizeAdvisorTone(toneMatch?.[1]),
+    inclusionLabels,
   };
 }
 
@@ -301,6 +316,7 @@ export async function aggregateAdvisorGroupContext(input: {
       rankingLabel: analysis.rankingLabel,
       fairnessScore: analysis.fairnessScore,
       confidence: analysis.confidence,
+      contact: listingContactInfo(entry.listing),
     }));
 
   return {
@@ -404,15 +420,25 @@ function generateDraft(input: {
   tone: AdvisorTone;
   financialQualifications: Required<AdvisorFinancialQualifications>;
   command: string;
+  inclusionLabels: string[];
 }) {
+  const include = (label: string) =>
+    input.inclusionLabels.length === 0 || input.inclusionLabels.includes(label.toLowerCase());
+
   const listing = findRequestedListing(
     input.boardData,
     input.command,
     input.context.leverage.strongestListings,
   );
   const subject = listing ? listingLabel(listing) : "the rental";
-  const finance = formatFinancialSentence(input.financialQualifications);
-  const moveIn = input.context.requirements.moveIn
+  const finance = include("income multiple") && include("credit score")
+    ? formatFinancialSentence(input.financialQualifications)
+    : include("income multiple")
+      ? `Our group income is ${input.financialQualifications.incomeMultiple} the monthly rent.`
+      : include("credit score")
+        ? `Our group credit score is ${input.financialQualifications.creditScore}.`
+        : "";
+  const moveIn = include("group requirements") && input.context.requirements.moveIn
     ? ` We are targeting ${input.context.requirements.moveIn}.`
     : "";
   const sender = input.boardData.profile.name && input.boardData.profile.name !== "Unknown"
@@ -421,23 +447,31 @@ function generateDraft(input: {
   const readiness = input.context.leverage.applicationReadiness;
   const hasApplicationMaterials = readiness.hasOfferLetter === true && readiness.hasProofOfIncome === true;
   const canApplyWithoutDelay = hasApplicationMaterials && readiness.needsGuarantor === false;
-  const readinessSentence = canApplyWithoutDelay
-    ? " Our offer letter and proof of income are ready, and we do not need a guarantor."
-    : hasApplicationMaterials
-      ? " Our offer letter and proof of income are ready."
-      : "";
+  const readinessSentence = include("group requirements")
+    ? canApplyWithoutDelay
+      ? " Our offer letter and proof of income are ready, and we do not need a guarantor."
+      : hasApplicationMaterials
+        ? " Our offer letter and proof of income are ready."
+        : ""
+    : "";
+  const tourRequest = include("request a tour") ? " Is it still available, and when could we tour?" : "";
+  const contact = listing ? listingContactInfo(listing.listing) : null;
+  const firstName = contact?.agentName ? contact.agentName.trim().split(/\s+/)[0] : null;
+  const greeting = firstName ? `Hi ${firstName},` : null;
+  const financeBlock = finance ? ` ${finance}` : "";
 
   if (input.tone === "Casual") {
-    return `Hi! Checking in about ${subject}. ${finance}${moveIn}${readinessSentence} Is it still available, and when could we tour? Thanks, ${sender}`;
+    const start = greeting ? `${greeting} Checking in about ${subject}.` : `Hi! Checking in about ${subject}.`;
+    return `${start}${financeBlock}${moveIn}${readinessSentence}${tourRequest} Thanks, ${sender}`;
   }
 
   if (input.tone === "Stern") {
     return [
-      "Hello,",
+      greeting ?? "Hello,",
       "",
-      `We need a current status on ${subject}. ${finance}${moveIn}${readinessSentence}`,
+      `We need a current status on ${subject}.${financeBlock}${moveIn}${readinessSentence}`,
       "",
-      "Please confirm availability and the earliest tour time today.",
+      include("request a tour") ? "Please confirm availability and the earliest tour time today." : "Please confirm current availability.",
       "",
       sender,
     ].join("\n");
@@ -445,9 +479,9 @@ function generateDraft(input: {
 
   if (input.tone === "Passive-Aggressive") {
     return [
-      "Hello,",
+      greeting ?? "Hello,",
       "",
-      `I am checking on ${subject}. ${finance}${moveIn}${readinessSentence}`,
+      `I am checking on ${subject}.${financeBlock}${moveIn}${readinessSentence}`,
       "",
       "Please let us know whether the rental is still available so we can plan accordingly.",
       "",
@@ -456,23 +490,27 @@ function generateDraft(input: {
   }
 
   return [
-    "Hello,",
+    greeting ?? "Hello,",
     "",
-    `I am reaching out regarding ${subject}. ${finance}${moveIn} Our group is organized and prepared to move promptly on the right home.`,
+    `I am reaching out regarding ${subject}.${financeBlock}${moveIn} Our group is organized and prepared to move promptly on the right home.`,
     "",
-    "Could you please confirm current availability and the next opportunity to tour?",
+    include("request a tour") ? "Could you please confirm current availability and the next opportunity to tour?" : "Could you please confirm current availability?",
     "",
     `Best regards,\n${sender}`,
   ].join("\n");
 }
 
-function toggleOptions(): AdvisorToggleOption[] {
+function toggleOptions(inclusionLabels: string[]): AdvisorToggleOption[] {
+  // When inclusionLabels is non-empty (a regenerate call), reflect the client's
+  // current toggle state so the persisted payload stays in sync.
+  const enabled = (label: string, defaultOn: boolean) =>
+    inclusionLabels.length === 0 ? defaultOn : inclusionLabels.includes(label.toLowerCase());
   return [
-    { id: "include_income_multiple", label: "Income multiple", enabled: true, required: true },
-    { id: "include_credit_score", label: "Credit score", enabled: true, required: true },
-    { id: "include_requirements", label: "Group requirements", enabled: true, required: false },
-    { id: "include_commute", label: "Commute fit", enabled: false, required: false },
-    { id: "request_tour", label: "Request a tour", enabled: true, required: false },
+    { id: "include_income_multiple", label: "Income multiple", enabled: enabled("income multiple", true), required: false },
+    { id: "include_credit_score", label: "Credit score", enabled: enabled("credit score", true), required: false },
+    { id: "include_requirements", label: "Group requirements", enabled: enabled("group requirements", true), required: false },
+    { id: "include_commute", label: "Commute fit", enabled: enabled("commute fit", false), required: false },
+    { id: "request_tour", label: "Request a tour", enabled: enabled("request a tour", true), required: false },
   ];
 }
 
@@ -501,8 +539,16 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     throw new Error("Advisor tone constraint was not compiled.");
   }
 
+  const targetListing = findRequestedListing(
+    input.boardData,
+    parsed.command,
+    context.leverage.strongestListings,
+  );
+  const targetContact = targetListing ? listingContactInfo(targetListing.listing) : null;
+
   return {
     schemaVersion: 1,
+    originalCommand: parsed.originalCommand,
     draftText: missingInputs.length > 0
       ? `Advisor needs the group's ${missingInputs.map((field) => field === "incomeMultiple" ? "exact income multiple" : "exact credit score").join(" and ")} before preparing broker outreach.`
       : generateDraft({
@@ -511,12 +557,15 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
           tone,
           financialQualifications: financialQualifications as Required<AdvisorFinancialQualifications>,
           command: parsed.command,
+          inclusionLabels: parsed.inclusionLabels,
         }),
     tone,
-    toggleOptions: toggleOptions(),
+    toggleOptions: toggleOptions(parsed.inclusionLabels),
     executionStatus: missingInputs.length > 0 ? "needs_input" : "draft_ready",
     missingInputs,
     promptVersion: "advisor-v2-p3",
+    contact: targetContact,
+    targetListingBoardId: targetListing?.id ?? null,
     context,
   };
 }

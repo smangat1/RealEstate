@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { normalizeAdvisorTone, runAdvisorEngine } from "@/lib/advisor-engine";
+import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { getBoardPageData, sendChat } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
@@ -16,6 +17,9 @@ import { prisma } from "@/lib/prisma";
 const schema = z.object({
   content: z.string().trim().min(1).max(4000),
   tone: z.string().trim().max(40).optional(),
+  regenerateOnly: z.boolean().optional(),
+  /** The chat message id of the card being regenerated; echoed back so the client can match correctly. */
+  originatingMessageId: z.string().trim().max(64).optional(),
 });
 
 function isAdvisorMessage(content: string) {
@@ -47,7 +51,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         where: { boardId: id },
         select: { validUntil: true },
       });
-      const subscriptionActive = Boolean(subscription?.validUntil && subscription.validUntil >= now);
+      const subscriptionActive = hasAdvisorTestAccess(user)
+        || Boolean(subscription?.validUntil && subscription.validUntil >= now);
       if (!subscriptionActive) {
         return NextResponse.json(
           {
@@ -69,8 +74,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         now,
       });
 
-      const messageId = randomUUID();
+      // Use the originating message id so the client can match its existing chat bubble.
+      const messageId = parsed.data.originatingMessageId ?? randomUUID();
       const payload = { messageId, ...result };
+
+      if (parsed.data.regenerateOnly) {
+        const next = await getBoardPageData(id, user.id);
+        if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+        return NextResponse.json({
+          board: buildMobileBoardPayload(next),
+          profile: next.profile,
+          missingFields: next.missingFields,
+          advisorPayload: payload,
+        });
+      }
+
       await prisma.$transaction([
         prisma.chatMessage.create({
           data: {

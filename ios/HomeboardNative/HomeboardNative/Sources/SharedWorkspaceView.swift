@@ -3695,6 +3695,7 @@ struct SharedUpdatesView: View {
   @Environment(AppModel.self) private var appModel
   @State private var updateDraft = ""
   @State private var showsSettings = false
+  @State private var scrollsToAdvisorWallet = false
   @FocusState private var updateFieldFocused: Bool
   @AppStorage("homeboard.guide.updates.dismissed") private var updatesGuideDismissed = false
 
@@ -3748,12 +3749,15 @@ struct SharedUpdatesView: View {
 
             SharedDecisionHub()
 
+            AdvisorWalletPanel()
+              .id("advisor-wallet")
+
             SharedSectionTitle(
               title: "Conversation",
-              trailing: timeline.isEmpty ? "No messages yet" : "\(timeline.count) message\(timeline.count == 1 ? "" : "s")"
+              trailing: appModel.board.chatMessages.isEmpty ? "No messages yet" : "\(appModel.board.chatMessages.count) message\(appModel.board.chatMessages.count == 1 ? "" : "s")"
             )
 
-            if appModel.isBoardLoading && timeline.isEmpty {
+            if appModel.isBoardLoading && appModel.board.chatMessages.isEmpty {
               VStack(spacing: 12) {
                 ForEach(0..<3, id: \.self) { _ in
                   HStack(alignment: .top, spacing: 12) {
@@ -3768,18 +3772,38 @@ struct SharedUpdatesView: View {
                   .sharedSurface(cornerRadius: 18)
                 }
               }
-            } else if timeline.isEmpty {
+            } else if appModel.board.chatMessages.isEmpty {
               SharedInlineEmpty(
                 icon: "bubble.left.and.bubble.right",
                 title: "Start the group conversation",
                 message: "Send the first message so everyone starts with the same context."
               )
             } else {
-              ForEach(timeline) { item in
-                SharedTimelineRow(item: item)
-                  .id(item.id)
+              ForEach(appModel.board.chatMessages) { msg in
+                if msg.authorName == "Advisor" {
+                  AdvisorCardView(message: msg)
+                    .id("message-\(msg.id)")
+                } else {
+                  SharedTimelineRow(
+                    item: SharedTimelineItem(
+                      id: "message-\(msg.id)",
+                      author: msg.authorName?.isEmpty == false ? msg.authorName! : "Member",
+                      content: msg.content
+                    )
+                  )
+                  .id("message-\(msg.id)")
+                }
               }
             }
+
+            if appModel.isAdvisorProcessing {
+              AdvisorTypingBubble()
+                .id("advisor-typing-indicator")
+            }
+
+            Color.clear
+              .frame(height: 1)
+              .id("chat-bottom-anchor")
 
           }
           .padding(.horizontal, 16)
@@ -3791,18 +3815,79 @@ struct SharedUpdatesView: View {
         .refreshable {
           await appModel.refreshCurrentBoard()
         }
-        .onChange(of: timeline.count) { _, _ in
-          if let last = timeline.last {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-              scrollProxy.scrollTo(last.id, anchor: .bottom)
+        .task {
+          try? await Task.sleep(nanoseconds: 180_000_000)
+          scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+        }
+        .onChange(of: appModel.board.chatMessages.count) { _, _ in
+          withAnimation(.easeOut(duration: 0.25)) {
+            scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+          }
+        }
+        .onChange(of: appModel.isAdvisorProcessing) { _, isProcessing in
+          if isProcessing {
+            withAnimation(.easeOut(duration: 0.25)) {
+              scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
             }
+          }
+        }
+        .onChange(of: scrollsToAdvisorWallet) { _, requested in
+          guard requested else { return }
+          withAnimation(.easeOut(duration: 0.25)) {
+            scrollProxy.scrollTo("advisor-wallet", anchor: .top)
+          }
+          scrollsToAdvisorWallet = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+          withAnimation(.easeOut(duration: 0.25)) {
+            scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
           }
         }
       }
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(alignment: .leading, spacing: 7) {
-        if let error = appModel.boardError {
+        if isAdvisorCommandBlocked {
+          HStack(alignment: .top, spacing: 10) {
+            Image(systemName: appModel.isAdvisorWalletLoading ? "clock.fill" : "lock.fill")
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.accent)
+              .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+              Text(appModel.isAdvisorWalletLoading ? "Checking Advisor access" : "Advisor needs an active board week")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+              Text(appModel.isAdvisorWalletLoading
+                   ? "Wait a moment while Homeboard checks the shared wallet."
+                   : "Roommates can chip in above. Advisor unlocks when the board reaches the $4 weekly goal.")
+                .font(.caption2)
+                .foregroundStyle(HomeboardPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 6)
+
+            if !appModel.isAdvisorWalletLoading {
+              Button("View wallet") {
+                updateFieldFocused = false
+                scrollsToAdvisorWallet = true
+              }
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.accent)
+              .buttonStyle(HomeboardAreaButtonStyle())
+            }
+          }
+          .padding(12)
+          .background(HomeboardPalette.accent.opacity(0.12))
+          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else if isPartialAdvisorMention {
+          advisorMentionCompletionBar
+        } else if showsAdvisorSuggestions {
+          advisorSuggestionsBar
+        }
+
+        if let error = appModel.boardError, !isAdvisorCommandBlocked {
           Text(error)
             .font(.caption.weight(.semibold))
             .foregroundStyle(HomeboardPalette.danger)
@@ -3811,7 +3896,7 @@ struct SharedUpdatesView: View {
 
         HStack(alignment: .center, spacing: 10) {
           TextField(
-            "Message your roommates...",
+            "Message your roommates or @advisor...",
             text: $updateDraft
           )
           .focused($updateFieldFocused)
@@ -3860,8 +3945,12 @@ struct SharedUpdatesView: View {
           .disabled(
             updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
               || appModel.isPostingBoardUpdate
+              || isAdvisorCommandBlocked
           )
-          .opacity(updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+          .opacity(
+            updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              || isAdvisorCommandBlocked ? 0.5 : 1
+          )
         }
       }
       .padding(.horizontal, 14)
@@ -3893,8 +3982,24 @@ struct SharedUpdatesView: View {
   private func submitUpdate() {
     let message = updateDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
+
+    let advisorCommand = isCompleteAdvisorCommand(message)
+    if advisorCommand, !appModel.isAdvisorAccessActive {
+      appModel.boardError = nil
+      updateFieldFocused = true
+      return
+    }
+
     updateDraft = ""
     updateFieldFocused = false
+
+    if advisorCommand {
+      appModel.boardMessageDraft = message
+      Task {
+        await appModel.sendBoardMessage()
+      }
+      return
+    }
 
     Task {
       let posted = await appModel.addBoardUpdate(message)
@@ -3903,6 +4008,114 @@ struct SharedUpdatesView: View {
         updateFieldFocused = true
       }
     }
+  }
+
+  private var showsAdvisorSuggestions: Bool {
+    isCompleteAdvisorCommand(updateDraft) && appModel.isAdvisorAccessActive
+  }
+
+  private var isPartialAdvisorMention: Bool {
+    let text = updateDraft
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return !text.isEmpty && text != "@advisor" && "@advisor".hasPrefix(text)
+  }
+
+  private func isCompleteAdvisorCommand(_ value: String) -> Bool {
+    value
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .range(of: #"^@advisor\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+  }
+
+  private var isAdvisorCommandBlocked: Bool {
+    isCompleteAdvisorCommand(updateDraft) && !appModel.isAdvisorAccessActive
+  }
+
+  private var advisorMentionCompletionBar: some View {
+    Button {
+      updateDraft = "@advisor "
+      updateFieldFocused = true
+    } label: {
+      HStack(spacing: 8) {
+        Image(systemName: "sparkles")
+        Text("Complete @advisor")
+          .font(.caption.weight(.semibold))
+        Spacer()
+        Text("Tap to fill")
+          .font(.caption2)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 10)
+      .background(HomeboardPalette.accent.opacity(0.14))
+      .foregroundStyle(HomeboardPalette.primaryText)
+      .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+    .buttonStyle(HomeboardAreaButtonStyle())
+  }
+
+  private struct AdvisorPromptSuggestion: Identifiable {
+    let id: String
+    let icon: String
+    let title: String
+    let prompt: String
+  }
+
+  private var advisorSuggestions: [AdvisorPromptSuggestion] {
+    [
+      .init(id: "outreach", icon: "envelope.fill", title: "Draft outreach", prompt: "@advisor draft outreach for our top listing"),
+      .init(id: "tour", icon: "calendar.badge.clock", title: "Request tour", prompt: "@advisor request tour availability for this weekend"),
+      .init(id: "policy", icon: "pawprint.fill", title: "Pet & laundry", prompt: "@advisor check pet policy and in-unit laundry"),
+      .init(id: "qualifications", icon: "doc.text.fill", title: "Proof of income", prompt: "@advisor summarize our group income multiple and credit"),
+      .init(id: "followup", icon: "arrow.clockwise", title: "Follow up", prompt: "@advisor draft follow-up on our application status"),
+      .init(id: "compare", icon: "arrow.left.arrow.right", title: "Compare options", prompt: "@advisor compare our top listings and tradeoffs"),
+    ]
+  }
+
+  @ViewBuilder
+  private var advisorSuggestionsBar: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Label("Advisor capabilities", systemImage: "sparkles")
+          .font(.caption2.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+        Spacer()
+        Text("Tap to fill")
+          .font(.caption2)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+      }
+      .padding(.horizontal, 4)
+
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 8) {
+          ForEach(advisorSuggestions) { suggestion in
+            Button {
+              updateDraft = suggestion.prompt
+              updateFieldFocused = true
+            } label: {
+              HStack(spacing: 6) {
+                Image(systemName: suggestion.icon)
+                  .font(.caption2)
+                Text(suggestion.title)
+                  .font(.caption.weight(.semibold))
+              }
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(HomeboardPalette.accent.opacity(0.18))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+              .overlay {
+                Capsule()
+                  .stroke(HomeboardPalette.accent.opacity(0.35), lineWidth: 1)
+              }
+            }
+            .buttonStyle(HomeboardAreaButtonStyle())
+          }
+        }
+      }
+    }
+    .padding(.horizontal, 4)
+    .padding(.bottom, 4)
   }
 }
 
@@ -7660,6 +7873,11 @@ struct SharedListingDetailView: View {
 
           DisclosureGroup(isExpanded: $showsMoreAboutListing) {
             VStack(alignment: .leading, spacing: 18) {
+              if let contact = liveListing.contact ?? listing.contact,
+                 contact.agentName != nil || contact.agentPhone != nil || contact.agentEmail != nil || contact.brokerage != nil {
+                SharedListingContactPanel(contact: contact, listingTitle: liveListing.title)
+              }
+
               SharedListingSourcePanel(listing: liveListing)
 
               if let split = liveListing.rentSplit ?? listing.rentSplit {
@@ -7774,6 +7992,90 @@ struct SharedListingDetailView: View {
   }
 }
 
+
+private struct SharedListingContactPanel: View {
+  let contact: ListingContactInfo
+  let listingTitle: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 13) {
+      SharedSectionTitle(
+        title: "Agent & Reachout",
+        trailing: contact.brokerage
+      )
+
+      VStack(alignment: .leading, spacing: 4) {
+        if let name = contact.agentName, !name.isEmpty {
+          HStack(spacing: 6) {
+            Image(systemName: "person.crop.circle.fill")
+              .font(.subheadline)
+              .foregroundStyle(HomeboardPalette.accent)
+            Text(name)
+              .font(.headline)
+              .foregroundStyle(HomeboardPalette.primaryText)
+          }
+        }
+
+        if let brokerage = contact.brokerage, !brokerage.isEmpty, contact.agentName == nil {
+          Text(brokerage)
+            .font(.subheadline)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+      }
+
+      HStack(spacing: 10) {
+        if let phone = contact.agentPhone, !phone.isEmpty {
+          let cleanedPhone = phone.filter { $0.isNumber || $0 == "+" }
+          if let telURL = URL(string: "tel:\(cleanedPhone)") {
+            Link(destination: telURL) {
+              Label("Call", systemImage: "phone.fill")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.08))
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .clipShape(Capsule())
+            }
+          }
+
+          Button {
+            MessageDispatcher.presentMessage(recipients: [phone], body: "") { _ in }
+          } label: {
+            Label("Text", systemImage: "message.fill")
+              .font(.caption.weight(.semibold))
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(Color.white.opacity(0.08))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+
+        if let email = contact.agentEmail, !email.isEmpty {
+          Button {
+            MessageDispatcher.presentMail(
+              recipients: [email],
+              subject: "Inquiry: \(listingTitle)",
+              body: ""
+            ) { _ in }
+          } label: {
+            Label("Email", systemImage: "envelope.fill")
+              .font(.caption.weight(.semibold))
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(Color.white.opacity(0.08))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+      }
+    }
+    .padding(16)
+    .sharedSurface(cornerRadius: 18)
+  }
+}
 
 private struct SharedSafariDestination: Identifiable {
   let id = UUID()

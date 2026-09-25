@@ -1177,6 +1177,95 @@
     return providers.find(([domain]) => host.endsWith(domain))?.[1] || host.replace(/^www\./, "");
   }
 
+  function extractAgentContact(node, roots, text) {
+    const rawAgent = node?.realEstateAgent || node?.broker || node?.contactPoint || node?.seller || node?.provider;
+    const structuredAgent = Array.isArray(rawAgent) ? rawAgent[0] : (rawAgent && typeof rawAgent === "object" ? rawAgent : null);
+    const structuredName = cleanText(first(structuredAgent?.name, structuredAgent?.givenName));
+    const structuredPhone = cleanText(first(structuredAgent?.telephone, structuredAgent?.phone));
+    const structuredEmail = cleanText(structuredAgent?.email);
+    const structuredOrg = typeof structuredAgent?.worksFor === "object" ? structuredAgent.worksFor?.name : (typeof structuredAgent?.parentOrganization === "object" ? structuredAgent.parentOrganization?.name : null);
+    const structuredBrokerage = cleanText(first(structuredOrg, structuredAgent?.brokerage));
+
+    const domName = cleanText(selectorText([
+      '[data-testid="listing-agent-name"]',
+      '[data-testid="contact-agent-name"]',
+      '[data-testid="agent-name"]',
+      '[data-qa="agent-name"]',
+      '.agent-name',
+      '.listing-agent',
+      '.listing-agent-info .name',
+      '[data-tn="listing-agent"]',
+      '[itemprop="realEstateAgent"]',
+      '[itemprop="broker"]'
+    ], roots));
+
+    const domBrokerage = cleanText(selectorText([
+      '[data-testid="broker-name"]',
+      '[data-testid="listing-brokerage"]',
+      '[data-testid="attribution-broker"]',
+      '.brokerage-name',
+      '.licensed-broker',
+      '[data-tn="listing-brokerage"]'
+    ], roots));
+
+    let domPhone = null;
+    const telLink = document.querySelector('a[href^="tel:"]');
+    if (telLink) {
+      domPhone = cleanText(telLink.getAttribute("href")?.replace(/^tel:/i, "") || telLink.textContent);
+    }
+    if (!domPhone) {
+      domPhone = cleanText(selectorText([
+        '[data-testid="agent-phone"]',
+        '[data-testid="contact-phone"]',
+        '[itemprop="telephone"]'
+      ], roots));
+    }
+
+    let domEmail = null;
+    const mailtoLink = document.querySelector('a[href^="mailto:"]');
+    if (mailtoLink) {
+      const emailHref = mailtoLink.getAttribute("href")?.replace(/^mailto:/i, "").split("?")[0];
+      domEmail = cleanText(emailHref || mailtoLink.textContent);
+    }
+    if (!domEmail) {
+      domEmail = cleanText(selectorText([
+        '[data-testid="agent-email"]',
+        '[itemprop="email"]'
+      ], roots));
+    }
+
+    const textNameMatch = text.match(/(?:listed by|listing agent|represented by|contact agent|listing broker)\s*[:\s-]+\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/i);
+    const textName = cleanText(textNameMatch?.[1]);
+
+    const textBrokerageMatch = text.match(/(?:brokerage|brokered by|listing courtesy of|courtesy of)\s*[:\s-]+\s*([A-Za-z0-9&.,' ]{2,50})/i);
+    const textBrokerage = cleanText(textBrokerageMatch?.[1]);
+
+    const textPhoneMatch = text.match(/(?:call|text|phone|cell|direct)\s*[:\s-]+\s*(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b/i);
+    const textPhone = cleanText(textPhoneMatch?.[1]);
+
+    let textEmail = null;
+    const textEmailMatch = text.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
+    if (textEmailMatch && !/support@|info@zillow|contact@streeteasy|no-reply@|noreply@/i.test(textEmailMatch[1])) {
+      textEmail = cleanText(textEmailMatch[1]);
+    }
+
+    const agentName = first(domName, structuredName, textName);
+    const agentPhone = first(domPhone, structuredPhone, textPhone);
+    const agentEmail = first(domEmail, structuredEmail, textEmail);
+    const brokerage = first(domBrokerage, structuredBrokerage, textBrokerage);
+
+    if (!agentName && !agentPhone && !agentEmail && !brokerage) {
+      return null;
+    }
+
+    return {
+      agentName: agentName || null,
+      agentPhone: agentPhone || null,
+      agentEmail: agentEmail || null,
+      brokerage: brokerage || null
+    };
+  }
+
   function extractListing() {
     const nodes = parseStructuredData();
     const roots = recommendationRoots();
@@ -1275,6 +1364,7 @@
     const factCount = [address, price, bedrooms, bathrooms, squareFeet]
       .filter((value) => value !== null && value !== undefined).length;
     const detailPage = isActualListingPage(nodes, node, address);
+    const contact = extractAgentContact(node, roots, text);
 
     return {
       url: location.href,
@@ -1301,6 +1391,11 @@
       detailPage,
       listingScope: isBuildingPage ? "building" : "unit",
       extractionConfidence: factCount >= 4 ? "high" : factCount >= 2 ? "medium" : "low",
+      contact,
+      agentName: contact?.agentName || null,
+      agentPhone: contact?.agentPhone || null,
+      agentEmail: contact?.agentEmail || null,
+      brokerage: contact?.brokerage || null,
       ...scanEvidence,
       pageEvidence: pageEvidence(
         nodes,

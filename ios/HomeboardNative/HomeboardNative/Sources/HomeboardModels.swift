@@ -340,6 +340,13 @@ struct GroupListingAnalysis: Hashable, Codable {
   var members: [RoommateListingAnalysis]
 }
 
+struct ListingContactInfo: Hashable, Codable {
+  var agentName: String?
+  var agentPhone: String?
+  var agentEmail: String?
+  var brokerage: String?
+}
+
 struct ListingPreview: Identifiable, Hashable, Codable {
   var id: String
   var listingId: String
@@ -377,6 +384,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
   var decisions: [ListingDecisionSummary] = []
   var analysis: GroupListingAnalysis? = nil
   var rentSplit: RentSplitPreview? = nil
+  var contact: ListingContactInfo? = nil
   var deletedAt: String? = nil
 
   init(
@@ -404,6 +412,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     availableDate: String? = nil,
     latitude: Double? = nil,
     longitude: Double? = nil,
+    contact: ListingContactInfo? = nil,
     deletedAt: String? = nil
   ) {
     self.id = id
@@ -430,6 +439,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     self.availableDate = availableDate
     self.latitude = latitude
     self.longitude = longitude
+    self.contact = contact
     self.deletedAt = deletedAt
   }
 
@@ -482,6 +492,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     case decisions
     case analysis
     case rentSplit
+    case contact
     case deletedAt
   }
 
@@ -523,6 +534,7 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     decisions = try container.decodeIfPresent([ListingDecisionSummary].self, forKey: .decisions) ?? []
     analysis = try container.decodeIfPresent(GroupListingAnalysis.self, forKey: .analysis)
     rentSplit = try container.decodeIfPresent(RentSplitPreview.self, forKey: .rentSplit)
+    contact = try container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
   }
 }
@@ -588,6 +600,107 @@ struct BoardMessage: Identifiable, Hashable, Codable {
   var authorName: String?
   var content: String
   var createdAt: String
+  var advisorPayload: AdvisorMessagePayload? = nil
+}
+
+struct AdvisorMessagePayload: Hashable, Codable {
+  var messageId: String? = nil
+  var schemaVersion: Int? = nil
+  var originalCommand: String? = nil
+  var draftText: String = ""
+  var tone: String = "Professional"
+  var toggleOptions: [AdvisorToggleOption] = []
+  var executionStatus: String? = nil
+  var missingInputs: [String]? = nil
+  var promptVersion: String? = nil
+  var contact: ListingContactInfo? = nil
+  var context: AdvisorContext? = nil
+  /// The boardListingId of the listing this draft specifically targets.
+  var targetListingBoardId: String? = nil
+}
+
+extension AdvisorMessagePayload {
+  private enum CodingKeys: String, CodingKey {
+    case messageId
+    case schemaVersion
+    case originalCommand
+    case draftText
+    case tone
+    case toggleOptions
+    case executionStatus
+    case missingInputs
+    case promptVersion
+    case contact
+    case context
+    case targetListingBoardId
+  }
+
+  init(from decoder: Decoder) throws {
+    self.init()
+    guard let container = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+
+    messageId = try? container.decodeIfPresent(String.self, forKey: .messageId)
+    schemaVersion = try? container.decodeIfPresent(Int.self, forKey: .schemaVersion)
+    originalCommand = try? container.decodeIfPresent(String.self, forKey: .originalCommand)
+    draftText = (try? container.decodeIfPresent(String.self, forKey: .draftText)) ?? ""
+    tone = (try? container.decodeIfPresent(String.self, forKey: .tone)) ?? "Professional"
+    toggleOptions = (try? container.decodeIfPresent([AdvisorToggleOption].self, forKey: .toggleOptions)) ?? []
+    executionStatus = try? container.decodeIfPresent(String.self, forKey: .executionStatus)
+    missingInputs = try? container.decodeIfPresent([String].self, forKey: .missingInputs)
+    promptVersion = try? container.decodeIfPresent(String.self, forKey: .promptVersion)
+    contact = try? container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
+    context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
+    targetListingBoardId = try? container.decodeIfPresent(String.self, forKey: .targetListingBoardId)
+  }
+}
+
+struct AdvisorToggleOption: Identifiable, Hashable, Codable {
+  var id: String
+  var label: String
+  var enabled: Bool
+  var required: Bool
+}
+
+struct AdvisorContext: Hashable, Codable {
+  var leverage: AdvisorLeverage?
+}
+
+struct AdvisorLeverage: Hashable, Codable {
+  var strongestListings: [AdvisorStrongListing]?
+}
+
+struct AdvisorStrongListing: Hashable, Codable {
+  var boardListingId: String
+  var listing: String
+  var contact: ListingContactInfo? = nil
+}
+
+struct AdvisorWalletStatus: Hashable, Codable {
+  var rolling7DayTotalCents: Int
+  var thresholdCents: Int
+  var remainingCents: Int
+  var windowStartedAt: String
+  var subscription: AdvisorSubscriptionStatus
+  var testMode: Bool? = nil
+
+  var isTestMode: Bool {
+    testMode == true
+  }
+
+  var progressFraction: Double {
+    if isUnlocked { return 1.0 }
+    guard thresholdCents > 0 else { return 0 }
+    return min(1, max(0, Double(rolling7DayTotalCents) / Double(thresholdCents)))
+  }
+
+  var isUnlocked: Bool {
+    subscription.active
+  }
+}
+
+struct AdvisorSubscriptionStatus: Hashable, Codable {
+  var active: Bool
+  var validUntil: String?
 }
 
 // ──────────────────────────────────────────────────

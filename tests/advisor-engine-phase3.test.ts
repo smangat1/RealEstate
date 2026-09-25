@@ -42,9 +42,9 @@ test("Advisor messages gate on expiry and persist the exact structured response"
 });
 
 test("Advisor wallet reports a rolling seven-day threshold without trusting isActive", () => {
-  assert.match(walletRouteSource, /7 \* 24 \* 60 \* 60 \* 1_000/);
-  assert.match(walletRouteSource, /createdAt: \{ gte: windowStart \}/);
-  assert.match(walletRouteSource, /ADVISOR_THRESHOLD_CENTS - rolling7DayTotalCents/);
+  assert.match(walletRouteSource, /ADVISOR_WINDOW_MS/);
+  assert.match(walletRouteSource, /realAdvisorLedgerWhere\(id, windowStart\)/);
+  assert.match(walletRouteSource, /ADVISOR_WEEK_CENTS - rolling7DayTotalCents/);
   assert.match(walletRouteSource, /validUntil && validUntil >= now/);
   assert.doesNotMatch(walletRouteSource, /isActive/);
 });
