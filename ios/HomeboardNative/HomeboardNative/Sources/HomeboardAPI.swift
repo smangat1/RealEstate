@@ -92,9 +92,10 @@ private struct MobileAdvisorFundRequest: Encodable {
 }
 
 struct MobileAdvisorFundResponse: Decodable {
-  var clientSecret: String
+  var clientSecret: String?
   var paymentIntentId: String
   var amountCents: Int
+  var simulated: Bool? = false
 }
 
 private struct MobileListingCreateRequest: Encodable {

@@ -1066,18 +1066,17 @@ final class AppModel {
     }
   }
 
-  func advisorFundingClientSecret(amountCents: Int) async -> String? {
+  func createAdvisorFunding(amountCents: Int) async -> MobileAdvisorFundResponse? {
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before funding Advisor."
       return nil
     }
     do {
-      let response = try await api.createAdvisorFundingIntent(
+      return try await api.createAdvisorFundingIntent(
         accessToken: session.accessToken,
         boardId: boardId,
         amountCents: amountCents
       )
-      return response.clientSecret
     } catch {
       boardError = readable(error)
       return nil

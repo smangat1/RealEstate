@@ -55,6 +55,7 @@ targets:
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         HOMEBOARD_APP_COMMIT: local
         HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
+        # Public pk_test_/pk_live_ key. Override this build setting locally or in CI.
         HOMEBOARD_STRIPE_PUBLISHABLE_KEY: ""
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U

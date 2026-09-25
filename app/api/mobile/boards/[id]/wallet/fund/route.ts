@@ -1,7 +1,10 @@
+import { randomUUID } from 'node:crypto';
+
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { ensureBoard } from '@/lib/board-data';
+import { hasAdvisorTestAccess } from '@/lib/advisor-test-access';
 import { requireMobileAppUser } from '@/lib/mobile-auth';
 import { sendOperationalAlert } from '@/lib/monitoring';
 import { prisma } from '@/lib/prisma';
@@ -41,6 +44,7 @@ export async function POST(
     }
 
     const now = new Date();
+    const testMode = hasAdvisorTestAccess(user);
     const windowStart = new Date(now.getTime() - ROLLING_WINDOW_MS);
     const [subscription, ledger] = await Promise.all([
       prisma.advisorSubscription.findUnique({
@@ -53,7 +57,7 @@ export async function POST(
       }),
     ]);
 
-    if (subscription?.validUntil && subscription.validUntil >= now) {
+    if (!testMode && subscription?.validUntil && subscription.validUntil >= now) {
       return NextResponse.json(
         { error: 'Advisor is already active for this board.' },
         { status: 409 },
@@ -75,6 +79,35 @@ export async function POST(
       );
     }
 
+    if (testMode) {
+      const simulatedPaymentId = `advisor_test_${randomUUID()}`;
+      await prisma.boardWalletLedger.create({
+        data: {
+          boardId: id,
+          userId: user.id,
+          amount: parsed.data.amountCents,
+          stripePaymentId: simulatedPaymentId,
+        },
+      });
+
+      const nextTotalCents = rollingTotalCents + parsed.data.amountCents;
+      if (nextTotalCents >= ADVISOR_WEEK_CENTS) {
+        const validUntil = new Date(now.getTime() + ROLLING_WINDOW_MS);
+        await prisma.advisorSubscription.upsert({
+          where: { boardId: id },
+          create: { boardId: id, isActive: true, validUntil },
+          update: { isActive: true, validUntil },
+        });
+      }
+
+      return NextResponse.json({
+        clientSecret: null,
+        paymentIntentId: simulatedPaymentId,
+        amountCents: parsed.data.amountCents,
+        simulated: true,
+      });
+    }
+
     const stripe = getStripe();
     const paymentIntent = await stripe.paymentIntents.create({
       amount: parsed.data.amountCents,
@@ -93,6 +126,7 @@ export async function POST(
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       amountCents: parsed.data.amountCents,
+      simulated: false,
     });
   } catch (error) {
     await sendOperationalAlert(error, {

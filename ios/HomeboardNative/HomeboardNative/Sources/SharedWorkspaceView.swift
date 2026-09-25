@@ -3881,6 +3881,8 @@ struct SharedUpdatesView: View {
           .padding(12)
           .background(HomeboardPalette.accent.opacity(0.12))
           .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else if isPartialAdvisorMention {
+          advisorMentionCompletionBar
         } else if showsAdvisorSuggestions {
           advisorSuggestionsBar
         }
@@ -3981,7 +3983,8 @@ struct SharedUpdatesView: View {
     let message = updateDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
 
-    if message.lowercased().hasPrefix("@advisor"), !appModel.isAdvisorAccessActive {
+    let advisorCommand = isCompleteAdvisorCommand(message)
+    if advisorCommand, !appModel.isAdvisorAccessActive {
       appModel.boardError = nil
       updateFieldFocused = true
       return
@@ -3990,7 +3993,7 @@ struct SharedUpdatesView: View {
     updateDraft = ""
     updateFieldFocused = false
 
-    if message.lowercased().hasPrefix("@advisor") {
+    if advisorCommand {
       appModel.boardMessageDraft = message
       Task {
         await appModel.sendBoardMessage()
@@ -4008,16 +4011,47 @@ struct SharedUpdatesView: View {
   }
 
   private var showsAdvisorSuggestions: Bool {
-    let text = updateDraft.trimmingCharacters(in: .whitespaces)
-    return text.hasPrefix("@") || text.lowercased().contains("@advisor")
+    isCompleteAdvisorCommand(updateDraft) && appModel.isAdvisorAccessActive
+  }
+
+  private var isPartialAdvisorMention: Bool {
+    let text = updateDraft
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return !text.isEmpty && text != "@advisor" && "@advisor".hasPrefix(text)
+  }
+
+  private func isCompleteAdvisorCommand(_ value: String) -> Bool {
+    value
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .range(of: #"^@advisor\b"#, options: [.regularExpression, .caseInsensitive]) != nil
   }
 
   private var isAdvisorCommandBlocked: Bool {
-    updateDraft
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .lowercased()
-      .hasPrefix("@advisor")
-      && !appModel.isAdvisorAccessActive
+    isCompleteAdvisorCommand(updateDraft) && !appModel.isAdvisorAccessActive
+  }
+
+  private var advisorMentionCompletionBar: some View {
+    Button {
+      updateDraft = "@advisor "
+      updateFieldFocused = true
+    } label: {
+      HStack(spacing: 8) {
+        Image(systemName: "sparkles")
+        Text("Complete @advisor")
+          .font(.caption.weight(.semibold))
+        Spacer()
+        Text("Tap to fill")
+          .font(.caption2)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 10)
+      .background(HomeboardPalette.accent.opacity(0.14))
+      .foregroundStyle(HomeboardPalette.primaryText)
+      .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+    .buttonStyle(HomeboardAreaButtonStyle())
   }
 
   private struct AdvisorPromptSuggestion: Identifiable {

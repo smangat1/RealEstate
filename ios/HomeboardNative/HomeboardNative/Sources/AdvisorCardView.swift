@@ -387,12 +387,22 @@ struct AdvisorWalletPanel: View {
             .foregroundStyle(HomeboardPalette.success)
           Spacer()
         }
-      } else {
+      }
+
+      if appModel.advisorWalletStatus?.isUnlocked != true
+          || (appModel.advisorWalletStatus?.isTestMode == true
+              && (appModel.advisorWalletStatus?.remainingCents ?? 0) > 0) {
         VStack(alignment: .leading, spacing: 8) {
           Text("Roommates can chip in separately. The shared total unlocks one full week at $4.")
             .font(.caption)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
+
+          if appModel.advisorWalletStatus?.isTestMode == true {
+            Label("Test mode: no card will be charged.", systemImage: "testtube.2")
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.accent)
+          }
 
           HStack(spacing: 10) {
             Stepper(value: $amountCents, in: 50...maximumContributionCents, step: 50) {
@@ -462,16 +472,28 @@ struct AdvisorWalletPanel: View {
 
   private func fundAdvisor() async {
     let publishableKey = HomeboardConfig.stripePublishableKey
-    guard !publishableKey.isEmpty else {
+    if appModel.advisorWalletStatus?.isTestMode != true && publishableKey.isEmpty {
       paymentMessage = "Stripe is not configured for this build."
       return
     }
+
     isPreparingPayment = true
     paymentMessage = nil
     defer { isPreparingPayment = false }
 
-    guard let clientSecret = await appModel.advisorFundingClientSecret(amountCents: amountCents) else {
+    guard let funding = await appModel.createAdvisorFunding(amountCents: amountCents) else {
       paymentMessage = "Unable to start payment."
+      return
+    }
+
+    if funding.simulated == true {
+      paymentMessage = "Test contribution added. No card was charged."
+      await appModel.refreshAdvisorWalletStatus()
+      return
+    }
+
+    guard let clientSecret = funding.clientSecret, !clientSecret.isEmpty else {
+      paymentMessage = "The payment session was incomplete."
       return
     }
 

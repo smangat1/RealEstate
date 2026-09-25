@@ -14,8 +14,11 @@ const models = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardMode
 const dispatcher = source("ios/HomeboardNative/HomeboardNative/Sources/MessageDispatcher.swift");
 const config = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
 const engineSource = source("lib/advisor-engine.ts");
+const advisorTestAccess = source("lib/advisor-test-access.ts");
 const stripeWebhook = source("app/api/webhook/stripe/route.ts");
 const fundingRoute = source("app/api/mobile/boards/[id]/wallet/fund/route.ts");
+const walletRoute = source("app/api/mobile/boards/[id]/wallet/route.ts");
+const messagesRoute = source("app/api/mobile/boards/[id]/messages/route.ts");
 
 test("iOS decodes Advisor data from the standard board response envelope", () => {
   const response = api.match(/struct MobileBoardLoadResponse[\s\S]*?\n}/)?.[0] ?? "";
@@ -57,7 +60,7 @@ test("Advisor regeneration always sends the current explicit Include filter", ()
 });
 
 test("PaymentSheet uses a server client secret and refreshes wallet only after completion", () => {
-  assert.match(card, /advisorFundingClientSecret\(amountCents:/);
+  assert.match(card, /createAdvisorFunding\(amountCents:/);
   assert.match(card, /PaymentSheet\(paymentIntentClientSecret: clientSecret/);
   assert.match(card, /case \.completed:[\s\S]*?refreshAdvisorWalletStatus\(\)/);
 
@@ -68,6 +71,18 @@ test("PaymentSheet uses a server client secret and refreshes wallet only after c
 
   assert.match(config, /stripePublishableKey/);
   assert.doesNotMatch(`${card}\n${config}\n${api}`, /sk_(?:test|live)_/);
+});
+
+test("operator-only Advisor test mode simulates funding without Stripe", () => {
+  assert.match(advisorTestAccess, /ADVISOR_TEST_MODE/);
+  assert.match(advisorTestAccess, /isOperatorUser\(user\)/);
+  assert.match(fundingRoute, /if \(testMode\)/);
+  assert.match(fundingRoute, /advisor_test_\$\{randomUUID\(\)\}/);
+  assert.match(fundingRoute, /simulated: true/);
+  assert.match(walletRoute, /testMode \|\| Boolean\(validUntil && validUntil >= now\)/);
+  assert.match(messagesRoute, /hasAdvisorTestAccess\(user\)/);
+  assert.match(card, /if funding\.simulated == true/);
+  assert.match(card, /Test contribution added\. No card was charged\./);
 });
 
 test("Outreach status changes only after a compose delegate confirms sent", () => {
@@ -118,7 +133,11 @@ test("locked Advisor commands are stopped in-app before reaching the API", () =>
   assert.match(sharedView, /private var isAdvisorCommandBlocked/);
   assert.match(sharedView, /Advisor needs an active board week/);
   assert.match(sharedView, /\|\| isAdvisorCommandBlocked/);
-  assert.match(sharedView, /hasPrefix\("@advisor"\), !appModel\.isAdvisorAccessActive/);
+  assert.match(sharedView, /private var isPartialAdvisorMention/);
+  assert.match(sharedView, /"@advisor"\.hasPrefix\(text\)/);
+  assert.match(sharedView, /Text\("Complete @advisor"\)/);
+  assert.match(sharedView, /isCompleteAdvisorCommand\(updateDraft\) && !appModel\.isAdvisorAccessActive/);
+  assert.match(sharedView, /else if isPartialAdvisorMention[\s\S]*?advisorMentionCompletionBar/);
   assert.match(appModel, /guard !isAdvisor \|\| isAdvisorAccessActive else/);
 });
 

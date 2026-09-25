@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { ensureBoard } from "@/lib/board-data";
+import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
@@ -32,6 +33,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     ]);
     const rolling7DayTotalCents = ledger._sum.amount ?? 0;
     const validUntil = subscription?.validUntil ?? null;
+    const testMode = hasAdvisorTestAccess(user);
 
     return NextResponse.json({
       rolling7DayTotalCents,
@@ -39,9 +41,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       remainingCents: Math.max(0, ADVISOR_THRESHOLD_CENTS - rolling7DayTotalCents),
       windowStartedAt: windowStart.toISOString(),
       subscription: {
-        active: Boolean(validUntil && validUntil >= now),
+        active: testMode || Boolean(validUntil && validUntil >= now),
         validUntil: validUntil?.toISOString() ?? null,
       },
+      testMode,
     });
   } catch (error) {
     await sendOperationalAlert(error, {

@@ -681,6 +681,11 @@ struct AdvisorWalletStatus: Hashable, Codable {
   var remainingCents: Int
   var windowStartedAt: String
   var subscription: AdvisorSubscriptionStatus
+  var testMode: Bool? = nil
+
+  var isTestMode: Bool {
+    testMode == true
+  }
 
   var progressFraction: Double {
     if isUnlocked { return 1.0 }

@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { normalizeAdvisorTone, runAdvisorEngine } from "@/lib/advisor-engine";
+import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { getBoardPageData, sendChat } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
@@ -50,7 +51,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         where: { boardId: id },
         select: { validUntil: true },
       });
-      const subscriptionActive = Boolean(subscription?.validUntil && subscription.validUntil >= now);
+      const subscriptionActive = hasAdvisorTestAccess(user)
+        || Boolean(subscription?.validUntil && subscription.validUntil >= now);
       if (!subscriptionActive) {
         return NextResponse.json(
           {
