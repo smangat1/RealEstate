@@ -60,6 +60,7 @@ test("Advisor setup choices survive the profile notes round trip", () => {
     advisorIncomeMultiple: "40x",
     advisorCreditScore: "740-760",
     advisorSetupCompletedAt: "2026-09-25T15:00:00.000Z",
+    advisorSetupVersion: 2,
   };
 
   const mapped = mapProfileRow({
@@ -76,4 +77,5 @@ test("Advisor setup choices survive the profile notes round trip", () => {
   assert.equal(mapped.advisorIncomeMultiple, "40x");
   assert.equal(mapped.advisorCreditScore, "740-760");
   assert.equal(mapped.advisorSetupCompletedAt, "2026-09-25T15:00:00.000Z");
+  assert.equal(mapped.advisorSetupVersion, 2);
 });

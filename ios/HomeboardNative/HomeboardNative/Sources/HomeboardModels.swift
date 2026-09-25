@@ -137,6 +137,7 @@ struct RentalProfile: Hashable, Codable {
   var advisorIncomeMultiple: String? = nil
   var advisorCreditScore: String? = nil
   var advisorSetupCompletedAt: String? = nil
+  var advisorSetupVersion: Int? = nil
 
   var completionRatio: Double {
     Double(completedFieldCount) / Double(requiredFieldCount)
@@ -617,6 +618,10 @@ struct AdvisorMessagePayload: Hashable, Codable {
   var executionStatus: String? = nil
   var missingInputs: [String]? = nil
   var promptVersion: String? = nil
+  var generationSource: String? = nil
+  var financialDisclosure: String? = nil
+  var acceptedAt: String? = nil
+  var clientGeneratedAt: String? = nil
   var contact: ListingContactInfo? = nil
   var context: AdvisorContext? = nil
   /// The boardListingId of the listing this draft specifically targets.
@@ -634,6 +639,10 @@ extension AdvisorMessagePayload {
     case executionStatus
     case missingInputs
     case promptVersion
+    case generationSource
+    case financialDisclosure
+    case acceptedAt
+    case clientGeneratedAt
     case contact
     case context
     case targetListingBoardId
@@ -652,6 +661,10 @@ extension AdvisorMessagePayload {
     executionStatus = try? container.decodeIfPresent(String.self, forKey: .executionStatus)
     missingInputs = try? container.decodeIfPresent([String].self, forKey: .missingInputs)
     promptVersion = try? container.decodeIfPresent(String.self, forKey: .promptVersion)
+    generationSource = try? container.decodeIfPresent(String.self, forKey: .generationSource)
+    financialDisclosure = try? container.decodeIfPresent(String.self, forKey: .financialDisclosure)
+    acceptedAt = try? container.decodeIfPresent(String.self, forKey: .acceptedAt)
+    clientGeneratedAt = try? container.decodeIfPresent(String.self, forKey: .clientGeneratedAt)
     contact = try? container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
     targetListingBoardId = try? container.decodeIfPresent(String.self, forKey: .targetListingBoardId)
@@ -667,16 +680,83 @@ struct AdvisorToggleOption: Identifiable, Hashable, Codable {
 
 struct AdvisorContext: Hashable, Codable {
   var leverage: AdvisorLeverage?
+  var requirements: AdvisorRequirements?
 }
 
 struct AdvisorLeverage: Hashable, Codable {
+  var memberCount: Int?
+  var applicationReadiness: AdvisorApplicationReadiness?
+  var activeOffers: [AdvisorActiveOffer]?
   var strongestListings: [AdvisorStrongListing]?
+}
+
+struct AdvisorApplicationReadiness: Hashable, Codable {
+  var hasOfferLetter: Bool?
+  var hasProofOfIncome: Bool?
+  var needsGuarantor: Bool?
+}
+
+struct AdvisorActiveOffer: Hashable, Codable {
+  var label: String
 }
 
 struct AdvisorStrongListing: Hashable, Codable {
   var boardListingId: String
   var listing: String
   var contact: ListingContactInfo? = nil
+  var rankingLabel: String? = nil
+  var fairnessScore: Double? = nil
+  var confidence: String? = nil
+}
+
+struct AdvisorRequirements: Hashable, Codable {
+  var budget: AdvisorBudgetRequirement?
+  var moveIn: String?
+  var locations: [String]?
+  var bedrooms: Double?
+  var mustHaves: [String]?
+  var dealbreakers: [String]?
+  var priorities: [String]?
+  var commuteDestinations: [String]?
+  var tensionFlags: [String]?
+}
+
+struct AdvisorBudgetRequirement: Hashable, Codable {
+  var minimum: Double?
+  var maximum: Double?
+  var stretchMaximum: Double?
+  var summary: String?
+}
+
+struct AdvisorFinancialStatus: Hashable, Codable {
+  var mine: AdvisorMemberFinancialStatus
+  var group: AdvisorGroupFinancialStatus
+}
+
+struct AdvisorMemberFinancialStatus: Hashable, Codable {
+  var annualIncomeMin: Int?
+  var annualIncomeMax: Int?
+  var creditScoreMin: Int?
+  var creditScoreMax: Int?
+  var disclosureMode: String
+  var promptCompletedAt: String?
+}
+
+struct AdvisorGroupFinancialStatus: Hashable, Codable {
+  var combinedAnnualIncomeMin: Int?
+  var combinedAnnualIncomeMax: Int?
+  var creditScoreMin: Int?
+  var creditScoreMax: Int?
+  var contributorCount: Int
+  var memberCount: Int
+
+  var hasCombinedRange: Bool {
+    combinedAnnualIncomeMin != nil
+      && combinedAnnualIncomeMax != nil
+      && creditScoreMin != nil
+      && creditScoreMax != nil
+      && contributorCount > 1
+  }
 }
 
 struct AdvisorWalletStatus: Hashable, Codable {

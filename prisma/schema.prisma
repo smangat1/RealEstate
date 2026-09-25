@@ -186,6 +186,7 @@ model User {
   catalogSourceReports      CatalogSourceReport[]
   catalogSourcesVerified    CatalogListingSource[]     @relation("CatalogSourceVerifiedBy")
   walletLedgers             BoardWalletLedger[]
+  advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
 }
 
 model DevicePairing {
@@ -228,6 +229,7 @@ model SearchBoard {
   catalogSourceReports      CatalogSourceReport[]
   walletLedgers             BoardWalletLedger[]
   advisorSubscription       AdvisorSubscription?
+  advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
 
   @@index([userId])
 }
@@ -721,3 +723,21 @@ model AdvisorMessagePayload {
   message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 }
 
+model AdvisorMemberFinancialProfile {
+  id                String      @id @default(cuid())
+  boardId           String
+  userId            String
+  annualIncomeMin   Int?
+  annualIncomeMax   Int?
+  creditScoreMin    Int?
+  creditScoreMax    Int?
+  disclosureMode    String      @default("available_on_request")
+  promptCompletedAt DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  board             SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([userId, updatedAt])
+}

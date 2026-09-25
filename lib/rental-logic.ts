@@ -159,6 +159,7 @@ export function encodeNotesPayload(profile: SearchProfileData) {
       advisorIncomeMultiple: profile.advisorIncomeMultiple ?? null,
       advisorCreditScore: profile.advisorCreditScore ?? null,
       advisorSetupCompletedAt: profile.advisorSetupCompletedAt ?? null,
+      advisorSetupVersion: profile.advisorSetupVersion ?? null,
       completionStatus: profile.completionStatus,
     },
     notes: profile.notes ?? null,
@@ -792,7 +793,9 @@ export function mapProfileRow(row: Record<string, unknown>): SearchProfileData {
         ? (onboarding.rentalReadiness as SearchProfileData["rentalReadiness"])
         : {},
     advisorFinancialMode:
-      onboarding.advisorFinancialMode === "provided" || onboarding.advisorFinancialMode === "template"
+      onboarding.advisorFinancialMode === "available_on_request"
+      || onboarding.advisorFinancialMode === "provided"
+      || onboarding.advisorFinancialMode === "template"
         ? onboarding.advisorFinancialMode
         : undefined,
     advisorIncomeMultiple:
@@ -801,6 +804,8 @@ export function mapProfileRow(row: Record<string, unknown>): SearchProfileData {
       typeof onboarding.advisorCreditScore === "string" ? onboarding.advisorCreditScore : null,
     advisorSetupCompletedAt:
       typeof onboarding.advisorSetupCompletedAt === "string" ? onboarding.advisorSetupCompletedAt : null,
+    advisorSetupVersion:
+      typeof onboarding.advisorSetupVersion === "number" ? onboarding.advisorSetupVersion : undefined,
     completionStatus:
       onboarding.completionStatus === "complete" || onboarding.completionStatus === "confirmed" ? onboarding.completionStatus : "incomplete",
     notes: notesText,
@@ -1322,6 +1327,7 @@ export function createBlankProfile(boardId: string): SearchProfileData {
     advisorIncomeMultiple: null,
     advisorCreditScore: null,
     advisorSetupCompletedAt: null,
+    advisorSetupVersion: undefined,
     completionStatus: "incomplete",
     intent: "rent",
     propertyType: "apartment",

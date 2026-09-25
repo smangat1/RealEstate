@@ -71,6 +71,7 @@
 		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		E5216B5B1E0A8ED493C21B8F /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = C61EED1E57E992C638024AA8 /* StripePaymentSheet */; };
 		E5ADE81D14E97FFB8B2FAB6D /* SharePreprocessor.js in Resources */ = {isa = PBXBuildFile; fileRef = C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */; };
+		E9915A425D456A69BAC8FEBF /* AdvisorDraftGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */; };
 		F0E38EF838CE4A52F313FD07 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
 		F109A7AD071A6E5861A32430 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
 		F5EEA5FB9B27310924110C71 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 65FC9AAA1DE307DE8A4A3D50 /* content.js */; };
@@ -162,6 +163,7 @@
 		498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardPalette.swift; sourceTree = "<group>"; };
 		4AB61DA2FD0EAA808AE128B6 /* HomeboardNativeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C7722106E8643B35B4B2A69 /* HomeboardMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeboardMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorDraftGenerator.swift; sourceTree = "<group>"; };
 		4E61E97384A9AFC7C18F3E63 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		52BC4419FB3FD9C9031892FD /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		575C511E3BC5CCE16A232686 /* toolbar-icon.svg */ = {isa = PBXFileReference; path = "toolbar-icon.svg"; sourceTree = "<group>"; };
@@ -309,6 +311,7 @@
 			children = (
 				40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */,
 				EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */,
+				4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */,
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
 				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
@@ -713,6 +716,7 @@
 			files = (
 				8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */,
 				1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */,
+				E9915A425D456A69BAC8FEBF /* AdvisorDraftGenerator.swift in Sources */,
 				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
 				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,

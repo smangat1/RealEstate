@@ -87,6 +87,20 @@ struct MobileBoardMessageCreateRequest: Encodable {
   }
 }
 
+private struct MobileAdvisorAcceptedDraftRequest: Encodable {
+  var messageId: String
+  var payload: AdvisorMessagePayload
+}
+
+private struct MobileAdvisorFinancialUpdateRequest: Encodable {
+  var disclosureMode: String
+  var annualIncomeMin: Int?
+  var annualIncomeMax: Int?
+  var creditScoreMin: Int?
+  var creditScoreMax: Int?
+  var promptCompleted: Bool
+}
+
 private struct MobileAdvisorFundRequest: Encodable {
   var amountCents: Int
 }
@@ -354,6 +368,7 @@ struct RemoteRentalProfilePayload: Decodable {
   var advisorIncomeMultiple: String?
   var advisorCreditScore: String?
   var advisorSetupCompletedAt: String?
+  var advisorSetupVersion: Int?
 }
 
 private struct SupabaseAuthResponse: Decodable {
@@ -506,6 +521,7 @@ private struct RemoteRentalProfileRequest: Encodable {
   var advisorIncomeMultiple: String?
   var advisorCreditScore: String?
   var advisorSetupCompletedAt: String?
+  var advisorSetupVersion: Int?
   var createdAt: String
   var updatedAt: String
   var intent: String? = "rent"
@@ -763,6 +779,55 @@ final class HomeboardAPI {
       method: "POST",
       accessToken: accessToken,
       body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly, originatingMessageId: originatingMessageId)
+    )
+  }
+
+  func acceptAdvisorDraft(
+    accessToken: String,
+    boardId: String,
+    messageId: String,
+    payload: AdvisorMessagePayload
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/messages",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: MobileAdvisorAcceptedDraftRequest(messageId: messageId, payload: payload)
+    )
+  }
+
+  func fetchAdvisorFinancialStatus(
+    accessToken: String,
+    boardId: String
+  ) async throws -> AdvisorFinancialStatus {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/advisor-finances",
+      accessToken: accessToken
+    )
+  }
+
+  func updateAdvisorFinancialStatus(
+    accessToken: String,
+    boardId: String,
+    disclosureMode: String,
+    annualIncomeMin: Int?,
+    annualIncomeMax: Int?,
+    creditScoreMin: Int?,
+    creditScoreMax: Int?,
+    promptCompleted: Bool
+  ) async throws -> AdvisorFinancialStatus {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/advisor-finances",
+      method: "PUT",
+      accessToken: accessToken,
+      body: MobileAdvisorFinancialUpdateRequest(
+        disclosureMode: disclosureMode,
+        annualIncomeMin: annualIncomeMin,
+        annualIncomeMax: annualIncomeMax,
+        creditScoreMin: creditScoreMin,
+        creditScoreMax: creditScoreMax,
+        promptCompleted: promptCompleted
+      )
     )
   }
 
@@ -1563,6 +1628,7 @@ extension RentalProfile {
     self.advisorIncomeMultiple = remote.advisorIncomeMultiple
     self.advisorCreditScore = remote.advisorCreditScore
     self.advisorSetupCompletedAt = remote.advisorSetupCompletedAt
+    self.advisorSetupVersion = remote.advisorSetupVersion
   }
 
   private static func stringAmount(_ value: Double?) -> String {
@@ -1616,6 +1682,7 @@ extension RemoteRentalProfileRequest {
     self.advisorIncomeMultiple = profile.advisorIncomeMultiple
     self.advisorCreditScore = profile.advisorCreditScore
     self.advisorSetupCompletedAt = profile.advisorSetupCompletedAt
+    self.advisorSetupVersion = profile.advisorSetupVersion
     self.createdAt = now
     self.updatedAt = now
     self.locations = profile.city.isEmpty ? [] : [profile.city]

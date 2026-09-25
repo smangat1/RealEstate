@@ -39,8 +39,7 @@ export type AdvisorFinancialQualifications = {
 
 export type AdvisorToggleOption = {
   id:
-    | "include_income_multiple"
-    | "include_credit_score"
+    | "include_financial_information"
     | "include_requirements"
     | "include_commute"
     | "request_tour";
@@ -103,15 +102,17 @@ export type AdvisorGroupContext = {
 };
 
 export type AdvisorMessagePayloadData = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   /** The original user-authored @advisor command, without regeneration filters. */
   originalCommand: string;
   draftText: string;
   tone: AdvisorTone;
   toggleOptions: AdvisorToggleOption[];
-  executionStatus: "draft_ready" | "needs_input";
+  executionStatus: "draft_ready";
   missingInputs: Array<"incomeMultiple" | "creditScore">;
-  promptVersion: "advisor-v2-p3";
+  promptVersion: "advisor-v2-p5";
+  generationSource: "server_template";
+  financialDisclosure: "available_on_request";
   contact?: ListingContactInfo | null;
   /** boardListingId of the listing this draft specifically targets. */
   targetListingBoardId?: string | null;
@@ -162,73 +163,6 @@ function roommateAsRentalProfile(
     notes: roommate.notes,
   };
 }
-function qualificationText(value: string | number | null | undefined) {
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value !== "string") return null;
-  return value.trim() || null;
-}
-
-function normalizeIncomeMultiple(value: string | number | null | undefined) {
-  const text = qualificationText(value);
-  if (!text) return null;
-  const match = text.match(/(\d{1,3}(?:\.\d+)?)\s*x?/i);
-  return match ? `${match[1]}x` : null;
-}
-
-function normalizeCreditScore(value: string | number | null | undefined) {
-  const text = qualificationText(value);
-  if (!text) return null;
-  const scores = [...text.matchAll(/\b(\d{3})\b/g)]
-    .map((match) => Number(match[1]))
-    .filter((score) => score >= 300 && score <= 850);
-  if (scores.length === 0) return null;
-  return scores.length === 1
-    ? String(scores[0])
-    : `${Math.min(...scores)}-${Math.max(...scores)}`;
-}
-
-function profileFinancialQualifications(profile: RentalProfile): AdvisorFinancialQualifications {
-  const structured = profile as RentalProfile & {
-    financialQualifications?: Partial<AdvisorFinancialQualifications>;
-    rentalQualifications?: Partial<AdvisorFinancialQualifications>;
-    advisorIncomeMultiple?: string | null;
-    advisorCreditScore?: string | null;
-    incomeMultiple?: string | number | null;
-    creditScore?: string | number | null;
-  };
-  return {
-    incomeMultiple: normalizeIncomeMultiple(
-      structured.advisorIncomeMultiple
-      ?? structured.financialQualifications?.incomeMultiple
-      ?? structured.rentalQualifications?.incomeMultiple
-      ?? structured.incomeMultiple,
-    ) ?? null,
-    creditScore: normalizeCreditScore(
-      structured.advisorCreditScore
-      ?? structured.financialQualifications?.creditScore
-      ?? structured.rentalQualifications?.creditScore
-      ?? structured.creditScore,
-    ) ?? null,
-  };
-}
-
-export function extractAdvisorFinancialQualifications(
-  text: string,
-): AdvisorFinancialQualifications {
-  const incomeMatch =
-    text.match(/\b(?:income(?:\s+multiple)?|earnings?)\s*(?::|is|of|at|=)?\s*(\d{1,3}(?:\.\d+)?)\s*x\b/i)
-    ?? text.match(/\b(\d{1,3}(?:\.\d+)?)\s*x\s*(?:the\s+)?(?:monthly\s+)?rent\b/i)
-    ?? text.match(/\b(\d{1,3}(?:\.\d+)?)\s*x\b/i);
-  const creditMatch =
-    text.match(/\bcredit(?:\s+score)?s?\s*(?::|are|is|of|at|=)?\s*((?:\d{3})(?:\s*(?:-|\u2013|to|through|and)\s*\d{3})*)/i)
-    ?? text.match(/\b((?:\d{3})(?:\s*(?:-|\u2013|to|through|and)\s*\d{3})*)\s+credit\b/i);
-
-  return {
-    incomeMultiple: normalizeIncomeMultiple(incomeMatch?.[1]),
-    creditScore: normalizeCreditScore(creditMatch?.[1]),
-  };
-}
-
 export function normalizeAdvisorTone(value: string | null | undefined): AdvisorTone {
   const normalized = value?.trim().toLowerCase().replace(/[\u2013\u2014_]/g, "-") ?? "";
   if (normalized.includes("passive") && normalized.includes("aggressive")) return "Passive-Aggressive";
@@ -368,23 +302,16 @@ export function compileAdvisorPrompt(input: {
   financialQualifications: AdvisorFinancialQualifications;
   context: AdvisorGroupContext;
 }): CompiledAdvisorPrompt {
-  const incomeMultiple = input.financialQualifications.incomeMultiple ?? "MISSING - do not invent";
-  const creditScore = input.financialQualifications.creditScore ?? "MISSING - do not invent";
   const toneInstruction = ADVISOR_TONE_INSTRUCTIONS[input.tone];
-  const usesFinancialTemplate = incomeMultiple.startsWith("[") || creditScore.startsWith("[");
 
   return {
     system: [
       "You are Homeboard Advisor. Draft grounded rental outreach using only the supplied JSON context.",
       "STRICT CONSTRAINTS:",
-      `- You MUST include this income qualification exactly as written: ${incomeMultiple}.`,
-      `- You MUST include this credit qualification exactly as written: ${creditScore}.`,
+      "- Use the exact sentence 'Financial information is available on request.' when financial information is included.",
       `- You MUST write in the selected ${input.tone} tone: ${toneInstruction}.`,
       "- Never invent financial qualifications, listing facts, availability, or prior contact.",
-      usesFinancialTemplate
-        ? "- Bracketed financial values are editable placeholders. Preserve them verbatim and never imply they are known facts."
-        : "- The supplied financial qualifications are user-provided draft-filling values; do not evaluate or characterize them.",
-      "- If either required financial fact is marked MISSING, do not produce recipient-facing outreach; request the missing facts.",
+      "- Never output a bracketed placeholder or request that the recipient fill in missing text.",
       "- Produce plain text only.",
     ].join("\n"),
     user: [
@@ -418,15 +345,10 @@ function findRequestedListing(
   ) ?? boardData.boardListings[0] ?? null;
 }
 
-function formatFinancialSentence(financials: Required<AdvisorFinancialQualifications>) {
-  return `Our group income is ${financials.incomeMultiple} the monthly rent, and our group credit score is ${financials.creditScore}.`;
-}
-
 function generateDraft(input: {
   boardData: BoardPageData;
   context: AdvisorGroupContext;
   tone: AdvisorTone;
-  financialQualifications: Required<AdvisorFinancialQualifications>;
   command: string;
   inclusionLabels: string[];
 }) {
@@ -439,13 +361,9 @@ function generateDraft(input: {
     input.context.leverage.strongestListings,
   );
   const subject = listing ? listingLabel(listing) : "the rental";
-  const finance = include("income multiple") && include("credit score")
-    ? formatFinancialSentence(input.financialQualifications)
-    : include("income multiple")
-      ? `Our group income is ${input.financialQualifications.incomeMultiple} the monthly rent.`
-      : include("credit score")
-        ? `Our group credit score is ${input.financialQualifications.creditScore}.`
-        : "";
+  const finance = include("financial information")
+    ? "Financial information is available on request."
+    : "";
   const moveIn = include("group requirements") && input.context.requirements.moveIn
     ? ` We are targeting ${input.context.requirements.moveIn}.`
     : "";
@@ -514,8 +432,7 @@ function toggleOptions(inclusionLabels: string[]): AdvisorToggleOption[] {
   const enabled = (label: string, defaultOn: boolean) =>
     inclusionLabels.length === 0 ? defaultOn : inclusionLabels.includes(label.toLowerCase());
   return [
-    { id: "include_income_multiple", label: "Income multiple", enabled: enabled("income multiple", true), required: false },
-    { id: "include_credit_score", label: "Credit score", enabled: enabled("credit score", true), required: false },
+    { id: "include_financial_information", label: "Financial information", enabled: enabled("financial information", true), required: false },
     { id: "include_requirements", label: "Group requirements", enabled: enabled("group requirements", true), required: false },
     { id: "include_commute", label: "Commute fit", enabled: enabled("commute fit", false), required: false },
     { id: "request_tour", label: "Request a tour", enabled: enabled("request a tour", true), required: false },
@@ -525,13 +442,7 @@ function toggleOptions(inclusionLabels: string[]): AdvisorToggleOption[] {
 export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<AdvisorMessagePayloadData> {
   const parsed = parseAdvisorCommand(input.command);
   const tone = normalizeAdvisorTone(input.tone ?? parsed.tone);
-  const usesFinancialTemplate = input.boardData.profile.advisorFinancialMode === "template";
-  const financialQualifications = usesFinancialTemplate
-    ? {
-        incomeMultiple: "[INCOME MULTIPLE]",
-        creditScore: "[CREDIT SCORE]",
-      }
-    : profileFinancialQualifications(input.boardData.profile);
+  const financialQualifications = { incomeMultiple: null, creditScore: null };
   const context = await aggregateAdvisorGroupContext({
     boardData: input.boardData,
     financialQualifications,
@@ -544,8 +455,6 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     context,
   });
   const missingInputs: AdvisorMessagePayloadData["missingInputs"] = [];
-  if (!usesFinancialTemplate && !financialQualifications.incomeMultiple) missingInputs.push("incomeMultiple");
-  if (!usesFinancialTemplate && !financialQualifications.creditScore) missingInputs.push("creditScore");
 
   // Compiling before generation keeps every execution path subject to the same
   // strict financial and tone constraints, including the missing-input path.
@@ -561,23 +470,22 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
   const targetContact = targetListing ? listingContactInfo(targetListing.listing) : null;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     originalCommand: parsed.originalCommand,
-    draftText: missingInputs.length > 0
-      ? `Advisor needs the group's ${missingInputs.map((field) => field === "incomeMultiple" ? "exact income multiple" : "exact credit score").join(" and ")} before preparing broker outreach.`
-      : generateDraft({
-          boardData: input.boardData,
-          context,
-          tone,
-          financialQualifications: financialQualifications as Required<AdvisorFinancialQualifications>,
-          command: parsed.command,
-          inclusionLabels: parsed.inclusionLabels,
-        }),
+    draftText: generateDraft({
+      boardData: input.boardData,
+      context,
+      tone,
+      command: parsed.command,
+      inclusionLabels: parsed.inclusionLabels,
+    }),
     tone,
     toggleOptions: toggleOptions(parsed.inclusionLabels),
-    executionStatus: missingInputs.length > 0 ? "needs_input" : "draft_ready",
+    executionStatus: "draft_ready",
     missingInputs,
-    promptVersion: "advisor-v2-p3",
+    promptVersion: "advisor-v2-p5",
+    generationSource: "server_template",
+    financialDisclosure: "available_on_request",
     contact: targetContact,
     targetListingBoardId: targetListing?.id ?? null,
     context,

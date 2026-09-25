@@ -198,6 +198,7 @@ final class AppModel {
   var boardFeedback: String?
   var boardMessageDraft = ""
   var advisorWalletStatus: AdvisorWalletStatus?
+  var advisorFinancialStatus: AdvisorFinancialStatus?
   var isAdvisorWalletLoading = false
   var isAdvisorProcessing = false
   var advisorFundingAmountCents = 100
@@ -968,27 +969,52 @@ final class AppModel {
   }
 
   func regenerateAdvisorDraft(
-    originalCommand: String,
+    payload: AdvisorMessagePayload,
     tone: String,
     toggles: [AdvisorToggleOption],
-    originatingMessageId: String?
+    financialDisclosure: String? = nil,
+    groupFinances: AdvisorGroupFinancialStatus? = nil
   ) async throws -> MobileBoardLoadResponse {
     guard let session = authSession, let boardId = board.id else {
       throw HomeboardAPIError.missingSession
     }
-
-    let command = try Self.advisorRegenerationCommand(
-      originalCommand: originalCommand,
-      toggles: toggles
+    guard let messageId = payload.messageId,
+          let originalCommand = payload.originalCommand,
+          originalCommand.range(
+            of: #"^@advisor\b"#,
+            options: [.regularExpression, .caseInsensitive]
+          ) != nil else {
+      throw HomeboardAPIError.server("Advisor regeneration requires the original @advisor request.")
+    }
+    let disclosure = financialDisclosure ?? payload.financialDisclosure ?? "available_on_request"
+    let sentence = AdvisorDraftGenerator.financialSentence(
+      mode: disclosure,
+      group: groupFinances
     )
+    let generated = await AdvisorDraftGenerator.generate(
+      payload: payload,
+      tone: tone,
+      toggles: toggles,
+      financialSentence: sentence,
+      senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants"
+    )
+    var accepted = payload
+    accepted.draftText = generated.text
+    accepted.tone = tone
+    accepted.toggleOptions = toggles
+    accepted.executionStatus = "draft_ready"
+    accepted.missingInputs = []
+    accepted.generationSource = generated.source
+    accepted.financialDisclosure = disclosure
+    let generationTimestamp = ISO8601DateFormatter()
+    generationTimestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    accepted.clientGeneratedAt = generationTimestamp.string(from: Date())
 
-    return try await api.sendBoardMessage(
+    return try await api.acceptAdvisorDraft(
       accessToken: session.accessToken,
       boardId: boardId,
-      content: command,
-      tone: tone,
-      regenerateOnly: true,
-      originatingMessageId: originatingMessageId
+      messageId: messageId,
+      payload: accepted
     )
   }
 
@@ -1048,6 +1074,7 @@ final class AppModel {
   func refreshAdvisorWalletStatus() async {
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
       advisorWalletStatus = nil
+      advisorFinancialStatus = nil
       return
     }
     isAdvisorWalletLoading = true
@@ -1063,6 +1090,50 @@ final class AppModel {
       return
     } catch {
       boardError = readable(error)
+    }
+  }
+
+  @discardableResult
+  func refreshAdvisorFinancialStatus() async -> AdvisorFinancialStatus? {
+    guard let session = authSession, let boardId = board.id else { return nil }
+    do {
+      let status = try await api.fetchAdvisorFinancialStatus(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+      advisorFinancialStatus = status
+      return status
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  @discardableResult
+  func updateAdvisorFinancialStatus(
+    disclosureMode: String,
+    annualIncomeMin: Int?,
+    annualIncomeMax: Int?,
+    creditScoreMin: Int?,
+    creditScoreMax: Int?
+  ) async -> AdvisorFinancialStatus? {
+    guard let session = authSession, let boardId = board.id else { return nil }
+    do {
+      let status = try await api.updateAdvisorFinancialStatus(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        disclosureMode: disclosureMode,
+        annualIncomeMin: annualIncomeMin,
+        annualIncomeMax: annualIncomeMax,
+        creditScoreMin: creditScoreMin,
+        creditScoreMax: creditScoreMax,
+        promptCompleted: true
+      )
+      advisorFinancialStatus = status
+      return status
+    } catch {
+      boardError = readable(error)
+      return nil
     }
   }
 
@@ -1085,9 +1156,6 @@ final class AppModel {
 
   @discardableResult
   func completeAdvisorSetup(
-    financialMode: String,
-    incomeMultiple: String,
-    creditScore: String,
     hasOfferLetter: Bool,
     hasProofOfIncome: Bool,
     needsGuarantor: Bool,
@@ -1103,15 +1171,11 @@ final class AppModel {
     priorities: [String]
   ) async -> Bool {
     let previousProfile = profile
-    let normalizedMode = financialMode == "provided" ? "provided" : "template"
-    profile.advisorFinancialMode = normalizedMode
-    profile.advisorIncomeMultiple = normalizedMode == "provided"
-      ? incomeMultiple.trimmingCharacters(in: .whitespacesAndNewlines)
-      : nil
-    profile.advisorCreditScore = normalizedMode == "provided"
-      ? creditScore.trimmingCharacters(in: .whitespacesAndNewlines)
-      : nil
+    profile.advisorFinancialMode = "available_on_request"
+    profile.advisorIncomeMultiple = nil
+    profile.advisorCreditScore = nil
     profile.advisorSetupCompletedAt = ISO8601DateFormatter().string(from: Date())
+    profile.advisorSetupVersion = 2
     profile.readiness.hasOfferLetter = hasOfferLetter
     profile.readiness.hasProofOfIncome = hasProofOfIncome
     profile.readiness.needsGuarantor = needsGuarantor
@@ -1662,6 +1726,7 @@ final class AppModel {
       Task { await refreshAdvisorWalletStatus() }
     } else {
       advisorWalletStatus = nil
+      advisorFinancialStatus = nil
     }
     resumePendingListingMutations(boardId: id)
     scheduleRecentlyDeletedPurge(boardId: id)
