@@ -191,17 +191,21 @@ function profileFinancialQualifications(profile: RentalProfile): AdvisorFinancia
   const structured = profile as RentalProfile & {
     financialQualifications?: Partial<AdvisorFinancialQualifications>;
     rentalQualifications?: Partial<AdvisorFinancialQualifications>;
+    advisorIncomeMultiple?: string | null;
+    advisorCreditScore?: string | null;
     incomeMultiple?: string | number | null;
     creditScore?: string | number | null;
   };
   return {
     incomeMultiple: normalizeIncomeMultiple(
-      structured.financialQualifications?.incomeMultiple
+      structured.advisorIncomeMultiple
+      ?? structured.financialQualifications?.incomeMultiple
       ?? structured.rentalQualifications?.incomeMultiple
       ?? structured.incomeMultiple,
     ) ?? null,
     creditScore: normalizeCreditScore(
-      structured.financialQualifications?.creditScore
+      structured.advisorCreditScore
+      ?? structured.financialQualifications?.creditScore
       ?? structured.rentalQualifications?.creditScore
       ?? structured.creditScore,
     ) ?? null,
@@ -367,15 +371,19 @@ export function compileAdvisorPrompt(input: {
   const incomeMultiple = input.financialQualifications.incomeMultiple ?? "MISSING - do not invent";
   const creditScore = input.financialQualifications.creditScore ?? "MISSING - do not invent";
   const toneInstruction = ADVISOR_TONE_INSTRUCTIONS[input.tone];
+  const usesFinancialTemplate = incomeMultiple.startsWith("[") || creditScore.startsWith("[");
 
   return {
     system: [
       "You are Homeboard Advisor. Draft grounded rental outreach using only the supplied JSON context.",
       "STRICT CONSTRAINTS:",
-      `- You MUST include the group's exact income multiple: ${incomeMultiple}.`,
-      `- You MUST include the group's exact credit score: ${creditScore}.`,
+      `- You MUST include this income qualification exactly as written: ${incomeMultiple}.`,
+      `- You MUST include this credit qualification exactly as written: ${creditScore}.`,
       `- You MUST write in the selected ${input.tone} tone: ${toneInstruction}.`,
       "- Never invent financial qualifications, listing facts, availability, or prior contact.",
+      usesFinancialTemplate
+        ? "- Bracketed financial values are editable placeholders. Preserve them verbatim and never imply they are known facts."
+        : "- The supplied financial qualifications are user-provided draft-filling values; do not evaluate or characterize them.",
       "- If either required financial fact is marked MISSING, do not produce recipient-facing outreach; request the missing facts.",
       "- Produce plain text only.",
     ].join("\n"),
@@ -517,7 +525,13 @@ function toggleOptions(inclusionLabels: string[]): AdvisorToggleOption[] {
 export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<AdvisorMessagePayloadData> {
   const parsed = parseAdvisorCommand(input.command);
   const tone = normalizeAdvisorTone(input.tone ?? parsed.tone);
-  const financialQualifications = profileFinancialQualifications(input.boardData.profile);
+  const usesFinancialTemplate = input.boardData.profile.advisorFinancialMode === "template";
+  const financialQualifications = usesFinancialTemplate
+    ? {
+        incomeMultiple: "[INCOME MULTIPLE]",
+        creditScore: "[CREDIT SCORE]",
+      }
+    : profileFinancialQualifications(input.boardData.profile);
   const context = await aggregateAdvisorGroupContext({
     boardData: input.boardData,
     financialQualifications,
@@ -530,8 +544,8 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     context,
   });
   const missingInputs: AdvisorMessagePayloadData["missingInputs"] = [];
-  if (!financialQualifications.incomeMultiple) missingInputs.push("incomeMultiple");
-  if (!financialQualifications.creditScore) missingInputs.push("creditScore");
+  if (!usesFinancialTemplate && !financialQualifications.incomeMultiple) missingInputs.push("incomeMultiple");
+  if (!usesFinancialTemplate && !financialQualifications.creditScore) missingInputs.push("creditScore");
 
   // Compiling before generation keeps every execution path subject to the same
   // strict financial and tone constraints, including the missing-input path.

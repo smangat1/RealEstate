@@ -1083,6 +1083,60 @@ final class AppModel {
     }
   }
 
+  @discardableResult
+  func completeAdvisorSetup(
+    financialMode: String,
+    incomeMultiple: String,
+    creditScore: String,
+    hasOfferLetter: Bool,
+    hasProofOfIncome: Bool,
+    needsGuarantor: Bool,
+    city: String,
+    moveInDate: String,
+    budgetMax: String,
+    commuteAccess: String,
+    commuteTarget: String,
+    minimumCommuteMinutes: String,
+    maximumCommuteMinutes: String,
+    mustHaves: [String],
+    dealbreakers: [String],
+    priorities: [String]
+  ) async -> Bool {
+    let previousProfile = profile
+    let normalizedMode = financialMode == "provided" ? "provided" : "template"
+    profile.advisorFinancialMode = normalizedMode
+    profile.advisorIncomeMultiple = normalizedMode == "provided"
+      ? incomeMultiple.trimmingCharacters(in: .whitespacesAndNewlines)
+      : nil
+    profile.advisorCreditScore = normalizedMode == "provided"
+      ? creditScore.trimmingCharacters(in: .whitespacesAndNewlines)
+      : nil
+    profile.advisorSetupCompletedAt = ISO8601DateFormatter().string(from: Date())
+    profile.readiness.hasOfferLetter = hasOfferLetter
+    profile.readiness.hasProofOfIncome = hasProofOfIncome
+    profile.readiness.needsGuarantor = needsGuarantor
+    profile.city = city.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.moveInDate = moveInDate.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.budgetMax = budgetMax.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.commuteAccess = commuteAccess
+    profile.commuteTarget = commuteAccess == "remote" || commuteAccess == "skip"
+      ? ""
+      : commuteTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.minCommuteMinutes = minimumCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.maxCommuteMinutes = maximumCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.mustHaves = mustHaves
+    profile.dealbreakers = dealbreakers
+    profile.priorities = priorities
+
+    await saveBoardBrief()
+    guard boardError == nil && profile.advisorSetupCompletedAt != nil else {
+      profile = previousProfile
+      persist()
+      return false
+    }
+    return true
+  }
+
   func markAdvisorOutreachSent(for payload: AdvisorMessagePayload) {
     // Prefer the specific target carried in the payload; fall back to the strongest
     // listing for legacy cards that predate targetListingBoardId.

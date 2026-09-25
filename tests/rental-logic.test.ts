@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ApiListingProvider, ManualListingProvider } from "../lib/listing-providers";
-import { createBlankProfile, getProfileCompletion } from "../lib/rental-logic";
+import {
+  createBlankProfile,
+  encodeNotesPayload,
+  getProfileCompletion,
+  mapProfileRow,
+} from "../lib/rental-logic";
 
 test("profile completion reports every unresolved onboarding field", () => {
   const profile = createBlankProfile("board-test");
@@ -46,4 +51,29 @@ test("providers never fabricate remote inventory", async () => {
   assert.deepEqual(await new ManualListingProvider().searchListings(profile), []);
   const api = new ApiListingProvider();
   if (!api.isConfigured) assert.deepEqual(await api.searchListings(profile), []);
+});
+
+test("Advisor setup choices survive the profile notes round trip", () => {
+  const profile = {
+    ...createBlankProfile("board-test"),
+    advisorFinancialMode: "provided" as const,
+    advisorIncomeMultiple: "40x",
+    advisorCreditScore: "740-760",
+    advisorSetupCompletedAt: "2026-09-25T15:00:00.000Z",
+  };
+
+  const mapped = mapProfileRow({
+    ...profile,
+    notes: encodeNotesPayload(profile),
+    locations: "[]",
+    mustHaves: "[]",
+    dealbreakers: "[]",
+    niceToHaves: "[]",
+    bedroomsFlexible: "[]",
+  });
+
+  assert.equal(mapped.advisorFinancialMode, "provided");
+  assert.equal(mapped.advisorIncomeMultiple, "40x");
+  assert.equal(mapped.advisorCreditScore, "740-760");
+  assert.equal(mapped.advisorSetupCompletedAt, "2026-09-25T15:00:00.000Z");
 });

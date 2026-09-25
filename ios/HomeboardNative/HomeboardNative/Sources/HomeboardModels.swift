@@ -133,6 +133,10 @@ struct RentalProfile: Hashable, Codable {
     needsGuarantor: false,
     hasProofOfIncome: false
   )
+  var advisorFinancialMode: String? = nil
+  var advisorIncomeMultiple: String? = nil
+  var advisorCreditScore: String? = nil
+  var advisorSetupCompletedAt: String? = nil
 
   var completionRatio: Double {
     Double(completedFieldCount) / Double(requiredFieldCount)

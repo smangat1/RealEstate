@@ -340,12 +340,12 @@ struct AdvisorCardView: View {
 
 struct AdvisorWalletPanel: View {
   @Environment(AppModel.self) private var appModel
-  @AppStorage("homeboard.advisor.onboarding.v2.completed") private var advisorOnboardingCompleted = false
 
   @State private var amountCents = 100
   @State private var isPreparingPayment = false
   @State private var paymentMessage: String?
   @State private var showsAdvisorOnboarding = false
+  @State private var showsAdvisorSetup = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -386,6 +386,11 @@ struct AdvisorWalletPanel: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(HomeboardPalette.success)
           Spacer()
+          Button("Edit setup") {
+            showsAdvisorSetup = true
+          }
+          .font(.caption.weight(.semibold))
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
 
@@ -432,23 +437,34 @@ struct AdvisorWalletPanel: View {
     .padding(16)
     .homeboardPanel(cornerRadius: 24)
     .task {
-      if !advisorOnboardingCompleted {
-        showsAdvisorOnboarding = true
-      }
       await appModel.refreshAdvisorWalletStatus()
       clampContributionAmount()
+      presentAdvisorSetupIfNeeded()
     }
     .onChange(of: appModel.advisorWalletStatus?.remainingCents) { _, _ in
       clampContributionAmount()
     }
     .sheet(
-      isPresented: $showsAdvisorOnboarding,
-      onDismiss: { advisorOnboardingCompleted = true }
+      isPresented: $showsAdvisorOnboarding
     ) {
       AdvisorOnboardingView()
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsAdvisorSetup) {
+      AdvisorSetupOnboardingView {
+        showsAdvisorSetup = false
+      }
+      .interactiveDismissDisabled(appModel.profile.advisorSetupCompletedAt == nil)
+      .presentationDetents([.large])
+      .presentationDragIndicator(appModel.profile.advisorSetupCompletedAt == nil ? .hidden : .visible)
+      .presentationBackground(HomeboardPalette.background)
+    }
+    .onChange(of: appModel.advisorWalletStatus?.isUnlocked) { _, isUnlocked in
+      if isUnlocked == true {
+        presentAdvisorSetupIfNeeded()
+      }
     }
   }
 
@@ -489,6 +505,7 @@ struct AdvisorWalletPanel: View {
     if funding.simulated == true {
       paymentMessage = "Test contribution added. No card was charged."
       await appModel.refreshAdvisorWalletStatus()
+      presentAdvisorSetupIfNeeded()
       return
     }
 
@@ -512,12 +529,31 @@ struct AdvisorWalletPanel: View {
         switch result {
         case .completed:
           paymentMessage = "Advisor funding received."
-          await appModel.refreshAdvisorWalletStatus()
+          await refreshUntilUnlockedAfterPayment()
         case .canceled:
           paymentMessage = "Payment canceled."
         case .failed(let error):
           paymentMessage = error.localizedDescription
         }
+      }
+    }
+  }
+
+  private func presentAdvisorSetupIfNeeded() {
+    guard appModel.advisorWalletStatus?.isUnlocked == true,
+          appModel.profile.advisorSetupCompletedAt == nil else { return }
+    showsAdvisorSetup = true
+  }
+
+  private func refreshUntilUnlockedAfterPayment() async {
+    for attempt in 0..<3 {
+      await appModel.refreshAdvisorWalletStatus()
+      if appModel.advisorWalletStatus?.isUnlocked == true {
+        presentAdvisorSetupIfNeeded()
+        return
+      }
+      if attempt < 2 {
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
       }
     }
   }
@@ -552,6 +588,482 @@ struct AdvisorWalletPanel: View {
   }
 }
 
+private struct AdvisorSetupOnboardingView: View {
+  @Environment(AppModel.self) private var appModel
+
+  let onComplete: () -> Void
+
+  @State private var page = 0
+  @State private var didLoadProfile = false
+  @State private var financialMode = "template"
+  @State private var incomeMultiple = ""
+  @State private var creditScore = ""
+  @State private var city = ""
+  @State private var moveInDate = ""
+  @State private var budgetMax = ""
+  @State private var commuteAccess = "flexible"
+  @State private var commuteTarget = ""
+  @State private var minimumCommuteMinutes = ""
+  @State private var maximumCommuteMinutes = ""
+  @State private var mustHaves = ""
+  @State private var dealbreakers = ""
+  @State private var priorities = ""
+  @State private var hasOfferLetter = false
+  @State private var hasProofOfIncome = false
+  @State private var needsGuarantor = false
+  @State private var isSaving = false
+  @State private var saveError: String?
+
+  private let pageCount = 5
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        TabView(selection: $page) {
+          privacyPage.tag(0)
+          financialPage.tag(1)
+          boardFactsPage.tag(2)
+          readinessPage.tag(3)
+          reviewPage.tag(4)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+
+        VStack(spacing: 14) {
+          HStack(spacing: 7) {
+            ForEach(0..<pageCount, id: \.self) { index in
+              Capsule()
+                .fill(index == page ? HomeboardPalette.accent : Color.white.opacity(0.14))
+                .frame(width: index == page ? 24 : 7, height: 7)
+            }
+          }
+
+          if let saveError {
+            Text(saveError)
+              .font(.footnote)
+              .foregroundStyle(.red)
+              .multilineTextAlignment(.center)
+          }
+
+          HStack(spacing: 10) {
+            if page > 0 {
+              Button("Back") {
+                withAnimation(.easeOut(duration: 0.2)) { page -= 1 }
+              }
+              .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
+              .disabled(isSaving)
+            }
+
+            Button(page == pageCount - 1 ? "Finish setup" : "Continue") {
+              if page == pageCount - 1 {
+                Task { await save() }
+              } else {
+                withAnimation(.easeOut(duration: 0.2)) { page += 1 }
+              }
+            }
+            .buttonStyle(AdvisorCTAButtonStyle())
+            .disabled(!canContinue || isSaving)
+          }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .background(HomeboardPalette.background)
+      }
+      .background(WorkspaceBackgroundView())
+      .navigationTitle("Set up Advisor")
+      .navigationBarTitleDisplayMode(.inline)
+    }
+    .task { loadProfileOnce() }
+  }
+
+  private var privacyPage: some View {
+    setupPage(
+      eyebrow: "Advisor unlocked",
+      title: "First, your information stays yours",
+      icon: "hand.raised.fill",
+      summary: "Advisor only uses these answers to fill the outreach drafts you ask it to create."
+    ) {
+      setupCallout(
+        icon: "text.badge.checkmark",
+        title: "Template filling, not judgment",
+        body: "Homeboard does not use your income or credit information to approve, rank, or evaluate you. It simply places your chosen wording into a draft."
+      )
+      setupCallout(
+        icon: "slider.horizontal.3",
+        title: "You control every send",
+        body: "Nothing is sent automatically. Review and edit the final message in Mail or Messages before sending it."
+      )
+      setupCallout(
+        icon: "rectangle.and.pencil.and.ellipsis",
+        title: "Values are optional",
+        body: "If you would rather not save financial details, Advisor can leave clear placeholders for you to fill later."
+      )
+    }
+  }
+
+  private var financialPage: some View {
+    setupPage(
+      eyebrow: "Financial wording",
+      title: "How should drafts handle qualifications?",
+      icon: "dollarsign.circle.fill",
+      summary: "Choose real values for automatic filling, or keep editable placeholders in every draft."
+    ) {
+      choiceCard(
+        title: "Leave placeholders",
+        detail: "Drafts use [INCOME MULTIPLE] and [CREDIT SCORE] so you can fill them only when you want.",
+        selected: financialMode == "template"
+      ) {
+        financialMode = "template"
+      }
+
+      choiceCard(
+        title: "Fill from this board",
+        detail: "Save the wording below and reuse it only when Advisor prepares outreach for this board.",
+        selected: financialMode == "provided"
+      ) {
+        financialMode = "provided"
+      }
+
+      if financialMode == "provided" {
+        VStack(alignment: .leading, spacing: 12) {
+          advisorTextField("Income multiple", text: $incomeMultiple, prompt: "Example: 40x")
+          advisorTextField("Credit score or range", text: $creditScore, prompt: "Example: 740 or 720-760")
+          Text("We do not verify or score these values. Advisor only copies them into drafts you request.")
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+        }
+      }
+    }
+  }
+
+  private var boardFactsPage: some View {
+    setupPage(
+      eyebrow: "Useful context",
+      title: "Review the facts that make outreach specific",
+      icon: "checklist.checked",
+      summary: "These are prefilled from the board. Correct anything that has changed."
+    ) {
+      advisorTextField("City or search area", text: $city, prompt: "New York City")
+      advisorTextField("Move-in timing", text: $moveInDate, prompt: "October 1 or flexible")
+      advisorTextField("Maximum monthly budget", text: $budgetMax, prompt: "4500")
+        .keyboardType(.numberPad)
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("COMMUTE")
+          .font(.caption2.weight(.bold))
+          .tracking(1.1)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+        Picker("Commute", selection: $commuteAccess) {
+          Text("Include").tag("flexible")
+          Text("Remote").tag("remote")
+          Text("Skip").tag("skip")
+        }
+        .pickerStyle(.segmented)
+      }
+
+      if commuteAccess != "remote" && commuteAccess != "skip" {
+        advisorTextField("Commute destination", text: $commuteTarget, prompt: "Office or campus")
+        HStack(spacing: 10) {
+          advisorTextField("Ideal minutes", text: $minimumCommuteMinutes, prompt: "25")
+            .keyboardType(.numberPad)
+          advisorTextField("Maximum", text: $maximumCommuteMinutes, prompt: "45")
+            .keyboardType(.numberPad)
+        }
+      }
+
+      advisorTextField("Must-haves", text: $mustHaves, prompt: "Laundry, elevator")
+      advisorTextField("Dealbreakers", text: $dealbreakers, prompt: "Walk-up, broker fee")
+      advisorTextField("Top priorities", text: $priorities, prompt: "Price, commute, space")
+      Text("Separate multiple items with commas.")
+        .font(.caption)
+        .foregroundStyle(HomeboardPalette.secondaryText)
+    }
+  }
+
+  private var readinessPage: some View {
+    setupPage(
+      eyebrow: "Application readiness",
+      title: "What can Advisor honestly say is ready?",
+      icon: "folder.badge.questionmark",
+      summary: "Only switch on statements that are true today. Advisor will never invent readiness."
+    ) {
+      readinessToggle("Offer letter ready", isOn: $hasOfferLetter)
+      readinessToggle("Proof of income ready", isOn: $hasProofOfIncome)
+      readinessToggle("We expect to need a guarantor", isOn: $needsGuarantor)
+      setupCallout(
+        icon: "exclamationmark.shield.fill",
+        title: "No automatic claims",
+        body: "Advisor uses these answers only when relevant and never promises approval, availability, or application strength."
+      )
+    }
+  }
+
+  private var reviewPage: some View {
+    setupPage(
+      eyebrow: "Ready to draft",
+      title: "Advisor now knows how to handle the gaps",
+      icon: "sparkles",
+      summary: "You can change these choices later by reopening this setup from the Advisor wallet."
+    ) {
+      reviewRow("Financial details", value: financialMode == "template" ? "Editable placeholders" : "Filled from board")
+      reviewRow("Move-in", value: valueOrMissing(moveInDate))
+      reviewRow("Budget", value: budgetMax.isEmpty ? "Not provided" : "$\(budgetMax)")
+      reviewRow("Location", value: valueOrMissing(city))
+      reviewRow("Commute", value: commuteAccess == "remote" ? "Remote" : commuteAccess == "skip" ? "Not included" : valueOrMissing(commuteTarget))
+      reviewRow("Application materials", value: readinessSummary)
+
+      if !remainingContextGaps.isEmpty {
+        setupCallout(
+          icon: "info.circle.fill",
+          title: "Still worth adding later",
+          body: remainingContextGaps.joined(separator: ", ") + ". Advisor can draft without these, but more context improves the result."
+        )
+      }
+    }
+  }
+
+  private var canContinue: Bool {
+    guard page == 1, financialMode == "provided" else { return true }
+    return validIncomeMultiple && validCreditScore
+  }
+
+  private var validIncomeMultiple: Bool {
+    incomeMultiple.range(
+      of: #"^\s*\d{1,3}(?:\.\d+)?\s*x?\s*$"#,
+      options: .regularExpression
+    ) != nil
+  }
+
+  private var validCreditScore: Bool {
+    let values = creditScore
+      .split(whereSeparator: { !$0.isNumber })
+      .compactMap { Int($0) }
+    return !values.isEmpty && values.allSatisfy { (300...850).contains($0) }
+  }
+
+  private var readinessSummary: String {
+    var values: [String] = []
+    if hasOfferLetter { values.append("offer letter") }
+    if hasProofOfIncome { values.append("proof of income") }
+    if needsGuarantor { values.append("guarantor expected") }
+    return values.isEmpty ? "No claims added" : values.joined(separator: ", ")
+  }
+
+  private var remainingContextGaps: [String] {
+    var values: [String] = []
+    if city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values.append("search area") }
+    if moveInDate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values.append("move-in timing") }
+    if budgetMax.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values.append("budget") }
+    if mustHavesList.isEmpty { values.append("must-haves") }
+    if dealbreakersList.isEmpty { values.append("dealbreakers") }
+    if prioritiesList.isEmpty { values.append("priorities") }
+    return values
+  }
+
+  private var mustHavesList: [String] { commaSeparated(mustHaves) }
+  private var dealbreakersList: [String] { commaSeparated(dealbreakers) }
+  private var prioritiesList: [String] { commaSeparated(priorities) }
+
+  private func loadProfileOnce() {
+    guard !didLoadProfile else { return }
+    didLoadProfile = true
+    let profile = appModel.profile
+    financialMode = profile.advisorFinancialMode ?? "template"
+    incomeMultiple = profile.advisorIncomeMultiple ?? ""
+    creditScore = profile.advisorCreditScore ?? ""
+    city = profile.city
+    moveInDate = profile.moveInDate
+    budgetMax = profile.budgetMax
+    commuteAccess = profile.commuteAccess ?? "flexible"
+    commuteTarget = profile.commuteTarget
+    minimumCommuteMinutes = profile.minCommuteMinutes
+    maximumCommuteMinutes = profile.maxCommuteMinutes
+    mustHaves = profile.mustHaves.joined(separator: ", ")
+    dealbreakers = profile.dealbreakers.joined(separator: ", ")
+    priorities = profile.priorities.joined(separator: ", ")
+    hasOfferLetter = profile.readiness.hasOfferLetter
+    hasProofOfIncome = profile.readiness.hasProofOfIncome
+    needsGuarantor = profile.readiness.needsGuarantor
+  }
+
+  private func save() async {
+    isSaving = true
+    saveError = nil
+    let saved = await appModel.completeAdvisorSetup(
+      financialMode: financialMode,
+      incomeMultiple: incomeMultiple,
+      creditScore: creditScore,
+      hasOfferLetter: hasOfferLetter,
+      hasProofOfIncome: hasProofOfIncome,
+      needsGuarantor: needsGuarantor,
+      city: city,
+      moveInDate: moveInDate,
+      budgetMax: budgetMax,
+      commuteAccess: commuteAccess,
+      commuteTarget: commuteTarget,
+      minimumCommuteMinutes: minimumCommuteMinutes,
+      maximumCommuteMinutes: maximumCommuteMinutes,
+      mustHaves: mustHavesList,
+      dealbreakers: dealbreakersList,
+      priorities: prioritiesList
+    )
+    isSaving = false
+    if saved {
+      onComplete()
+    } else {
+      saveError = appModel.boardError ?? "Unable to save Advisor setup."
+    }
+  }
+
+  private func commaSeparated(_ value: String) -> [String] {
+    value.split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+  }
+
+  private func valueOrMissing(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "Not provided" : trimmed
+  }
+
+  private func setupPage<Content: View>(
+    eyebrow: String,
+    title: String,
+    icon: String,
+    summary: String,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 18) {
+        Image(systemName: icon)
+          .font(.system(size: 32, weight: .semibold))
+          .foregroundStyle(HomeboardPalette.accent)
+          .frame(width: 60, height: 60)
+          .background(HomeboardPalette.accent.opacity(0.14))
+          .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 8) {
+          Text(eyebrow.uppercased())
+            .font(.caption.weight(.bold))
+            .tracking(1.3)
+            .foregroundStyle(HomeboardPalette.accent)
+          Text(title)
+            .font(.system(size: 28, weight: .bold, design: .serif))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text(summary)
+            .font(.body)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        content()
+      }
+      .padding(.horizontal, 20)
+      .padding(.top, 20)
+      .padding(.bottom, 40)
+    }
+    .scrollBounceBehavior(.basedOnSize)
+  }
+
+  private func setupCallout(icon: String, title: String, body: String) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: icon)
+        .foregroundStyle(HomeboardPalette.accent)
+        .frame(width: 22)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Text(body)
+          .font(.footnote)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.white.opacity(0.06))
+    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+  }
+
+  private func choiceCard(
+    title: String,
+    detail: String,
+    selected: Bool,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      HStack(alignment: .top, spacing: 12) {
+        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+          .foregroundStyle(selected ? HomeboardPalette.accent : HomeboardPalette.secondaryText)
+        VStack(alignment: .leading, spacing: 4) {
+          Text(title)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text(detail)
+            .font(.footnote)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(selected ? HomeboardPalette.accent.opacity(0.14) : Color.white.opacity(0.05))
+      .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .stroke(selected ? HomeboardPalette.accent.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+      }
+    }
+    .buttonStyle(HomeboardAreaButtonStyle())
+  }
+
+  private func advisorTextField(
+    _ label: String,
+    text: Binding<String>,
+    prompt: String
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(label.uppercased())
+        .font(.caption2.weight(.bold))
+        .tracking(1.1)
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+      TextField(prompt, text: text)
+        .textInputAutocapitalization(.sentences)
+        .padding(12)
+        .foregroundStyle(HomeboardPalette.primaryText)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func readinessToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+    Toggle(isOn: isOn) {
+      Text(title)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+    }
+    .tint(HomeboardPalette.accent)
+    .padding(14)
+    .background(Color.white.opacity(0.06))
+    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+  }
+
+  private func reviewRow(_ label: String, value: String) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 12) {
+      Text(label)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.secondaryText)
+      Spacer()
+      Text(value)
+        .font(.subheadline.weight(.bold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+        .multilineTextAlignment(.trailing)
+    }
+    .padding(.vertical, 4)
+  }
+}
+
 private struct AdvisorOnboardingStep {
   let eyebrow: String
   let title: String
@@ -582,7 +1094,7 @@ private struct AdvisorOnboardingView: View {
       icon: "checklist.checked",
       summary: "Complete the group profile and save the listing you want to contact before asking for outreach.",
       details: [
-        ("Required qualifications", "The group’s exact income multiple and credit score stay in qualified outreach when available; required controls are locked."),
+        ("Financial wording", "Choose saved qualification wording or privacy-friendly placeholders. Advisor copies the choice into drafts without judging or scoring it."),
         ("Requirements that matter", "Budget, move-in timing, must-haves, dealbreakers, commute limits, and readiness give the draft useful context."),
         ("Four distinct tones", "Professional is polished, Casual is brief and friendly, Stern is direct and urgent, and Passive-Aggressive notes a lack of response without inventing history."),
       ]

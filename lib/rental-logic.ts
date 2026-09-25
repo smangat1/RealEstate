@@ -155,6 +155,10 @@ export function encodeNotesPayload(profile: SearchProfileData) {
       groupSize: profile.groupSize ?? null,
       hasRoommates: profile.hasRoommates ?? null,
       rentalReadiness: profile.rentalReadiness ?? {},
+      advisorFinancialMode: profile.advisorFinancialMode ?? null,
+      advisorIncomeMultiple: profile.advisorIncomeMultiple ?? null,
+      advisorCreditScore: profile.advisorCreditScore ?? null,
+      advisorSetupCompletedAt: profile.advisorSetupCompletedAt ?? null,
       completionStatus: profile.completionStatus,
     },
     notes: profile.notes ?? null,
@@ -787,6 +791,16 @@ export function mapProfileRow(row: Record<string, unknown>): SearchProfileData {
       typeof onboarding.rentalReadiness === "object" && onboarding.rentalReadiness
         ? (onboarding.rentalReadiness as SearchProfileData["rentalReadiness"])
         : {},
+    advisorFinancialMode:
+      onboarding.advisorFinancialMode === "provided" || onboarding.advisorFinancialMode === "template"
+        ? onboarding.advisorFinancialMode
+        : undefined,
+    advisorIncomeMultiple:
+      typeof onboarding.advisorIncomeMultiple === "string" ? onboarding.advisorIncomeMultiple : null,
+    advisorCreditScore:
+      typeof onboarding.advisorCreditScore === "string" ? onboarding.advisorCreditScore : null,
+    advisorSetupCompletedAt:
+      typeof onboarding.advisorSetupCompletedAt === "string" ? onboarding.advisorSetupCompletedAt : null,
     completionStatus:
       onboarding.completionStatus === "complete" || onboarding.completionStatus === "confirmed" ? onboarding.completionStatus : "incomplete",
     notes: notesText,
@@ -1304,6 +1318,10 @@ export function createBlankProfile(boardId: string): SearchProfileData {
     groupSize: undefined,
     hasRoommates: undefined,
     rentalReadiness: {},
+    advisorFinancialMode: undefined,
+    advisorIncomeMultiple: null,
+    advisorCreditScore: null,
+    advisorSetupCompletedAt: null,
     completionStatus: "incomplete",
     intent: "rent",
     propertyType: "apartment",

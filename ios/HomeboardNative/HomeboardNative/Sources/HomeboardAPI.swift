@@ -349,6 +349,11 @@ struct RemoteRentalProfilePayload: Decodable {
   var priorities: [String]
   var groupSize: Int?
   var notes: String?
+  var rentalReadiness: RentalReadiness?
+  var advisorFinancialMode: String?
+  var advisorIncomeMultiple: String?
+  var advisorCreditScore: String?
+  var advisorSetupCompletedAt: String?
 }
 
 private struct SupabaseAuthResponse: Decodable {
@@ -497,6 +502,10 @@ private struct RemoteRentalProfileRequest: Encodable {
   var rentalReadiness: RentalReadinessRequest
   var completionStatus: String
   var notes: String?
+  var advisorFinancialMode: String?
+  var advisorIncomeMultiple: String?
+  var advisorCreditScore: String?
+  var advisorSetupCompletedAt: String?
   var createdAt: String
   var updatedAt: String
   var intent: String? = "rent"
@@ -1544,7 +1553,16 @@ extension RentalProfile {
     self.mustHaves = remote.mustHaves
     self.dealbreakers = remote.dealbreakers
     self.priorities = remote.priorities
-    self.readiness.notes = remote.notes ?? ""
+    self.readiness = remote.rentalReadiness ?? .init(
+      hasOfferLetter: false,
+      needsGuarantor: false,
+      hasProofOfIncome: false
+    )
+    self.readiness.notes = remote.notes ?? self.readiness.notes
+    self.advisorFinancialMode = remote.advisorFinancialMode
+    self.advisorIncomeMultiple = remote.advisorIncomeMultiple
+    self.advisorCreditScore = remote.advisorCreditScore
+    self.advisorSetupCompletedAt = remote.advisorSetupCompletedAt
   }
 
   private static func stringAmount(_ value: Double?) -> String {
@@ -1594,6 +1612,10 @@ extension RemoteRentalProfileRequest {
     )
     self.completionStatus = profile.isBoardReady ? "complete" : "incomplete"
     self.notes = profile.readiness.notes.isEmpty ? nil : profile.readiness.notes
+    self.advisorFinancialMode = profile.advisorFinancialMode
+    self.advisorIncomeMultiple = profile.advisorIncomeMultiple
+    self.advisorCreditScore = profile.advisorCreditScore
+    self.advisorSetupCompletedAt = profile.advisorSetupCompletedAt
     self.createdAt = now
     self.updatedAt = now
     self.locations = profile.city.isEmpty ? [] : [profile.city]

@@ -102,13 +102,24 @@ test("legacy or malformed Advisor payloads fall back without fabricating control
 });
 
 test("Advisor has a separate replayable onboarding with the funding and send contract", () => {
-  assert.match(card, /homeboard\.advisor\.onboarding\.v2\.completed/);
   assert.match(card, /struct AdvisorOnboardingView/);
   assert.match(card, /\$4 rolling threshold/);
   assert.match(card, /Seven days of access/);
   assert.match(card, /Nothing sends automatically/);
   assert.match(card, /Status follows the real send/);
   assert.match(card, /showsAdvisorOnboarding = true/);
+});
+
+test("unlocking Advisor launches persisted setup with a financial placeholder choice", () => {
+  assert.match(card, /struct AdvisorSetupOnboardingView/);
+  assert.match(card, /advisorWalletStatus\?\.isUnlocked == true/);
+  assert.match(card, /profile\.advisorSetupCompletedAt == nil/);
+  assert.match(card, /Leave placeholders/);
+  assert.match(card, /\[INCOME MULTIPLE\]/);
+  assert.match(card, /\[CREDIT SCORE\]/);
+  assert.match(card, /does not use your income or credit information to approve, rank, or evaluate you/);
+  assert.match(appModel, /func completeAdvisorSetup/);
+  assert.match(appModel, /await saveBoardBrief\(\)/);
 });
 
 test("required Advisor facts cannot be toggled off or sent while input is missing", () => {

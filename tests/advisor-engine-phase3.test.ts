@@ -19,8 +19,8 @@ test("Advisor compiles group profile, commute, and listing analysis into one gro
   assert.match(engineSource, /from "@\/lib\/listing-analysis"/);
   assert.match(engineSource, /leverage:/);
   assert.match(engineSource, /requirements:/);
-  assert.match(engineSource, /You MUST include the group's exact income multiple/);
-  assert.match(engineSource, /You MUST include the group's exact credit score/);
+  assert.match(engineSource, /You MUST include this income qualification exactly as written/);
+  assert.match(engineSource, /You MUST include this credit qualification exactly as written/);
   assert.match(engineSource, /polished, broker-appropriate/);
   assert.match(engineSource, /brief, friendly, like texting a peer/);
   assert.match(engineSource, /direct, no-nonsense corporate, urgency/);
