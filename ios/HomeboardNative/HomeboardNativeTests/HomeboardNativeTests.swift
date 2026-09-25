@@ -11,6 +11,46 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.pending-operations",
   ]
 
+  func testAdvisorRegenerationRejectsRenderedAssistantContent() {
+    XCTAssertThrowsError(
+      try AppModel.advisorRegenerationCommand(
+        originalCommand: "Hi, I am reaching out regarding 123 Main Street.",
+        toggles: []
+      )
+    )
+  }
+
+  func testAdvisorRegenerationSendsExplicitNothingWhenEveryToggleIsOff() throws {
+    let toggles = [
+      AdvisorToggleOption(id: "include_income_multiple", label: "Income multiple", enabled: false, required: false),
+      AdvisorToggleOption(id: "request_tour", label: "Request a tour", enabled: false, required: false),
+    ]
+
+    XCTAssertEqual(
+      try AppModel.advisorRegenerationCommand(
+        originalCommand: "@advisor draft outreach for 123 Main Street",
+        toggles: toggles
+      ),
+      "@advisor draft outreach for 123 Main Street\nInclude: nothing"
+    )
+  }
+
+  func testAdvisorRegenerationSendsOnlyTheChangedToggleSubset() throws {
+    let toggles = [
+      AdvisorToggleOption(id: "include_income_multiple", label: "Income multiple", enabled: true, required: false),
+      AdvisorToggleOption(id: "include_credit_score", label: "Credit score", enabled: false, required: false),
+      AdvisorToggleOption(id: "request_tour", label: "Request a tour", enabled: true, required: false),
+    ]
+
+    XCTAssertEqual(
+      try AppModel.advisorRegenerationCommand(
+        originalCommand: "@advisor draft outreach\nInclude: Credit score",
+        toggles: toggles
+      ),
+      "@advisor draft outreach\nInclude: Income multiple, Request a tour"
+    )
+  }
+
   func testLegacySessionResponseDecodesWithoutForcingOnboarding() throws {
     let response = try JSONDecoder().decode(
       MobileSessionResponse.self,

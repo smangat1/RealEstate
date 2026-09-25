@@ -606,6 +606,7 @@ struct BoardMessage: Identifiable, Hashable, Codable {
 struct AdvisorMessagePayload: Hashable, Codable {
   var messageId: String? = nil
   var schemaVersion: Int? = nil
+  var originalCommand: String? = nil
   var draftText: String = ""
   var tone: String = "Professional"
   var toggleOptions: [AdvisorToggleOption] = []
@@ -622,6 +623,7 @@ extension AdvisorMessagePayload {
   private enum CodingKeys: String, CodingKey {
     case messageId
     case schemaVersion
+    case originalCommand
     case draftText
     case tone
     case toggleOptions
@@ -639,6 +641,7 @@ extension AdvisorMessagePayload {
 
     messageId = try? container.decodeIfPresent(String.self, forKey: .messageId)
     schemaVersion = try? container.decodeIfPresent(Int.self, forKey: .schemaVersion)
+    originalCommand = try? container.decodeIfPresent(String.self, forKey: .originalCommand)
     draftText = (try? container.decodeIfPresent(String.self, forKey: .draftText)) ?? ""
     tone = (try? container.decodeIfPresent(String.self, forKey: .tone)) ?? "Professional"
     toggleOptions = (try? container.decodeIfPresent([AdvisorToggleOption].self, forKey: .toggleOptions)) ?? []

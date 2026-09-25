@@ -104,6 +104,8 @@ export type AdvisorGroupContext = {
 
 export type AdvisorMessagePayloadData = {
   schemaVersion: 1;
+  /** The original user-authored @advisor command, without regeneration filters. */
+  originalCommand: string;
   draftText: string;
   tone: AdvisorTone;
   toggleOptions: AdvisorToggleOption[];
@@ -234,12 +236,14 @@ export function normalizeAdvisorTone(value: string | null | undefined): AdvisorT
 export function parseAdvisorCommand(content: string) {
   // Strip any regeneration-appended "Include: ..." suffix before extracting tone.
   const [baseContent, includeClause] = content.split(/\nInclude:\s*/i);
+  const originalCommand = baseContent.trim();
   const command = baseContent.replace(/^\s*@advisor\b[\s,:-]*/i, "").trim();
   const toneMatch = command.match(/\b(?:tone\s*[:=]\s*)?(professional|casual|stern|passive[\s-]+aggressive)\b/i);
   const inclusionLabels: string[] = includeClause
     ? includeClause.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
     : [];
   return {
+    originalCommand,
     command: command || "Draft broker outreach for the strongest saved listing.",
     tone: normalizeAdvisorTone(toneMatch?.[1]),
     inclusionLabels,
@@ -544,6 +548,7 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
 
   return {
     schemaVersion: 1,
+    originalCommand: parsed.originalCommand,
     draftText: missingInputs.length > 0
       ? `Advisor needs the group's ${missingInputs.map((field) => field === "incomeMultiple" ? "exact income multiple" : "exact credit score").join(" and ")} before preparing broker outreach.`
       : generateDraft({

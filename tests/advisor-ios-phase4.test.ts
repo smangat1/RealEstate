@@ -13,6 +13,7 @@ const card = source("ios/HomeboardNative/HomeboardNative/Sources/AdvisorCardView
 const models = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardModels.swift");
 const dispatcher = source("ios/HomeboardNative/HomeboardNative/Sources/MessageDispatcher.swift");
 const config = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
+const engineSource = source("lib/advisor-engine.ts");
 const stripeWebhook = source("app/api/webhook/stripe/route.ts");
 const fundingRoute = source("app/api/mobile/boards/[id]/wallet/fund/route.ts");
 
@@ -33,6 +34,26 @@ test("Advisor regeneration applies only the latest debounced response", () => {
   assert.match(appModel, /guard board\.id == expectedBoardId, response\.board\.id == expectedBoardId/);
   assert.doesNotMatch(card, /selectedTone\s*=\s*next\.tone/);
   assert.doesNotMatch(card, /toggles\s*=\s*next\.toggleOptions/);
+});
+
+test("Advisor regeneration resends the stored original command, never assistant-rendered text", () => {
+  const schedule = card.match(/private func scheduleRegeneration[\s\S]*?\n  }\n\n  private func sendViaEmail/)?.[0] ?? "";
+  assert.match(models, /var originalCommand: String\? = nil/);
+  assert.match(models, /originalCommand = try\? container\.decodeIfPresent\(String\.self/);
+  assert.match(schedule, /payload\?\.originalCommand/);
+  assert.match(schedule, /\^@advisor\\b/);
+  assert.doesNotMatch(schedule, /originalCommand\s*=\s*message\.content/);
+  assert.match(schedule, /next\.originalCommand = originalCommand/);
+  assert.match(engineSource, /originalCommand: parsed\.originalCommand/);
+});
+
+test("Advisor regeneration always sends the current explicit Include filter", () => {
+  const request = appModel.match(/func regenerateAdvisorDraft[\s\S]*?\n  }\n\n  @discardableResult/)?.[0] ?? "";
+  assert.match(request, /let explicitInclusions = enabledLabels\.isEmpty \? "nothing" : enabledLabels/);
+  assert.match(request, /return "\\\(baseCommand\)\\nInclude: \\\(explicitInclusions\)"/);
+  assert.doesNotMatch(request, /enabledLabels\.isEmpty\s*\?\s*originalCommand/);
+  assert.match(engineSource, /inclusionLabels\.length === 0 \? defaultOn : inclusionLabels\.includes/);
+  assert.match(engineSource, /inclusionLabels\.includes\(label\.toLowerCase\(\)\)/);
 });
 
 test("PaymentSheet uses a server client secret and refreshes wallet only after completion", () => {

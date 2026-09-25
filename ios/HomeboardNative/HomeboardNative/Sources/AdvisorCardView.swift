@@ -235,14 +235,16 @@ struct AdvisorCardView: View {
 
   private func scheduleRegeneration() {
     guard payload != nil, let expectedBoardId = appModel.board.id else { return }
+    guard let originalCommand = payload?.originalCommand?.trimmingCharacters(in: .whitespacesAndNewlines),
+          originalCommand.range(of: #"^@advisor\b"#, options: [.regularExpression, .caseInsensitive]) != nil else {
+      dispatchMessage = "This older Advisor card cannot be regenerated. Send the request again with @advisor."
+      return
+    }
     regenerationRevision += 1
     let revision = regenerationRevision
     regenerationTask?.cancel()
     let tone = selectedTone
     let selectedToggles = toggles
-    // Use the card's original @advisor command so a card about a specific listing
-    // stays about that listing when tone or toggles change.
-    let originalCommand = message.content
     let originatingMessageId = payload?.messageId
     regenerationTask = Task {
       do { try await Task.sleep(nanoseconds: 350_000_000) }
@@ -265,6 +267,7 @@ struct AdvisorCardView: View {
 
         // The backend regenerates the copy, while these controls remain the source
         // of truth for the user's current selection.
+        next.originalCommand = originalCommand
         next.tone = tone
         next.toggleOptions = selectedToggles
         if let applied = appModel.applyAdvisorRegenerationResponse(

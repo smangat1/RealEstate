@@ -977,13 +977,10 @@ final class AppModel {
       throw HomeboardAPIError.missingSession
     }
 
-    let enabledLabels = toggles
-      .filter(\.enabled)
-      .map(\.label)
-      .joined(separator: ", ")
-    let command = enabledLabels.isEmpty
-      ? originalCommand
-      : "\(originalCommand)\nInclude: \(enabledLabels)"
+    let command = try Self.advisorRegenerationCommand(
+      originalCommand: originalCommand,
+      toggles: toggles
+    )
 
     return try await api.sendBoardMessage(
       accessToken: session.accessToken,
@@ -993,6 +990,34 @@ final class AppModel {
       regenerateOnly: true,
       originatingMessageId: originatingMessageId
     )
+  }
+
+  static func advisorRegenerationCommand(
+    originalCommand: String,
+    toggles: [AdvisorToggleOption]
+  ) throws -> String {
+    let trimmedCommand = originalCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmedCommand.range(
+      of: #"^@advisor\b"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil else {
+      throw HomeboardAPIError.server("Advisor regeneration requires the original @advisor request.")
+    }
+
+    let baseCommand: String
+    if let includeRange = trimmedCommand.range(of: "\nInclude:", options: .caseInsensitive) {
+      baseCommand = String(trimmedCommand[..<includeRange.lowerBound])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    } else {
+      baseCommand = trimmedCommand
+    }
+
+    let enabledLabels = toggles
+      .filter(\.enabled)
+      .map(\.label)
+      .joined(separator: ", ")
+    let explicitInclusions = enabledLabels.isEmpty ? "nothing" : enabledLabels
+    return "\(baseCommand)\nInclude: \(explicitInclusions)"
   }
 
   @discardableResult
