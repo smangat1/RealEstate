@@ -43,6 +43,7 @@ enum BoardListingStatus {
   toured
   applied
   outreach_sent
+  outreach_reported
 }
 
 enum ListingWorkflowStatus {
@@ -203,6 +204,7 @@ enum ListingChangeKind {
 enum InquiryStatus {
   drafted
   sent
+  reported_sent
   answered
   stale
 }
@@ -844,13 +846,18 @@ model BoardWalletLedger {
 }
 
 model AdvisorSubscription {
-  id         String      @id @default(cuid())
-  boardId    String      @unique
-  validUntil DateTime?
-  isActive   Boolean     @default(false)
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  board      SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  id                    String      @id @default(cuid())
+  boardId               String      @unique
+  validUntil            DateTime?
+  isActive              Boolean     @default(false)
+  proactiveCheckedAt    DateTime?
+  proactiveLeaseUntil   DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  board                 SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([validUntil, proactiveCheckedAt])
+  @@index([proactiveLeaseUntil])
 }
 
 model AdvisorMessagePayload {

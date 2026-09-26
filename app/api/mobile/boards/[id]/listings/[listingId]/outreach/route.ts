@@ -72,17 +72,18 @@ export async function POST(
               userId: user.id,
               advisorMessageId: parsed.data.advisorMessageId,
               contactedAt: now,
-              sentAt: now,
+              sentAt: null,
               method: parsed.data.method,
-              status: "sent",
+              status: "reported_sent",
               templateKey,
               subject: "Homeboard rental outreach",
               body: message.content,
+              notes: "Member reported that the system composer returned sent. Recipient delivery is not verified.",
             },
           }),
           prisma.boardListing.update({
             where: { id: listingId },
-            data: { userStatus: "outreach_sent" },
+            data: { userStatus: "outreach_reported" },
           }),
           prisma.advisorAction.updateMany({
             where: {
@@ -98,8 +99,8 @@ export async function POST(
               boardId: id,
               actorType: "roommate",
               actorName: user.displayName,
-              eventType: "advisor_outreach_sent",
-              content: `${user.displayName} confirmed Advisor outreach was sent.`,
+              eventType: "advisor_outreach_reported",
+              content: `${user.displayName} reported that the composer returned sent. Recipient delivery is not verified.`,
             },
           }),
           prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
@@ -115,6 +116,11 @@ export async function POST(
       board: buildMobileBoardPayload(next),
       profile: next.profile,
       missingFields: next.missingFields,
+      outreachEvidence: {
+        kind: "member_reported",
+        deliveryVerified: false,
+        followUpEligible: false,
+      },
     });
   } catch (error) {
     await sendOperationalAlert(error, {

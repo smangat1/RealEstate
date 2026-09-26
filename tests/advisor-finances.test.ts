@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { summarizeAdvisorGroupFinances } from "../lib/advisor-finances";
 
-test("Advisor combines member ranges without returning member-level values", () => {
+test("Advisor never returns board-visible aggregates of private member values", () => {
   const summary = summarizeAdvisorGroupFinances([
     {
       annualIncomeMin: 70_000,
@@ -22,18 +22,18 @@ test("Advisor combines member ranges without returning member-level values", () 
   ], 3);
 
   assert.deepEqual(summary, {
-    combinedAnnualIncomeMin: 160_000,
-    combinedAnnualIncomeMax: 195_000,
-    creditScoreMin: 690,
-    creditScoreMax: 760,
-    contributorCount: 2,
+    combinedAnnualIncomeMin: null,
+    combinedAnnualIncomeMax: null,
+    creditScoreMin: null,
+    creditScoreMax: null,
+    contributorCount: 0,
     memberCount: 3,
   });
   assert.equal("profiles" in summary, false);
   assert.equal("members" in summary, false);
 });
 
-test("Advisor excludes incomplete private ranges from the group quick fill", () => {
+test("Advisor output is invariant across successive member updates", () => {
   const summary = summarizeAdvisorGroupFinances([
     {
       annualIncomeMin: 70_000,
@@ -43,9 +43,21 @@ test("Advisor excludes incomplete private ranges from the group quick fill", () 
     },
   ], 2);
 
-  assert.equal(summary.contributorCount, 0);
-  assert.equal(summary.combinedAnnualIncomeMin, null);
-  assert.equal(summary.creditScoreMin, null);
+  const changed = summarizeAdvisorGroupFinances([
+    {
+      annualIncomeMin: 700_000,
+      annualIncomeMax: 900_000,
+      creditScoreMin: 300,
+      creditScoreMax: 850,
+    },
+    {
+      annualIncomeMin: 10_000,
+      annualIncomeMax: 20_000,
+      creditScoreMin: 600,
+      creditScoreMax: 610,
+    },
+  ], 2);
+  assert.deepEqual(changed, summary);
 });
 
 test("Advisor never exposes one member's ranges as a group aggregate", () => {
@@ -58,7 +70,7 @@ test("Advisor never exposes one member's ranges as a group aggregate", () => {
     },
   ], 3);
 
-  assert.equal(summary.contributorCount, 1);
+  assert.equal(summary.contributorCount, 0);
   assert.equal(summary.combinedAnnualIncomeMin, null);
   assert.equal(summary.combinedAnnualIncomeMax, null);
   assert.equal(summary.creditScoreMin, null);

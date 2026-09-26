@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { runAdvisorProactiveBoard } from "@/lib/advisor-proactive";
+import {
+  ADVISOR_PROACTIVE_BATCH_SIZE,
+  ADVISOR_PROACTIVE_CANDIDATE_LIMIT,
+  ADVISOR_PROACTIVE_LEASE_MS,
+  ADVISOR_PROACTIVE_WORK_BUDGET_MS,
+} from "@/lib/advisor-cron-rotation";
 import { isAdvisorCronRequestAuthorized } from "@/lib/github-actions-oidc";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
@@ -14,14 +20,33 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
+  const deadline = Date.now() + ADVISOR_PROACTIVE_WORK_BUDGET_MS;
+  const leaseUntil = new Date(now.getTime() + ADVISOR_PROACTIVE_LEASE_MS);
   const subscriptions = await prisma.advisorSubscription.findMany({
-    where: { validUntil: { gte: now } },
-    select: { boardId: true },
-    orderBy: { updatedAt: "asc" },
-    take: 50,
+    where: {
+      validUntil: { gte: now },
+      OR: [{ proactiveLeaseUntil: null }, { proactiveLeaseUntil: { lt: now } }],
+    },
+    select: { id: true, boardId: true },
+    orderBy: [
+      { proactiveCheckedAt: { sort: "asc", nulls: "first" } },
+      { createdAt: "asc" },
+      { id: "asc" },
+    ],
+    take: ADVISOR_PROACTIVE_CANDIDATE_LIMIT,
   });
   const results = [];
   for (const subscription of subscriptions) {
+    if (results.length >= ADVISOR_PROACTIVE_BATCH_SIZE || Date.now() >= deadline) break;
+    const claimed = await prisma.advisorSubscription.updateMany({
+      where: {
+        id: subscription.id,
+        validUntil: { gte: now },
+        OR: [{ proactiveLeaseUntil: null }, { proactiveLeaseUntil: { lt: now } }],
+      },
+      data: { proactiveCheckedAt: now, proactiveLeaseUntil: leaseUntil },
+    });
+    if (claimed.count === 0) continue;
     try {
       results.push({
         boardId: subscription.boardId,
@@ -34,12 +59,20 @@ export async function GET(request: Request) {
         severity: "error",
       });
       results.push({ boardId: subscription.boardId, error: "run_failed" });
+    } finally {
+      await prisma.advisorSubscription.updateMany({
+        where: { id: subscription.id, proactiveLeaseUntil: leaseUntil },
+        data: { proactiveLeaseUntil: null },
+      });
     }
   }
 
   return NextResponse.json({
     ok: true,
-    checkedBoards: subscriptions.length,
+    checkedBoards: results.length,
+    candidateBoards: subscriptions.length,
+    batchSize: ADVISOR_PROACTIVE_BATCH_SIZE,
+    workBudgetMs: ADVISOR_PROACTIVE_WORK_BUDGET_MS,
     results,
     checkedAt: now.toISOString(),
   }, {

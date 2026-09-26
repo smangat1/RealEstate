@@ -348,11 +348,8 @@ struct AdvisorCardView: View {
       if status.mine.promptCompletedAt == nil {
         showsFinancialPrompt = true
       } else {
-        let effectiveMode = status.mine.disclosureMode == "combined_range" && !status.group.hasCombinedRange
-          ? "available_on_request"
-          : status.mine.disclosureMode
         await acceptFinancialChoiceAndDispatch(
-          mode: effectiveMode,
+          mode: status.mine.disclosureMode,
           status: status,
           channel: channel
         )
@@ -379,13 +376,7 @@ struct AdvisorCardView: View {
       return
     }
     showsFinancialPrompt = false
-    let effectiveMode = mode == "combined_range" && !status.group.hasCombinedRange
-      ? "available_on_request"
-      : mode
-    if effectiveMode != mode {
-      dispatchMessage = "Your ranges are saved privately. One more roommate must contribute before Homeboard can share a group range."
-    }
-    await acceptFinancialChoiceAndDispatch(mode: effectiveMode, status: status, channel: channel)
+    await acceptFinancialChoiceAndDispatch(mode: mode, status: status, channel: channel)
   }
 
   private func acceptFinancialChoiceAndDispatch(
@@ -452,7 +443,7 @@ struct AdvisorCardView: View {
   private func handleDispatchResult(_ result: MessageDispatchResult, channel: AdvisorDispatchChannel) {
     switch result {
     case .sent:
-      dispatchMessage = "Outreach sent."
+      dispatchMessage = "Composer reported sent. Recipient delivery is not verified."
       if let payload {
         let method: String
         switch channel {
@@ -537,19 +528,6 @@ private struct AdvisorFinancialPromptView: View {
           }
           .buttonStyle(HomeboardAreaButtonStyle())
 
-          if status?.group.hasCombinedRange == true {
-            Button {
-              onComplete("combined_range", savedIncomeMin, savedIncomeMax, savedCreditMin, savedCreditMax)
-            } label: {
-              financialChoice(
-                icon: "person.3.fill",
-                title: "Use group combined range",
-                detail: groupSummary
-              )
-            }
-            .buttonStyle(HomeboardAreaButtonStyle())
-          }
-
           VStack(alignment: .leading, spacing: 12) {
             Text("ADD OR UPDATE MY PRIVATE RANGES")
               .font(.caption2.weight(.bold))
@@ -565,13 +543,13 @@ private struct AdvisorFinancialPromptView: View {
               financialField("Credit high", text: $creditMax, prompt: "760")
             }
 
-            Text("Your roommates never receive these values. Homeboard returns only the household income total and overall credit range.")
+            Text("Your roommates never receive these values. Homeboard does not return household totals, contributor counts, or credit extrema to the board.")
               .font(.caption)
               .foregroundStyle(HomeboardPalette.secondaryText)
               .fixedSize(horizontal: false, vertical: true)
 
-            Button("Save mine and use the group range") {
-              onComplete("combined_range", ownIncomeMin, ownIncomeMax, ownCreditMin, ownCreditMax)
+            Button("Save mine and use available on request") {
+              onComplete("available_on_request", ownIncomeMin, ownIncomeMax, ownCreditMin, ownCreditMax)
             }
             .buttonStyle(AdvisorCTAButtonStyle())
             .disabled(!validOwnRanges)
@@ -625,17 +603,6 @@ private struct AdvisorFinancialPromptView: View {
       && (300...850).contains(creditMin)
       && (300...850).contains(creditMax)
       && creditMin <= creditMax
-  }
-
-  private var groupSummary: String {
-    guard let group = status?.group,
-          let incomeMin = group.combinedAnnualIncomeMin,
-          let incomeMax = group.combinedAnnualIncomeMax,
-          let creditMin = group.creditScoreMin,
-          let creditMax = group.creditScoreMax else {
-      return "No combined range is ready yet."
-    }
-    return "\(group.contributorCount) of \(group.memberCount) members contributed. Household income: $\(incomeMin)-$\(incomeMax). Credit: \(creditMin)-\(creditMax)."
   }
 
   private func financialChoice(icon: String, title: String, detail: String) -> some View {
@@ -1029,7 +996,7 @@ private struct AdvisorSetupOnboardingView: View {
       setupCallout(
         icon: "rectangle.and.pencil.and.ellipsis",
         title: "Financial details wait until send",
-        body: "The first time you send outreach, choose a private group range, say information is available on request, or skip financial wording. Drafts never contain placeholders."
+        body: "The first time you send outreach, say financial information is available on request or skip financial wording. Your private values are never exposed as a board aggregate, and drafts never contain placeholders."
       )
     }
   }
@@ -1267,7 +1234,7 @@ private struct AdvisorOnboardingView: View {
       icon: "checklist.checked",
       summary: "Complete the group profile and save the listing you want to contact before asking for outreach.",
       details: [
-        ("Financial wording", "The safe default says information is available on request. Private group ranges are optional and drafts never contain placeholders."),
+        ("Financial wording", "The safe default says information is available on request. Private member values are never exposed as board aggregates, and drafts never contain placeholders."),
         ("Requirements that matter", "Budget, move-in timing, must-haves, dealbreakers, commute limits, and readiness give the draft useful context."),
         ("Four distinct tones", "Professional is polished, Casual is brief and friendly, Stern is direct and urgent, and Passive-Aggressive notes a lack of response without inventing history."),
       ]
@@ -1291,7 +1258,7 @@ private struct AdvisorOnboardingView: View {
       details: [
         ("Tune the card", "Changing tone or an optional include control regenerates the draft. Rapid changes are debounced so only the latest choice applies."),
         ("Review the recipient", "Confirm the agent, brokerage, phone or email, and every statement in the draft before opening a compose sheet."),
-        ("Status follows the real send", "A listing becomes Outreach Sent only when the Messages or Mail delegate confirms it was sent, not when you cancel, save, or encounter a failure."),
+        ("Status follows the composer report", "Homeboard records a member-reported send only when Messages or Mail returns sent. It does not claim that the recipient received it, and cancel or failure records nothing."),
       ]
     ),
   ]

@@ -1224,7 +1224,7 @@ final class AppModel {
         applyRemoteMutation(response, clearing: [])
       } catch {
         guard authSession?.userId == session.userId else { return }
-        boardError = "The outreach was sent, but Homeboard could not start follow-up tracking. \(readable(error))"
+        boardError = "The composer reported sent, but Homeboard could not record that member report. \(readable(error))"
       }
     }
   }

@@ -44,15 +44,6 @@ async function boardForViewer(boardId: string, userId: string) {
       id: true,
       userId: true,
       members: { select: { userId: true } },
-      advisorFinancialProfiles: {
-        select: {
-          userId: true,
-          annualIncomeMin: true,
-          annualIncomeMax: true,
-          creditScoreMin: true,
-          creditScoreMax: true,
-        },
-      },
     },
   });
 }
@@ -71,7 +62,7 @@ function responsePayload(input: {
   const memberIds = new Set(input.board.members.map((member) => member.userId));
   memberIds.add(input.board.userId);
   const group = summarizeAdvisorGroupFinances(
-    input.board.advisorFinancialProfiles.filter((profile) => memberIds.has(profile.userId)),
+    [],
     memberIds.size,
   );
   const mode = disclosureModes.includes(input.mine?.disclosureMode as AdvisorFinancialDisclosureMode)

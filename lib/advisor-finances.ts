@@ -19,42 +19,19 @@ export type AdvisorGroupFinancialSummary = {
   memberCount: number;
 };
 
-function validRange(minimum: number | null, maximum: number | null) {
-  return minimum !== null && maximum !== null && minimum <= maximum;
-}
-
 export function summarizeAdvisorGroupFinances(
-  profiles: AdvisorMemberFinancialValues[],
+  _profiles: AdvisorMemberFinancialValues[],
   memberCount: number,
 ): AdvisorGroupFinancialSummary {
-  const contributors = profiles.filter((profile) =>
-    validRange(profile.annualIncomeMin, profile.annualIncomeMax)
-    && validRange(profile.creditScoreMin, profile.creditScoreMax));
-  // A one-person "aggregate" would reveal that member's exact private range to
-  // every roommate. Require at least two contributors before returning values.
-  if (contributors.length < 2) {
-    return {
-      combinedAnnualIncomeMin: null,
-      combinedAnnualIncomeMax: null,
-      creditScoreMin: null,
-      creditScoreMax: null,
-      contributorCount: contributors.length,
-      memberCount,
-    };
-  }
-
+  // Never return a board-visible function of private member values. Exact sums,
+  // extrema, and even contributor counts can be differenced across a member's
+  // own updates or membership changes to recover someone else's ranges.
   return {
-    combinedAnnualIncomeMin: contributors.reduce(
-      (total, profile) => total + (profile.annualIncomeMin ?? 0),
-      0,
-    ),
-    combinedAnnualIncomeMax: contributors.reduce(
-      (total, profile) => total + (profile.annualIncomeMax ?? 0),
-      0,
-    ),
-    creditScoreMin: Math.min(...contributors.map((profile) => profile.creditScoreMin ?? 850)),
-    creditScoreMax: Math.max(...contributors.map((profile) => profile.creditScoreMax ?? 300)),
-    contributorCount: contributors.length,
+    combinedAnnualIncomeMin: null,
+    combinedAnnualIncomeMax: null,
+    creditScoreMin: null,
+    creditScoreMax: null,
+    contributorCount: 0,
     memberCount,
   };
 }

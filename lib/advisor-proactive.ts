@@ -10,6 +10,7 @@ import {
   detectListingChanges,
   findBoardCompFlags,
   followUpFinancialDisclosure,
+  isFreshListingObservation,
   isGhostedOutreach,
   isListingUnavailable,
   type WatchedListingState,
@@ -87,6 +88,17 @@ function snapshotState(snapshot: {
     availableDate: snapshot.availableDate?.toISOString() ?? null,
     listingStatus: snapshot.listingStatus,
     providerStatus: snapshot.providerStatus,
+  };
+}
+
+function snapshotFreshness(snapshot: { sourceFacts: Prisma.JsonValue }) {
+  if (!snapshot.sourceFacts || typeof snapshot.sourceFacts !== "object" || Array.isArray(snapshot.sourceFacts)) {
+    return { providerFetchedAt: null, providerLastSeenAt: null };
+  }
+  const facts = snapshot.sourceFacts as Record<string, unknown>;
+  return {
+    providerFetchedAt: typeof facts.providerFetchedAt === "string" ? facts.providerFetchedAt : null,
+    providerLastSeenAt: typeof facts.providerLastSeenAt === "string" ? facts.providerLastSeenAt : null,
   };
 }
 
@@ -250,7 +262,7 @@ async function createFollowUpAction(input: {
     contact,
     targetListingBoardId: input.outreach.boardListingId,
   };
-  const summary = `Follow-up draft ready for ${label}. It has been three days since the last confirmed outreach.`;
+  const summary = `Follow-up draft ready for ${label}. No reply is logged three days after the verified send. If they replied elsewhere, log it before using this draft.`;
 
   try {
     await prisma.$transaction(async (transaction) => {
@@ -268,7 +280,7 @@ async function createFollowUpAction(input: {
           title: "Follow-up draft ready",
           summary,
           whyItMatters: "A timely follow-up can recover a promising listing without sending anything automatically.",
-          facts: { outreachId: input.outreach.id, ghostedDays: 3 },
+          facts: { outreachId: input.outreach.id, daysSinceVerifiedSend: 3, replyTracking: "manual" },
           sourceLinks: [],
           primaryAction: { type: "open_advisor_draft", messageId },
           secondaryActions: [{ type: "dismiss" }],
@@ -354,6 +366,15 @@ export async function runAdvisorProactiveBoard(
       where: { boardListingId: boardListing.id },
       orderBy: { observedAt: "desc" },
     });
+    const currentFreshness = {
+      providerFetchedAt: boardListing.listing.providerFetchedAt?.toISOString() ?? null,
+      providerLastSeenAt: boardListing.listing.providerLastSeenAt?.toISOString() ?? null,
+    };
+    if (!isFreshListingObservation({
+      current: currentFreshness,
+      previous: previousSnapshot ? snapshotFreshness(previousSnapshot) : null,
+      now,
+    })) continue;
     if (previousSnapshot?.fingerprint === fingerprint) continue;
 
     let snapshot;
@@ -367,10 +388,7 @@ export async function runAdvisorProactiveBoard(
           availableDate: boardListing.listing.availableDate,
           listingStatus: boardListing.listing.status,
           providerStatus: current.providerStatus,
-          sourceFacts: {
-            providerFetchedAt: boardListing.listing.providerFetchedAt?.toISOString() ?? null,
-            providerLastSeenAt: boardListing.listing.providerLastSeenAt?.toISOString() ?? null,
-          },
+          sourceFacts: currentFreshness,
           fingerprint,
           observedAt,
         },
@@ -439,13 +457,10 @@ export async function runAdvisorProactiveBoard(
       status: "sent",
       answeredAt: null,
       lastFollowUpAt: null,
-      OR: [
-        { sentAt: { lte: new Date(now.getTime() - ADVISOR_GHOST_WINDOW_MS) } },
-        { sentAt: null, contactedAt: { lte: new Date(now.getTime() - ADVISOR_GHOST_WINDOW_MS) } },
-      ],
+      sentAt: { lte: new Date(now.getTime() - ADVISOR_GHOST_WINDOW_MS) },
     },
     include: { boardListing: { include: { listing: true } } },
-    orderBy: [{ sentAt: "asc" }, { contactedAt: "asc" }],
+    orderBy: { sentAt: "asc" },
     take: 20,
   });
   for (const outreach of ghosted) {

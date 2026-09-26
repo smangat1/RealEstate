@@ -1,4 +1,5 @@
 export const ADVISOR_GHOST_WINDOW_MS = 3 * 24 * 60 * 60 * 1_000;
+export const ADVISOR_LISTING_FRESHNESS_MS = 6 * 60 * 60 * 1_000;
 
 export type WatchedListingState = {
   price: number | null;
@@ -47,9 +48,45 @@ function normalized(value: string | null | undefined) {
   return value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
 }
 
+export function listingObservationTime(input: {
+  providerFetchedAt: string | null;
+  providerLastSeenAt: string | null;
+}) {
+  const values = [input.providerFetchedAt, input.providerLastSeenAt]
+    .flatMap((value) => value ? [new Date(value).getTime()] : [])
+    .filter(Number.isFinite);
+  return values.length > 0 ? new Date(Math.max(...values)) : null;
+}
+
+export function isFreshListingObservation(input: {
+  current: { providerFetchedAt: string | null; providerLastSeenAt: string | null };
+  previous: { providerFetchedAt: string | null; providerLastSeenAt: string | null } | null;
+  now: Date;
+  freshnessMs?: number;
+}) {
+  const currentAt = listingObservationTime(input.current);
+  const previousAt = input.previous ? listingObservationTime(input.previous) : null;
+  if (!currentAt) return false;
+  const age = input.now.getTime() - currentAt.getTime();
+  if (age < -5 * 60 * 1_000 || age > (input.freshnessMs ?? ADVISOR_LISTING_FRESHNESS_MS)) return false;
+  return previousAt === null || currentAt > previousAt;
+}
+
+export function listingAvailabilityState(state: WatchedListingState): "available" | "unavailable" | "unknown" {
+  const listingStatus = normalized(state.listingStatus);
+  const providerStatus = normalized(state.providerStatus);
+  if (["removed", "rented"].includes(listingStatus)
+      || /off[ -]?market|unavailable|inactive|rented|removed|leased|not available/.test(providerStatus)) {
+    return "unavailable";
+  }
+  if (listingStatus === "active" || /\bactive\b|\bavailable\b|for rent|listed/.test(providerStatus)) {
+    return "available";
+  }
+  return "unknown";
+}
+
 export function isListingUnavailable(state: WatchedListingState) {
-  return ["removed", "rented"].includes(normalized(state.listingStatus))
-    || /off[ -]?market|unavailable|inactive|rented|removed|leased/.test(normalized(state.providerStatus));
+  return listingAvailabilityState(state) === "unavailable";
 }
 
 export function detectListingChanges(
@@ -92,9 +129,11 @@ export function detectListingChanges(
       whyItMatters: "The new date may no longer line up with the group's move-in timing.",
     });
   }
-  const statusChanged = normalized(previous.listingStatus) !== normalized(current.listingStatus)
-    || normalized(previous.providerStatus) !== normalized(current.providerStatus);
-  if (statusChanged || isListingUnavailable(previous) !== isListingUnavailable(current)) {
+  const previousAvailability = listingAvailabilityState(previous);
+  const currentAvailability = listingAvailabilityState(current);
+  if (previousAvailability !== currentAvailability
+      && previousAvailability !== "unknown"
+      && currentAvailability !== "unknown") {
     changes.push({
       kind: "status",
       field: "status",
@@ -155,10 +194,9 @@ export function isGhostedOutreach(input: {
   answeredAt: Date | null;
   lastFollowUpAt: Date | null;
 }, now = new Date()) {
-  const sentAt = input.sentAt ?? input.contactedAt;
   return input.status === "sent"
     && input.answeredAt === null
     && input.lastFollowUpAt === null
-    && sentAt !== null
-    && sentAt.getTime() <= now.getTime() - ADVISOR_GHOST_WINDOW_MS;
+    && input.sentAt !== null
+    && input.sentAt.getTime() <= now.getTime() - ADVISOR_GHOST_WINDOW_MS;
 }

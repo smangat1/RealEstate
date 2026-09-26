@@ -8,8 +8,11 @@ import {
   detectListingChanges,
   findBoardCompFlags,
   followUpFinancialDisclosure,
+  isFreshListingObservation,
   isGhostedOutreach,
+  listingAvailabilityState,
 } from "../lib/advisor-proactive-logic";
+import { selectRotatingSubscriptions } from "../lib/advisor-cron-rotation";
 import { validateGitHubActionsClaims } from "../lib/github-actions-oidc";
 
 test("confirmed outreach becomes ghosted only after three unanswered days", () => {
@@ -26,6 +29,7 @@ test("confirmed outreach becomes ghosted only after three unanswered days", () =
   assert.equal(isGhostedOutreach({ ...base, answeredAt: now }, now), false);
   assert.equal(isGhostedOutreach({ ...base, lastFollowUpAt: now }, now), false);
   assert.equal(isGhostedOutreach({ ...base, status: "drafted" }, now), false);
+  assert.equal(isGhostedOutreach({ ...base, status: "reported_sent", sentAt: null, contactedAt: new Date(0) }, now), false);
 });
 
 test("follow-up drafts preserve an explicit financial disclosure choice", () => {
@@ -53,6 +57,53 @@ test("listing watch reports price drops and off-market transitions without fabri
   assert.equal(changes.find((change) => change.kind === "price")?.beforeValue, 3200);
   assert.equal(changes.find((change) => change.kind === "price")?.afterValue, 3080);
   assert.match(changes.find((change) => change.kind === "status")?.explanation ?? "", /off market/i);
+});
+
+test("listing watch ignores equivalent provider wording", () => {
+  const previous = { price: 3200, fees: null, availableDate: null, listingStatus: "active", providerStatus: "Active" };
+  const current = { ...previous, providerStatus: "Available for rent" };
+  assert.equal(listingAvailabilityState(previous), "available");
+  assert.equal(listingAvailabilityState(current), "available");
+  assert.deepEqual(detectListingChanges(previous, current), []);
+});
+
+test("listing watch requires a newer fresh importer observation", () => {
+  const now = new Date("2026-09-26T18:00:00.000Z");
+  const prior = { providerFetchedAt: "2026-09-26T16:00:00.000Z", providerLastSeenAt: null };
+  assert.equal(isFreshListingObservation({ current: prior, previous: prior, now }), false);
+  assert.equal(isFreshListingObservation({
+    current: { providerFetchedAt: "2026-09-25T18:00:00.000Z", providerLastSeenAt: null },
+    previous: null,
+    now,
+  }), false);
+  assert.equal(isFreshListingObservation({
+    current: { providerFetchedAt: "2026-09-26T17:30:00.000Z", providerLastSeenAt: null },
+    previous: prior,
+    now,
+  }), true);
+});
+
+test("proactive rotation advances through every active subscription and recovers expired leases", () => {
+  const now = new Date("2026-09-26T18:00:00.000Z");
+  const records = Array.from({ length: 120 }, (_, index) => ({
+    id: `sub-${String(index).padStart(3, "0")}`,
+    validUntil: new Date("2026-10-01T00:00:00.000Z"),
+    proactiveCheckedAt: null as Date | null,
+    proactiveLeaseUntil: null as Date | null,
+    createdAt: new Date(1_700_000_000_000 + index),
+  }));
+  const first = selectRotatingSubscriptions(records, now, 50);
+  first.forEach((record) => { record.proactiveCheckedAt = now; });
+  const second = selectRotatingSubscriptions(records, new Date(now.getTime() + 1_000), 50);
+  second.forEach((record) => { record.proactiveCheckedAt = new Date(now.getTime() + 1_000); });
+  const third = selectRotatingSubscriptions(records, new Date(now.getTime() + 2_000), 50);
+  assert.equal(new Set([...first, ...second, ...third].map((record) => record.id)).size, 120);
+  third.forEach((record) => { record.proactiveCheckedAt = new Date(now.getTime() + 2_000); });
+  const leased = records[0];
+  leased.proactiveCheckedAt = new Date(0);
+  leased.proactiveLeaseUntil = new Date(now.getTime() + 60_000);
+  assert.equal(selectRotatingSubscriptions(records, now, 1)[0]?.id === leased.id, false);
+  assert.equal(selectRotatingSubscriptions(records, new Date(now.getTime() + 61_000), 1)[0]?.id, leased.id);
 });
 
 test("negotiation flags use similar units already saved to the same board", () => {
@@ -109,5 +160,8 @@ test("proactive jobs are authenticated, hourly, idempotent, and persist to board
   assert.match(engine, /chatMessage\.create/);
   assert.match(engine, /lastFollowUpAt: input\.now/);
   assert.match(outreach, /advisorMessageId/);
-  assert.match(outreach, /status: "sent"/);
+  assert.match(outreach, /status: "reported_sent"/);
+  assert.match(outreach, /sentAt: null/);
+  assert.match(engine, /No reply is logged/);
+  assert.match(engine, /replyTracking: "manual"/);
 });

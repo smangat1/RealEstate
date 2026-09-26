@@ -111,7 +111,7 @@ test("Advisor has a separate replayable onboarding with the funding and send con
   assert.match(card, /\$4 rolling threshold/);
   assert.match(card, /Seven days of access/);
   assert.match(card, /Nothing sends automatically/);
-  assert.match(card, /Status follows the real send/);
+  assert.match(card, /Status follows the composer report/);
   assert.match(card, /showsAdvisorOnboarding = true/);
 });
 
@@ -139,13 +139,14 @@ test("Apple Intelligence drafts on-device with a template fallback and no financ
   assert.match(messagesRoute, /Advisor drafts cannot contain financial placeholders/);
 });
 
-test("first send asks for private ranges and exposes only a group aggregate", () => {
+test("first send keeps private ranges out of all board-visible aggregates", () => {
   assert.match(card, /Before the first outreach/);
   assert.match(card, /Available on request/);
   assert.match(card, /Send without financial wording/);
   assert.match(card, /promptCompletedAt == nil/);
   assert.match(financeRoute, /advisorMemberFinancialProfile\.findUnique/);
   assert.match(financeRoute, /summarizeAdvisorGroupFinances/);
+  assert.doesNotMatch(financeRoute, /advisorMemberFinancialProfile\.findMany/);
   assert.doesNotMatch(financeRoute, /advisorFinancialProfiles[\s\S]*displayName/);
 });
 

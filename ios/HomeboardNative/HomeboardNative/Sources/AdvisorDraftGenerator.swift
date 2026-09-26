@@ -45,24 +45,13 @@ enum AdvisorDraftGenerator {
 
   static func financialSentence(
     mode: String,
-    group: AdvisorGroupFinancialStatus?
+    group _: AdvisorGroupFinancialStatus?
   ) -> String? {
     switch mode {
     case "omit":
       return nil
     case "combined_range":
-      guard let group,
-            let incomeMin = group.combinedAnnualIncomeMin,
-            let incomeMax = group.combinedAnnualIncomeMax,
-            let creditMin = group.creditScoreMin,
-            let creditMax = group.creditScoreMax else {
-        return "Financial information is available on request."
-      }
-      let income = incomeMin == incomeMax
-        ? Self.currency(incomeMin)
-        : "\(Self.currency(incomeMin))-\(Self.currency(incomeMax))"
-      let credit = creditMin == creditMax ? String(creditMin) : "\(creditMin)-\(creditMax)"
-      return "Our household's combined annual income is approximately \(income), and our credit scores range from \(credit)."
+      return "Financial information is available on request."
     default:
       return "Financial information is available on request."
     }
