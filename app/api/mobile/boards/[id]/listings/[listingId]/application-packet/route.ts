@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { summarizeAdvisorGroupFinances } from "@/lib/advisor-finances";
+import { applicationFinancialDisclosure } from "@/lib/advisor-application-finances";
 import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { getBoardPageData } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
@@ -23,10 +23,7 @@ export async function GET(
           advisorFinancialProfiles: {
             select: {
               userId: true,
-              annualIncomeMin: true,
-              annualIncomeMax: true,
-              creditScoreMin: true,
-              creditScoreMax: true,
+              disclosureMode: true,
             },
           },
         },
@@ -42,10 +39,11 @@ export async function GET(
     if (!boardListing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
 
     const memberIds = new Set([financeBoard.userId, ...financeBoard.members.map((member) => member.userId)]);
-    const finances = summarizeAdvisorGroupFinances(
+    const financialDisclosure = applicationFinancialDisclosure(
       financeBoard.advisorFinancialProfiles.filter((profile) => memberIds.has(profile.userId)),
       memberIds.size,
     );
+    const finances = financialDisclosure.finances;
     const readiness = data.profile.rentalReadiness;
     const documents = [
       { id: "proof_of_income", label: "Proof of income", ready: readiness?.hasProofOfIncome === true, privacy: "Attach from Files when sending; Homeboard does not store the document." },
@@ -55,35 +53,24 @@ export async function GET(
     ];
     const listingName = [boardListing.listing.address, boardListing.listing.unit ? `Unit ${boardListing.listing.unit}` : null]
       .filter(Boolean).join(" · ") || "Saved rental";
-    const hasCombinedRange = finances.contributorCount > 1
-      && finances.combinedAnnualIncomeMin !== null
-      && finances.combinedAnnualIncomeMax !== null
-      && finances.creditScoreMin !== null
-      && finances.creditScoreMax !== null;
-    const incomeLine = hasCombinedRange
-      ? `$${finances.combinedAnnualIncomeMin?.toLocaleString()}–$${finances.combinedAnnualIncomeMax?.toLocaleString()} combined annual income`
-      : "Combined financial ranges available on request";
-    const creditLine = hasCombinedRange
-      ? `${finances.creditScoreMin}–${finances.creditScoreMax} group credit range`
-      : "Credit range available on request";
     const readyCount = documents.filter((document) => document.ready).length;
     const shareText = [
       `Application cover sheet: ${listingName}`,
       "",
-      incomeLine,
-      creditLine,
+      financialDisclosure.statement,
       `Move-in: ${data.profile.moveInDate || data.profile.moveInTimeframe || "confirm with applicants"}`,
       `Household: ${memberIds.size} applicant${memberIds.size === 1 ? "" : "s"}`,
       "",
       `Documents marked ready: ${documents.filter((document) => document.ready).map((document) => document.label).join(", ") || "none yet"}.`,
       "Sensitive documents must be attached separately through the verified application channel.",
-    ].join("\n");
+    ].filter((line): line is string => line !== null).join("\n");
 
     return NextResponse.json({
       listingId,
       listingName,
       generatedAt: new Date().toISOString(),
       finances,
+      financialStatement: financialDisclosure.statement,
       documents,
       readyCount,
       totalCount: documents.length,

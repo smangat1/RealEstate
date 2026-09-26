@@ -200,6 +200,7 @@ final class AppModel {
   var boardMessageDraft = ""
   var advisorWalletStatus: AdvisorWalletStatus?
   var advisorFinancialStatus: AdvisorFinancialStatus?
+  var pendingPreferenceProposal: AdvisorPreferenceProposal?
   var isAdvisorWalletLoading = false
   var isAdvisorProcessing = false
   var advisorFundingAmountCents = 100
@@ -961,6 +962,9 @@ final class AppModel {
       if let advisorPayload = response.advisorPayload {
         applyAdvisorPayload(advisorPayload)
       }
+      if let preferenceProposal = response.preferenceProposal {
+        pendingPreferenceProposal = preferenceProposal
+      }
       profile = RentalProfile(remote: response.profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
@@ -1124,6 +1128,44 @@ final class AppModel {
     } catch {
       boardError = readable(error)
       return nil
+    }
+  }
+
+  func refreshAdvisorPreferenceProposal() async {
+    guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
+      pendingPreferenceProposal = nil
+      return
+    }
+    do {
+      let response = try await api.loadAdvisorPreferenceProposal(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+      pendingPreferenceProposal = response.preferenceProposal
+    } catch is CancellationError {
+      return
+    } catch {
+      boardError = readable(error)
+    }
+  }
+
+  func resolveAdvisorPreferenceProposal(_ proposal: AdvisorPreferenceProposal, accept: Bool) async {
+    guard let session = authSession, let boardId = board.id else { return }
+    do {
+      let response = try await api.resolveAdvisorPreferenceProposal(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        proposalId: proposal.id,
+        action: accept ? "accept" : "reject"
+      )
+      applyRemoteMutation(response, clearing: [])
+      pendingPreferenceProposal = nil
+      boardFeedback = accept ? "Preference changes confirmed." : "Preference proposal dismissed. Nothing changed."
+    } catch {
+      boardError = readable(error)
+      if !accept {
+        await refreshAdvisorPreferenceProposal()
+      }
     }
   }
 
@@ -1875,9 +1917,11 @@ final class AppModel {
     currentScreen = .board
     if let boardId = response.board.id, !boardId.hasPrefix("local-"), !boardId.hasPrefix("preview-") {
       Task { await refreshAdvisorWalletStatus() }
+      Task { await refreshAdvisorPreferenceProposal() }
     } else {
       advisorWalletStatus = nil
       advisorFinancialStatus = nil
+      pendingPreferenceProposal = nil
     }
     resumePendingListingMutations(boardId: id)
     scheduleRecentlyDeletedPurge(boardId: id)
@@ -3744,6 +3788,9 @@ final class AppModel {
     board = boardByApplyingRemovalTombstones(response.board, storageKey: key)
     if let advisorPayload = response.advisorPayload {
       applyAdvisorPayload(advisorPayload)
+    }
+    if let preferenceProposal = response.preferenceProposal {
+      pendingPreferenceProposal = preferenceProposal
     }
     profile = RentalProfile(remote: response.profile)
     if kinds.contains(.shortlist) {

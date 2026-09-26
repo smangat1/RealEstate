@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
+import { stageAdvisorPreferenceProposal } from "@/lib/advisor-preference-service";
 import { addManualBoardUpdate, getBoardPageData } from "@/lib/board-data";
 import { notifyBoardChat } from "@/lib/apns";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
@@ -30,11 +31,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!parsed.success) return NextResponse.json({ error: "Invalid board update." }, { status: 400 });
 
     const content = parsed.data.content;
-    await addManualBoardUpdate(
+    const sentMessage = await addManualBoardUpdate(
       id,
       { userId: user.id, authorName: user.displayName },
       content,
     );
+    const preferenceProposal = await stageAdvisorPreferenceProposal({
+      boardId: id,
+      userId: user.id,
+      authorName: user.displayName,
+      sourceMessageId: sentMessage.id,
+      content,
+    });
     after(async () => {
       try {
         await notifyBoardChat({
@@ -54,7 +62,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     const next = await getBoardPageData(id, user.id);
     if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
-    return NextResponse.json({ board: buildMobileBoardPayload(next), profile: next.profile, missingFields: next.missingFields });
+    return NextResponse.json({
+      board: buildMobileBoardPayload(next),
+      profile: next.profile,
+      missingFields: next.missingFields,
+      preferenceProposal,
+    });
   } catch (error) {
     await sendOperationalAlert(error, {
       area: "mobile_api",

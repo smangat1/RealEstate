@@ -3966,6 +3966,15 @@ struct SharedUpdatesView: View {
       .sharedCoachmarkTarget("updates-composer")
     }
     .toolbar(.hidden, for: .navigationBar)
+    .sheet(item: Binding(
+      get: { appModel.pendingPreferenceProposal },
+      set: { appModel.pendingPreferenceProposal = $0 }
+    )) { proposal in
+      AdvisorPreferenceProposalView(proposal: proposal)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
     .sheet(isPresented: $showsSettings) {
       SharedSettingsSheet()
         .presentationDetents([.large])
@@ -9069,33 +9078,16 @@ private struct SharedApplicationPacketSheet: View {
             Text(packet.listingName)
               .font(.title2.weight(.bold))
               .foregroundStyle(HomeboardPalette.primaryText)
-            Text("Combined ranges and a privacy-safe document checklist. Individual roommate numbers never appear here.")
+            Text("A privacy-safe cover sheet and document checklist. Individual roommate numbers and household aggregates never appear here.")
               .font(.subheadline)
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
 
-          if packet.finances.hasCombinedRange {
-            VStack(alignment: .leading, spacing: 8) {
-              Label(
-                "$\(packet.finances.combinedAnnualIncomeMin?.formatted() ?? "Not set")–$\(packet.finances.combinedAnnualIncomeMax?.formatted() ?? "Not set") combined income",
-                systemImage: "dollarsign.circle.fill"
-              )
-              Label(
-                "\(packet.finances.creditScoreMin?.formatted() ?? "Not set")–\(packet.finances.creditScoreMax?.formatted() ?? "Not set") credit range",
-                systemImage: "chart.bar.fill"
-              )
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.primaryText)
+          Text(packet.financialStatement ?? "No applicant chose to include financial wording in this packet.")
+            .font(.subheadline)
+            .foregroundStyle(HomeboardPalette.secondaryText)
             .padding(15)
             .sharedSurface(cornerRadius: 18)
-          } else {
-            Text("Financial information available on request. At least two roommates must privately contribute complete ranges before a combined range is shown.")
-              .font(.subheadline)
-              .foregroundStyle(HomeboardPalette.secondaryText)
-              .padding(15)
-              .sharedSurface(cornerRadius: 18)
-          }
 
           VStack(alignment: .leading, spacing: 12) {
             SharedSectionTitle(title: "Documents", trailing: "\(packet.readyCount)/\(packet.totalCount) ready")

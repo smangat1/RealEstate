@@ -211,6 +211,13 @@ enum InquiryStatus {
   stale
 }
 
+enum AdvisorPreferenceProposalStatus {
+  pending
+  accepted
+  rejected
+  expired
+}
+
 model User {
   id                        String                          @id @default(cuid())
   authUserId                String?                         @unique
@@ -279,6 +286,7 @@ model SearchBoard {
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   advisorActions            AdvisorAction[]
   expenses                  BoardExpense[]
+  advisorPreferenceProposals AdvisorPreferenceProposal[]
 
   @@index([userId])
 }
@@ -598,9 +606,29 @@ model RoommateProfile {
   listingReviews            BoardListingReview[]
   listingDecisionsCreated   BoardListingDecision[]
   listingDecisionVotes      BoardListingDecisionVote[]
+  advisorPreferenceProposals AdvisorPreferenceProposal[]
 
   @@index([boardId, createdAt])
   @@index([linkedUserId])
+}
+
+model AdvisorPreferenceProposal {
+  id                   String                          @id @default(cuid())
+  boardId              String
+  roommateId           String
+  userId               String
+  sourceMessageId      String
+  status               AdvisorPreferenceProposalStatus @default(pending)
+  baseProfileUpdatedAt DateTime
+  changes              Json
+  createdAt            DateTime                        @default(now())
+  resolvedAt           DateTime?
+  board                SearchBoard                     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  roommate             RoommateProfile                 @relation(fields: [roommateId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceMessageId])
+  @@index([boardId, userId, status, createdAt])
+  @@index([roommateId, status])
 }
 
 model BoardListingVote {

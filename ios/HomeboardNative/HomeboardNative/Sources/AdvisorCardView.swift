@@ -1503,6 +1503,88 @@ private struct AdvisorCTAButtonStyle: ButtonStyle {
   }
 }
 
+struct AdvisorPreferenceProposalView: View {
+  @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+  let proposal: AdvisorPreferenceProposal
+  @State private var isResolving = false
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          VStack(alignment: .leading, spacing: 7) {
+            Label("Review before applying", systemImage: "checkmark.shield.fill")
+              .font(.title2.weight(.bold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Text("Advisor noticed possible preference changes in your message. Nothing changes unless you confirm each before/after proposal below.")
+              .font(.subheadline)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
+          ForEach(proposal.changes) { change in
+            VStack(alignment: .leading, spacing: 10) {
+              Text(change.label)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+              HStack(alignment: .top, spacing: 10) {
+                preferenceValue("BEFORE", change.before)
+                Image(systemName: "arrow.right")
+                  .foregroundStyle(HomeboardPalette.tertiaryText)
+                  .padding(.top, 20)
+                preferenceValue("AFTER", change.after)
+              }
+            }
+            .padding(15)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+          }
+
+          VStack(spacing: 10) {
+            Button("Confirm changes") { resolve(accept: true) }
+              .buttonStyle(AdvisorCTAButtonStyle())
+              .disabled(isResolving)
+            Button("Reject — keep my current preferences") { resolve(accept: false) }
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .disabled(isResolving)
+          }
+          .frame(maxWidth: .infinity)
+        }
+        .padding(20)
+      }
+      .background(WorkspaceBackgroundView())
+      .navigationTitle("Preference proposal")
+      .navigationBarTitleDisplayMode(.inline)
+      .interactiveDismissDisabled(isResolving)
+    }
+  }
+
+  private func preferenceValue(_ heading: String, _ value: String) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(heading)
+        .font(.caption2.weight(.bold))
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+      Text(value)
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func resolve(accept: Bool) {
+    guard !isResolving else { return }
+    isResolving = true
+    Task {
+      await appModel.resolveAdvisorPreferenceProposal(proposal, accept: accept)
+      isResolving = false
+      if appModel.pendingPreferenceProposal == nil { dismiss() }
+    }
+  }
+}
+
 struct AdvisorTypingBubble: View {
   @State private var dotPhase: Int = 0
 

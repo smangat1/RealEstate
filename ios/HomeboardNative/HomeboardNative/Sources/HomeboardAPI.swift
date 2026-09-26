@@ -63,6 +63,15 @@ struct MobileBoardLoadResponse: Decodable {
   var missingFields: [String]
   var advisorPayload: AdvisorMessagePayload?
   var replyAnalysis: AdvisorReplyAnalysis?
+  var preferenceProposal: AdvisorPreferenceProposal?
+}
+
+struct AdvisorPreferenceProposalResponse: Decodable {
+  var preferenceProposal: AdvisorPreferenceProposal?
+}
+
+struct AdvisorPreferenceProposalActionRequest: Encodable {
+  var action: String
 }
 
 struct MobileListingInventoryResponse: Decodable {
@@ -836,6 +845,30 @@ final class HomeboardAPI {
       method: "POST",
       accessToken: accessToken,
       body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly, originatingMessageId: originatingMessageId)
+    )
+  }
+
+  func loadAdvisorPreferenceProposal(
+    accessToken: String,
+    boardId: String
+  ) async throws -> AdvisorPreferenceProposalResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/preference-proposals",
+      accessToken: accessToken
+    )
+  }
+
+  func resolveAdvisorPreferenceProposal(
+    accessToken: String,
+    boardId: String,
+    proposalId: String,
+    action: String
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/preference-proposals/\(proposalId)",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: AdvisorPreferenceProposalActionRequest(action: action)
     )
   }
 

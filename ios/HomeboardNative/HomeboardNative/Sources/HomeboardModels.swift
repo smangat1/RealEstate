@@ -836,10 +836,26 @@ struct AdvisorApplicationPacket: Identifiable, Hashable, Codable {
   var listingName: String
   var generatedAt: String
   var finances: AdvisorGroupFinancialStatus
+  var financialStatement: String?
   var documents: [AdvisorApplicationDocumentStatus]
   var readyCount: Int
   var totalCount: Int
   var shareText: String
+}
+
+struct AdvisorPreferenceProposalChange: Identifiable, Hashable, Codable {
+  var id: String { field }
+  var field: String
+  var label: String
+  var before: String
+  var after: String
+}
+
+struct AdvisorPreferenceProposal: Identifiable, Hashable, Codable {
+  var id: String
+  var status: String
+  var changes: [AdvisorPreferenceProposalChange]
+  var createdAt: String
 }
 
 struct AdvisorReplyFacts: Hashable, Codable {

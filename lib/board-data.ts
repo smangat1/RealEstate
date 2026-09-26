@@ -1965,7 +1965,7 @@ export async function sendChat(boardId: string, content: string, author: { userI
   if (!(await ensureBoard(boardId, author.userId))) throw new Error("Workspace not found.");
   const message = content.trim();
   if (!message || message.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters.");
-  await prisma.chatMessage.create({
+  const created = await prisma.chatMessage.create({
     data: {
       boardId,
       role: "user",
@@ -1976,6 +1976,7 @@ export async function sendChat(boardId: string, content: string, author: { userI
   });
   await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${message}`);
   await touchBoard(boardId);
+  return created;
 }
 
 function extractListingFromText(text: string) {
@@ -3292,7 +3293,7 @@ export async function addManualBoardUpdate(
   const message = content.trim();
   if (!message) throw new Error("Update cannot be empty.");
 
-  await prisma.$transaction([
+  const [created] = await prisma.$transaction([
     prisma.chatMessage.create({
       data: {
         boardId,
@@ -3316,6 +3317,7 @@ export async function addManualBoardUpdate(
       data: { updatedAt: new Date() },
     }),
   ]);
+  return created;
 }
 
 export async function addBoardDecision(boardId: string, actorName: string, question: string) {
