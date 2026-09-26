@@ -1961,12 +1961,18 @@ export async function saveBoardProfile(boardId: string, actingUserId: string, ne
   return finalizedProfile;
 }
 
-export async function sendChat(boardId: string, content: string, author: { userId: string; authorName: string }) {
+export async function sendChat(
+  boardId: string,
+  content: string,
+  author: { userId: string; authorName: string },
+  options?: { messageId?: string },
+) {
   if (!(await ensureBoard(boardId, author.userId))) throw new Error("Workspace not found.");
   const message = content.trim();
   if (!message || message.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters.");
   const created = await prisma.chatMessage.create({
     data: {
+      ...(options?.messageId ? { id: options.messageId } : {}),
       boardId,
       role: "user",
       authorUserId: author.userId,
@@ -3289,6 +3295,7 @@ export async function addManualBoardUpdate(
   boardId: string,
   actor: { userId: string; authorName: string },
   content: string,
+  options?: { messageId?: string },
 ) {
   const message = content.trim();
   if (!message) throw new Error("Update cannot be empty.");
@@ -3296,6 +3303,7 @@ export async function addManualBoardUpdate(
   const [created] = await prisma.$transaction([
     prisma.chatMessage.create({
       data: {
+        ...(options?.messageId ? { id: options.messageId } : {}),
         boardId,
         role: "user",
         authorUserId: actor.userId,

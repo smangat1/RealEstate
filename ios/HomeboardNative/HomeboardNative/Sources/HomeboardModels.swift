@@ -945,6 +945,7 @@ struct TourAvailabilityPayload: Hashable, Codable {
 
 struct MobileBoard: Hashable, Codable {
   var id: String? = nil
+  var revision: String? = nil
   var title: String
   var city: String
   var moveInTimeline: String

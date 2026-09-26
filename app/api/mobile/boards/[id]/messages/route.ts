@@ -13,6 +13,7 @@ import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 import { notifyBoardChat } from "@/lib/apns";
 import { sendOperationalAlert } from "@/lib/monitoring";
+import { preferenceCandidateSchema } from "@/lib/preference-candidate";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -21,6 +22,8 @@ const schema = z.object({
   regenerateOnly: z.boolean().optional(),
   /** The chat message id of the card being regenerated; echoed back so the client can match correctly. */
   originatingMessageId: z.string().trim().max(64).optional(),
+  messageId: z.string().uuid().optional(),
+  preferenceCandidate: preferenceCandidateSchema.optional(),
 });
 
 const acceptedAdvisorSchema = z.object({
@@ -64,6 +67,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? { includeSuggestedListings: false, includeCommutes: false }
       : undefined);
     if (!boardData) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+
+    if (parsed.data.preferenceCandidate) {
+      if (advisorMessage
+          || parsed.data.preferenceCandidate.boardId !== id
+          || parsed.data.preferenceCandidate.messageId !== parsed.data.messageId) {
+        return NextResponse.json({ error: "Preference candidate context is invalid." }, { status: 400 });
+      }
+    }
 
     if (advisorMessage) {
       const now = new Date();
@@ -181,13 +192,24 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       });
     }
 
-    const sentMessage = await sendChat(id, parsed.data.content, { userId: user.id, authorName: user.displayName });
+    const preMessageBoardRevision = boardData.board.updatedAt;
+    const candidate = parsed.data.preferenceCandidate?.boardRevision === preMessageBoardRevision
+      ? parsed.data.preferenceCandidate
+      : null;
+    const sentMessage = await sendChat(
+      id,
+      parsed.data.content,
+      { userId: user.id, authorName: user.displayName },
+      { messageId: parsed.data.messageId },
+    );
     const preferenceProposal = await stageAdvisorPreferenceProposal({
       boardId: id,
       userId: user.id,
       authorName: user.displayName,
       sourceMessageId: sentMessage.id,
       content: parsed.data.content,
+      boardRevision: preMessageBoardRevision,
+      candidate,
     });
     after(async () => {
       try {

@@ -924,7 +924,7 @@ final class AppModel {
     boardFeedback = nil
     boardMessageDraft = ""
 
-    let temporaryID = "local-msg-\(UUID().uuidString)"
+    let temporaryID = UUID().uuidString
     board.chatMessages.append(
       BoardMessage(
         id: temporaryID,
@@ -950,10 +950,23 @@ final class AppModel {
     }
 
     do {
+      let preferenceCandidate: AdvisorPreferenceCandidate?
+      if !isAdvisor, let revision = board.revision {
+        preferenceCandidate = await AdvisorPreferenceExtractor.extract(
+          content: message,
+          boardId: boardId,
+          messageId: temporaryID,
+          boardRevision: revision
+        )
+      } else {
+        preferenceCandidate = nil
+      }
       let response = try await api.sendBoardMessage(
         accessToken: session.accessToken,
         boardId: boardId,
-        content: message
+        content: message,
+        messageId: isAdvisor ? nil : temporaryID,
+        preferenceCandidate: preferenceCandidate
       )
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
@@ -2337,7 +2350,7 @@ final class AppModel {
 
     boardError = nil
     boardFeedback = nil
-    let temporaryID = "local-update-\(UUID().uuidString)"
+    let temporaryID = UUID().uuidString
     board.chatMessages.append(
       BoardMessage(
         id: temporaryID,
@@ -2359,10 +2372,23 @@ final class AppModel {
     }
 
     do {
+      let preferenceCandidate: AdvisorPreferenceCandidate?
+      if let revision = board.revision {
+        preferenceCandidate = await AdvisorPreferenceExtractor.extract(
+          content: message,
+          boardId: boardId,
+          messageId: temporaryID,
+          boardRevision: revision
+        )
+      } else {
+        preferenceCandidate = nil
+      }
       let response = try await api.addBoardUpdate(
         accessToken: session.accessToken,
         boardId: boardId,
-        content: message
+        content: message,
+        messageId: temporaryID,
+        preferenceCandidate: preferenceCandidate
       )
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId, board.id == boardId else { return false }
       applyRemoteMutation(response, clearing: [.activity])

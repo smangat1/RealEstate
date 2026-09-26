@@ -110,6 +110,37 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(AdvisorDraftSafety.isPersistedDraftReady(payload))
   }
 
+  func testPreferenceFallbackRequiresExplicitFirstPersonEvidence() {
+    let positive = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I really need parking and natural light is important to me."
+    )
+    XCTAssertEqual(Set(positive.map(\.feature)), Set(["parking", "natural_light"]))
+
+    for unsafe in [
+      "Maybe I need parking.",
+      "She needs parking.",
+      "If I needed parking, I would say so.",
+      "The broker wrote \"I need parking\".",
+      "I need parking, but I don't care about the garage.",
+    ] {
+      XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: unsafe).isEmpty, unsafe)
+    }
+  }
+
+  func testPreferenceFallbackSeparatesLowPriorityFromMustHaveRemoval() throws {
+    let lower = try XCTUnwrap(
+      AdvisorPreferenceExtractor.deterministicSignals(in: "I don't care about parking").first
+    )
+    XCTAssertEqual(lower.intent, "preference")
+    XCTAssertEqual(lower.weight, -2)
+
+    let removal = try XCTUnwrap(
+      AdvisorPreferenceExtractor.deterministicSignals(in: "I don't need parking anymore").first
+    )
+    XCTAssertEqual(removal.intent, "remove_must_have")
+    XCTAssertEqual(removal.feature, "parking")
+  }
+
   func testAdvisorRegenerationRejectsRenderedAssistantContent() {
     XCTAssertThrowsError(
       try AppModel.advisorRegenerationCommand(

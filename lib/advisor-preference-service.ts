@@ -1,7 +1,10 @@
 import { Prisma } from "@prisma/client";
 
 import { buildPreferenceProposal, type PreferenceProposalChange } from "@/lib/advisor-preference-proposals";
-import { parsePreferenceTalk } from "@/lib/preference-talk";
+import {
+  validatePreferenceCandidateSubmission,
+  type PreferenceCandidate,
+} from "@/lib/preference-candidate";
 import { prisma } from "@/lib/prisma";
 
 export type AdvisorPreferenceProposalPayload = {
@@ -61,9 +64,33 @@ export async function stageAdvisorPreferenceProposal(input: {
   authorName: string;
   sourceMessageId: string;
   content: string;
+  boardRevision: string;
+  candidate: PreferenceCandidate | null;
 }) {
-  const signals = parsePreferenceTalk(input.content);
-  if (signals.length === 0) return null;
+  if (!input.candidate) return null;
+  const validation = validatePreferenceCandidateSubmission({
+    candidate: input.candidate,
+    boardId: input.boardId,
+    messageId: input.sourceMessageId,
+    boardRevision: input.boardRevision,
+    content: input.content,
+  });
+  if (!validation.ok) return null;
+
+  // The route has already established board membership. Re-read the persisted
+  // message so a candidate cannot be replayed against another user's text.
+  const sourceMessage = await prisma.chatMessage.findFirst({
+    where: {
+      id: input.sourceMessageId,
+      boardId: input.boardId,
+      authorUserId: input.userId,
+      role: "user",
+      content: input.content.trim(),
+    },
+    select: { id: true },
+  });
+  if (!sourceMessage) return null;
+
   const roommate = await prisma.roommateProfile.findFirst({
     where: { boardId: input.boardId, linkedUserId: input.userId, roleLabel: { not: "commute point" } },
     select: {
@@ -78,7 +105,7 @@ export async function stageAdvisorPreferenceProposal(input: {
     },
   });
   if (!roommate) return null;
-  const changes = buildPreferenceProposal(roommate, signals);
+  const changes = buildPreferenceProposal(roommate, validation.signals);
   if (changes.length === 0) return null;
 
   const [proposal] = await prisma.$transaction([

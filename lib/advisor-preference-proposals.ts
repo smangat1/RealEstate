@@ -1,4 +1,4 @@
-import type { PreferenceSignal } from "@/lib/preference-talk";
+import { preferenceFeatureMatchesStoredValue, type PreferenceSignal } from "@/lib/preference-talk";
 
 export type PreferenceProposalValue = string | number | string[] | null;
 
@@ -54,11 +54,6 @@ export function parseStoredStringList(value: string | null): string[] {
   }
 }
 
-function matchesFeature(value: string, signal: PreferenceSignal) {
-  const normalized = value.toLowerCase();
-  return normalized.includes(signal.label) || signal.label.includes(normalized);
-}
-
 export function buildPreferenceProposal(
   profile: PreferenceProposalProfile,
   signals: PreferenceSignal[],
@@ -90,9 +85,9 @@ export function buildPreferenceProposal(
   }
 
   const mustHaves = parseStoredStringList(profile.mustHaves);
-  const negativeSignals = signals.filter((signal) => signal.weight < 0);
+  const removalSignals = signals.filter((signal) => signal.intent === "remove_must_have");
   const nextMustHaves = mustHaves.filter((value) =>
-    !negativeSignals.some((signal) => matchesFeature(value, signal)),
+    !removalSignals.some((signal) => preferenceFeatureMatchesStoredValue(value, signal.feature)),
   );
   if (nextMustHaves.length !== mustHaves.length) {
     changes.push({
