@@ -5,11 +5,13 @@ import test from "node:test";
 
 import {
   ADVISOR_GHOST_WINDOW_MS,
+  canLogReplyForOutreach,
   detectListingChanges,
   findBoardCompFlags,
   followUpFinancialDisclosure,
   isFreshListingObservation,
   isGhostedOutreach,
+  loggedReplyOutreachUpdate,
   listingAvailabilityState,
 } from "../lib/advisor-proactive-logic";
 import { selectRotatingSubscriptions } from "../lib/advisor-cron-rotation";
@@ -35,6 +37,38 @@ test("confirmed outreach becomes ghosted only after three unanswered days", () =
   assert.equal(isGhostedOutreach({ ...base, lastFollowUpAt: now }, now), false);
   assert.equal(isGhostedOutreach({ ...base, status: "drafted" }, now), false);
   assert.equal(isGhostedOutreach({ ...base, status: "reported_sent", sentAt: null, contactedAt: new Date(0) }, now), false);
+});
+
+test("manual reply logging answers verified and member-reported outreach and suppresses ghost follow-ups", () => {
+  const now = new Date("2026-09-25T16:00:00.000Z");
+  const oldSentAt = new Date(now.getTime() - ADVISOR_GHOST_WINDOW_MS - 1);
+  for (const status of ["sent", "stale", "answered", "reported_sent"]) {
+    assert.equal(canLogReplyForOutreach(status), true);
+  }
+  assert.equal(canLogReplyForOutreach("drafted"), false);
+
+  const update = loggedReplyOutreachUpdate(now);
+  const verifiedAfterReply = {
+    ...update,
+    sentAt: oldSentAt,
+    contactedAt: oldSentAt,
+    lastFollowUpAt: null,
+  };
+  const reportedAfterReply = {
+    ...update,
+    sentAt: null,
+    contactedAt: oldSentAt,
+    lastFollowUpAt: null,
+  };
+  assert.equal(isGhostedOutreach(verifiedAfterReply, now), false);
+  assert.equal(isGhostedOutreach(reportedAfterReply, now), false);
+  assert.equal(isGhostedOutreach({
+    status: "reported_sent",
+    sentAt: null,
+    contactedAt: oldSentAt,
+    answeredAt: null,
+    lastFollowUpAt: null,
+  }, now), false);
 });
 
 test("follow-up drafts preserve an explicit financial disclosure choice", () => {

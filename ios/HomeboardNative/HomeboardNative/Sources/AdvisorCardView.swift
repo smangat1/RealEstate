@@ -1545,7 +1545,7 @@ struct AdvisorPreferenceProposalView: View {
             Button("Confirm changes") { resolve(accept: true) }
               .buttonStyle(AdvisorCTAButtonStyle())
               .disabled(isResolving)
-            Button("Reject — keep my current preferences") { resolve(accept: false) }
+            Button("Reject and keep my current preferences") { resolve(accept: false) }
               .font(.subheadline.weight(.semibold))
               .foregroundStyle(HomeboardPalette.secondaryText)
               .disabled(isResolving)

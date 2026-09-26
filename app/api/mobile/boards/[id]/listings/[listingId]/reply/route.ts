@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { analyzeAdvisorReply } from "@/lib/advisor-reply";
+import {
+  loggedReplyOutreachUpdate,
+  REPLY_LOGGABLE_OUTREACH_STATUSES,
+} from "@/lib/advisor-proactive-logic";
 import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { getBoardPageData } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
@@ -42,8 +46,11 @@ export async function POST(
     const listing = data.boardListings.find((entry) => entry.id === listingId);
     if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
     const outreach = await prisma.brokerOutreachRecord.findFirst({
-      where: { boardListingId: listingId, status: { in: ["sent", "stale", "answered"] } },
-      orderBy: [{ sentAt: "desc" }, { contactedAt: "desc" }],
+      where: { boardListingId: listingId, status: { in: [...REPLY_LOGGABLE_OUTREACH_STATUSES] } },
+      orderBy: [
+        { contactedAt: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
     });
     if (!outreach) return NextResponse.json({ error: "Send or record outreach before adding a reply." }, { status: 409 });
 
@@ -58,8 +65,7 @@ export async function POST(
         prisma.brokerOutreachRecord.update({
           where: { id: outreach.id },
           data: {
-            status: "answered",
-            answeredAt: now,
+            ...loggedReplyOutreachUpdate(now),
             replyText: parsed.data.text,
             replyFacts: analysis.facts,
           },

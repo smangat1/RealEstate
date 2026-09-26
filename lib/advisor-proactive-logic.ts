@@ -200,3 +200,18 @@ export function isGhostedOutreach(input: {
     && input.sentAt !== null
     && input.sentAt.getTime() <= now.getTime() - ADVISOR_GHOST_WINDOW_MS;
 }
+
+export const REPLY_LOGGABLE_OUTREACH_STATUSES = [
+  "sent",
+  "stale",
+  "answered",
+  "reported_sent",
+] as const;
+
+export function canLogReplyForOutreach(status: string) {
+  return (REPLY_LOGGABLE_OUTREACH_STATUSES as readonly string[]).includes(status);
+}
+
+export function loggedReplyOutreachUpdate(now: Date) {
+  return { status: "answered" as const, answeredAt: now };
+}
