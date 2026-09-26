@@ -12,6 +12,7 @@ import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 import { notifyBoardChat } from "@/lib/apns";
 import { sendOperationalAlert } from "@/lib/monitoring";
+import { parsePreferenceTalk } from "@/lib/preference-talk";
 import { prisma } from "@/lib/prisma";
 
 const schema = z.object({
@@ -181,6 +182,70 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     await sendChat(id, parsed.data.content, { userId: user.id, authorName: user.displayName });
+    const preferenceSignals = parsePreferenceTalk(parsed.data.content);
+    if (preferenceSignals.length > 0) {
+      const roommate = await prisma.roommateProfile.findFirst({
+        where: { boardId: id, linkedUserId: user.id, roleLabel: { not: "commute point" } },
+        select: { id: true, preferenceSignals: true, mustHaves: true },
+      });
+      if (roommate) {
+        const existing = roommate.preferenceSignals && typeof roommate.preferenceSignals === "object" && !Array.isArray(roommate.preferenceSignals)
+          ? roommate.preferenceSignals as Record<string, unknown>
+          : {};
+        const nextSignals = { ...existing };
+        for (const signal of preferenceSignals) nextSignals[signal.feature] = signal.weight;
+        let mustHaves: string[] = [];
+        try {
+          const decoded = JSON.parse(roommate.mustHaves ?? "[]");
+          if (Array.isArray(decoded)) mustHaves = decoded.filter((value): value is string => typeof value === "string");
+        } catch {
+          mustHaves = [];
+        }
+        const lowered = preferenceSignals.filter((signal) => signal.weight < 0);
+        if (lowered.length > 0) {
+          mustHaves = mustHaves.filter((value) => !lowered.some((signal) => {
+            const normalized = value.toLowerCase();
+            return normalized.includes(signal.label) || signal.label.includes(normalized);
+          }));
+        }
+        const priorityUpdates: Prisma.RoommateProfileUpdateInput = {};
+        for (const signal of preferenceSignals) {
+          const priority = signal.weight > 0 ? "high" : "low";
+          if (signal.feature === "commute") priorityUpdates.commutePriority = priority;
+          if (signal.feature === "neighborhood") priorityUpdates.neighborhoodPriority = priority;
+          if (signal.feature === "space") priorityUpdates.spacePriority = priority;
+          if (signal.feature === "privacy") priorityUpdates.privacyPriority = priority;
+        }
+        const summary = preferenceSignals.map((signal) => `${signal.label}: ${signal.weight > 0 ? "more important" : "lower priority"}`).join(" · ");
+        await prisma.$transaction([
+          prisma.roommateProfile.update({
+            where: { id: roommate.id },
+            data: {
+              preferenceSignals: nextSignals as Prisma.InputJsonValue,
+              mustHaves: JSON.stringify(mustHaves),
+              ...priorityUpdates,
+            },
+          }),
+          prisma.chatMessage.create({
+            data: {
+              boardId: id,
+              role: "assistant",
+              authorName: "Advisor",
+              content: `Got it. I adjusted ${user.displayName}'s fit weighting. ${summary}.`,
+            },
+          }),
+          prisma.boardEvent.create({
+            data: {
+              boardId: id,
+              actorType: "assistant",
+              actorName: "Advisor",
+              eventType: "preference_signal_updated",
+              content: `Advisor updated ${user.displayName}'s listing weights from an explicit chat preference: ${summary}.`,
+            },
+          }),
+        ]);
+      }
+    }
     after(async () => {
       try {
         await notifyBoardChat({

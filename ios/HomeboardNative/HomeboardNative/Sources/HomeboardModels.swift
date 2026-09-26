@@ -390,6 +390,8 @@ struct ListingPreview: Identifiable, Hashable, Codable {
   var analysis: GroupListingAnalysis? = nil
   var rentSplit: RentSplitPreview? = nil
   var contact: ListingContactInfo? = nil
+  var trueMonthlyCost: ListingMonthlyCost? = nil
+  var scamWarning: ListingScamWarning? = nil
   var deletedAt: String? = nil
 
   init(
@@ -498,6 +500,8 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     case analysis
     case rentSplit
     case contact
+    case trueMonthlyCost
+    case scamWarning
     case deletedAt
   }
 
@@ -540,8 +544,40 @@ struct ListingPreview: Identifiable, Hashable, Codable {
     analysis = try container.decodeIfPresent(GroupListingAnalysis.self, forKey: .analysis)
     rentSplit = try container.decodeIfPresent(RentSplitPreview.self, forKey: .rentSplit)
     contact = try container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
+    trueMonthlyCost = try container.decodeIfPresent(ListingMonthlyCost.self, forKey: .trueMonthlyCost)
+    scamWarning = try container.decodeIfPresent(ListingScamWarning.self, forKey: .scamWarning)
     deletedAt = try container.decodeIfPresent(String.self, forKey: .deletedAt)
   }
+}
+
+struct ListingMonthlyCostLine: Hashable, Codable, Identifiable {
+  var label: String
+  var monthlyAmount: Int
+  var id: String { "\(label)-\(monthlyAmount)" }
+}
+
+struct ListingMonthlyCost: Hashable, Codable {
+  var listedRent: Int?
+  var knownMonthlyTotal: Int?
+  var recurringFeesMonthly: Int
+  var utilitiesMonthly: Int?
+  var upfrontFeesTotal: Int
+  var upfrontFeesMonthly: Int
+  var concessionCreditMonthly: Int
+  var complete: Bool
+  var missing: [String]
+  var lines: [ListingMonthlyCostLine]
+  var note: String
+}
+
+struct ListingScamWarning: Hashable, Codable {
+  var boardListingId: String
+  var comparableCount: Int
+  var averagePrice: Int
+  var difference: Int
+  var percentBelow: Int
+  var comparableIds: [String]
+  var message: String
 }
 
 struct MobileListingRanking: Identifiable, Hashable, Codable {
@@ -785,6 +821,106 @@ struct AdvisorWalletStatus: Hashable, Codable {
 struct AdvisorSubscriptionStatus: Hashable, Codable {
   var active: Bool
   var validUntil: String?
+}
+
+struct AdvisorApplicationDocumentStatus: Identifiable, Hashable, Codable {
+  var id: String
+  var label: String
+  var ready: Bool
+  var privacy: String
+}
+
+struct AdvisorApplicationPacket: Identifiable, Hashable, Codable {
+  var id: String { listingId }
+  var listingId: String
+  var listingName: String
+  var generatedAt: String
+  var finances: AdvisorGroupFinancialStatus
+  var documents: [AdvisorApplicationDocumentStatus]
+  var readyCount: Int
+  var totalCount: Int
+  var shareText: String
+}
+
+struct AdvisorReplyFacts: Hashable, Codable {
+  var available: Bool?
+  var mentionsApplication: Bool
+  var mentionsTour: Bool
+  var quotedPrice: Int?
+}
+
+struct AdvisorReplyAnalysis: Hashable, Codable {
+  var summary: String
+  var nextMove: String
+  var facts: AdvisorReplyFacts
+}
+
+struct BoardExpense: Identifiable, Hashable, Codable {
+  var id: String
+  var description: String
+  var category: String
+  var amountCents: Int
+  var paidAt: String
+  var paidByUserId: String
+  var paidByName: String
+}
+
+struct BoardExpenseBalance: Identifiable, Hashable, Codable {
+  var id: String { userId }
+  var userId: String
+  var name: String
+  var paidCents: Int
+  var owedCents: Int
+  var balanceCents: Int
+}
+
+struct BoardExpenseLedger: Hashable, Codable {
+  var totalCents: Int
+  var splitMode: String
+  var expenses: [BoardExpense]
+  var balances: [BoardExpenseBalance]
+}
+
+struct AdvisorRoomInput: Identifiable, Hashable, Codable {
+  var id: String
+  var name: String
+  var adjustment: Int
+}
+
+struct AdvisorRoomAssignment: Identifiable, Hashable, Codable {
+  var id: String { roomId }
+  var memberId: String
+  var memberName: String
+  var roomId: String
+  var roomName: String
+  var monthlyRent: Int
+  var withinComfortRange: Bool
+}
+
+struct AdvisorRoomAssignmentResult: Hashable, Codable {
+  var assignments: [AdvisorRoomAssignment]
+  var totalRent: Int
+  var warnings: [String]
+  var method: String
+}
+
+struct TourAvailabilityWindow: Identifiable, Hashable, Codable {
+  var id: String { "\(start)|\(end)" }
+  var start: String
+  var end: String
+}
+
+struct TourAvailabilityMember: Identifiable, Hashable, Codable {
+  var id: String { memberId }
+  var memberId: String
+  var name: String
+  var isCurrentUser: Bool
+  var windows: [TourAvailabilityWindow]
+}
+
+struct TourAvailabilityPayload: Hashable, Codable {
+  var members: [TourAvailabilityMember]
+  var sharedWindows: [TourAvailabilityWindow]
 }
 
 // ──────────────────────────────────────────────────

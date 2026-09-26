@@ -510,6 +510,7 @@ function mapRoommateRow(row: {
   dealbreakers: string | null;
   petsRequired: boolean | null;
   accessibilityNeeds: string | null;
+  preferenceSignals: Prisma.JsonValue;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -544,6 +545,10 @@ function mapRoommateRow(row: {
     dealbreakers: parseJsonArray(row.dealbreakers),
     petsRequired: row.petsRequired,
     accessibilityNeeds: parseJsonArray(row.accessibilityNeeds),
+    preferenceSignals:
+      row.preferenceSignals && typeof row.preferenceSignals === "object" && !Array.isArray(row.preferenceSignals)
+        ? Object.fromEntries(Object.entries(row.preferenceSignals).filter((entry): entry is [string, number] => typeof entry[1] === "number"))
+        : {},
     notes: row.notes,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
