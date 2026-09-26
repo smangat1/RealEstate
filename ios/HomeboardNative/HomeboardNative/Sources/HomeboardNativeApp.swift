@@ -95,7 +95,15 @@ final class HomeboardAppDelegate: NSObject, UIApplicationDelegate, UNUserNotific
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let info = response.notification.request.content.userInfo
-    if info["type"] as? String == "board_chat", let boardId = info["boardId"] as? String {
+    let boardNotificationTypes: Set<String> = [
+      "board_chat",
+      "advisor_follow_up",
+      "listing_change",
+      "negotiation_comp",
+    ]
+    if let type = info["type"] as? String,
+       boardNotificationTypes.contains(type),
+       let boardId = info["boardId"] as? String {
       PendingBoardNotification.store(boardId)
       DispatchQueue.main.async {
         NotificationCenter.default.post(name: .homeboardOpenBoardChat, object: boardId)

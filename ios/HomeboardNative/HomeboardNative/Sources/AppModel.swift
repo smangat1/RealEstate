@@ -1201,16 +1201,32 @@ final class AppModel {
     return true
   }
 
-  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload) {
+  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload, method: String) {
     // Prefer the specific target carried in the payload; fall back to the strongest
     // listing for legacy cards that predate targetListingBoardId.
     let listingId = payload.targetListingBoardId
       ?? payload.context?.leverage?.strongestListings?.first?.boardListingId
-    guard let listingId else {
+    guard let listingId, let messageId = payload.messageId else {
       boardError = "Advisor could not identify the listing for this outreach."
       return
     }
-    updateManualListingStatus(id: listingId, status: "Outreach Sent")
+    guard let session = authSession, let boardId = board.id else { return }
+    Task {
+      do {
+        let response = try await api.recordAdvisorOutreach(
+          accessToken: session.accessToken,
+          boardId: boardId,
+          listingId: listingId,
+          advisorMessageId: messageId,
+          method: method
+        )
+        guard authSession?.userId == session.userId, board.id == boardId else { return }
+        applyRemoteMutation(response, clearing: [])
+      } catch {
+        guard authSession?.userId == session.userId else { return }
+        boardError = "The outreach was sent, but Homeboard could not start follow-up tracking. \(readable(error))"
+      }
+    }
   }
 
   func signOut() {

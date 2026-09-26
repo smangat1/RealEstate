@@ -17,6 +17,7 @@ export type RuntimeStatus = {
   errorMonitoringConfigured: boolean;
   operationalAlertsConfigured: boolean;
   boardChatPushConfigured: boolean;
+  advisorAutomationConfigured: boolean;
 };
 
 function hasValue(value?: string) {
@@ -42,6 +43,8 @@ export function getRuntimeStatus(): RuntimeStatus {
     hasValue(process.env.APNS_KEY_ID)
     && hasValue(process.env.APNS_TEAM_ID)
     && hasValue(process.env.APNS_PRIVATE_KEY);
+  const advisorAutomationConfigured = boardChatPushConfigured
+    && hasValue(process.env.CRON_SECRET);
   const appEnabled = isAppEnabled();
   const commuteMode = getCommuteServiceMode(demoMode);
   const overallStatus =
@@ -62,5 +65,6 @@ export function getRuntimeStatus(): RuntimeStatus {
     errorMonitoringConfigured,
     operationalAlertsConfigured,
     boardChatPushConfigured,
+    advisorAutomationConfigured,
   };
 }

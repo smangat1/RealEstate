@@ -96,17 +96,27 @@ enum AdvisorDraftGenerator {
       ? "Could you confirm availability and the next opportunity to tour?"
       : "Could you confirm current availability?"
     let facts = [moveSentence, commuteSentence, finance].compactMap { $0 }.joined(separator: " ")
+    let isFollowUp = payload.originalCommand?
+      .range(of: #"follow[ -]?up"#, options: [.regularExpression, .caseInsensitive]) != nil
 
     switch tone {
     case "Casual":
-      return [greeting, "Checking in about \(listing).", facts, tour, "Thanks, \(senderName)"]
+      return [
+        greeting,
+        isFollowUp ? "Checking back on my earlier message about \(listing)." : "Checking in about \(listing).",
+        facts,
+        tour,
+        "Thanks, \(senderName)",
+      ]
         .filter { !$0.isEmpty }
         .joined(separator: " ")
     case "Stern":
       return [
         greeting,
         "",
-        "We need a current status on \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
+        isFollowUp
+          ? "Following up on our earlier message, we need a current status on \(listing). \(facts)".trimmingCharacters(in: .whitespaces)
+          : "We need a current status on \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
         "",
         tour,
         "",
@@ -116,7 +126,9 @@ enum AdvisorDraftGenerator {
       return [
         greeting,
         "",
-        "I am checking for a clear status on \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
+        isFollowUp
+          ? "I am following up because our earlier message about \(listing) has not received a response. \(facts)".trimmingCharacters(in: .whitespaces)
+          : "I am checking for a clear status on \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
         "",
         "Please let us know whether it remains available so we can plan accordingly.",
         "",
@@ -126,7 +138,9 @@ enum AdvisorDraftGenerator {
       return [
         greeting,
         "",
-        "I am reaching out regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
+        isFollowUp
+          ? "I am following up on my earlier message regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces)
+          : "I am reaching out regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
         "",
         tour,
         "",

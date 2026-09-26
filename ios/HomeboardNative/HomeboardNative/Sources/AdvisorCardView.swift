@@ -432,7 +432,7 @@ struct AdvisorCardView: View {
       subject: "Homeboard rental outreach",
       body: payload.draftText
     ) { result in
-      handleDispatchResult(result)
+      handleDispatchResult(result, channel: .email)
     }
   }
 
@@ -445,16 +445,24 @@ struct AdvisorCardView: View {
       recipients: recipients,
       body: payload.draftText
     ) { result in
-      handleDispatchResult(result)
+      handleDispatchResult(result, channel: .message)
     }
   }
 
-  private func handleDispatchResult(_ result: MessageDispatchResult) {
+  private func handleDispatchResult(_ result: MessageDispatchResult, channel: AdvisorDispatchChannel) {
     switch result {
     case .sent:
       dispatchMessage = "Outreach sent."
       if let payload {
-        appModel.markAdvisorOutreachSent(for: payload)
+        let method: String
+        switch channel {
+        case .email: method = "email"
+        case .message: method = "message"
+        }
+        appModel.markAdvisorOutreachSent(
+          for: payload,
+          method: method
+        )
       }
     case .cancelled:
       dispatchMessage = nil

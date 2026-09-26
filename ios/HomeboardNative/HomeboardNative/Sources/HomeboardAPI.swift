@@ -92,6 +92,11 @@ private struct MobileAdvisorAcceptedDraftRequest: Encodable {
   var payload: AdvisorMessagePayload
 }
 
+private struct MobileAdvisorOutreachRequest: Encodable {
+  var advisorMessageId: String
+  var method: String
+}
+
 private struct MobileAdvisorFinancialUpdateRequest: Encodable {
   var disclosureMode: String
   var annualIncomeMin: Int?
@@ -900,6 +905,24 @@ final class HomeboardAPI {
       method: "PATCH",
       accessToken: accessToken,
       body: MobileListingPatchRequest(status: status, userNotes: note, workflowStatus: workflowStatus)
+    )
+  }
+
+  func recordAdvisorOutreach(
+    accessToken: String,
+    boardId: String,
+    listingId: String,
+    advisorMessageId: String,
+    method: String
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/outreach",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileAdvisorOutreachRequest(
+        advisorMessageId: advisorMessageId,
+        method: method
+      )
     )
   }
 
