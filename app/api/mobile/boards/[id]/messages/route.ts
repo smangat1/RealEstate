@@ -22,6 +22,25 @@ const schema = z.object({
   originatingMessageId: z.string().trim().max(64).optional(),
 });
 
+const acceptedAdvisorSchema = z.object({
+  messageId: z.string().trim().min(1).max(64),
+  payload: z.object({
+    messageId: z.string().trim().min(1).max(64),
+    draftText: z.string().trim().min(1).max(4000),
+    tone: z.string().trim().min(1).max(40),
+    toggleOptions: z.array(z.object({
+      id: z.string().trim().min(1).max(80),
+      label: z.string().trim().min(1).max(80),
+      enabled: z.boolean(),
+      required: z.boolean(),
+    })).max(12),
+    executionStatus: z.literal("draft_ready"),
+    generationSource: z.enum(["apple_intelligence", "device_template"]),
+    financialDisclosure: z.enum(["available_on_request", "combined_range", "omit"]),
+    clientGeneratedAt: z.string().datetime(),
+  }).passthrough(),
+});
+
 function isAdvisorMessage(content: string) {
   return /^@advisor\b/i.test(content.trim());
 }
@@ -195,6 +214,126 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           : isThrottleError(error)
             ? message
             : "Unable to send message.",
+      },
+      { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : isThrottleError(error) ? 429 : 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireMobileAppUser(request);
+    const { id } = await context.params;
+    assertThrottle({
+      scope: "mobile-advisor-draft-accept",
+      key: `${user.id}:${id}`,
+      limit: 30,
+      windowMs: 60 * 1_000,
+      message: "Advisor drafts are being updated too quickly. Please wait a moment.",
+    });
+    const parsed = acceptedAdvisorSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success || parsed.data.messageId !== parsed.data.payload.messageId) {
+      return NextResponse.json({ error: "Advisor draft is invalid." }, { status: 400 });
+    }
+    if (/\[(?:income|credit)[^\]]*\]/i.test(parsed.data.payload.draftText)) {
+      return NextResponse.json({ error: "Advisor drafts cannot contain financial placeholders." }, { status: 400 });
+    }
+
+    const boardData = await getBoardPageData(id, user.id, {
+      includeSuggestedListings: false,
+      includeCommutes: false,
+    });
+    if (!boardData) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    const subscription = await prisma.advisorSubscription.findUnique({
+      where: { boardId: id },
+      select: { validUntil: true },
+    });
+    if (!hasAdvisorTestAccess(user)
+        && !(subscription?.validUntil && subscription.validUntil >= new Date())) {
+      return NextResponse.json({ error: "An active Advisor subscription is required." }, { status: 402 });
+    }
+
+    const message = await prisma.chatMessage.findFirst({
+      where: { id: parsed.data.messageId, boardId: id, role: "assistant" },
+      include: { advisorPayload: true },
+    });
+    const storedPayload = message?.advisorPayload?.payload;
+    if (!message || !storedPayload || typeof storedPayload !== "object" || Array.isArray(storedPayload)) {
+      return NextResponse.json({ error: "Advisor card not found." }, { status: 404 });
+    }
+    const incomingGeneratedAt = Date.parse(parsed.data.payload.clientGeneratedAt);
+    if (incomingGeneratedAt > Date.now() + 5 * 60 * 1_000) {
+      return NextResponse.json({ error: "Advisor draft timestamp is invalid." }, { status: 400 });
+    }
+    let acceptedPayload = storedPayload as Record<string, unknown>;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = await prisma.advisorMessagePayload.findUnique({
+        where: { messageId: message.id },
+      });
+      if (!current || typeof current.payload !== "object" || Array.isArray(current.payload)) break;
+      const currentPayload = current.payload as Record<string, unknown>;
+      const storedGeneratedAt = typeof currentPayload.clientGeneratedAt === "string"
+        ? Date.parse(currentPayload.clientGeneratedAt)
+        : 0;
+      if (incomingGeneratedAt < storedGeneratedAt) {
+        acceptedPayload = currentPayload;
+        break;
+      }
+      const candidate = {
+        ...currentPayload,
+        draftText: parsed.data.payload.draftText,
+        tone: parsed.data.payload.tone,
+        toggleOptions: parsed.data.payload.toggleOptions,
+        executionStatus: "draft_ready",
+        generationSource: parsed.data.payload.generationSource,
+        financialDisclosure: parsed.data.payload.financialDisclosure,
+        acceptedAt: new Date().toISOString(),
+        clientGeneratedAt: parsed.data.payload.clientGeneratedAt,
+      };
+      const saved = await prisma.$transaction(async (transaction) => {
+        const updated = await transaction.advisorMessagePayload.updateMany({
+          where: {
+            id: current.id,
+            updatedAt: current.updatedAt,
+          },
+          data: { payload: candidate as Prisma.InputJsonValue },
+        });
+        if (updated.count === 0) return false;
+        await transaction.chatMessage.update({
+          where: { id: message.id },
+          data: { content: parsed.data.payload.draftText },
+        });
+        await transaction.searchBoard.update({ where: { id }, data: { updatedAt: new Date() } });
+        return true;
+      });
+      if (saved) {
+        acceptedPayload = candidate;
+        break;
+      }
+    }
+
+    const next = await getBoardPageData(id, user.id);
+    if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    return NextResponse.json({
+      board: buildMobileBoardPayload(next),
+      profile: next.profile,
+      missingFields: next.missingFields,
+      advisorPayload: next.messages.find((entry) => entry.id === message.id)?.advisorPayload ?? acceptedPayload,
+    });
+  } catch (error) {
+    await sendOperationalAlert(error, {
+      area: "mobile_api",
+      operation: "accept_advisor_draft",
+      requestId: request.headers.get("x-homeboard-request-id"),
+    });
+    const message = error instanceof Error ? error.message : "Unable to save Advisor draft.";
+    return NextResponse.json(
+      {
+        error: message === "MOBILE_AUTH_REQUIRED"
+          ? "Unauthorized"
+          : isThrottleError(error)
+            ? message
+            : "Unable to save Advisor draft.",
       },
       { status: message === "MOBILE_AUTH_REQUIRED" ? 401 : isThrottleError(error) ? 429 : 500 },
     );

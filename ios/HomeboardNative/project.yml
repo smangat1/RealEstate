@@ -38,6 +38,7 @@ targets:
       - path: HomeboardNative/Sources/HomeboardActiveOffer.swift
       - path: HomeboardNative/Sources/MessageDispatcher.swift
       - path: HomeboardNative/Sources/AdvisorCardView.swift
+      - path: HomeboardNative/Sources/AdvisorDraftGenerator.swift
       - path: HomeboardNative/Resources/Assets.xcassets
         buildPhase: resources
       - path: HomeboardNative/Resources/PrivacyInfo.xcprivacy

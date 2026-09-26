@@ -26,7 +26,8 @@ export async function GET() {
   const betaReady = ok
     && runtime.errorMonitoringConfigured
     && runtime.operationalAlertsConfigured
-    && runtime.boardChatPushConfigured;
+    && runtime.boardChatPushConfigured
+    && runtime.advisorAutomationConfigured;
   return NextResponse.json(
     {
       ok,
@@ -42,6 +43,7 @@ export async function GET() {
         errorMonitoring: runtime.errorMonitoringConfigured ? "configured" : "pending",
         operationalAlerts: runtime.operationalAlertsConfigured ? "configured" : "pending",
         boardChatPush: runtime.boardChatPushConfigured ? "configured" : "pending",
+        advisorAutomation: runtime.advisorAutomationConfigured ? "configured" : "pending",
       },
       checkedAt: new Date().toISOString(),
     },

@@ -1,4 +1,4 @@
-# Homeboard monitoring and board-chat push setup
+# Homeboard monitoring, push, and Advisor automation setup
 
 The code path is complete, but production delivery requires credentials owned by the Homeboard operator. Never commit any value listed below.
 
@@ -28,7 +28,7 @@ Set `HOMEBOARD_ALERT_WEBHOOK_URL` in Vercel to receive sanitized JSON alerts eve
 
 Add the same two names as GitHub Actions repository secrets. The `Production health` workflow checks `/api/health` every ten minutes and calls the webhook if the production deployment or database is unavailable. A failed workflow remains visible in GitHub even when no webhook is configured.
 
-## Apple board-chat push
+## Apple board and Advisor push
 
 Create an APNs token key in the Apple Developer portal for the Homeboard team, with Push Notifications enabled for `com.homeboard.native`. Add these server-only variables to Vercel:
 
@@ -39,11 +39,19 @@ Create an APNs token key in the Apple Developer portal for the Homeboard team, w
 
 The provider uses the sandbox APNs endpoint for Debug tokens and production APNs for Release/TestFlight tokens. Invalid and unregistered device tokens are removed automatically.
 
-Push is intentionally limited to a roommate posting a human-authored board message. The sender is excluded. Listing changes, reactions, invitations, ratings, and decisions do not send notifications yet. Tapping a notification opens that board’s Updates tab.
+The sender is excluded from human board-chat notifications. Advisor follow-up drafts, listing changes, and board-comparison flags notify every board member. Tapping any of these notifications opens that board’s Updates tab.
+
+## Advisor proactive schedule
+
+The public repository's `Advisor proactive checks` GitHub Actions workflow invokes `/api/cron/advisor-proactive` hourly. Public-repository Actions minutes are free, and the workflow authenticates with a short-lived GitHub OIDC token restricted to this repository, the workflow file on `main`, and scheduled or manually dispatched runs. No long-lived scheduler secret or paid Vercel cron plan is required.
+
+`CRON_SECRET` remains an optional server-only fallback for operators who later move scheduling to Vercel or another trusted service. The route fails closed unless either that secret matches or the GitHub OIDC token passes signature and claim verification. Only boards whose `AdvisorSubscription.validUntil` is in the future are processed.
+
+The first listing-watch run creates silent baselines. Later runs persist and notify only real price, fee, availability, or status changes. Action fingerprints, snapshot uniqueness, and outreach claim timestamps prevent repeated notifications when a job is retried.
 
 ## Release verification
 
-1. Deploy the environment variables and confirm `/api/health` reports monitoring, alerts, and board chat push as `configured`.
+1. Deploy the environment variables and confirm `/api/health` reports monitoring, alerts, board chat push, and Advisor automation as `configured`.
 2. Sign into two physical iPhones with different Apple accounts and enable notifications on both.
 3. Post from the Updates tab on device A while Homeboard is backgrounded on device B.
 4. Confirm B receives one message notification, A receives none, and tapping it opens the correct Updates tab.

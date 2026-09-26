@@ -19,8 +19,8 @@ test("Advisor compiles group profile, commute, and listing analysis into one gro
   assert.match(engineSource, /from "@\/lib\/listing-analysis"/);
   assert.match(engineSource, /leverage:/);
   assert.match(engineSource, /requirements:/);
-  assert.match(engineSource, /You MUST include the group's exact income multiple/);
-  assert.match(engineSource, /You MUST include the group's exact credit score/);
+  assert.match(engineSource, /Financial information is available on request/);
+  assert.match(engineSource, /Never output a bracketed placeholder/);
   assert.match(engineSource, /polished, broker-appropriate/);
   assert.match(engineSource, /brief, friendly, like texting a peer/);
   assert.match(engineSource, /direct, no-nonsense corporate, urgency/);
@@ -39,6 +39,9 @@ test("Advisor messages gate on expiry and persist the exact structured response"
   assert.match(messagesRouteSource, /executionStatus/);
   assert.match(messagesRouteSource, /board: buildMobileBoardPayload\(next\)/);
   assert.match(messagesRouteSource, /advisorPayload: payload/);
+  assert.match(messagesRouteSource, /export async function PATCH/);
+  assert.match(messagesRouteSource, /advisorMessagePayload\.update/);
+  assert.match(messagesRouteSource, /content: parsed\.data\.payload\.draftText/);
 });
 
 test("Advisor wallet reports a rolling seven-day threshold without trusting isActive", () => {

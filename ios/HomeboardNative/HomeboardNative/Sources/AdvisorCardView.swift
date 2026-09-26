@@ -3,6 +3,11 @@ import StripeCore
 import StripePaymentSheet
 import UIKit
 
+private enum AdvisorDispatchChannel {
+  case message
+  case email
+}
+
 struct AdvisorCardView: View {
   @Environment(AppModel.self) private var appModel
 
@@ -15,6 +20,8 @@ struct AdvisorCardView: View {
   @State private var regenerationTask: Task<Void, Never>?
   @State private var regenerationRevision = 0
   @State private var dispatchMessage: String?
+  @State private var showsFinancialPrompt = false
+  @State private var pendingDispatch: AdvisorDispatchChannel?
 
   private static let tones = ["Professional", "Casual", "Stern", "Passive-Aggressive"]
 
@@ -37,6 +44,47 @@ struct AdvisorCardView: View {
     }
     .onDisappear {
       // Keep generation alive if user scrolls within thread
+    }
+    .task {
+      if payload?.generationSource == "server_template"
+          || payload.map(hasFinancialPlaceholder) == true {
+        scheduleRegeneration(delayNanoseconds: 0)
+      }
+    }
+    .onChange(of: message.advisorPayload) { _, incomingPayload in
+      payload = incomingPayload
+      guard let incomingPayload else { return }
+      if Self.tones.contains(incomingPayload.tone) {
+        selectedTone = incomingPayload.tone
+      }
+      toggles = incomingPayload.toggleOptions
+      if incomingPayload.generationSource == "server_template"
+          || hasFinancialPlaceholder(incomingPayload) {
+        scheduleRegeneration(delayNanoseconds: 0)
+      }
+    }
+    .sheet(isPresented: $showsFinancialPrompt) {
+      AdvisorFinancialPromptView(
+        status: appModel.advisorFinancialStatus,
+        onComplete: { mode, incomeMin, incomeMax, creditMin, creditMax in
+          Task {
+            await completeFinancialPrompt(
+              mode: mode,
+              incomeMin: incomeMin,
+              incomeMax: incomeMax,
+              creditMin: creditMin,
+              creditMax: creditMax
+            )
+          }
+        },
+        onCancel: {
+          pendingDispatch = nil
+          showsFinancialPrompt = false
+        }
+      )
+      .presentationDetents([.large])
+      .presentationDragIndicator(.visible)
+      .presentationBackground(HomeboardPalette.background)
     }
   }
 
@@ -190,7 +238,7 @@ struct AdvisorCardView: View {
 
       HStack(spacing: 10) {
         Button {
-          sendViaMessage()
+          prepareDispatch(.message)
         } label: {
           Label("Send via iMessage", systemImage: "message.fill")
             .frame(maxWidth: .infinity)
@@ -199,7 +247,7 @@ struct AdvisorCardView: View {
         .disabled(!MessageDispatcher.canSendText || !isDraftReady(currentPayload))
 
         Button {
-          sendViaEmail()
+          prepareDispatch(.email)
         } label: {
           Label("Send via Email", systemImage: "envelope.fill")
             .frame(maxWidth: .infinity)
@@ -233,7 +281,7 @@ struct AdvisorCardView: View {
     .homeboardPanel(cornerRadius: 24)
   }
 
-  private func scheduleRegeneration() {
+  private func scheduleRegeneration(delayNanoseconds: UInt64 = 350_000_000) {
     guard payload != nil, let expectedBoardId = appModel.board.id else { return }
     guard let originalCommand = payload?.originalCommand?.trimmingCharacters(in: .whitespacesAndNewlines),
           originalCommand.range(of: #"^@advisor\b"#, options: [.regularExpression, .caseInsensitive]) != nil else {
@@ -245,31 +293,32 @@ struct AdvisorCardView: View {
     regenerationTask?.cancel()
     let tone = selectedTone
     let selectedToggles = toggles
-    let originatingMessageId = payload?.messageId
     regenerationTask = Task {
-      do { try await Task.sleep(nanoseconds: 350_000_000) }
+      do { try await Task.sleep(nanoseconds: delayNanoseconds) }
       catch { return }
       guard revision == regenerationRevision, !Task.isCancelled else { return }
       isRegenerating = true
+      defer {
+        if revision == regenerationRevision {
+          isRegenerating = false
+        }
+      }
 
       do {
+        let currentPayload = payload
+        guard let currentPayload else { return }
+        let financeStatus = currentPayload.financialDisclosure == "combined_range"
+          ? await appModel.refreshAdvisorFinancialStatus()
+          : appModel.advisorFinancialStatus
         let response = try await appModel.regenerateAdvisorDraft(
-          originalCommand: originalCommand,
+          payload: currentPayload,
           tone: tone,
           toggles: selectedToggles,
-          originatingMessageId: originatingMessageId
+          financialDisclosure: currentPayload.financialDisclosure,
+          groupFinances: financeStatus?.group
         )
         guard revision == regenerationRevision, !Task.isCancelled else { return }
-        guard var next = response.advisorPayload else {
-          isRegenerating = false
-          return
-        }
-
-        // The backend regenerates the copy, while these controls remain the source
-        // of truth for the user's current selection.
-        next.originalCommand = originalCommand
-        next.tone = tone
-        next.toggleOptions = selectedToggles
+        guard let next = response.advisorPayload else { return }
         if let applied = appModel.applyAdvisorRegenerationResponse(
           response,
           payload: next,
@@ -284,15 +333,88 @@ struct AdvisorCardView: View {
         guard revision == regenerationRevision, !Task.isCancelled else { return }
         dispatchMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       }
+    }
+  }
 
-      if revision == regenerationRevision {
-        isRegenerating = false
+  private func prepareDispatch(_ channel: AdvisorDispatchChannel) {
+    guard let payload, isDraftReady(payload) else { return }
+    pendingDispatch = channel
+    Task {
+      guard let status = await appModel.refreshAdvisorFinancialStatus() else {
+        dispatchMessage = appModel.boardError ?? "Unable to load the private financial preference."
+        pendingDispatch = nil
+        return
+      }
+      if status.mine.promptCompletedAt == nil {
+        showsFinancialPrompt = true
+      } else {
+        await acceptFinancialChoiceAndDispatch(
+          mode: status.mine.disclosureMode,
+          status: status,
+          channel: channel
+        )
       }
     }
   }
 
-  private func sendViaEmail() {
-    guard let payload, isDraftReady(payload) else { return }
+  private func completeFinancialPrompt(
+    mode: String,
+    incomeMin: Int?,
+    incomeMax: Int?,
+    creditMin: Int?,
+    creditMax: Int?
+  ) async {
+    guard let channel = pendingDispatch else { return }
+    guard let status = await appModel.updateAdvisorFinancialStatus(
+      disclosureMode: mode,
+      annualIncomeMin: incomeMin,
+      annualIncomeMax: incomeMax,
+      creditScoreMin: creditMin,
+      creditScoreMax: creditMax
+    ) else {
+      dispatchMessage = appModel.boardError ?? "Unable to save the private financial preference."
+      return
+    }
+    showsFinancialPrompt = false
+    await acceptFinancialChoiceAndDispatch(mode: mode, status: status, channel: channel)
+  }
+
+  private func acceptFinancialChoiceAndDispatch(
+    mode: String,
+    status: AdvisorFinancialStatus,
+    channel: AdvisorDispatchChannel
+  ) async {
+    guard let currentPayload = payload else { return }
+    isRegenerating = true
+    defer { isRegenerating = false }
+    do {
+      let response = try await appModel.regenerateAdvisorDraft(
+        payload: currentPayload,
+        tone: selectedTone,
+        toggles: toggles,
+        financialDisclosure: mode,
+        groupFinances: status.group
+      )
+      guard let accepted = response.advisorPayload,
+            let applied = appModel.applyAdvisorRegenerationResponse(
+              response,
+              payload: accepted,
+              expectedBoardId: appModel.board.id ?? ""
+            ) else { return }
+      payload = applied
+      pendingDispatch = nil
+      if channel == .message {
+        sendViaMessage(applied)
+      } else {
+        sendViaEmail(applied)
+      }
+    } catch {
+      dispatchMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+  }
+
+  private func sendViaEmail(_ payload: AdvisorMessagePayload) {
+    guard isDraftReady(payload) else { return }
     let recipients = [payload.contact?.agentEmail]
       .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
@@ -301,12 +423,12 @@ struct AdvisorCardView: View {
       subject: "Homeboard rental outreach",
       body: payload.draftText
     ) { result in
-      handleDispatchResult(result)
+      handleDispatchResult(result, channel: .email)
     }
   }
 
-  private func sendViaMessage() {
-    guard let payload, isDraftReady(payload) else { return }
+  private func sendViaMessage(_ payload: AdvisorMessagePayload) {
+    guard isDraftReady(payload) else { return }
     let recipients = [payload.contact?.agentPhone]
       .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
@@ -314,16 +436,24 @@ struct AdvisorCardView: View {
       recipients: recipients,
       body: payload.draftText
     ) { result in
-      handleDispatchResult(result)
+      handleDispatchResult(result, channel: .message)
     }
   }
 
-  private func handleDispatchResult(_ result: MessageDispatchResult) {
+  private func handleDispatchResult(_ result: MessageDispatchResult, channel: AdvisorDispatchChannel) {
     switch result {
     case .sent:
-      dispatchMessage = "Outreach sent."
+      dispatchMessage = "Composer reported sent. Recipient delivery is not verified."
       if let payload {
-        appModel.markAdvisorOutreachSent(for: payload)
+        let method: String
+        switch channel {
+        case .email: method = "email"
+        case .message: method = "message"
+        }
+        appModel.markAdvisorOutreachSent(
+          for: payload,
+          method: method
+        )
       }
     case .cancelled:
       dispatchMessage = nil
@@ -335,17 +465,194 @@ struct AdvisorCardView: View {
   private func isDraftReady(_ payload: AdvisorMessagePayload) -> Bool {
     payload.executionStatus != "needs_input"
       && !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !hasFinancialPlaceholder(payload)
+  }
+
+  private func hasFinancialPlaceholder(_ payload: AdvisorMessagePayload) -> Bool {
+    payload.draftText.range(
+      of: #"\[(?:income|credit)[^\]]*\]"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil
+  }
+}
+
+private struct AdvisorFinancialPromptView: View {
+  let status: AdvisorFinancialStatus?
+  let onComplete: (String, Int?, Int?, Int?, Int?) -> Void
+  let onCancel: () -> Void
+
+  @State private var incomeMin: String
+  @State private var incomeMax: String
+  @State private var creditMin: String
+  @State private var creditMax: String
+
+  init(
+    status: AdvisorFinancialStatus?,
+    onComplete: @escaping (String, Int?, Int?, Int?, Int?) -> Void,
+    onCancel: @escaping () -> Void
+  ) {
+    self.status = status
+    self.onComplete = onComplete
+    self.onCancel = onCancel
+    _incomeMin = State(initialValue: status?.mine.annualIncomeMin.map(String.init) ?? "")
+    _incomeMax = State(initialValue: status?.mine.annualIncomeMax.map(String.init) ?? "")
+    _creditMin = State(initialValue: status?.mine.creditScoreMin.map(String.init) ?? "")
+    _creditMax = State(initialValue: status?.mine.creditScoreMax.map(String.init) ?? "")
+  }
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          Image(systemName: "lock.shield.fill")
+            .font(.system(size: 30, weight: .semibold))
+            .foregroundStyle(HomeboardPalette.accent)
+
+          VStack(alignment: .leading, spacing: 8) {
+            Text("Before the first outreach")
+              .font(.system(size: 28, weight: .bold, design: .serif))
+              .foregroundStyle(HomeboardPalette.primaryText)
+            Text("Choose what this draft says about finances. The safe default shares no numbers.")
+              .font(.body)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+          }
+
+          Button {
+            onComplete("available_on_request", savedIncomeMin, savedIncomeMax, savedCreditMin, savedCreditMax)
+          } label: {
+            financialChoice(
+              icon: "hand.raised.fill",
+              title: "Available on request",
+              detail: "Adds: Financial information is available on request. No placeholders or numbers."
+            )
+          }
+          .buttonStyle(HomeboardAreaButtonStyle())
+
+          VStack(alignment: .leading, spacing: 12) {
+            Text("ADD OR UPDATE MY PRIVATE RANGES")
+              .font(.caption2.weight(.bold))
+              .tracking(1.1)
+              .foregroundStyle(HomeboardPalette.tertiaryText)
+
+            HStack(spacing: 10) {
+              financialField("Income low", text: $incomeMin, prompt: "70000")
+              financialField("Income high", text: $incomeMax, prompt: "85000")
+            }
+            HStack(spacing: 10) {
+              financialField("Credit low", text: $creditMin, prompt: "720")
+              financialField("Credit high", text: $creditMax, prompt: "760")
+            }
+
+            Text("Your roommates never receive these values. Homeboard does not return household totals, contributor counts, or credit extrema to the board.")
+              .font(.caption)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .fixedSize(horizontal: false, vertical: true)
+
+            Button("Save mine and use available on request") {
+              onComplete("available_on_request", ownIncomeMin, ownIncomeMax, ownCreditMin, ownCreditMax)
+            }
+            .buttonStyle(AdvisorCTAButtonStyle())
+            .disabled(!validOwnRanges)
+
+            if status?.mine.annualIncomeMin != nil || status?.mine.creditScoreMin != nil {
+              Button("Remove my saved ranges") {
+                onComplete("available_on_request", nil, nil, nil, nil)
+              }
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .frame(maxWidth: .infinity)
+            }
+          }
+          .padding(14)
+          .background(Color.white.opacity(0.06))
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+          Button("Send without financial wording") {
+            onComplete("omit", savedIncomeMin, savedIncomeMax, savedCreditMin, savedCreditMax)
+          }
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .frame(maxWidth: .infinity)
+        }
+        .padding(20)
+      }
+      .background(WorkspaceBackgroundView())
+      .navigationTitle("Financial wording")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Cancel", action: onCancel)
+        }
+      }
+    }
+  }
+
+  private var ownIncomeMin: Int? { Int(incomeMin) }
+  private var ownIncomeMax: Int? { Int(incomeMax) }
+  private var ownCreditMin: Int? { Int(creditMin) }
+  private var ownCreditMax: Int? { Int(creditMax) }
+  private var savedIncomeMin: Int? { validOwnRanges ? ownIncomeMin : status?.mine.annualIncomeMin }
+  private var savedIncomeMax: Int? { validOwnRanges ? ownIncomeMax : status?.mine.annualIncomeMax }
+  private var savedCreditMin: Int? { validOwnRanges ? ownCreditMin : status?.mine.creditScoreMin }
+  private var savedCreditMax: Int? { validOwnRanges ? ownCreditMax : status?.mine.creditScoreMax }
+
+  private var validOwnRanges: Bool {
+    guard let incomeMin = ownIncomeMin, let incomeMax = ownIncomeMax,
+          let creditMin = ownCreditMin, let creditMax = ownCreditMax else { return false }
+    return incomeMin >= 0 && incomeMin <= incomeMax
+      && (300...850).contains(creditMin)
+      && (300...850).contains(creditMax)
+      && creditMin <= creditMax
+  }
+
+  private func financialChoice(icon: String, title: String, detail: String) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: icon)
+        .foregroundStyle(HomeboardPalette.accent)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Text(detail)
+          .font(.footnote)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer()
+      Image(systemName: "chevron.right")
+        .font(.caption.weight(.bold))
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.white.opacity(0.06))
+    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+  }
+
+  private func financialField(_ label: String, text: Binding<String>, prompt: String) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(label.uppercased())
+        .font(.caption2.weight(.bold))
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+      TextField(prompt, text: text)
+        .keyboardType(.numberPad)
+        .padding(11)
+        .foregroundStyle(HomeboardPalette.primaryText)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
   }
 }
 
 struct AdvisorWalletPanel: View {
   @Environment(AppModel.self) private var appModel
-  @AppStorage("homeboard.advisor.onboarding.v2.completed") private var advisorOnboardingCompleted = false
 
   @State private var amountCents = 100
   @State private var isPreparingPayment = false
   @State private var paymentMessage: String?
   @State private var showsAdvisorOnboarding = false
+  @State private var showsAdvisorSetup = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -386,6 +693,11 @@ struct AdvisorWalletPanel: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(HomeboardPalette.success)
           Spacer()
+          Button("Edit setup") {
+            showsAdvisorSetup = true
+          }
+          .font(.caption.weight(.semibold))
+          .buttonStyle(HomeboardAreaButtonStyle())
         }
       }
 
@@ -432,23 +744,34 @@ struct AdvisorWalletPanel: View {
     .padding(16)
     .homeboardPanel(cornerRadius: 24)
     .task {
-      if !advisorOnboardingCompleted {
-        showsAdvisorOnboarding = true
-      }
       await appModel.refreshAdvisorWalletStatus()
       clampContributionAmount()
+      presentAdvisorSetupIfNeeded()
     }
     .onChange(of: appModel.advisorWalletStatus?.remainingCents) { _, _ in
       clampContributionAmount()
     }
     .sheet(
-      isPresented: $showsAdvisorOnboarding,
-      onDismiss: { advisorOnboardingCompleted = true }
+      isPresented: $showsAdvisorOnboarding
     ) {
       AdvisorOnboardingView()
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsAdvisorSetup) {
+      AdvisorSetupOnboardingView {
+        showsAdvisorSetup = false
+      }
+      .interactiveDismissDisabled((appModel.profile.advisorSetupVersion ?? 0) < 2)
+      .presentationDetents([.large])
+      .presentationDragIndicator((appModel.profile.advisorSetupVersion ?? 0) < 2 ? .hidden : .visible)
+      .presentationBackground(HomeboardPalette.background)
+    }
+    .onChange(of: appModel.advisorWalletStatus?.isUnlocked) { _, isUnlocked in
+      if isUnlocked == true {
+        presentAdvisorSetupIfNeeded()
+      }
     }
   }
 
@@ -489,6 +812,7 @@ struct AdvisorWalletPanel: View {
     if funding.simulated == true {
       paymentMessage = "Test contribution added. No card was charged."
       await appModel.refreshAdvisorWalletStatus()
+      presentAdvisorSetupIfNeeded()
       return
     }
 
@@ -512,12 +836,31 @@ struct AdvisorWalletPanel: View {
         switch result {
         case .completed:
           paymentMessage = "Advisor funding received."
-          await appModel.refreshAdvisorWalletStatus()
+          await refreshUntilUnlockedAfterPayment()
         case .canceled:
           paymentMessage = "Payment canceled."
         case .failed(let error):
           paymentMessage = error.localizedDescription
         }
+      }
+    }
+  }
+
+  private func presentAdvisorSetupIfNeeded() {
+    guard appModel.advisorWalletStatus?.isUnlocked == true,
+          (appModel.profile.advisorSetupVersion ?? 0) < 2 else { return }
+    showsAdvisorSetup = true
+  }
+
+  private func refreshUntilUnlockedAfterPayment() async {
+    for attempt in 0..<3 {
+      await appModel.refreshAdvisorWalletStatus()
+      if appModel.advisorWalletStatus?.isUnlocked == true {
+        presentAdvisorSetupIfNeeded()
+        return
+      }
+      if attempt < 2 {
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
       }
     }
   }
@@ -552,6 +895,315 @@ struct AdvisorWalletPanel: View {
   }
 }
 
+private struct AdvisorSetupOnboardingView: View {
+  @Environment(AppModel.self) private var appModel
+
+  let onComplete: () -> Void
+
+  @State private var page = 0
+  @State private var didLoadProfile = false
+  @State private var city = ""
+  @State private var moveInDate = ""
+  @State private var budgetMax = ""
+  @State private var commuteAccess = "flexible"
+  @State private var commuteTarget = ""
+  @State private var minimumCommuteMinutes = ""
+  @State private var maximumCommuteMinutes = ""
+  @State private var mustHaves = ""
+  @State private var dealbreakers = ""
+  @State private var priorities = ""
+  @State private var hasOfferLetter = false
+  @State private var hasProofOfIncome = false
+  @State private var needsGuarantor = false
+  @State private var isSaving = false
+  @State private var saveError: String?
+
+  private let pageCount = 2
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: 0) {
+        TabView(selection: $page) {
+          privacyPage.tag(0)
+          boardFactsPage.tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+
+        VStack(spacing: 14) {
+          HStack(spacing: 7) {
+            ForEach(0..<pageCount, id: \.self) { index in
+              Capsule()
+                .fill(index == page ? HomeboardPalette.accent : Color.white.opacity(0.14))
+                .frame(width: index == page ? 24 : 7, height: 7)
+            }
+          }
+
+          if let saveError {
+            Text(saveError)
+              .font(.footnote)
+              .foregroundStyle(.red)
+              .multilineTextAlignment(.center)
+          }
+
+          HStack(spacing: 10) {
+            if page > 0 {
+              Button("Back") {
+                withAnimation(.easeOut(duration: 0.2)) { page -= 1 }
+              }
+              .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
+              .disabled(isSaving)
+            }
+
+            Button(page == pageCount - 1 ? "Finish setup" : "Continue") {
+              if page == pageCount - 1 {
+                Task { await save() }
+              } else {
+                withAnimation(.easeOut(duration: 0.2)) { page += 1 }
+              }
+            }
+            .buttonStyle(AdvisorCTAButtonStyle())
+            .disabled(!canContinue || isSaving)
+          }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .background(HomeboardPalette.background)
+      }
+      .background(WorkspaceBackgroundView())
+      .navigationTitle("Set up Advisor")
+      .navigationBarTitleDisplayMode(.inline)
+    }
+    .task { loadProfileOnce() }
+  }
+
+  private var privacyPage: some View {
+    setupPage(
+      eyebrow: "Advisor unlocked",
+      title: "First, your information stays yours",
+      icon: "hand.raised.fill",
+      summary: "Advisor only uses these answers to fill the outreach drafts you ask it to create."
+    ) {
+      setupCallout(
+        icon: "text.badge.checkmark",
+        title: "Template filling, not judgment",
+        body: "On supported iPhones, Apple Intelligence writes the draft on-device. Older iPhones use a careful Homeboard template."
+      )
+      setupCallout(
+        icon: "slider.horizontal.3",
+        title: "You control every send",
+        body: "Nothing is sent automatically. Review and edit the final message in Mail or Messages before sending it."
+      )
+      setupCallout(
+        icon: "rectangle.and.pencil.and.ellipsis",
+        title: "Financial details wait until send",
+        body: "The first time you send outreach, say financial information is available on request or skip financial wording. Your private values are never exposed as a board aggregate, and drafts never contain placeholders."
+      )
+    }
+  }
+
+  private var boardFactsPage: some View {
+    setupPage(
+      eyebrow: "Review",
+      title: "Review the board facts Advisor will use",
+      icon: "checklist.checked",
+      summary: "These are prefilled from the board. Correct anything that has changed."
+    ) {
+      advisorTextField("City or search area", text: $city, prompt: "New York City")
+      advisorTextField("Move-in timing", text: $moveInDate, prompt: "October 1 or flexible")
+      advisorTextField("Maximum monthly budget", text: $budgetMax, prompt: "4500")
+        .keyboardType(.numberPad)
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("COMMUTE")
+          .font(.caption2.weight(.bold))
+          .tracking(1.1)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+        Picker("Commute", selection: $commuteAccess) {
+          Text("Include").tag("flexible")
+          Text("Remote").tag("remote")
+          Text("Skip").tag("skip")
+        }
+        .pickerStyle(.segmented)
+      }
+
+      if commuteAccess != "remote" && commuteAccess != "skip" {
+        advisorTextField("Commute destination", text: $commuteTarget, prompt: "Office or campus")
+        HStack(spacing: 10) {
+          advisorTextField("Ideal minutes", text: $minimumCommuteMinutes, prompt: "25")
+            .keyboardType(.numberPad)
+          advisorTextField("Maximum", text: $maximumCommuteMinutes, prompt: "45")
+            .keyboardType(.numberPad)
+        }
+      }
+
+      advisorTextField("Must-haves", text: $mustHaves, prompt: "Laundry, elevator")
+      advisorTextField("Dealbreakers", text: $dealbreakers, prompt: "Walk-up, broker fee")
+      advisorTextField("Top priorities", text: $priorities, prompt: "Price, commute, space")
+      Text("Separate multiple items with commas.")
+        .font(.caption)
+        .foregroundStyle(HomeboardPalette.secondaryText)
+
+      Text("APPLICATION READINESS")
+        .font(.caption2.weight(.bold))
+        .tracking(1.1)
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+      readinessToggle("Offer letter ready", isOn: $hasOfferLetter)
+      readinessToggle("Proof of income ready", isOn: $hasProofOfIncome)
+      readinessToggle("We expect to need a guarantor", isOn: $needsGuarantor)
+    }
+  }
+
+  private var canContinue: Bool { true }
+
+  private var mustHavesList: [String] { commaSeparated(mustHaves) }
+  private var dealbreakersList: [String] { commaSeparated(dealbreakers) }
+  private var prioritiesList: [String] { commaSeparated(priorities) }
+
+  private func loadProfileOnce() {
+    guard !didLoadProfile else { return }
+    didLoadProfile = true
+    let profile = appModel.profile
+    city = profile.city
+    moveInDate = profile.moveInDate
+    budgetMax = profile.budgetMax
+    commuteAccess = profile.commuteAccess ?? "flexible"
+    commuteTarget = profile.commuteTarget
+    minimumCommuteMinutes = profile.minCommuteMinutes
+    maximumCommuteMinutes = profile.maxCommuteMinutes
+    mustHaves = profile.mustHaves.joined(separator: ", ")
+    dealbreakers = profile.dealbreakers.joined(separator: ", ")
+    priorities = profile.priorities.joined(separator: ", ")
+    hasOfferLetter = profile.readiness.hasOfferLetter
+    hasProofOfIncome = profile.readiness.hasProofOfIncome
+    needsGuarantor = profile.readiness.needsGuarantor
+  }
+
+  private func save() async {
+    isSaving = true
+    saveError = nil
+    let saved = await appModel.completeAdvisorSetup(
+      hasOfferLetter: hasOfferLetter,
+      hasProofOfIncome: hasProofOfIncome,
+      needsGuarantor: needsGuarantor,
+      city: city,
+      moveInDate: moveInDate,
+      budgetMax: budgetMax,
+      commuteAccess: commuteAccess,
+      commuteTarget: commuteTarget,
+      minimumCommuteMinutes: minimumCommuteMinutes,
+      maximumCommuteMinutes: maximumCommuteMinutes,
+      mustHaves: mustHavesList,
+      dealbreakers: dealbreakersList,
+      priorities: prioritiesList
+    )
+    isSaving = false
+    if saved {
+      onComplete()
+    } else {
+      saveError = appModel.boardError ?? "Unable to save Advisor setup."
+    }
+  }
+
+  private func commaSeparated(_ value: String) -> [String] {
+    value.split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+  }
+
+  private func setupPage<Content: View>(
+    eyebrow: String,
+    title: String,
+    icon: String,
+    summary: String,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 18) {
+        Image(systemName: icon)
+          .font(.system(size: 32, weight: .semibold))
+          .foregroundStyle(HomeboardPalette.accent)
+          .frame(width: 60, height: 60)
+          .background(HomeboardPalette.accent.opacity(0.14))
+          .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 8) {
+          Text(eyebrow.uppercased())
+            .font(.caption.weight(.bold))
+            .tracking(1.3)
+            .foregroundStyle(HomeboardPalette.accent)
+          Text(title)
+            .font(.system(size: 28, weight: .bold, design: .serif))
+            .foregroundStyle(HomeboardPalette.primaryText)
+          Text(summary)
+            .font(.body)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        content()
+      }
+      .padding(.horizontal, 20)
+      .padding(.top, 20)
+      .padding(.bottom, 40)
+    }
+    .scrollBounceBehavior(.basedOnSize)
+  }
+
+  private func setupCallout(icon: String, title: String, body: String) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: icon)
+        .foregroundStyle(HomeboardPalette.accent)
+        .frame(width: 22)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Text(body)
+          .font(.footnote)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.white.opacity(0.06))
+    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+  }
+
+  private func advisorTextField(
+    _ label: String,
+    text: Binding<String>,
+    prompt: String
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(label.uppercased())
+        .font(.caption2.weight(.bold))
+        .tracking(1.1)
+        .foregroundStyle(HomeboardPalette.tertiaryText)
+      TextField(prompt, text: text)
+        .textInputAutocapitalization(.sentences)
+        .padding(12)
+        .foregroundStyle(HomeboardPalette.primaryText)
+        .background(Color.white.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func readinessToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+    Toggle(isOn: isOn) {
+      Text(title)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+    }
+    .tint(HomeboardPalette.accent)
+    .padding(14)
+    .background(Color.white.opacity(0.06))
+    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+  }
+
+}
+
 private struct AdvisorOnboardingStep {
   let eyebrow: String
   let title: String
@@ -582,7 +1234,7 @@ private struct AdvisorOnboardingView: View {
       icon: "checklist.checked",
       summary: "Complete the group profile and save the listing you want to contact before asking for outreach.",
       details: [
-        ("Required qualifications", "The group’s exact income multiple and credit score stay in qualified outreach when available; required controls are locked."),
+        ("Financial wording", "The safe default says information is available on request. Private member values are never exposed as board aggregates, and drafts never contain placeholders."),
         ("Requirements that matter", "Budget, move-in timing, must-haves, dealbreakers, commute limits, and readiness give the draft useful context."),
         ("Four distinct tones", "Professional is polished, Casual is brief and friendly, Stern is direct and urgent, and Passive-Aggressive notes a lack of response without inventing history."),
       ]
@@ -606,7 +1258,7 @@ private struct AdvisorOnboardingView: View {
       details: [
         ("Tune the card", "Changing tone or an optional include control regenerates the draft. Rapid changes are debounced so only the latest choice applies."),
         ("Review the recipient", "Confirm the agent, brokerage, phone or email, and every statement in the draft before opening a compose sheet."),
-        ("Status follows the real send", "A listing becomes Outreach Sent only when the Messages or Mail delegate confirms it was sent, not when you cancel, save, or encounter a failure."),
+        ("Status follows the composer report", "Homeboard records a member-reported send only when Messages or Mail returns sent. It does not claim that the recipient received it, and cancel or failure records nothing."),
       ]
     ),
   ]

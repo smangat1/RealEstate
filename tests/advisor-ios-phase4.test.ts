@@ -18,6 +18,8 @@ const advisorTestAccess = source("lib/advisor-test-access.ts");
 const fundingRoute = source("app/api/mobile/boards/[id]/wallet/fund/route.ts");
 const walletRoute = source("app/api/mobile/boards/[id]/wallet/route.ts");
 const messagesRoute = source("app/api/mobile/boards/[id]/messages/route.ts");
+const generator = source("ios/HomeboardNative/HomeboardNative/Sources/AdvisorDraftGenerator.swift");
+const financeRoute = source("app/api/mobile/boards/[id]/advisor-finances/route.ts");
 
 test("iOS decodes Advisor data from the standard board response envelope", () => {
   const response = api.match(/struct MobileBoardLoadResponse[\s\S]*?\n}/)?.[0] ?? "";
@@ -38,15 +40,18 @@ test("Advisor regeneration applies only the latest debounced response", () => {
   assert.doesNotMatch(card, /toggles\s*=\s*next\.toggleOptions/);
 });
 
-test("Advisor regeneration resends the stored original command, never assistant-rendered text", () => {
+test("Advisor regeneration uses the stored original command and saves the accepted card", () => {
   const schedule = card.match(/private func scheduleRegeneration[\s\S]*?\n  }\n\n  private func sendViaEmail/)?.[0] ?? "";
   assert.match(models, /var originalCommand: String\? = nil/);
   assert.match(models, /originalCommand = try\? container\.decodeIfPresent\(String\.self/);
   assert.match(schedule, /payload\?\.originalCommand/);
   assert.match(schedule, /\^@advisor\\b/);
   assert.doesNotMatch(schedule, /originalCommand\s*=\s*message\.content/);
-  assert.match(schedule, /next\.originalCommand = originalCommand/);
+  assert.match(appModel, /payload\.originalCommand/);
+  assert.match(appModel, /api\.acceptAdvisorDraft/);
+  assert.match(messagesRoute, /advisorMessagePayload\.update/);
   assert.match(engineSource, /originalCommand: parsed\.originalCommand/);
+  assert.match(card, /\.onChange\(of: message\.advisorPayload\)/);
 });
 
 test("Advisor regeneration always sends the current explicit Include filter", () => {
@@ -102,13 +107,47 @@ test("legacy or malformed Advisor payloads fall back without fabricating control
 });
 
 test("Advisor has a separate replayable onboarding with the funding and send contract", () => {
-  assert.match(card, /homeboard\.advisor\.onboarding\.v2\.completed/);
   assert.match(card, /struct AdvisorOnboardingView/);
   assert.match(card, /\$4 rolling threshold/);
   assert.match(card, /Seven days of access/);
   assert.match(card, /Nothing sends automatically/);
-  assert.match(card, /Status follows the real send/);
+  assert.match(card, /Status follows the composer report/);
   assert.match(card, /showsAdvisorOnboarding = true/);
+});
+
+test("unlocking Advisor launches a two-screen setup and defers finances until send", () => {
+  assert.match(card, /struct AdvisorSetupOnboardingView/);
+  assert.match(card, /advisorWalletStatus\?\.isUnlocked == true/);
+  assert.match(card, /profile\.advisorSetupVersion \?\? 0\) < 2/);
+  assert.match(card, /private let pageCount = 2/);
+  assert.match(card, /Review the board facts Advisor will use/);
+  assert.match(card, /Financial details wait until send/);
+  assert.doesNotMatch(card, /\[INCOME MULTIPLE\]|\[CREDIT SCORE\]/);
+  assert.match(appModel, /func completeAdvisorSetup/);
+  assert.match(appModel, /await saveBoardBrief\(\)/);
+});
+
+test("Apple Intelligence drafts on-device with a template fallback and no financial placeholders", () => {
+  assert.match(generator, /import FoundationModels/);
+  assert.match(generator, /SystemLanguageModel\.default\.isAvailable/);
+  assert.match(generator, /LanguageModelSession/);
+  assert.match(generator, /source: "apple_intelligence"/);
+  assert.match(generator, /source: "device_template"/);
+  assert.match(generator, /Never output bracketed placeholders/);
+  assert.match(generator, /Financial information is available on request/);
+  assert.match(card, /hasFinancialPlaceholder/);
+  assert.match(messagesRoute, /Advisor drafts cannot contain financial placeholders/);
+});
+
+test("first send keeps private ranges out of all board-visible aggregates", () => {
+  assert.match(card, /Before the first outreach/);
+  assert.match(card, /Available on request/);
+  assert.match(card, /Send without financial wording/);
+  assert.match(card, /promptCompletedAt == nil/);
+  assert.match(financeRoute, /advisorMemberFinancialProfile\.findUnique/);
+  assert.match(financeRoute, /summarizeAdvisorGroupFinances/);
+  assert.doesNotMatch(financeRoute, /advisorMemberFinancialProfile\.findMany/);
+  assert.doesNotMatch(financeRoute, /advisorFinancialProfiles[\s\S]*displayName/);
 });
 
 test("required Advisor facts cannot be toggled off or sent while input is missing", () => {
