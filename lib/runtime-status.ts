@@ -43,8 +43,9 @@ export function getRuntimeStatus(): RuntimeStatus {
     hasValue(process.env.APNS_KEY_ID)
     && hasValue(process.env.APNS_TEAM_ID)
     && hasValue(process.env.APNS_PRIVATE_KEY);
-  const advisorAutomationConfigured = boardChatPushConfigured
-    && hasValue(process.env.CRON_SECRET);
+  // The primary scheduler authenticates with a short-lived GitHub Actions OIDC
+  // token, so proactive delivery needs APNs but no long-lived cron secret.
+  const advisorAutomationConfigured = boardChatPushConfigured;
   const appEnabled = isAppEnabled();
   const commuteMode = getCommuteServiceMode(demoMode);
   const overallStatus =

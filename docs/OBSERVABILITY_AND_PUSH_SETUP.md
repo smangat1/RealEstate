@@ -43,7 +43,9 @@ The sender is excluded from human board-chat notifications. Advisor follow-up dr
 
 ## Advisor proactive schedule
 
-Set `CRON_SECRET` in Vercel Production and Preview. Vercel supplies it as a bearer token to the hourly `/api/cron/advisor-proactive` job. The route fails closed when the secret is absent or incorrect. Only boards whose `AdvisorSubscription.validUntil` is in the future are processed.
+The public repository's `Advisor proactive checks` GitHub Actions workflow invokes `/api/cron/advisor-proactive` hourly. Public-repository Actions minutes are free, and the workflow authenticates with a short-lived GitHub OIDC token restricted to this repository, the workflow file on `main`, and scheduled or manually dispatched runs. No long-lived scheduler secret or paid Vercel cron plan is required.
+
+`CRON_SECRET` remains an optional server-only fallback for operators who later move scheduling to Vercel or another trusted service. The route fails closed unless either that secret matches or the GitHub OIDC token passes signature and claim verification. Only boards whose `AdvisorSubscription.validUntil` is in the future are processed.
 
 The first listing-watch run creates silent baselines. Later runs persist and notify only real price, fee, availability, or status changes. Action fingerprints, snapshot uniqueness, and outreach claim timestamps prevent repeated notifications when a job is retried.
 

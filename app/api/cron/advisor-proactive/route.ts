@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { runAdvisorProactiveBoard } from "@/lib/advisor-proactive";
+import { isAdvisorCronRequestAuthorized } from "@/lib/github-actions-oidc";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function isAuthorized(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
-  return Boolean(secret && request.headers.get("authorization") === `Bearer ${secret}`);
-}
-
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!(await isAdvisorCronRequestAuthorized(request))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

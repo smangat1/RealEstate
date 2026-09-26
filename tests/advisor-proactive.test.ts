@@ -10,6 +10,7 @@ import {
   followUpFinancialDisclosure,
   isGhostedOutreach,
 } from "../lib/advisor-proactive-logic";
+import { validateGitHubActionsClaims } from "../lib/github-actions-oidc";
 
 test("confirmed outreach becomes ghosted only after three unanswered days", () => {
   const now = new Date("2026-09-25T16:00:00.000Z");
@@ -67,17 +68,42 @@ test("negotiation flags use similar units already saved to the same board", () =
   assert.deepEqual(target?.comparableIds, ["comp-a", "comp-b"]);
 });
 
+test("the free scheduler accepts only the main-branch Homeboard workflow identity", () => {
+  const now = Math.floor(new Date("2026-09-25T16:00:00.000Z").getTime() / 1_000);
+  const validClaims = {
+    iss: "https://token.actions.githubusercontent.com",
+    aud: "homeboard-advisor-proactive",
+    exp: now + 300,
+    nbf: now - 30,
+    iat: now - 30,
+    repository: "smangat1/RealEstate",
+    repository_id: "1270827998",
+    repository_visibility: "public",
+    ref: "refs/heads/main",
+    workflow_ref: "smangat1/RealEstate/.github/workflows/advisor-proactive.yml@refs/heads/main",
+    event_name: "schedule",
+  };
+  assert.equal(validateGitHubActionsClaims(validClaims, now), true);
+  assert.equal(validateGitHubActionsClaims({ ...validClaims, repository: "attacker/fork" }, now), false);
+  assert.equal(validateGitHubActionsClaims({ ...validClaims, ref: "refs/heads/feature" }, now), false);
+  assert.equal(validateGitHubActionsClaims({ ...validClaims, workflow_ref: "smangat1/RealEstate/.github/workflows/untrusted.yml@refs/heads/main" }, now), false);
+  assert.equal(validateGitHubActionsClaims({ ...validClaims, event_name: "pull_request" }, now), false);
+  assert.equal(validateGitHubActionsClaims({ ...validClaims, exp: now - 31 }, now), false);
+});
+
 test("proactive jobs are authenticated, hourly, idempotent, and persist to board chat", () => {
   const root = process.cwd();
   const read = (path: string) => readFileSync(resolve(root, path), "utf8");
   const cron = read("app/api/cron/advisor-proactive/route.ts");
   const engine = read("lib/advisor-proactive.ts");
-  const vercel = read("vercel.json");
+  const workflow = read(".github/workflows/advisor-proactive.yml");
   const outreach = read("app/api/mobile/boards/[id]/listings/[listingId]/outreach/route.ts");
 
-  assert.match(cron, /CRON_SECRET/);
+  assert.match(cron, /isAdvisorCronRequestAuthorized/);
   assert.match(cron, /validUntil: \{ gte: now \}/);
-  assert.match(vercel, /"schedule": "0 \* \* \* \*"/);
+  assert.match(workflow, /cron: "17 \* \* \* \*"/);
+  assert.match(workflow, /id-token: write/);
+  assert.match(workflow, /homeboard-advisor-proactive/);
   assert.ok(engine.includes("const fingerprint = `follow-up:${input.outreach.id}`;"));
   assert.match(engine, /advisorAction\.create/);
   assert.match(engine, /chatMessage\.create/);
