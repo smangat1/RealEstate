@@ -1229,6 +1229,123 @@ final class AppModel {
     }
   }
 
+  func loadAdvisorApplicationPacket(listingId: String) async -> AdvisorApplicationPacket? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before preparing an application packet."
+      return nil
+    }
+    do {
+      return try await api.loadAdvisorApplicationPacket(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId
+      )
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func submitAdvisorReply(listingId: String, text: String) async -> AdvisorReplyAnalysis? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before adding a broker reply."
+      return nil
+    }
+    do {
+      let response = try await api.submitAdvisorReply(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        text: text
+      )
+      applyRemoteMutation(response, clearing: [.activity, .shortlist])
+      return response.replyAnalysis
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func loadBoardExpenses() async -> BoardExpenseLedger? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before tracking group money."
+      return nil
+    }
+    do {
+      return try await api.loadBoardExpenses(accessToken: session.accessToken, boardId: boardId)
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func addBoardExpense(description: String, category: String, amountCents: Int) async -> BoardExpenseLedger? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before tracking group money."
+      return nil
+    }
+    do {
+      let ledger = try await api.addBoardExpense(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        description: description,
+        category: category,
+        amountCents: amountCents
+      )
+      boardFeedback = "Expense added to the group ledger."
+      return ledger
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func optimizeRoomAssignment(listingId: String, rooms: [AdvisorRoomInput]) async -> AdvisorRoomAssignmentResult? {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before optimizing rooms."
+      return nil
+    }
+    do {
+      let result = try await api.optimizeRoomAssignment(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        rooms: rooms
+      )
+      await refreshCurrentBoardSilently()
+      return result
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func loadTourAvailability() async -> TourAvailabilityPayload? {
+    guard let session = authSession, let boardId = board.id else { return nil }
+    do {
+      return try await api.loadTourAvailability(accessToken: session.accessToken, boardId: boardId)
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  func saveTourAvailability(windows: [TourAvailabilityWindow]) async -> TourAvailabilityPayload? {
+    guard let session = authSession, let boardId = board.id else { return nil }
+    do {
+      let payload = try await api.saveTourAvailability(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        windows: windows
+      )
+      boardFeedback = "Tour availability saved."
+      return payload
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
   func signOut() {
     let session = authSession
     let pushToken = UserDefaults.standard.string(forKey: pushTokenKey)

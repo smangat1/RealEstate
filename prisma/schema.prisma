@@ -178,6 +178,8 @@ enum AdvisorActionKind {
   tour_note_summary
   application_checklist
   negotiation_comp
+  scam_warning
+  room_assignment
 }
 
 enum AdvisorActionStatus {
@@ -229,6 +231,7 @@ model User {
   walletLedgers             BoardWalletLedger[]
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   brokerOutreachRecords     BrokerOutreachRecord[]
+  boardExpensesPaid         BoardExpense[]
 }
 
 model DevicePairing {
@@ -273,6 +276,7 @@ model SearchBoard {
   advisorSubscription       AdvisorSubscription?
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   advisorActions            AdvisorAction[]
+  expenses                  BoardExpense[]
 
   @@index([userId])
 }
@@ -575,6 +579,8 @@ model RoommateProfile {
   dealbreakers              String?
   petsRequired              Boolean?
   accessibilityNeeds        String?
+  preferenceSignals         Json                       @default("{}")
+  tourAvailability          Json                       @default("[]")
   notes                     String?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
@@ -786,6 +792,22 @@ model ListingChange {
   @@unique([snapshotId, field])
   @@index([boardListingId, detectedAt])
   @@index([snapshotId])
+}
+
+model BoardExpense {
+  id           String      @id @default(cuid())
+  boardId      String
+  paidByUserId String
+  description  String
+  category     String
+  amountCents  Int
+  paidAt       DateTime    @default(now())
+  createdAt    DateTime    @default(now())
+  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  paidBy       User        @relation(fields: [paidByUserId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, paidAt])
+  @@index([paidByUserId])
 }
 
 model AnalyticsEvent {

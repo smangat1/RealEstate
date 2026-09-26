@@ -34,7 +34,9 @@ export type BoardPushType =
   | "board_chat"
   | "advisor_follow_up"
   | "listing_change"
-  | "negotiation_comp";
+  | "negotiation_comp"
+  | "scam_warning"
+  | "advisor_group_nag";
 
 let cachedProviderToken: { value: string; issuedAt: number } | null = null;
 

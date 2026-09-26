@@ -4,6 +4,7 @@ import type { BoardPageData, ListingContactInfo, ListingModelInsight, ListingRec
 import { getProfileCompletion } from "@/lib/rental-logic";
 import { allocateRentFairly } from "@/lib/group-affordability";
 import { pendingBoardQuestions } from "@/lib/board-decisions";
+import { calculateListingMonthlyCost, findScamPriceWarnings } from "@/lib/listing-cost";
 
 export type MobileMemberCardPayload = {
   id: string;
@@ -134,6 +135,8 @@ export type MobileListingPreviewPayload = {
     }[];
   } | null;
   deletedAt?: string | null;
+  trueMonthlyCost?: ReturnType<typeof calculateListingMonthlyCost> | null;
+  scamWarning?: ReturnType<typeof findScamPriceWarnings>[number] | null;
 };
 
 export type MobileBoardPayload = {
@@ -608,6 +611,16 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
     deletedAt: entry.deletedAt,
   }));
 
+  const scamWarnings = new Map(findScamPriceWarnings(data.boardListings.map((entry) => ({
+    id: entry.id,
+    price: entry.listing.price,
+    bedrooms: entry.listing.bedrooms,
+    neighborhood: entry.listing.neighborhood,
+    city: entry.listing.city,
+    listingStatus: entry.listing.status,
+    userStatus: entry.userStatus,
+  }))).map((warning) => [warning.boardListingId, warning]));
+
   return {
     id: board.id,
     title: board.title,
@@ -793,6 +806,13 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
           squareFeet: entry.listing.squareFeet,
           latitude: entry.listing.latitude,
           longitude: entry.listing.longitude,
+          trueMonthlyCost: calculateListingMonthlyCost({
+            rent: entry.listing.price,
+            fees: entry.listing.fees,
+            description: entry.listing.description,
+            amenities: entry.listing.amenities,
+          }),
+          scamWarning: scamWarnings.get(entry.id) ?? null,
           reactions: reactions.map((reaction) => ({
             name: reaction.roommate.name,
             vote: reaction.vote,
