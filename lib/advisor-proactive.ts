@@ -16,6 +16,7 @@ import {
 } from "@/lib/advisor-proactive-logic";
 import { notifyBoardMembers, type BoardPushType } from "@/lib/apns";
 import { getBoardPageData } from "@/lib/board-data";
+import { findScamPriceWarnings } from "@/lib/listing-cost";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
@@ -116,7 +117,7 @@ async function deliverPush(input: {
 async function createPlainAction(input: {
   boardId: string;
   boardListingId: string;
-  kind: "listing_change" | "negotiation_comp";
+  kind: "listing_change" | "negotiation_comp" | "scam_warning" | "decision_digest";
   priority: "medium" | "high";
   title: string;
   summary: string;
@@ -124,7 +125,7 @@ async function createPlainAction(input: {
   facts: Prisma.InputJsonObject;
   sourceUrl: string | null;
   fingerprint: string;
-  pushType: "listing_change" | "negotiation_comp";
+  pushType: BoardPushType;
 }) {
   try {
     await prisma.$transaction([
@@ -322,6 +323,8 @@ export type AdvisorProactiveRunResult = {
   listingChangeMessages: number;
   followUpDrafts: number;
   negotiationFlags: number;
+  scamWarnings: number;
+  groupNags: number;
 };
 
 export async function runAdvisorProactiveBoard(
@@ -339,12 +342,14 @@ export async function runAdvisorProactiveBoard(
       },
     },
   });
-  if (!board) return { baselinesCreated: 0, listingChangeMessages: 0, followUpDrafts: 0, negotiationFlags: 0 };
+  if (!board) return { baselinesCreated: 0, listingChangeMessages: 0, followUpDrafts: 0, negotiationFlags: 0, scamWarnings: 0, groupNags: 0 };
 
   let baselinesCreated = 0;
   let listingChangeMessages = 0;
   let followUpDrafts = 0;
   let negotiationFlags = 0;
+  let scamWarnings = 0;
+  let groupNags = 0;
   const observedAt = hourlyObservationSlot(now);
 
   for (const boardListing of board.boardListings) {
@@ -496,5 +501,86 @@ export async function runAdvisorProactiveBoard(
     if (created) negotiationFlags += 1;
   }
 
-  return { baselinesCreated, listingChangeMessages, followUpDrafts, negotiationFlags };
+  const scamFlags = findScamPriceWarnings(board.boardListings.map((entry) => ({
+    id: entry.id,
+    price: entry.listing.price,
+    bedrooms: entry.listing.bedrooms,
+    neighborhood: entry.listing.neighborhood,
+    city: entry.listing.city,
+    listingStatus: entry.listing.status,
+    userStatus: entry.userStatus,
+  })));
+  for (const flag of scamFlags) {
+    const listing = board.boardListings.find((entry) => entry.id === flag.boardListingId);
+    if (!listing) continue;
+    const fingerprint = createHash("sha256").update(JSON.stringify({
+      target: flag.boardListingId,
+      averagePrice: flag.averagePrice,
+      comparableIds: flag.comparableIds,
+      prices: board.boardListings
+        .filter((entry) => flag.comparableIds.includes(entry.id) || entry.id === flag.boardListingId)
+        .map((entry) => [entry.id, entry.listing.price]),
+    })).digest("hex");
+    const label = listingLabel(listing.listing);
+    const summary = `Verify this listing: ${label} is ${flag.percentBelow}% below ${flag.comparableCount} similar homes saved to this board. Confirm the exact unit, agent identity, and payment instructions before sharing documents or money.`;
+    const created = await createPlainAction({
+      boardId,
+      boardListingId: flag.boardListingId,
+      kind: "scam_warning",
+      priority: "high",
+      title: "Unusually low price",
+      summary,
+      whyItMatters: "A large price gap is not proof of fraud, but it is a reason to verify the listing and recipient before sharing sensitive information or funds.",
+      facts: {
+        comparableCount: flag.comparableCount,
+        averagePrice: flag.averagePrice,
+        difference: flag.difference,
+        percentBelow: flag.percentBelow,
+        comparableBoardListingIds: flag.comparableIds,
+      },
+      sourceUrl: listing.listing.sourceUrl,
+      fingerprint: `scam-warning:${fingerprint}`,
+      pushType: "scam_warning",
+    });
+    if (created) scamWarnings += 1;
+  }
+
+  const decisionData = await getBoardPageData(boardId, board.userId, {
+    includeSuggestedListings: false,
+    includeCommutes: false,
+  });
+  if (decisionData && decisionData.members.length > 1) {
+    const activeMemberIds = new Set(decisionData.members.map((member) => member.userId));
+    for (const boardListing of decisionData.boardListings) {
+      const decisions = decisionData.listingDecisionsByBoardListingId[boardListing.id] ?? [];
+      for (const decision of decisions) {
+        if (decision.closedAt || new Date(decision.createdAt).getTime() > now.getTime() - 24 * 60 * 60 * 1_000) continue;
+        const responded = new Set(decision.votes
+          .map((vote) => vote.roommate.linkedUserId)
+          .filter((userId): userId is string => Boolean(userId)));
+        const remaining = decisionData.members.filter((member) =>
+          activeMemberIds.has(member.userId) && !responded.has(member.userId));
+        if (remaining.length === 0) continue;
+        const label = listingLabel(boardListing.listing);
+        const names = remaining.map((member) => member.user.displayName).sort();
+        const summary = `Group check-in: ${names.join(" and ")} still ${remaining.length === 1 ? "needs" : "need"} to vote on whether to ${decision.type.replace("_", " ")} for ${label}.`;
+        const created = await createPlainAction({
+          boardId,
+          boardListingId: boardListing.id,
+          kind: "decision_digest",
+          priority: "medium",
+          title: "Waiting on group votes",
+          summary,
+          whyItMatters: "The group can move forward once every active member has responded.",
+          facts: { decisionId: decision.id, remainingMemberNames: names },
+          sourceUrl: boardListing.listing.sourceUrl,
+          fingerprint: `decision-nag:${decision.id}:${names.join("|")}`,
+          pushType: "advisor_group_nag",
+        });
+        if (created) groupNags += 1;
+      }
+    }
+  }
+
+  return { baselinesCreated, listingChangeMessages, followUpDrafts, negotiationFlags, scamWarnings, groupNags };
 }

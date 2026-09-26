@@ -175,6 +175,7 @@ export type RoommateRecord = {
   dealbreakers: string[];
   petsRequired: boolean | null;
   accessibilityNeeds: string[];
+  preferenceSignals?: Record<string, number>;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
