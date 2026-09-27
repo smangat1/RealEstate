@@ -15,11 +15,20 @@ export async function GET() {
     runtime.databaseConfigured;
 
   let databaseReady = false;
+  let advisorDraftPersistenceReady = false;
   try {
     await prisma.$queryRaw`SELECT 1`;
     databaseReady = true;
   } catch {
     databaseReady = false;
+  }
+  if (databaseReady) {
+    try {
+      await prisma.$queryRaw`SELECT 1 FROM "AdvisorMessagePayload" LIMIT 0`;
+      advisorDraftPersistenceReady = true;
+    } catch {
+      advisorDraftPersistenceReady = false;
+    }
   }
 
   const ok = requiredConfigurationReady && databaseReady;
@@ -38,12 +47,17 @@ export async function GET() {
       checks: {
         configuration: requiredConfigurationReady ? "ok" : "unavailable",
         database: databaseReady ? "ok" : "unavailable",
+        advisorDraftPersistence: advisorDraftPersistenceReady ? "ok" : "unavailable",
       },
       capabilities: {
         errorMonitoring: runtime.errorMonitoringConfigured ? "configured" : "pending",
         operationalAlerts: runtime.operationalAlertsConfigured ? "configured" : "pending",
         boardChatPush: runtime.boardChatPushConfigured ? "configured" : "pending",
         advisorAutomation: runtime.advisorAutomationConfigured ? "configured" : "pending",
+        advisorDraftAcceptance: advisorDraftPersistenceReady,
+      },
+      routeMethods: {
+        boardMessages: advisorDraftPersistenceReady ? ["POST", "PATCH"] : ["POST"],
       },
       checkedAt: new Date().toISOString(),
     },

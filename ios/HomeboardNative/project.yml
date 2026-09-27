@@ -55,6 +55,7 @@ targets:
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         HOMEBOARD_APP_COMMIT: local
+        HOMEBOARD_BUILD_CHANNEL: production
         HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
         # Public pk_test_/pk_live_ key. Override this build setting locally or in CI.
         HOMEBOARD_STRIPE_PUBLISHABLE_KEY: ""
@@ -278,6 +279,25 @@ schemes:
       targets:
         - HomeboardNativeTests
         - HomeboardNativeUITests
+  Homeboard Advisor Preview:
+    build:
+      targets:
+        HomeboardNative: all
+        HomeboardNativeTests: [test]
+    run:
+      config: Debug
+      environmentVariables:
+        HOMEBOARD_API_BASE_URL: "https://real-estate-git-codex-adviso-92a5ad-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-git-codex-adviso-92a5ad-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_BUILD_CHANNEL: "advisor-stack-preview"
+    test:
+      config: Debug
+      targets:
+        - HomeboardNativeTests
+      environmentVariables:
+        HOMEBOARD_API_BASE_URL: "https://real-estate-git-codex-adviso-92a5ad-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_PUBLIC_WEB_URL: "https://real-estate-git-codex-adviso-92a5ad-samyanmangat-6662s-projects.vercel.app"
+        HOMEBOARD_BUILD_CHANNEL: "advisor-stack-preview"
   Homeboard Safari Setup (Mac):
     build:
       targets:

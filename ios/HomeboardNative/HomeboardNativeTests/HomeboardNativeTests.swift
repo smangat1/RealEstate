@@ -1,6 +1,7 @@
 import XCTest
 @testable import HomeboardNative
 
+@MainActor
 final class HomeboardNativeTests: XCTestCase {
   private let appModelPersistenceKeys = [
     "homeboard.native.state",
@@ -10,6 +11,39 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.onboarding",
     "homeboard.native.pending-operations",
   ]
+
+  func testAdvisorDraftBackendCompatibilityRejectsLegacyHealthPayload() {
+    let health = MobileHealthResponse(
+      apiVersion: "0.0.13",
+      serverCommit: "2c34b55c6968",
+      checks: nil,
+      capabilities: nil,
+      routeMethods: nil
+    )
+
+    XCTAssertEqual(
+      AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health),
+      "Advisor draft persistence is unavailable."
+    )
+  }
+
+  func testAdvisorDraftBackendCompatibilityRequiresSchemaAndPatchMethod() {
+    var health = MobileHealthResponse(
+      apiVersion: "0.0.13",
+      serverCommit: "8d9942b5320e",
+      checks: MobileHealthChecks(advisorDraftPersistence: "ok"),
+      capabilities: MobileHealthCapabilities(advisorDraftAcceptance: true),
+      routeMethods: MobileHealthRouteMethods(boardMessages: ["POST"])
+    )
+
+    XCTAssertEqual(
+      AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health),
+      "PATCH /api/mobile/boards/[id]/messages is unavailable."
+    )
+
+    health.routeMethods = MobileHealthRouteMethods(boardMessages: ["POST", "PATCH"])
+    XCTAssertNil(AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health))
+  }
 
   func testAdvisorRegenerationRejectsRenderedAssistantContent() {
     XCTAssertThrowsError(

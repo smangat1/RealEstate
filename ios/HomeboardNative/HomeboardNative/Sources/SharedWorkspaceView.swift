@@ -4558,10 +4558,27 @@ struct SharedSetupView: View {
             Text("App commit: \(HomeboardConfig.appCommit)")
               .font(.caption.monospaced())
               .foregroundStyle(HomeboardPalette.secondaryText)
+            Text("Build channel: \(HomeboardConfig.buildChannel)")
+              .font(.caption.monospaced())
+              .foregroundStyle(HomeboardPalette.secondaryText)
+            Text("API origin: \(HomeboardConfig.backendBaseURL.absoluteString)")
+              .font(.caption.monospaced())
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .textSelection(.enabled)
+            Text("Origin source: \(HomeboardConfig.backendConfigurationSource)")
+              .font(.caption.monospaced())
+              .foregroundStyle(HomeboardPalette.secondaryText)
             if let apiVersion = appModel.apiVersion, let apiCommit = appModel.apiCommit {
               Text("API \(apiVersion) · commit \(apiCommit)")
                 .font(.caption.monospaced())
                 .foregroundStyle(HomeboardPalette.secondaryText)
+              Text(appModel.apiAdvisorDraftAcceptanceReady == true
+                ? "Advisor draft PATCH: ready"
+                : "Advisor draft PATCH: incompatible")
+                .font(.caption.monospaced())
+                .foregroundStyle(appModel.apiAdvisorDraftAcceptanceReady == true
+                  ? HomeboardPalette.success
+                  : HomeboardPalette.danger)
             } else if let apiVersionError = appModel.apiVersionError {
               Text("API version unavailable: \(apiVersionError)")
                 .font(.caption)

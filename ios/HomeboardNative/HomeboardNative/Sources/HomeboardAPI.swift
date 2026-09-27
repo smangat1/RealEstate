@@ -5,6 +5,7 @@ enum HomeboardAPIError: LocalizedError {
   case invalidResponse
   case unauthorized
   case missingSession
+  case backendMismatch(origin: String, serverCommit: String, reason: String)
   case server(String)
   case response(
     endpoint: String,
@@ -24,6 +25,8 @@ enum HomeboardAPIError: LocalizedError {
       return "Your session is no longer valid. Please sign in again."
     case .missingSession:
       return "This account requires a live auth session before continuing."
+    case .backendMismatch(let origin, let serverCommit, let reason):
+      return "Advisor draft was not saved because this build is connected to an incompatible server (\(origin), \(serverCommit)): \(reason)"
     case .server(let message):
       return message
     case .response(let endpoint, let status, let contentType, let bodyExcerpt, let message):
@@ -71,6 +74,36 @@ struct MobileListingInventoryResponse: Decodable {
 struct MobileHealthResponse: Decodable {
   var apiVersion: String
   var serverCommit: String
+  var checks: MobileHealthChecks?
+  var capabilities: MobileHealthCapabilities?
+  var routeMethods: MobileHealthRouteMethods?
+}
+
+struct MobileHealthChecks: Decodable {
+  var advisorDraftPersistence: String?
+}
+
+struct MobileHealthCapabilities: Decodable {
+  var advisorDraftAcceptance: Bool?
+}
+
+struct MobileHealthRouteMethods: Decodable {
+  var boardMessages: [String]?
+}
+
+enum AdvisorBackendCompatibility {
+  static func advisorDraftAcceptanceIssue(_ health: MobileHealthResponse) -> String? {
+    guard health.capabilities?.advisorDraftAcceptance == true else {
+      return "Advisor draft persistence is unavailable."
+    }
+    guard health.checks?.advisorDraftPersistence == "ok" else {
+      return "The Advisor payload schema is not ready."
+    }
+    guard health.routeMethods?.boardMessages?.contains("PATCH") == true else {
+      return "PATCH /api/mobile/boards/[id]/messages is unavailable."
+    }
+    return nil
+  }
 }
 
 struct MobileBoardMessageCreateRequest: Encodable {
@@ -779,7 +812,7 @@ final class HomeboardAPI {
     regenerateOnly: Bool? = nil,
     originatingMessageId: String? = nil
   ) async throws -> MobileBoardLoadResponse {
-    try await requestBackend(
+    return try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
@@ -793,7 +826,15 @@ final class HomeboardAPI {
     messageId: String,
     payload: AdvisorMessagePayload
   ) async throws -> MobileBoardLoadResponse {
-    try await requestBackend(
+    let health = try await fetchHealth()
+    if let issue = AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health) {
+      throw HomeboardAPIError.backendMismatch(
+        origin: HomeboardConfig.backendBaseURL.absoluteString,
+        serverCommit: health.serverCommit,
+        reason: issue
+      )
+    }
+    return try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "PATCH",
       accessToken: accessToken,

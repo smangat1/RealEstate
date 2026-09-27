@@ -184,6 +184,7 @@ final class AppModel {
   var isPostingBoardUpdate = false
   var apiVersion: String?
   var apiCommit: String?
+  var apiAdvisorDraftAcceptanceReady: Bool?
   var apiVersionError: String?
   var authError: String?
   var authFeedback: String?
@@ -757,9 +758,11 @@ final class AppModel {
       let health = try await api.fetchHealth()
       apiVersion = health.apiVersion
       apiCommit = health.serverCommit
+      apiAdvisorDraftAcceptanceReady = AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health) == nil
     } catch {
       apiVersion = nil
       apiCommit = nil
+      apiAdvisorDraftAcceptanceReady = nil
       apiVersionError = readable(error)
     }
   }
