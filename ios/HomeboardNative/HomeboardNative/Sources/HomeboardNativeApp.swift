@@ -102,6 +102,7 @@ final class HomeboardAppDelegate: NSObject, UIApplicationDelegate, UNUserNotific
       "negotiation_comp",
       "scam_warning",
       "advisor_group_nag",
+      "advisor_digest",
     ]
     if let type = info["type"] as? String,
        boardNotificationTypes.contains(type),

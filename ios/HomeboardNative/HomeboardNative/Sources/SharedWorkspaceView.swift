@@ -4484,6 +4484,7 @@ struct SharedSetupView: View {
   @State private var showsAccountDeletionConfirmation = false
   @State private var showsBugReport = false
   @State private var showsGroupMoney = false
+  @State private var showsNotificationSettings = false
 
   private var isCurrentUserOwner: Bool {
     guard let userId = appModel.account?.id else { return false }
@@ -4526,6 +4527,12 @@ struct SharedSetupView: View {
 
             SharedSettingsRow(icon: "dollarsign.arrow.circlepath", title: "Group money", subtitle: "Application fees, deposits, and who paid") {
               showsGroupMoney = true
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "bell.badge.fill", title: "Advisor notifications", subtitle: "One daily digest, timing, and quiet controls") {
+              showsNotificationSettings = true
             }
 
             SharedDivider()
@@ -4789,6 +4796,12 @@ struct SharedSetupView: View {
     .sheet(isPresented: $showsGroupMoney) {
       SharedGroupMoneySheet()
         .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsNotificationSettings) {
+      SharedAdvisorNotificationSettingsSheet()
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
@@ -5329,6 +5342,161 @@ private struct SharedSettingsSheet: View {
       .buttonStyle(HomeboardAreaButtonStyle())
       .padding(.top, 10)
       .padding(.trailing, 14)
+    }
+  }
+}
+
+private struct SharedAdvisorNotificationSettingsSheet: View {
+  @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+  @State private var digestHourLocal = 18
+  @State private var nonCriticalPushEnabled = true
+  @State private var isLoading = true
+  @State private var isSaving = false
+  @State private var errorMessage: String?
+  @State private var savedMessage: String?
+
+  private var selectedTimeLabel: String {
+    let date = Calendar.current.date(from: DateComponents(hour: digestHourLocal)) ?? Date()
+    return date.formatted(date: .omitted, time: .shortened)
+  }
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        WorkspaceBackgroundView()
+
+        if isLoading {
+          ProgressView("Loading notification controls…")
+            .tint(HomeboardPalette.accent)
+        } else {
+          ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+              VStack(alignment: .leading, spacing: 8) {
+                Text("A calmer notification diet")
+                  .font(.title2.weight(.bold))
+                  .foregroundStyle(HomeboardPalette.primaryText)
+                Text("Listing changes, follow-up drafts, negotiation flags, and group check-ins are bundled into one board digest.")
+                  .font(.subheadline)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+              }
+
+              VStack(alignment: .leading, spacing: 16) {
+                Toggle(isOn: $nonCriticalPushEnabled) {
+                  VStack(alignment: .leading, spacing: 3) {
+                    Text("Daily Advisor digest")
+                      .font(.headline)
+                      .foregroundStyle(HomeboardPalette.primaryText)
+                    Text(nonCriticalPushEnabled ? "Scheduled for \(selectedTimeLabel)" : "Non-critical pushes are quiet for this board")
+                      .font(.caption)
+                      .foregroundStyle(HomeboardPalette.secondaryText)
+                  }
+                }
+                .tint(HomeboardPalette.accent)
+                .accessibilityIdentifier("homeboard.notifications.digest-toggle")
+
+                Divider().overlay(HomeboardPalette.border)
+
+                Picker("Digest time", selection: $digestHourLocal) {
+                  ForEach(Array(7...21), id: \.self) { hour in
+                    let date = Calendar.current.date(from: DateComponents(hour: hour)) ?? Date()
+                    Text(date.formatted(date: .omitted, time: .shortened)).tag(hour)
+                  }
+                }
+                .pickerStyle(.menu)
+                .disabled(!nonCriticalPushEnabled)
+                .accessibilityIdentifier("homeboard.notifications.digest-time")
+
+                Text("Uses this device’s time zone: \(TimeZone.current.localizedName(for: .standard, locale: .current) ?? TimeZone.current.identifier).")
+                  .font(.caption)
+                  .foregroundStyle(HomeboardPalette.tertiaryText)
+              }
+              .padding(16)
+              .sharedSurface(cornerRadius: 20)
+
+              Label {
+                Text("Verified off-market changes and possible scam warnings can still arrive immediately because they may affect money, documents, or availability.")
+              } icon: {
+                Image(systemName: "exclamationmark.shield.fill")
+                  .foregroundStyle(HomeboardPalette.danger)
+              }
+              .font(.caption)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+
+              if let errorMessage {
+                Text(errorMessage)
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(HomeboardPalette.danger)
+              }
+              if let savedMessage {
+                Text(savedMessage)
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(HomeboardPalette.success)
+              }
+
+              Button {
+                save()
+              } label: {
+                Group {
+                  if isSaving { ProgressView().tint(HomeboardPalette.buttonText) }
+                  else { Text("Save notification settings") }
+                }
+                .font(.headline.weight(.bold))
+                .foregroundStyle(HomeboardPalette.buttonText)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(HomeboardPalette.accentGradient)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+              }
+              .buttonStyle(HomeboardAreaButtonStyle())
+              .disabled(isSaving)
+              .accessibilityIdentifier("homeboard.notifications.save")
+            }
+            .padding(20)
+          }
+        }
+      }
+      .navigationTitle("Advisor notifications")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+        }
+      }
+      .task { await load() }
+    }
+  }
+
+  private func load() async {
+    isLoading = true
+    defer { isLoading = false }
+    do {
+      let settings = try await appModel.loadBoardNotificationSettings()
+      digestHourLocal = settings.digestHourLocal
+      nonCriticalPushEnabled = settings.nonCriticalPushEnabled
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
+  private func save() {
+    guard !isSaving else { return }
+    isSaving = true
+    errorMessage = nil
+    savedMessage = nil
+    Task {
+      defer { isSaving = false }
+      do {
+        let settings = try await appModel.saveBoardNotificationSettings(
+          digestHourLocal: digestHourLocal,
+          nonCriticalPushEnabled: nonCriticalPushEnabled
+        )
+        digestHourLocal = settings.digestHourLocal
+        nonCriticalPushEnabled = settings.nonCriticalPushEnabled
+        savedMessage = "Saved for this board."
+      } catch {
+        errorMessage = error.localizedDescription
+      }
     }
   }
 }

@@ -15,10 +15,16 @@ import {
   isListingUnavailable,
   type WatchedListingState,
 } from "@/lib/advisor-proactive-logic";
-import { notifyBoardMembers, type BoardPushType } from "@/lib/apns";
+import {
+  isUrgentAdvisorNotification,
+  type AdvisorNotificationKind,
+} from "@/lib/advisor-notification-diet";
+import {
+  advisorNotificationCreateData,
+  deliverUrgentAdvisorNotification,
+} from "@/lib/advisor-notifications";
 import { getBoardPageData } from "@/lib/board-data";
 import { findScamPriceWarnings } from "@/lib/listing-cost";
-import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
 function stateFingerprint(state: WatchedListingState) {
@@ -107,25 +113,6 @@ function isUniqueConflict(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-async function deliverPush(input: {
-  boardId: string;
-  boardListingId?: string;
-  type: BoardPushType;
-  title: string;
-  body: string;
-  collapseId: string;
-}) {
-  try {
-    await notifyBoardMembers(input);
-  } catch (error) {
-    await sendOperationalAlert(error, {
-      area: "push",
-      operation: `advisor_${input.type}`,
-      severity: "error",
-    });
-  }
-}
-
 async function createPlainAction(input: {
   boardId: string;
   boardListingId: string;
@@ -137,7 +124,9 @@ async function createPlainAction(input: {
   facts: Prisma.InputJsonObject;
   sourceUrl: string | null;
   fingerprint: string;
-  pushType: BoardPushType;
+  pushType: AdvisorNotificationKind;
+  urgent: boolean;
+  recipientUserIds: string[];
 }) {
   try {
     await prisma.$transaction([
@@ -175,20 +164,25 @@ async function createPlainAction(input: {
         },
       }),
       prisma.searchBoard.update({ where: { id: input.boardId }, data: { updatedAt: new Date() } }),
+      prisma.advisorNotificationEvent.create({
+        data: advisorNotificationCreateData({
+          boardId: input.boardId,
+          boardListingId: input.boardListingId,
+          type: input.pushType,
+          title: input.title,
+          body: input.summary,
+          fingerprint: input.fingerprint,
+          urgent: input.urgent,
+          recipientUserIds: input.recipientUserIds,
+        }),
+      }),
     ]);
   } catch (error) {
     if (isUniqueConflict(error)) return false;
     throw error;
   }
 
-  await deliverPush({
-    boardId: input.boardId,
-    boardListingId: input.boardListingId,
-    type: input.pushType,
-    title: input.title,
-    body: input.summary,
-    collapseId: input.fingerprint,
-  });
+  if (input.urgent) await deliverUrgentAdvisorNotification(input.fingerprint);
   return true;
 }
 
@@ -209,6 +203,7 @@ async function createFollowUpAction(input: {
     };
   };
   now: Date;
+  recipientUserIds: string[];
 }) {
   const boardData = await getBoardPageData(input.boardId, input.ownerUserId, {
     includeSuggestedListings: false,
@@ -311,6 +306,18 @@ async function createFollowUpAction(input: {
         where: { id: input.boardId },
         data: { updatedAt: input.now },
       });
+      await transaction.advisorNotificationEvent.create({
+        data: advisorNotificationCreateData({
+          boardId: input.boardId,
+          boardListingId: input.outreach.boardListingId,
+          type: "advisor_follow_up",
+          title: "Advisor follow-up ready",
+          body: summary,
+          fingerprint,
+          urgent: false,
+          recipientUserIds: input.recipientUserIds,
+        }),
+      });
     });
   } catch (error) {
     if (isUniqueConflict(error) || (error instanceof Error && error.message === "ADVISOR_FOLLOW_UP_ALREADY_CLAIMED")) {
@@ -319,14 +326,6 @@ async function createFollowUpAction(input: {
     throw error;
   }
 
-  await deliverPush({
-    boardId: input.boardId,
-    boardListingId: input.outreach.boardListingId,
-    type: "advisor_follow_up",
-    title: "Advisor follow-up ready",
-    body: summary,
-    collapseId: fingerprint,
-  });
   return true;
 }
 
@@ -348,6 +347,7 @@ export async function runAdvisorProactiveBoard(
     select: {
       id: true,
       userId: true,
+      members: { select: { userId: true } },
       boardListings: {
         where: { deletedAt: null, userStatus: { not: "rejected" } },
         include: { listing: true },
@@ -355,6 +355,11 @@ export async function runAdvisorProactiveBoard(
     },
   });
   if (!board) return { baselinesCreated: 0, listingChangeMessages: 0, followUpDrafts: 0, negotiationFlags: 0, scamWarnings: 0, groupNags: 0 };
+
+  const recipientUserIds = Array.from(new Set([
+    board.userId,
+    ...board.members.map((member) => member.userId),
+  ]));
 
   let baselinesCreated = 0;
   let listingChangeMessages = 0;
@@ -452,6 +457,11 @@ export async function runAdvisorProactiveBoard(
       sourceUrl: boardListing.listing.sourceUrl,
       fingerprint: `listing-change:${snapshot.id}`,
       pushType: "listing_change",
+      urgent: isUrgentAdvisorNotification({
+        kind: "listing_change",
+        verifiedUnavailableTransition: offMarket,
+      }),
+      recipientUserIds,
     });
     if (created) listingChangeMessages += 1;
   }
@@ -470,7 +480,13 @@ export async function runAdvisorProactiveBoard(
   });
   for (const outreach of ghosted) {
     if (!isGhostedOutreach(outreach, now)) continue;
-    if (await createFollowUpAction({ boardId, ownerUserId: board.userId, outreach, now })) {
+    if (await createFollowUpAction({
+      boardId,
+      ownerUserId: board.userId,
+      outreach,
+      now,
+      recipientUserIds,
+    })) {
       followUpDrafts += 1;
     }
   }
@@ -512,6 +528,8 @@ export async function runAdvisorProactiveBoard(
       sourceUrl: null,
       fingerprint: `negotiation-comp:${fingerprint}`,
       pushType: "negotiation_comp",
+      urgent: false,
+      recipientUserIds,
     });
     if (created) negotiationFlags += 1;
   }
@@ -556,6 +574,8 @@ export async function runAdvisorProactiveBoard(
       sourceUrl: listing.listing.sourceUrl,
       fingerprint: `scam-warning:${fingerprint}`,
       pushType: "scam_warning",
+      urgent: isUrgentAdvisorNotification({ kind: "scam_warning" }),
+      recipientUserIds,
     });
     if (created) scamWarnings += 1;
   }
@@ -591,6 +611,8 @@ export async function runAdvisorProactiveBoard(
           sourceUrl: boardListing.listing.sourceUrl,
           fingerprint: `decision-nag:${decision.id}:${names.join("|")}`,
           pushType: "advisor_group_nag",
+          urgent: false,
+          recipientUserIds,
         });
         if (created) groupNags += 1;
       }

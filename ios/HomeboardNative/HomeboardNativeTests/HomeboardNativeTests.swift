@@ -199,6 +199,16 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertTrue(error.diagnosticDescription.contains("<!DOCTYPE"))
   }
 
+  func testAdvisorNotificationSettingsDecodeAsBoardScopedControls() throws {
+    let data = try XCTUnwrap(#"{"digestHourLocal":18,"timeZone":"America/New_York","nonCriticalPushEnabled":false,"urgentPushesAlwaysEnabled":true,"scope":"board"}"#.data(using: .utf8))
+    let settings = try JSONDecoder().decode(BoardNotificationSettings.self, from: data)
+    XCTAssertEqual(settings.digestHourLocal, 18)
+    XCTAssertEqual(settings.timeZone, "America/New_York")
+    XCTAssertFalse(settings.nonCriticalPushEnabled)
+    XCTAssertTrue(settings.urgentPushesAlwaysEnabled)
+    XCTAssertEqual(settings.scope, "board")
+  }
+
   func testReplyScreenshotPreviewIsUnverifiedAndRequiresManualThreadChoice() throws {
     let preview = try XCTUnwrap(AdvisorReplyScreenshotExtractor.parseModelResponse(
       #"prefix {"apparentSender":"Alex Agent","replyText":"Unit 4B is available Saturday."} suffix"#

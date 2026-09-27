@@ -36,7 +36,8 @@ export type BoardPushType =
   | "listing_change"
   | "negotiation_comp"
   | "scam_warning"
-  | "advisor_group_nag";
+  | "advisor_group_nag"
+  | "advisor_digest";
 
 let cachedProviderToken: { value: string; issuedAt: number } | null = null;
 
@@ -178,6 +179,7 @@ export async function notifyBoardMembers(input: {
   body: string;
   boardListingId?: string | null;
   excludeUserIds?: string[];
+  recipientUserIds?: string[];
   collapseId?: string;
 }) {
   const configuration = credentials();
@@ -193,9 +195,10 @@ export async function notifyBoardMembers(input: {
   if (!board) return { configured: true, attempted: 0, delivered: 0 };
 
   const excluded = new Set(input.excludeUserIds ?? []);
+  const requested = input.recipientUserIds ? new Set(input.recipientUserIds) : null;
   const recipientIds = Array.from(
     new Set([board.userId, ...board.members.map((member) => member.userId)]),
-  ).filter((userId) => !excluded.has(userId));
+  ).filter((userId) => !excluded.has(userId) && (!requested || requested.has(userId)));
   if (recipientIds.length === 0) return { configured: true, attempted: 0, delivered: 0 };
 
   const devices = await prisma.pushDevice.findMany({
