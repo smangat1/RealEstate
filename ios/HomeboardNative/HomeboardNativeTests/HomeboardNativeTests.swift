@@ -236,6 +236,35 @@ final class HomeboardNativeTests: XCTestCase {
     ))
   }
 
+  func testReplyIntakeCannotSilentlyCrossListings() {
+    let listingAThread = replyThread(id: "outreach-a", listingID: "listing-a")
+    let listingBThread = replyThread(id: "outreach-b", listingID: "listing-b")
+    let threads = [listingAThread, listingBThread]
+
+    XCTAssertEqual(
+      AdvisorReplyIntakePolicy.threads(threads, for: "listing-a").map(\.id),
+      ["outreach-a"]
+    )
+    XCTAssertFalse(AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: "listing-a",
+      activeListingID: "listing-a",
+      selectedThread: listingBThread,
+      confirmedSwitchedListingID: nil
+    ))
+    XCTAssertFalse(AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: "listing-a",
+      activeListingID: "listing-b",
+      selectedThread: listingBThread,
+      confirmedSwitchedListingID: nil
+    ))
+    XCTAssertTrue(AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: "listing-a",
+      activeListingID: "listing-b",
+      selectedThread: listingBThread,
+      confirmedSwitchedListingID: "listing-b"
+    ))
+  }
+
   func testReplyConfirmationGatePreventsDuplicateSubmissionButAllowsRetryAfterFailure() {
     let confirmationID = UUID()
     var gate = AdvisorReplySubmissionGate()

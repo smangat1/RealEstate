@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -24,6 +26,15 @@ test("reply intake accepts only an outreach belonging to the selected listing", 
     ok: false,
     reason: "mismatch",
   });
+});
+
+test("the API scopes eligible outreach to the requested listing", () => {
+  const route = fs.readFileSync(path.join(
+    process.cwd(),
+    "app/api/mobile/boards/[id]/listings/[listingId]/reply/route.ts",
+  ), "utf8");
+  assert.match(route, /where:\s*\{\s*boardListingId:\s*listingId,/);
+  assert.match(route, /selectReplyOutreach\(outreachCandidates, listingId,/);
 });
 
 test("legacy listing-only intake fails closed when the outreach thread is ambiguous", () => {

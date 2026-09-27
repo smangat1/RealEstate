@@ -9151,6 +9151,11 @@ private struct SharedBrokerReplyIntakeSheet: View {
   @State private var threads: [AdvisorReplyThreadOption] = []
   @State private var isLoadingThreads = true
   @State private var selectedThreadID: String?
+  @State private var activeListingID: String?
+  @State private var confirmedSwitchedListingID: String?
+  @State private var pendingListingSwitchThread: AdvisorReplyThreadOption?
+  @State private var showsListingSwitchConfirmation = false
+  @State private var showsLogConfirmation = false
   @State private var extractionPreview: AdvisorReplyExtractionPreview?
   @State private var localError: String?
   @State private var confirmationID = UUID()
@@ -9158,6 +9163,33 @@ private struct SharedBrokerReplyIntakeSheet: View {
 
   private var selectedThread: AdvisorReplyThreadOption? {
     threads.first { $0.id == selectedThreadID }
+  }
+
+  private var resolvedActiveListingID: String {
+    activeListingID ?? listing.id
+  }
+
+  private var activeListingThreads: [AdvisorReplyThreadOption] {
+    AdvisorReplyIntakePolicy.threads(threads, for: resolvedActiveListingID)
+  }
+
+  private var otherListingThreads: [AdvisorReplyThreadOption] {
+    threads.filter { $0.listingId != resolvedActiveListingID }
+  }
+
+  private var activeListingName: String {
+    activeListingThreads.first?.listingName
+      ?? selectedThread?.listingName
+      ?? listing.title
+  }
+
+  private var canSubmitReply: Bool {
+    AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: listing.id,
+      activeListingID: resolvedActiveListingID,
+      selectedThread: selectedThread,
+      confirmedSwitchedListingID: confirmedSwitchedListingID
+    )
   }
 
   var body: some View {
@@ -9201,6 +9233,8 @@ private struct SharedBrokerReplyIntakeSheet: View {
                 let preview = try await AdvisorReplyScreenshotExtractor.extract(from: data)
                 extractionPreview = preview
                 replyText = preview.replyText
+                activeListingID = listing.id
+                confirmedSwitchedListingID = nil
                 selectedThreadID = nil
                 confirmationID = UUID()
               } catch {
@@ -9210,6 +9244,8 @@ private struct SharedBrokerReplyIntakeSheet: View {
                   source: .manual
                 )
                 replyText = ""
+                activeListingID = listing.id
+                confirmedSwitchedListingID = nil
                 selectedThreadID = AdvisorReplyIntakePolicy.initialThreadID(
                   threads: threads,
                   listingID: listing.id,
@@ -9251,17 +9287,58 @@ private struct SharedBrokerReplyIntakeSheet: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
           } else {
             VStack(alignment: .leading, spacing: 7) {
-              Text("Which outreach did this answer?")
+              Text("Logging against")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(HomeboardPalette.primaryText)
-              Picker("Outreach thread", selection: $selectedThreadID) {
-                Text("Choose a listing and recipient").tag(String?.none)
-                ForEach(threads) { thread in
-                  Text(thread.displayLabel).tag(Optional(thread.id))
+
+              HStack(alignment: .top, spacing: 10) {
+                Image(systemName: resolvedActiveListingID == listing.id ? "house.fill" : "arrow.triangle.swap")
+                  .foregroundStyle(HomeboardPalette.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                  Text(activeListingName)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(HomeboardPalette.primaryText)
+                  if let recipient = selectedThread?.recipientName, !recipient.isEmpty {
+                    Text("Recipient: \(recipient)")
+                      .font(.caption)
+                      .foregroundStyle(HomeboardPalette.secondaryText)
+                  }
                 }
               }
-              .pickerStyle(.menu)
-              .tint(HomeboardPalette.accent)
+              .padding(12)
+              .sharedSurface(cornerRadius: 14)
+
+              if activeListingThreads.isEmpty {
+                Text("No eligible outreach exists for this listing.")
+                  .font(.caption)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+              } else {
+                Picker("Outreach thread", selection: $selectedThreadID) {
+                  Text("Choose the recipient").tag(String?.none)
+                  ForEach(activeListingThreads) { thread in
+                    Text(thread.displayLabel).tag(Optional(thread.id))
+                  }
+                }
+                .pickerStyle(.menu)
+                .tint(HomeboardPalette.accent)
+              }
+
+              if !otherListingThreads.isEmpty {
+                Menu {
+                  ForEach(otherListingThreads) { thread in
+                    Button(thread.displayLabel) {
+                      pendingListingSwitchThread = thread
+                      showsListingSwitchConfirmation = true
+                    }
+                  }
+                } label: {
+                  Label("This reply belongs to another listing", systemImage: "arrow.triangle.swap")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(HomeboardPalette.accent)
+                }
+                .accessibilityIdentifier("homeboard.reply.switch-listing")
+              }
+
               if extractionPreview?.source != .manual {
                 Text("Homeboard never guesses a thread from a screenshot. Confirm it here.")
                   .font(.caption)
@@ -9286,19 +9363,8 @@ private struct SharedBrokerReplyIntakeSheet: View {
           }
 
           Button {
-            guard let selectedThread, submissionGate.begin(confirmationID) else { return }
-            isSubmitting = true
-            localError = nil
-            Task {
-              let result = await onSubmit(selectedThread, replyText, confirmationID)
-              submissionGate.finish(confirmationID, succeeded: result != nil)
-              analysis = result?.analysis
-              loggedReply = result?.log
-              if result == nil {
-                localError = "The reply was not confirmed as logged. Review it and try again."
-              }
-              isSubmitting = false
-            }
+            guard canSubmitReply else { return }
+            showsLogConfirmation = true
           } label: {
             HStack {
               if isSubmitting { ProgressView().tint(Color.black) }
@@ -9318,7 +9384,7 @@ private struct SharedBrokerReplyIntakeSheet: View {
           .buttonStyle(HomeboardAreaButtonStyle())
           .disabled(
             replyText.trimmingCharacters(in: .whitespacesAndNewlines).count < 2
-              || selectedThread == nil
+              || !canSubmitReply
               || isSubmitting
               || loggedReply != nil
           )
@@ -9356,12 +9422,60 @@ private struct SharedBrokerReplyIntakeSheet: View {
         guard isLoadingThreads else { return }
         threads = await loadThreads()
         isLoadingThreads = false
+        activeListingID = listing.id
         selectedThreadID = AdvisorReplyIntakePolicy.initialThreadID(
           threads: threads,
           listingID: listing.id,
           source: extractionPreview?.source ?? .manual
         )
       }
+      .confirmationDialog(
+        "Switch reply to \(pendingListingSwitchThread?.listingName ?? "another listing")?",
+        isPresented: $showsListingSwitchConfirmation,
+        titleVisibility: .visible
+      ) {
+        Button("Switch listing") {
+          guard let thread = pendingListingSwitchThread else { return }
+          activeListingID = thread.listingId
+          confirmedSwitchedListingID = thread.listingId
+          selectedThreadID = thread.id
+          pendingListingSwitchThread = nil
+          confirmationID = UUID()
+        }
+        Button("Keep \(activeListingName)", role: .cancel) {
+          pendingListingSwitchThread = nil
+        }
+      } message: {
+        Text("Listing: \(pendingListingSwitchThread?.listingName ?? "Unknown")\nRecipient: \(pendingListingSwitchThread?.recipientName ?? "Recipient not recorded")\nThe extracted text stays editable and unverified.")
+      }
+      .confirmationDialog(
+        "Log this reply for \(selectedThread?.listingName ?? activeListingName)?",
+        isPresented: $showsLogConfirmation,
+        titleVisibility: .visible
+      ) {
+        Button("Log confirmed reply") { submitReply() }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("Recipient: \(selectedThread?.recipientName ?? "Recipient not recorded")\nOnly the selected listing’s outreach will be marked answered.")
+      }
+    }
+  }
+
+  private func submitReply() {
+    guard canSubmitReply,
+          let selectedThread,
+          submissionGate.begin(confirmationID) else { return }
+    isSubmitting = true
+    localError = nil
+    Task {
+      let result = await onSubmit(selectedThread, replyText, confirmationID)
+      submissionGate.finish(confirmationID, succeeded: result != nil)
+      analysis = result?.analysis
+      loggedReply = result?.log
+      if result == nil {
+        localError = "The reply was not confirmed as logged. Review it and try again."
+      }
+      isSubmitting = false
     }
   }
 }

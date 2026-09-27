@@ -141,6 +141,23 @@ struct AdvisorReplySubmissionGate {
 }
 
 enum AdvisorReplyIntakePolicy {
+  static func threads(
+    _ threads: [AdvisorReplyThreadOption],
+    for listingID: String
+  ) -> [AdvisorReplyThreadOption] {
+    threads.filter { $0.listingId == listingID }
+  }
+
+  static func canSubmit(
+    openListingID: String,
+    activeListingID: String,
+    selectedThread: AdvisorReplyThreadOption?,
+    confirmedSwitchedListingID: String?
+  ) -> Bool {
+    guard let selectedThread, selectedThread.listingId == activeListingID else { return false }
+    return activeListingID == openListingID || confirmedSwitchedListingID == activeListingID
+  }
+
   static func initialThreadID(
     threads: [AdvisorReplyThreadOption],
     listingID: String,
@@ -150,7 +167,7 @@ enum AdvisorReplyIntakePolicy {
     // review and choose it. Manual entry can honor the listing they opened only
     // when that listing has exactly one eligible outreach.
     guard source == .manual else { return nil }
-    let matches = threads.filter { $0.listingId == listingID }
+    let matches = self.threads(threads, for: listingID)
     return matches.count == 1 ? matches[0].id : nil
   }
 }
