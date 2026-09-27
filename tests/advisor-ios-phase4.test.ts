@@ -35,7 +35,10 @@ test("Advisor regeneration applies only the latest debounced response", () => {
   assert.doesNotMatch(request, /board\s*=\s*response\.board/);
   assert.match(card, /regenerationRevision \+= 1/);
   assert.match(card, /guard revision == regenerationRevision, !Task\.isCancelled else \{ return \}/);
-  assert.match(appModel, /guard board\.id == expectedBoardId, response\.board\.id == expectedBoardId/);
+  assert.match(
+    appModel,
+    /guard board\.id == expectedBoardId,[\s\S]*?response\.board\.id == expectedBoardId,[\s\S]*?payload\.messageId == expectedMessageId/,
+  );
   assert.doesNotMatch(card, /selectedTone\s*=\s*next\.tone/);
   assert.doesNotMatch(card, /toggles\s*=\s*next\.toggleOptions/);
 });
@@ -44,8 +47,8 @@ test("Advisor regeneration uses the stored original command and saves the accept
   const schedule = card.match(/private func scheduleRegeneration[\s\S]*?\n  }\n\n  private func sendViaEmail/)?.[0] ?? "";
   assert.match(models, /var originalCommand: String\? = nil/);
   assert.match(models, /originalCommand = try\? container\.decodeIfPresent\(String\.self/);
-  assert.match(schedule, /payload\?\.originalCommand/);
-  assert.match(schedule, /\^@advisor\\b/);
+  assert.match(schedule, /AdvisorDraftSafety\.hasOriginalAdvisorCommand\(currentPayload\)/);
+  assert.match(card, /\^@advisor\\b/);
   assert.doesNotMatch(schedule, /originalCommand\s*=\s*message\.content/);
   assert.match(appModel, /payload\.originalCommand/);
   assert.match(appModel, /api\.acceptAdvisorDraft/);
@@ -153,7 +156,21 @@ test("first send keeps private ranges out of all board-visible aggregates", () =
 test("required Advisor facts cannot be toggled off or sent while input is missing", () => {
   assert.match(card, /guard !isRequired else \{ return \}/);
   assert.match(card, /\.disabled\(isRequired\)/);
-  assert.match(card, /payload\.executionStatus != "needs_input"/);
+  assert.match(card, /payload\.executionStatus == "draft_ready"/);
+  assert.match(card, /AdvisorDraftSafety\.isPersistedDraftReady/);
+});
+
+test("legacy needs-input cards recover only through a persisted safe draft", () => {
+  assert.match(card, /Regenerate and save draft/);
+  assert.match(card, /advisor-card-recover/);
+  assert.match(card, /This older card does not include its original @advisor request/);
+  assert.match(card, /Re-ask Advisor/);
+  assert.match(card, /advisor-card-reask/);
+  assert.match(card, /expectedMessageId: expectedMessageId/);
+  assert.match(card, /The server did not confirm a safe saved Advisor draft/);
+  assert.match(appModel, /The active board changed while Advisor was drafting/);
+  assert.match(appModel, /payload\.messageId == expectedMessageId/);
+  assert.doesNotMatch(card, /payload\.executionStatus != "needs_input"/);
 });
 
 test("canceled launch refreshes stay out of the group chat", () => {

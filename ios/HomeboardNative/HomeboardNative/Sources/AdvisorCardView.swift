@@ -8,6 +8,44 @@ private enum AdvisorDispatchChannel {
   case email
 }
 
+enum AdvisorDraftSafety {
+  static func hasOriginalAdvisorCommand(_ payload: AdvisorMessagePayload) -> Bool {
+    guard let command = payload.originalCommand?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+      return false
+    }
+    return command.range(
+      of: #"^@advisor\b"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil
+  }
+
+  static func hasFinancialPlaceholder(_ payload: AdvisorMessagePayload) -> Bool {
+    payload.draftText.range(
+      of: #"\[(?:income|credit)[^\]]*\]"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil
+  }
+
+  static func isPersistedDraftReady(
+    _ payload: AdvisorMessagePayload,
+    expectedMessageId: String? = nil
+  ) -> Bool {
+    guard payload.executionStatus == "draft_ready",
+          let messageId = payload.messageId?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !messageId.isEmpty,
+          expectedMessageId == nil || messageId == expectedMessageId,
+          let acceptedAt = payload.acceptedAt?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !acceptedAt.isEmpty,
+          let generationSource = payload.generationSource,
+          ["apple_intelligence", "device_template"].contains(generationSource),
+          !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          !hasFinancialPlaceholder(payload) else {
+      return false
+    }
+    return true
+  }
+}
+
 struct AdvisorCardView: View {
   @Environment(AppModel.self) private var appModel
 
@@ -46,8 +84,7 @@ struct AdvisorCardView: View {
       // Keep generation alive if user scrolls within thread
     }
     .task {
-      if payload?.generationSource == "server_template"
-          || payload.map(hasFinancialPlaceholder) == true {
+      if payload.map(shouldAutomaticallyRegenerate) == true {
         scheduleRegeneration(delayNanoseconds: 0)
       }
     }
@@ -58,8 +95,7 @@ struct AdvisorCardView: View {
         selectedTone = incomingPayload.tone
       }
       toggles = incomingPayload.toggleOptions
-      if incomingPayload.generationSource == "server_template"
-          || hasFinancialPlaceholder(incomingPayload) {
+      if shouldAutomaticallyRegenerate(incomingPayload) {
         scheduleRegeneration(delayNanoseconds: 0)
       }
     }
@@ -111,15 +147,7 @@ struct AdvisorCardView: View {
           ProgressView()
             .tint(HomeboardPalette.accent)
             .scaleEffect(0.8)
-        } else if currentPayload.executionStatus == "needs_input" {
-          HStack(spacing: 4) {
-            Image(systemName: "info.circle.fill")
-              .font(.caption2)
-            Text("Needs info")
-              .font(.caption2.weight(.semibold))
-          }
-          .foregroundStyle(HomeboardPalette.accentSecondary)
-        } else {
+        } else if isDraftReady(currentPayload) {
           HStack(spacing: 4) {
             Image(systemName: "checkmark.circle.fill")
               .font(.caption2)
@@ -127,6 +155,22 @@ struct AdvisorCardView: View {
               .font(.caption2.weight(.semibold))
           }
           .foregroundStyle(HomeboardPalette.success)
+        } else if currentPayload.executionStatus == "needs_input" {
+          HStack(spacing: 4) {
+            Image(systemName: "info.circle.fill")
+              .font(.caption2)
+            Text("Needs refresh")
+              .font(.caption2.weight(.semibold))
+          }
+          .foregroundStyle(HomeboardPalette.accentSecondary)
+        } else {
+          HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.shield.fill")
+              .font(.caption2)
+            Text("Review required")
+              .font(.caption2.weight(.semibold))
+          }
+          .foregroundStyle(HomeboardPalette.accentSecondary)
         }
       }
 
@@ -159,6 +203,10 @@ struct AdvisorCardView: View {
       .overlay {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
           .stroke(HomeboardPalette.accent.opacity(0.25), lineWidth: 1)
+      }
+
+      if !isDraftReady(currentPayload) {
+        advisorRecoveryPanel(currentPayload)
       }
 
       VStack(alignment: .leading, spacing: 5) {
@@ -281,10 +329,46 @@ struct AdvisorCardView: View {
     .homeboardPanel(cornerRadius: 24)
   }
 
+  @ViewBuilder
+  private func advisorRecoveryPanel(_ currentPayload: AdvisorMessagePayload) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if AdvisorDraftSafety.hasOriginalAdvisorCommand(currentPayload) {
+        Text("This older card is blocked until Advisor regenerates it and the matching server confirms the saved draft.")
+          .font(.footnote)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+        Button {
+          scheduleRegeneration(delayNanoseconds: 0)
+        } label: {
+          Label("Regenerate and save draft", systemImage: "arrow.clockwise")
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(AdvisorCTAButtonStyle(isPrimary: true))
+        .disabled(isRegenerating)
+        .accessibilityIdentifier("advisor-card-recover")
+      } else {
+        Text("This older card does not include its original @advisor request, so its saved text cannot be made sendable.")
+          .font(.footnote)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+        Button {
+          appModel.boardMessageDraft = "@advisor "
+          dispatchMessage = "Review and send a new @advisor request in the chat composer."
+        } label: {
+          Label("Re-ask Advisor", systemImage: "text.bubble")
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
+        .accessibilityIdentifier("advisor-card-reask")
+      }
+    }
+    .padding(12)
+    .background(HomeboardPalette.accentSecondary.opacity(0.1))
+    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+  }
+
   private func scheduleRegeneration(delayNanoseconds: UInt64 = 350_000_000) {
     guard payload != nil, let expectedBoardId = appModel.board.id else { return }
-    guard let originalCommand = payload?.originalCommand?.trimmingCharacters(in: .whitespacesAndNewlines),
-          originalCommand.range(of: #"^@advisor\b"#, options: [.regularExpression, .caseInsensitive]) != nil else {
+    guard let currentPayload = payload,
+          AdvisorDraftSafety.hasOriginalAdvisorCommand(currentPayload) else {
       dispatchMessage = "This older Advisor card cannot be regenerated. Send the request again with @advisor."
       return
     }
@@ -305,8 +389,8 @@ struct AdvisorCardView: View {
       }
 
       do {
-        let currentPayload = payload
-        guard let currentPayload else { return }
+        guard let currentPayload = payload else { return }
+        let expectedMessageId = currentPayload.messageId
         let financeStatus = currentPayload.financialDisclosure == "combined_range"
           ? await appModel.refreshAdvisorFinancialStatus()
           : appModel.advisorFinancialStatus
@@ -318,15 +402,27 @@ struct AdvisorCardView: View {
           groupFinances: financeStatus?.group
         )
         guard revision == regenerationRevision, !Task.isCancelled else { return }
-        guard let next = response.advisorPayload else { return }
-        if let applied = appModel.applyAdvisorRegenerationResponse(
+        guard let next = response.advisorPayload,
+              AdvisorDraftSafety.isPersistedDraftReady(
+                next,
+                expectedMessageId: expectedMessageId
+              ) else {
+          throw HomeboardAPIError.server(
+            "The server did not confirm a safe saved Advisor draft. Sending remains blocked."
+          )
+        }
+        guard let applied = appModel.applyAdvisorRegenerationResponse(
           response,
           payload: next,
-          expectedBoardId: expectedBoardId
-        ) {
-          payload = applied
-          dispatchMessage = nil
+          expectedBoardId: expectedBoardId,
+          expectedMessageId: expectedMessageId
+        ) else {
+          throw HomeboardAPIError.server(
+            "The board or Advisor card changed before the saved draft returned. Sending remains blocked."
+          )
         }
+        payload = applied
+        dispatchMessage = nil
       } catch is CancellationError {
         return
       } catch {
@@ -396,11 +492,19 @@ struct AdvisorCardView: View {
         groupFinances: status.group
       )
       guard let accepted = response.advisorPayload,
+            AdvisorDraftSafety.isPersistedDraftReady(
+              accepted,
+              expectedMessageId: currentPayload.messageId
+            ),
             let applied = appModel.applyAdvisorRegenerationResponse(
               response,
               payload: accepted,
-              expectedBoardId: appModel.board.id ?? ""
-            ) else { return }
+              expectedBoardId: appModel.board.id ?? "",
+              expectedMessageId: currentPayload.messageId
+            ) else {
+        dispatchMessage = "The server did not confirm this draft for the active card. Sending remains blocked."
+        return
+      }
       payload = applied
       pendingDispatch = nil
       if channel == .message {
@@ -463,16 +567,17 @@ struct AdvisorCardView: View {
   }
 
   private func isDraftReady(_ payload: AdvisorMessagePayload) -> Bool {
-    payload.executionStatus != "needs_input"
-      && !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !hasFinancialPlaceholder(payload)
+    AdvisorDraftSafety.isPersistedDraftReady(payload)
   }
 
   private func hasFinancialPlaceholder(_ payload: AdvisorMessagePayload) -> Bool {
-    payload.draftText.range(
-      of: #"\[(?:income|credit)[^\]]*\]"#,
-      options: [.regularExpression, .caseInsensitive]
-    ) != nil
+    AdvisorDraftSafety.hasFinancialPlaceholder(payload)
+  }
+
+  private func shouldAutomaticallyRegenerate(_ payload: AdvisorMessagePayload) -> Bool {
+    payload.executionStatus == "draft_ready"
+      && (payload.generationSource == "server_template" || hasFinancialPlaceholder(payload))
+      && AdvisorDraftSafety.hasOriginalAdvisorCommand(payload)
   }
 }
 

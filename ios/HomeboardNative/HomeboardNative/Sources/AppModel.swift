@@ -1013,6 +1013,18 @@ final class AppModel {
     generationTimestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     accepted.clientGeneratedAt = generationTimestamp.string(from: Date())
 
+    guard board.id == boardId,
+          authSession?.userId == session.userId else {
+      throw HomeboardAPIError.server(
+        "The active board changed while Advisor was drafting. Reopen the card before saving."
+      )
+    }
+    guard !AdvisorDraftSafety.hasFinancialPlaceholder(accepted) else {
+      throw HomeboardAPIError.server(
+        "Advisor generated a financial placeholder. The draft was not saved or unlocked."
+      )
+    }
+
     return try await api.acceptAdvisorDraft(
       accessToken: session.accessToken,
       boardId: boardId,
@@ -1053,9 +1065,12 @@ final class AppModel {
   func applyAdvisorRegenerationResponse(
     _ response: MobileBoardLoadResponse,
     payload: AdvisorMessagePayload,
-    expectedBoardId: String
+    expectedBoardId: String,
+    expectedMessageId: String?
   ) -> AdvisorMessagePayload? {
-    guard board.id == expectedBoardId, response.board.id == expectedBoardId else { return nil }
+    guard board.id == expectedBoardId,
+          response.board.id == expectedBoardId,
+          payload.messageId == expectedMessageId else { return nil }
     // Preserve suggestions and recentlyDeleted from the current board: the regen
     // endpoint fetches a full board, but we still merge defensively so a race
     // cannot inadvertently wipe listings the user can see.
