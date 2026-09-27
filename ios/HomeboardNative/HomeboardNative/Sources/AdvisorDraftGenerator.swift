@@ -77,19 +77,66 @@ enum AdvisorPreferenceExtractor {
 
   private static func hasConservativeBlocker(_ content: String) -> Bool {
     let text = normalized(content)
-    if content.contains("\"") || content.contains("“") || content.contains("”") || content.contains("`") { return true }
-    if content.range(of: #"(?:^|\s)'[^']+'(?:$|[\s.,!?])"#, options: .regularExpression) != nil { return true }
     if text.range(
-      of: #"\b(?!i\b)[a-z][a-z'-]+\s+(?:said|says|thinks|wants|needs|prefers)\b"#,
+      of: #"\b(?!(?:i|we)\b)[a-z][a-z'-]+\s+(?:said|says|thinks|wants|needs|prefers)\b"#,
       options: .regularExpression
     ) != nil { return true }
     let blockers = [
       "if ", "maybe", "might", "could", "would", "hypothetically", "suppose", "what if",
       "not sure", "unsure", "i think", "i guess", "probably", "kind of", "sort of", "my roommate", "our roommate",
       "the roommate", "he wants", "she wants", "they want", "he needs", "she needs",
-      "they need", "we want", "we need", "we prefer", "our group wants", "our group needs",
+      "they need", "our group wants", "our group needs",
     ]
     return blockers.contains { text == $0.trimmingCharacters(in: .whitespaces) || text.contains("\($0)") }
+  }
+
+  private static func isCurrentAssertion(in text: String, range: NSRange) -> Bool {
+    let source = text as NSString
+    for pattern in [#"\"[^\"\n]*\""#, #"“[^”\n]*”"#, #"(?:^|\s)'[^'\n]+'(?:$|[\s.,!?])"#] {
+      guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+      let quoted = regex.matches(in: text, range: NSRange(location: 0, length: source.length))
+      if quoted.contains(where: { $0.range.location <= range.location && NSMaxRange(range) <= NSMaxRange($0.range) }) {
+        return false
+      }
+    }
+
+    let before = source.substring(to: range.location) as NSString
+    var prefixStart = 0
+    for marker in [".", "?", "!", ";", ", but ", " but ", ", however ", " however "] {
+      let found = before.range(of: marker, options: .backwards)
+      if found.location != NSNotFound { prefixStart = max(prefixStart, NSMaxRange(found)) }
+    }
+    let prefix = before.substring(from: prefixStart)
+    let suffixStart = NSMaxRange(range)
+    let remainder = source.substring(from: suffixStart) as NSString
+    let punctuation = remainder.rangeOfCharacter(from: CharacterSet(charactersIn: ".!?;"))
+    let suffix = punctuation.location == NSNotFound
+      ? remainder as String
+      : remainder.substring(to: punctuation.location)
+
+    let prefixPatterns = [
+      #"\b(?:used to|yesterday|back then|in the past)\b"#,
+      #"\b(?:i|we)\s+(?:never\s+)?(?:said|thought|believed|felt|claimed)\b[^.!?;]*$"#,
+      #"\b(?:not true that|no longer true that|stopped saying|take back)\b"#,
+    ]
+    if prefixPatterns.contains(where: { prefix.range(of: $0, options: .regularExpression) != nil }) { return false }
+    let suffixPattern = #"\b(?:changed my mind|change my mind|not anymore|no longer|used to|yesterday|back then|in the past|take that back|retract(?:ed)?)\b"#
+    return suffix.range(of: suffixPattern, options: .regularExpression) == nil
+  }
+
+  private static func firstCurrentEvidence(in text: String, phrases: [String]) -> String? {
+    let source = text as NSString
+    for phrase in phrases {
+      var searchRange = NSRange(location: 0, length: source.length)
+      while searchRange.length > 0 {
+        let found = source.range(of: phrase, options: [], range: searchRange)
+        if found.location == NSNotFound { break }
+        if isCurrentAssertion(in: text, range: found) { return phrase }
+        let nextLocation = NSMaxRange(found)
+        searchRange = NSRange(location: nextLocation, length: source.length - nextLocation)
+      }
+    }
+    return nil
   }
 
   static func deterministicSignals(in content: String) -> [AdvisorPreferenceCandidateSignal] {
@@ -107,7 +154,7 @@ enum AdvisorPreferenceExtractor {
           "remove \(alias) from my must-haves", "remove the \(alias) from my must-haves",
           "\(alias) is no longer a must-have for me", "\(alias) is no longer a requirement for me",
         ]
-        if let evidence = removals.first(where: { text.contains($0) }) {
+        if let evidence = firstCurrentEvidence(in: text, phrases: removals) {
           negative = .init(feature: feature.key, weight: -2, evidence: evidence, intent: "remove_must_have")
         }
         let strongNegatives = [
@@ -116,24 +163,25 @@ enum AdvisorPreferenceExtractor {
           "i hate \(alias)", "i hate the \(alias)", "i don't want \(alias)", "i don't want the \(alias)",
           "i do not want \(alias)", "i do not want the \(alias)",
         ]
-        if negative == nil, let evidence = strongNegatives.first(where: { text.contains($0) }) {
+        if negative == nil, let evidence = firstCurrentEvidence(in: text, phrases: strongNegatives) {
           negative = .init(feature: feature.key, weight: -2, evidence: evidence, intent: "preference")
         }
         let mildNegatives = [
           "\(alias) is not important to me", "\(alias) is a low priority for me",
           "\(alias) is optional for me", "i consider \(alias) optional",
         ]
-        if negative == nil, let evidence = mildNegatives.first(where: { text.contains($0) }) {
+        if negative == nil, let evidence = firstCurrentEvidence(in: text, phrases: mildNegatives) {
           negative = .init(feature: feature.key, weight: -1, evidence: evidence, intent: "preference")
         }
         let strongPositives = [
           "i need \(alias)", "i need the \(alias)", "i really need \(alias)", "i really need the \(alias)",
+          "we need \(alias)", "we need the \(alias)", "we really need \(alias)", "we really need the \(alias)",
           "i must have \(alias)", "i must have the \(alias)", "i love \(alias)", "i love the \(alias)",
           "i care a lot about \(alias)", "i care a lot about the \(alias)",
           "\(alias) is essential to me", "\(alias) is non-negotiable for me",
           "\(alias) is a must-have for me", "\(alias) is a high priority for me",
         ]
-        if let evidence = strongPositives.first(where: { text.contains($0) }) {
+        if let evidence = firstCurrentEvidence(in: text, phrases: strongPositives) {
           positive = .init(feature: feature.key, weight: 2, evidence: evidence, intent: "preference")
         }
         let mildPositives = [
@@ -141,7 +189,7 @@ enum AdvisorPreferenceExtractor {
           "i care about \(alias)", "i care about the \(alias)",
           "\(alias) is important to me", "\(alias) is a priority for me",
         ]
-        if positive == nil, let evidence = mildPositives.first(where: { text.contains($0) }) {
+        if positive == nil, let evidence = firstCurrentEvidence(in: text, phrases: mildPositives) {
           positive = .init(feature: feature.key, weight: 1, evidence: evidence, intent: "preference")
         }
       }

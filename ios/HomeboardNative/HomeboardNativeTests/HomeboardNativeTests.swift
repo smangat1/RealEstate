@@ -127,6 +127,32 @@ final class HomeboardNativeTests: XCTestCase {
     }
   }
 
+  func testPreferenceFallbackRejectsPastAndRetractedAssertions() {
+    for retraction in [
+      "I used to say I need parking, but I changed my mind",
+      "Yesterday I said I need parking, but not anymore",
+      "Back then I said I need parking",
+      "In the past I said \"I need parking\"",
+      "\"I need parking\"",
+      "I need parking back then",
+      "I need parking, but I no longer do",
+    ] {
+      XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: retraction).isEmpty, retraction)
+    }
+
+    for current in [
+      "I need parking",
+      "we really need parking now",
+      "Back then I said I need parking, but I need parking now",
+    ] {
+      let signals = AdvisorPreferenceExtractor.deterministicSignals(in: current)
+      XCTAssertEqual(signals.count, 1, current)
+      XCTAssertEqual(signals.first?.feature, "parking", current)
+      XCTAssertEqual(signals.first?.weight, 2, current)
+      XCTAssertEqual(signals.first?.intent, "preference", current)
+    }
+  }
+
   func testPreferenceFallbackSeparatesLowPriorityFromMustHaveRemoval() throws {
     let lower = try XCTUnwrap(
       AdvisorPreferenceExtractor.deterministicSignals(in: "I don't care about parking").first

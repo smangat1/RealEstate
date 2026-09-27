@@ -55,13 +55,12 @@ test("explicit first-person preferences produce one bounded, accurate candidate"
   assert.equal(changes.some((change) => change.field === "mustHaves"), false);
 });
 
-test("uncertain, quoted, hypothetical, conflicting, shared, and third-party text stages nothing", () => {
+test("uncertain, quoted, hypothetical, conflicting, and third-party text stages nothing", () => {
   const unsafe = [
     "Maybe I need parking.",
     "I said \"I need parking\" yesterday.",
     "If I needed parking, that place would work.",
     "I need parking, but I don't care about parking.",
-    "We need parking.",
     "My roommate needs parking.",
     "She wants a gym.",
     "Sam says I need parking.",
@@ -70,6 +69,32 @@ test("uncertain, quoted, hypothetical, conflicting, shared, and third-party text
     "I need parking, but I don't care about the garage.",
   ];
   for (const content of unsafe) assert.deepEqual(parsePreferenceTalk(content), [], content);
+});
+
+test("past-tense and retracted assertions fail closed while current assertions remain eligible", () => {
+  for (const content of [
+    "I used to say I need parking, but I changed my mind",
+    "Yesterday I said I need parking, but not anymore",
+    "Back then I said I need parking",
+    "In the past I said \"I need parking\"",
+    "\"I need parking\"",
+    "I need parking back then",
+    "I need parking, but I no longer do",
+  ]) {
+    assert.deepEqual(parsePreferenceTalk(content), [], content);
+  }
+
+  for (const content of [
+    "I need parking",
+    "we really need parking now",
+    "Back then I said I need parking, but I need parking now",
+  ]) {
+    const signals = parsePreferenceTalk(content);
+    assert.equal(signals.length, 1, content);
+    assert.equal(signals[0].feature, "parking", content);
+    assert.equal(signals[0].weight, 2, content);
+    assert.equal(signals[0].intent, "preference", content);
+  }
 });
 
 test("only explicit first-person negation removes the named must-have", () => {

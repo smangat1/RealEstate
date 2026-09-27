@@ -49,50 +49,91 @@ function normalizedText(value: string) {
 export function preferenceTextHasConservativeBlocker(content: string) {
   const normalized = normalizedText(content);
   if (!normalized) return true;
-  if (/["“”`]/.test(content)) return true;
   if (/\b(?:if|maybe|might|could|would|hypothetically|suppose|what if|not sure|unsure|i think|i guess|probably|kind of|sort of)\b/.test(normalized)) return true;
-  if (/(?:^|\s)'[^']+'(?:$|[\s.,!?])/.test(content)) return true;
   if (/\b(?:my|our|the)\s+roommate\b|\b(?:he|she|they)\s+(?:wants?|needs?|prefers?|hates?|loves?|said)\b/.test(normalized)) return true;
-  if (/\b(?!i\b)[a-z][a-z'-]+\s+(?:said|says|thinks|wants|needs|prefers)\b/.test(normalized)) return true;
-  if (/\b(?:we|us|our group)\s+(?:want|need|prefer|care|hate|love)\b/.test(normalized)) return true;
+  if (/\b(?!(?:i|we)\b)[a-z][a-z'-]+\s+(?:said|says|thinks|wants|needs|prefers)\b/.test(normalized)) return true;
   return false;
 }
 
-function firstMatch(normalized: string, patterns: RegExp[]) {
+type EvidenceMatch = { evidence: string; index: number };
+
+function isInsideQuotedSpan(content: string, index: number) {
+  const quotePatterns = [/"[^"\n]*"/g, /“[^”\n]*”/g, /(?:^|\s)'[^'\n]+'(?:$|[\s.,!?])/g];
+  return quotePatterns.some((pattern) => {
+    for (const match of content.matchAll(pattern)) {
+      const start = match.index ?? -1;
+      if (start <= index && index < start + match[0].length) return true;
+    }
+    return false;
+  });
+}
+
+function clausePrefix(content: string, index: number) {
+  const before = content.slice(0, index);
+  const boundaries = [before.lastIndexOf("."), before.lastIndexOf("?"), before.lastIndexOf("!"), before.lastIndexOf(";")];
+  for (const marker of [", but ", " but ", ", however ", " however "]) {
+    const markerIndex = before.lastIndexOf(marker);
+    if (markerIndex >= 0) boundaries.push(markerIndex + marker.length - 1);
+  }
+  return before.slice(Math.max(-1, ...boundaries) + 1);
+}
+
+function clauseSuffix(content: string, index: number) {
+  const after = content.slice(index);
+  const boundary = after.search(/[.!?;]/);
+  return boundary < 0 ? after : after.slice(0, boundary);
+}
+
+function isCurrentAssertion(content: string, match: EvidenceMatch) {
+  if (isInsideQuotedSpan(content, match.index)) return false;
+  const prefix = clausePrefix(content, match.index);
+  const suffix = clauseSuffix(content, match.index + match.evidence.length);
+  if (/\b(?:used to|yesterday|back then|in the past)\b/.test(prefix)) return false;
+  if (/\b(?:i|we)\s+(?:never\s+)?(?:said|thought|believed|felt|claimed)\b[^.!?;]*$/.test(prefix)) return false;
+  if (/\b(?:not true that|no longer true that|stopped saying|take back)\b/.test(prefix)) return false;
+  if (/\b(?:changed my mind|change my mind|not anymore|no longer|used to|yesterday|back then|in the past|take that back|retract(?:ed)?)\b/.test(suffix)) return false;
+  return true;
+}
+
+function firstCurrentMatch(normalized: string, patterns: RegExp[]) {
   for (const pattern of patterns) {
-    const match = normalized.match(pattern);
-    if (match?.[0]) return match[0];
+    for (const match of normalized.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))) {
+      if (match[0] && typeof match.index === "number") {
+        const evidence = { evidence: match[0], index: match.index };
+        if (isCurrentAssertion(normalized, evidence)) return evidence;
+      }
+    }
   }
   return null;
 }
 
 function signalForFeature(normalized: string, definition: FeatureDefinition): PreferenceSignal | null | "conflict" {
-  let removal: string | null = null;
-  let strongNegative: string | null = null;
-  let mildNegative: string | null = null;
-  let strongPositive: string | null = null;
-  let mildPositive: string | null = null;
+  let removal: EvidenceMatch | null = null;
+  let strongNegative: EvidenceMatch | null = null;
+  let mildNegative: EvidenceMatch | null = null;
+  let strongPositive: EvidenceMatch | null = null;
+  let mildPositive: EvidenceMatch | null = null;
   for (const alias of definition.aliases) {
     const target = escaped(alias);
-    removal ??= firstMatch(normalized, [
+    removal ??= firstCurrentMatch(normalized, [
       new RegExp(`\\bi\\s+(?:do not|don't)\\s+(?:need|want)\\s+(?:the\\s+)?${target}\\s+anymore\\b`),
       new RegExp(`\\bi\\s+no\\s+longer\\s+(?:need|want)\\s+(?:the\\s+)?${target}\\b`),
       new RegExp(`\\b(?:the\\s+)?${target}\\s+is\\s+no\\s+longer\\s+(?:a\\s+)?(?:must[- ]have|requirement|non-negotiable)\\s+(?:for|to)\\s+me\\b`),
       new RegExp(`\\bremove\\s+(?:the\\s+)?${target}\\s+from\\s+my\\s+must[- ]haves\\b`),
     ]);
-    strongNegative ??= firstMatch(normalized, [
+    strongNegative ??= firstCurrentMatch(normalized, [
       new RegExp(`\\b(?:i\\s+(?:do not|don't)\\s+care|idgaf)\\s+(?:about\\s+)?(?:the\\s+)?${target}\\b`),
       new RegExp(`\\bi\\s+(?:hate|do not want|don't want)\\s+(?:the\\s+)?${target}\\b`),
     ]);
-    mildNegative ??= firstMatch(normalized, [
+    mildNegative ??= firstCurrentMatch(normalized, [
       new RegExp(`\\b(?:the\\s+)?${target}\\s+(?:is\\s+)?(?:not important|a low priority|optional)\\s+(?:to|for)\\s+me\\b`),
       new RegExp(`\\bi\\s+consider\\s+(?:the\\s+)?${target}\\s+(?:optional|a low priority)\\b`),
     ]);
-    strongPositive ??= firstMatch(normalized, [
-      new RegExp(`\\bi\\s+(?:really\\s+)?(?:need|must have|love|care a lot about)\\s+(?:the\\s+)?${target}\\b`),
+    strongPositive ??= firstCurrentMatch(normalized, [
+      new RegExp(`\\b(?:i|we)\\s+(?:really\\s+)?(?:need|must have|love|care a lot about)\\s+(?:the\\s+)?${target}\\b`),
       new RegExp(`\\b(?:the\\s+)?${target}\\s+is\\s+(?:essential|non-negotiable|a must[- ]have|a high priority)\\s+(?:to|for)\\s+me\\b`),
     ]);
-    mildPositive ??= firstMatch(normalized, [
+    mildPositive ??= firstCurrentMatch(normalized, [
       new RegExp(`\\bi\\s+(?:want|prefer|care about)\\s+(?:the\\s+)?${target}\\b`),
       new RegExp(`\\b(?:the\\s+)?${target}\\s+is\\s+(?:important|a priority)\\s+(?:to|for)\\s+me\\b`),
     ]);
@@ -100,11 +141,11 @@ function signalForFeature(normalized: string, definition: FeatureDefinition): Pr
   const negative = removal ?? strongNegative ?? mildNegative;
   const positive = strongPositive ?? mildPositive;
   if (negative && positive) return "conflict";
-  if (removal) return { feature: definition.feature, label: definition.label, weight: -2, evidence: removal, intent: "remove_must_have" };
-  if (strongNegative) return { feature: definition.feature, label: definition.label, weight: -2, evidence: strongNegative, intent: "preference" };
-  if (mildNegative) return { feature: definition.feature, label: definition.label, weight: -1, evidence: mildNegative, intent: "preference" };
-  if (strongPositive) return { feature: definition.feature, label: definition.label, weight: 2, evidence: strongPositive, intent: "preference" };
-  if (mildPositive) return { feature: definition.feature, label: definition.label, weight: 1, evidence: mildPositive, intent: "preference" };
+  if (removal) return { feature: definition.feature, label: definition.label, weight: -2, evidence: removal.evidence, intent: "remove_must_have" };
+  if (strongNegative) return { feature: definition.feature, label: definition.label, weight: -2, evidence: strongNegative.evidence, intent: "preference" };
+  if (mildNegative) return { feature: definition.feature, label: definition.label, weight: -1, evidence: mildNegative.evidence, intent: "preference" };
+  if (strongPositive) return { feature: definition.feature, label: definition.label, weight: 2, evidence: strongPositive.evidence, intent: "preference" };
+  if (mildPositive) return { feature: definition.feature, label: definition.label, weight: 1, evidence: mildPositive.evidence, intent: "preference" };
   return null;
 }
 

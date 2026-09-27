@@ -16,11 +16,12 @@ There is intentionally no numerical confidence threshold. Foundation Models does
 not provide a calibrated confidence value for this task, so Homeboard does not
 invent one. A signal is eligible only when all deterministic evidence checks pass:
 
-- the statement is explicit, current, and first-person;
+- the statement is explicit and current, and is phrased by the sender as `I` or
+  as a current group requirement using `we`;
 - its evidence occurs in the exact persisted message;
 - the feature, weight, and intent are from the bounded schema;
-- the message is not uncertain, quoted, hypothetical, third-party, shared/group,
-  or internally conflicting;
+- the matched assertion is not uncertain, quoted, hypothetical, past-tense,
+  retracted, third-party, or internally conflicting;
 - a must-have removal explicitly says that named requirement is no longer needed
   or should be removed from the sender's must-haves.
 
