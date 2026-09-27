@@ -871,6 +871,39 @@ struct AdvisorReplyAnalysis: Hashable, Codable {
   var facts: AdvisorReplyFacts
 }
 
+struct AdvisorReplyThreadOption: Identifiable, Hashable, Codable {
+  var id: String
+  var outreachId: String
+  var listingId: String
+  var listingName: String
+  var recipientName: String?
+  var method: String
+  var status: String
+  var contactedAt: String
+
+  var displayLabel: String {
+    guard let recipientName, !recipientName.isEmpty else { return listingName }
+    return "\(listingName) · \(recipientName)"
+  }
+}
+
+struct AdvisorReplyThreadsResponse: Decodable {
+  var threads: [AdvisorReplyThreadOption]
+}
+
+struct AdvisorReplyLog: Hashable, Codable {
+  var confirmationId: String?
+  var outreachId: String
+  var listingId: String
+  var answeredAt: String
+  var duplicate: Bool
+}
+
+struct AdvisorReplySubmissionResult: Hashable {
+  var analysis: AdvisorReplyAnalysis
+  var log: AdvisorReplyLog
+}
+
 struct BoardExpense: Identifiable, Hashable, Codable {
   var id: String
   var description: String

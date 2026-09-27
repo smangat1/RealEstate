@@ -63,6 +63,7 @@ struct MobileBoardLoadResponse: Decodable {
   var missingFields: [String]
   var advisorPayload: AdvisorMessagePayload?
   var replyAnalysis: AdvisorReplyAnalysis?
+  var replyLog: AdvisorReplyLog?
   var preferenceProposal: AdvisorPreferenceProposal?
 }
 
@@ -166,8 +167,10 @@ private struct MobileAdvisorOutreachRequest: Encodable {
   var method: String
 }
 
-private struct MobileAdvisorReplyRequest: Encodable {
+struct MobileAdvisorReplyRequest: Encodable {
   var text: String
+  var outreachId: String
+  var confirmationId: String
 }
 
 private struct MobileBoardExpenseRequest: Encodable {
@@ -1073,14 +1076,31 @@ final class HomeboardAPI {
     accessToken: String,
     boardId: String,
     listingId: String,
-    text: String
+    text: String,
+    outreachId: String,
+    confirmationId: UUID
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/reply",
       method: "POST",
       accessToken: accessToken,
-      body: MobileAdvisorReplyRequest(text: text)
+      body: MobileAdvisorReplyRequest(
+        text: text,
+        outreachId: outreachId,
+        confirmationId: confirmationId.uuidString.lowercased()
+      )
     )
+  }
+
+  func loadAdvisorReplyThreads(
+    accessToken: String,
+    boardId: String
+  ) async throws -> [AdvisorReplyThreadOption] {
+    let response: AdvisorReplyThreadsResponse = try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/advisor/reply-threads",
+      accessToken: accessToken
+    )
+    return response.threads
   }
 
   func loadBoardExpenses(accessToken: String, boardId: String) async throws -> BoardExpenseLedger {

@@ -110,6 +110,85 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(AdvisorDraftSafety.isPersistedDraftReady(payload))
   }
 
+  private func replyThread(
+    id: String = "outreach-1",
+    listingID: String = "listing-1"
+  ) -> AdvisorReplyThreadOption {
+    AdvisorReplyThreadOption(
+      id: id,
+      outreachId: id,
+      listingId: listingID,
+      listingName: "123 Main Street",
+      recipientName: "Alex Agent",
+      method: "email",
+      status: "reported_sent",
+      contactedAt: "2026-09-26T12:00:00.000Z"
+    )
+  }
+
+  func testReplyScreenshotPreviewIsUnverifiedAndRequiresManualThreadChoice() throws {
+    let preview = try XCTUnwrap(AdvisorReplyScreenshotExtractor.parseModelResponse(
+      #"prefix {"apparentSender":"Alex Agent","replyText":"Unit 4B is available Saturday."} suffix"#
+    ))
+    XCTAssertEqual(preview.apparentSender, "Alex Agent")
+    XCTAssertEqual(preview.replyText, "Unit 4B is available Saturday.")
+    XCTAssertTrue(preview.sourceLabel.localizedCaseInsensitiveContains("unverified"))
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread()],
+      listingID: "listing-1",
+      source: .appleIntelligence
+    ))
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread()],
+      listingID: "listing-1",
+      source: .onDeviceOCR
+    ))
+  }
+
+  func testReplyManualFallbackHonorsOnlyOneExplicitListingThread() {
+    XCTAssertEqual(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread()],
+      listingID: "listing-1",
+      source: .manual
+    ), "outreach-1")
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread(id: "one"), replyThread(id: "two")],
+      listingID: "listing-1",
+      source: .manual
+    ))
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread(listingID: "other-listing")],
+      listingID: "listing-1",
+      source: .manual
+    ))
+  }
+
+  func testReplyConfirmationGatePreventsDuplicateSubmissionButAllowsRetryAfterFailure() {
+    let confirmationID = UUID()
+    var gate = AdvisorReplySubmissionGate()
+    XCTAssertTrue(gate.begin(confirmationID))
+    XCTAssertFalse(gate.begin(confirmationID))
+    gate.finish(confirmationID, succeeded: false)
+    XCTAssertTrue(gate.begin(confirmationID))
+    gate.finish(confirmationID, succeeded: true)
+    XCTAssertFalse(gate.begin(confirmationID))
+  }
+
+  func testReplyRequestContainsMinimumConfirmedFieldsAndNoScreenshot() throws {
+    let request = MobileAdvisorReplyRequest(
+      text: "Unit 4B is available Saturday.",
+      outreachId: "outreach-1",
+      confirmationId: "d9085635-2376-48bd-933d-a94ce6801777"
+    )
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any]
+    )
+    XCTAssertEqual(Set(object.keys), Set(["text", "outreachId", "confirmationId"]))
+    XCTAssertNil(object["image"])
+    XCTAssertNil(object["screenshot"])
+    XCTAssertNil(object["apparentSender"])
+  }
+
   func testPreferenceFallbackRequiresExplicitFirstPersonEvidence() {
     let positive = AdvisorPreferenceExtractor.deterministicSignals(
       in: "I really need parking and natural light is important to me."

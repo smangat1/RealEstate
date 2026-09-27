@@ -1319,7 +1319,28 @@ final class AppModel {
     }
   }
 
-  func submitAdvisorReply(listingId: String, text: String) async -> AdvisorReplyAnalysis? {
+  func loadAdvisorReplyThreads() async -> [AdvisorReplyThreadOption] {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before adding a broker reply."
+      return []
+    }
+    do {
+      return try await api.loadAdvisorReplyThreads(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+    } catch {
+      boardError = readable(error)
+      return []
+    }
+  }
+
+  func submitAdvisorReply(
+    listingId: String,
+    outreachId: String,
+    text: String,
+    confirmationId: UUID
+  ) async -> AdvisorReplySubmissionResult? {
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before adding a broker reply."
       return nil
@@ -1329,10 +1350,16 @@ final class AppModel {
         accessToken: session.accessToken,
         boardId: boardId,
         listingId: listingId,
-        text: text
+        text: text,
+        outreachId: outreachId,
+        confirmationId: confirmationId
       )
+      guard let analysis = response.replyAnalysis, let log = response.replyLog else {
+        boardError = "Homeboard could not confirm that the reply was logged. Please try again."
+        return nil
+      }
       applyRemoteMutation(response, clearing: [.activity, .shortlist])
-      return response.replyAnalysis
+      return AdvisorReplySubmissionResult(analysis: analysis, log: log)
     } catch {
       boardError = readable(error)
       return nil
