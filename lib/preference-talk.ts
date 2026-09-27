@@ -84,23 +84,47 @@ function clauseSuffix(content: string, index: number) {
   return boundary < 0 ? after : after.slice(0, boundary);
 }
 
-function isCurrentAssertion(content: string, match: EvidenceMatch) {
+function mentionsAlias(content: string, aliases: string[]) {
+  return aliases.some((alias) => new RegExp(`\\b${escaped(alias)}\\b`).test(content));
+}
+
+function laterCorrectionRetractsFeature(suffix: string, definition: FeatureDefinition) {
+  const marker = suffix.search(/(?:^|[,\s])(?:but|however|though|actually)\b/);
+  if (marker < 0) return false;
+  const correction = suffix.slice(marker);
+  const mentionsCurrentFeature = mentionsAlias(correction, definition.aliases);
+  const mentionsOtherFeature = FEATURES.some((feature) =>
+    feature.feature !== definition.feature && mentionsAlias(correction, feature.aliases));
+  if (mentionsCurrentFeature) {
+    const explicitFeatureSignal = /\b(?:i|we)\s+(?:do not|don't|no longer)\s+(?:need|want|care about)\b/.test(correction)
+      || /\bis\s+no\s+longer\s+(?:a\s+)?(?:must[- ]have|requirement|non-negotiable)\b/.test(correction);
+    if (explicitFeatureSignal) return false;
+    return /\b(?:not|no longer|not anymore|changed my mind|take (?:it|that) back|retract(?:ed)?)\b/.test(correction);
+  }
+  if (mentionsOtherFeature) return false;
+  return /\b(?:i|we)\s+(?:do not|don't)\s+(?:(?:need|want)\s+)?(?:(?:it|that)\s+)?anymore\b/.test(correction)
+    || /\b(?:i|we)\s+(?:changed|change)\s+(?:my|our)\s+mind\b/.test(correction)
+    || /\b(?:not anymore|no longer|take (?:it|that) back|retract(?:ed)?)\b/.test(correction);
+}
+
+function isCurrentAssertion(content: string, match: EvidenceMatch, definition: FeatureDefinition) {
   if (isInsideQuotedSpan(content, match.index)) return false;
   const prefix = clausePrefix(content, match.index);
   const suffix = clauseSuffix(content, match.index + match.evidence.length);
   if (/\b(?:used to|yesterday|back then|in the past)\b/.test(prefix)) return false;
   if (/\b(?:i|we)\s+(?:never\s+)?(?:said|thought|believed|felt|claimed)\b[^.!?;]*$/.test(prefix)) return false;
   if (/\b(?:not true that|no longer true that|stopped saying|take back)\b/.test(prefix)) return false;
-  if (/\b(?:changed my mind|change my mind|not anymore|no longer|used to|yesterday|back then|in the past|take that back|retract(?:ed)?)\b/.test(suffix)) return false;
+  if (/\b(?:used to|yesterday|back then|in the past)\b/.test(suffix)) return false;
+  if (laterCorrectionRetractsFeature(suffix, definition)) return false;
   return true;
 }
 
-function firstCurrentMatch(normalized: string, patterns: RegExp[]) {
+function firstCurrentMatch(normalized: string, patterns: RegExp[], definition: FeatureDefinition) {
   for (const pattern of patterns) {
     for (const match of normalized.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))) {
       if (match[0] && typeof match.index === "number") {
         const evidence = { evidence: match[0], index: match.index };
-        if (isCurrentAssertion(normalized, evidence)) return evidence;
+        if (isCurrentAssertion(normalized, evidence, definition)) return evidence;
       }
     }
   }
@@ -120,23 +144,23 @@ function signalForFeature(normalized: string, definition: FeatureDefinition): Pr
       new RegExp(`\\bi\\s+no\\s+longer\\s+(?:need|want)\\s+(?:the\\s+)?${target}\\b`),
       new RegExp(`\\b(?:the\\s+)?${target}\\s+is\\s+no\\s+longer\\s+(?:a\\s+)?(?:must[- ]have|requirement|non-negotiable)\\s+(?:for|to)\\s+me\\b`),
       new RegExp(`\\bremove\\s+(?:the\\s+)?${target}\\s+from\\s+my\\s+must[- ]haves\\b`),
-    ]);
+    ], definition);
     strongNegative ??= firstCurrentMatch(normalized, [
       new RegExp(`\\b(?:i\\s+(?:do not|don't)\\s+care|idgaf)\\s+(?:about\\s+)?(?:the\\s+)?${target}\\b`),
       new RegExp(`\\bi\\s+(?:hate|do not want|don't want)\\s+(?:the\\s+)?${target}\\b`),
-    ]);
+    ], definition);
     mildNegative ??= firstCurrentMatch(normalized, [
       new RegExp(`\\b(?:the\\s+)?${target}\\s+(?:is\\s+)?(?:not important|a low priority|optional)\\s+(?:to|for)\\s+me\\b`),
       new RegExp(`\\bi\\s+consider\\s+(?:the\\s+)?${target}\\s+(?:optional|a low priority)\\b`),
-    ]);
+    ], definition);
     strongPositive ??= firstCurrentMatch(normalized, [
       new RegExp(`\\b(?:i|we)\\s+(?:really\\s+)?(?:need|must have|love|care a lot about)\\s+(?:the\\s+)?${target}\\b`),
       new RegExp(`\\b(?:the\\s+)?${target}\\s+is\\s+(?:essential|non-negotiable|a must[- ]have|a high priority)\\s+(?:to|for)\\s+me\\b`),
-    ]);
+    ], definition);
     mildPositive ??= firstCurrentMatch(normalized, [
       new RegExp(`\\bi\\s+(?:want|prefer|care about)\\s+(?:the\\s+)?${target}\\b`),
       new RegExp(`\\b(?:the\\s+)?${target}\\s+is\\s+(?:important|a priority)\\s+(?:to|for)\\s+me\\b`),
-    ]);
+    ], definition);
   }
   const negative = removal ?? strongNegative ?? mildNegative;
   const positive = strongPositive ?? mildPositive;

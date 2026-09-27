@@ -90,7 +90,55 @@ enum AdvisorPreferenceExtractor {
     return blockers.contains { text == $0.trimmingCharacters(in: .whitespaces) || text.contains("\($0)") }
   }
 
-  private static func isCurrentAssertion(in text: String, range: NSRange) -> Bool {
+  private static func mentionsAlias(_ text: String, aliases: [String]) -> Bool {
+    aliases.contains { alias in
+      let pattern = #"\b"# + NSRegularExpression.escapedPattern(for: alias) + #"\b"#
+      return text.range(of: pattern, options: .regularExpression) != nil
+    }
+  }
+
+  private static func laterCorrectionRetractsFeature(
+    _ suffix: String,
+    featureKey: String,
+    aliases: [String]
+  ) -> Bool {
+    guard let marker = suffix.range(
+      of: #"(?:^|[,\s])(?:but|however|though|actually)\b"#,
+      options: .regularExpression
+    ) else { return false }
+    let correction = String(suffix[marker.lowerBound...])
+    let mentionsCurrent = mentionsAlias(correction, aliases: aliases)
+    let mentionsOther = features.contains { feature in
+      feature.key != featureKey && mentionsAlias(correction, aliases: feature.aliases)
+    }
+    if mentionsCurrent {
+      let explicitFeatureSignals = [
+        #"\b(?:i|we)\s+(?:do not|don't|no longer)\s+(?:need|want|care about)\b"#,
+        #"\bis\s+no\s+longer\s+(?:a\s+)?(?:must[- ]have|requirement|non-negotiable)\b"#,
+      ]
+      if explicitFeatureSignals.contains(where: {
+        correction.range(of: $0, options: .regularExpression) != nil
+      }) { return false }
+      return correction.range(
+        of: #"\b(?:not|no longer|not anymore|changed my mind|take (?:it|that) back|retract(?:ed)?)\b"#,
+        options: .regularExpression
+      ) != nil
+    }
+    if mentionsOther { return false }
+    let implicitRetractions = [
+      #"\b(?:i|we)\s+(?:do not|don't)\s+(?:(?:need|want)\s+)?(?:(?:it|that)\s+)?anymore\b"#,
+      #"\b(?:i|we)\s+(?:changed|change)\s+(?:my|our)\s+mind\b"#,
+      #"\b(?:not anymore|no longer|take (?:it|that) back|retract(?:ed)?)\b"#,
+    ]
+    return implicitRetractions.contains { correction.range(of: $0, options: .regularExpression) != nil }
+  }
+
+  private static func isCurrentAssertion(
+    in text: String,
+    range: NSRange,
+    featureKey: String,
+    aliases: [String]
+  ) -> Bool {
     let source = text as NSString
     for pattern in [#"\"[^\"\n]*\""#, #"“[^”\n]*”"#, #"(?:^|\s)'[^'\n]+'(?:$|[\s.,!?])"#] {
       guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
@@ -120,18 +168,26 @@ enum AdvisorPreferenceExtractor {
       #"\b(?:not true that|no longer true that|stopped saying|take back)\b"#,
     ]
     if prefixPatterns.contains(where: { prefix.range(of: $0, options: .regularExpression) != nil }) { return false }
-    let suffixPattern = #"\b(?:changed my mind|change my mind|not anymore|no longer|used to|yesterday|back then|in the past|take that back|retract(?:ed)?)\b"#
-    return suffix.range(of: suffixPattern, options: .regularExpression) == nil
+    if suffix.range(
+      of: #"\b(?:used to|yesterday|back then|in the past)\b"#,
+      options: .regularExpression
+    ) != nil { return false }
+    return !laterCorrectionRetractsFeature(suffix, featureKey: featureKey, aliases: aliases)
   }
 
-  private static func firstCurrentEvidence(in text: String, phrases: [String]) -> String? {
+  private static func firstCurrentEvidence(
+    in text: String,
+    phrases: [String],
+    featureKey: String,
+    aliases: [String]
+  ) -> String? {
     let source = text as NSString
     for phrase in phrases {
       var searchRange = NSRange(location: 0, length: source.length)
       while searchRange.length > 0 {
         let found = source.range(of: phrase, options: [], range: searchRange)
         if found.location == NSNotFound { break }
-        if isCurrentAssertion(in: text, range: found) { return phrase }
+        if isCurrentAssertion(in: text, range: found, featureKey: featureKey, aliases: aliases) { return phrase }
         let nextLocation = NSMaxRange(found)
         searchRange = NSRange(location: nextLocation, length: source.length - nextLocation)
       }
@@ -149,12 +205,14 @@ enum AdvisorPreferenceExtractor {
       for alias in feature.aliases {
         let removals = [
           "i don't need \(alias) anymore", "i do not need \(alias) anymore",
+          "i don't need the \(alias) anymore", "i do not need the \(alias) anymore",
           "i don't want \(alias) anymore", "i do not want \(alias) anymore",
+          "i don't want the \(alias) anymore", "i do not want the \(alias) anymore",
           "i no longer need \(alias)", "i no longer want \(alias)",
           "remove \(alias) from my must-haves", "remove the \(alias) from my must-haves",
           "\(alias) is no longer a must-have for me", "\(alias) is no longer a requirement for me",
         ]
-        if let evidence = firstCurrentEvidence(in: text, phrases: removals) {
+        if let evidence = firstCurrentEvidence(in: text, phrases: removals, featureKey: feature.key, aliases: feature.aliases) {
           negative = .init(feature: feature.key, weight: -2, evidence: evidence, intent: "remove_must_have")
         }
         let strongNegatives = [
@@ -163,14 +221,14 @@ enum AdvisorPreferenceExtractor {
           "i hate \(alias)", "i hate the \(alias)", "i don't want \(alias)", "i don't want the \(alias)",
           "i do not want \(alias)", "i do not want the \(alias)",
         ]
-        if negative == nil, let evidence = firstCurrentEvidence(in: text, phrases: strongNegatives) {
+        if negative == nil, let evidence = firstCurrentEvidence(in: text, phrases: strongNegatives, featureKey: feature.key, aliases: feature.aliases) {
           negative = .init(feature: feature.key, weight: -2, evidence: evidence, intent: "preference")
         }
         let mildNegatives = [
           "\(alias) is not important to me", "\(alias) is a low priority for me",
           "\(alias) is optional for me", "i consider \(alias) optional",
         ]
-        if negative == nil, let evidence = firstCurrentEvidence(in: text, phrases: mildNegatives) {
+        if negative == nil, let evidence = firstCurrentEvidence(in: text, phrases: mildNegatives, featureKey: feature.key, aliases: feature.aliases) {
           negative = .init(feature: feature.key, weight: -1, evidence: evidence, intent: "preference")
         }
         let strongPositives = [
@@ -181,7 +239,7 @@ enum AdvisorPreferenceExtractor {
           "\(alias) is essential to me", "\(alias) is non-negotiable for me",
           "\(alias) is a must-have for me", "\(alias) is a high priority for me",
         ]
-        if let evidence = firstCurrentEvidence(in: text, phrases: strongPositives) {
+        if let evidence = firstCurrentEvidence(in: text, phrases: strongPositives, featureKey: feature.key, aliases: feature.aliases) {
           positive = .init(feature: feature.key, weight: 2, evidence: evidence, intent: "preference")
         }
         let mildPositives = [
@@ -189,7 +247,7 @@ enum AdvisorPreferenceExtractor {
           "i care about \(alias)", "i care about the \(alias)",
           "\(alias) is important to me", "\(alias) is a priority for me",
         ]
-        if positive == nil, let evidence = firstCurrentEvidence(in: text, phrases: mildPositives) {
+        if positive == nil, let evidence = firstCurrentEvidence(in: text, phrases: mildPositives, featureKey: feature.key, aliases: feature.aliases) {
           positive = .init(feature: feature.key, weight: 1, evidence: evidence, intent: "preference")
         }
       }

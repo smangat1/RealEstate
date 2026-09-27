@@ -136,6 +136,9 @@ final class HomeboardNativeTests: XCTestCase {
       "\"I need parking\"",
       "I need parking back then",
       "I need parking, but I no longer do",
+      "I need parking, but I don't anymore",
+      "I need parking, however I do not anymore",
+      "I need parking, but I changed my mind",
     ] {
       XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: retraction).isEmpty, retraction)
     }
@@ -151,6 +154,17 @@ final class HomeboardNativeTests: XCTestCase {
       XCTAssertEqual(signals.first?.weight, 2, current)
       XCTAssertEqual(signals.first?.intent, "preference", current)
     }
+
+    let independent = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I need parking, but I don't need the gym anymore"
+    )
+    XCTAssertEqual(independent.map(\.feature), ["gym", "parking"])
+    XCTAssertEqual(independent.map(\.intent), ["remove_must_have", "preference"])
+
+    let unrelated = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I need parking, however natural light is important to me"
+    )
+    XCTAssertEqual(unrelated.map(\.feature), ["natural_light", "parking"])
   }
 
   func testPreferenceFallbackSeparatesLowPriorityFromMustHaveRemoval() throws {

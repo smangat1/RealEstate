@@ -80,6 +80,9 @@ test("past-tense and retracted assertions fail closed while current assertions r
     "\"I need parking\"",
     "I need parking back then",
     "I need parking, but I no longer do",
+    "I need parking, but I don't anymore",
+    "I need parking, however I do not anymore",
+    "I need parking, but I changed my mind",
   ]) {
     assert.deepEqual(parsePreferenceTalk(content), [], content);
   }
@@ -95,6 +98,17 @@ test("past-tense and retracted assertions fail closed while current assertions r
     assert.equal(signals[0].weight, 2, content);
     assert.equal(signals[0].intent, "preference", content);
   }
+
+  const independent = parsePreferenceTalk("I need parking, but I don't need the gym anymore");
+  assert.deepEqual(independent.map((signal) => [signal.feature, signal.intent]), [
+    ["gym", "remove_must_have"],
+    ["parking", "preference"],
+  ]);
+  assert.deepEqual(
+    parsePreferenceTalk("I need parking, however natural light is important to me")
+      .map((signal) => signal.feature),
+    ["natural_light", "parking"],
+  );
 });
 
 test("only explicit first-person negation removes the named must-have", () => {
