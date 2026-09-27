@@ -126,6 +126,79 @@ final class HomeboardNativeTests: XCTestCase {
     )
   }
 
+  private func remoteProfile(
+    advisorSetupVersion: Int? = nil,
+    advisorSetupCompletedAt: String? = nil
+  ) -> RemoteRentalProfilePayload {
+    RemoteRentalProfilePayload(
+      name: "Sam",
+      email: nil,
+      city: "New York",
+      moveInDate: "October",
+      budgetMin: nil,
+      budgetMax: 4_500,
+      commuteTarget: nil,
+      commuteAccess: "skip",
+      minCommuteMinutes: nil,
+      maxCommuteMinutes: nil,
+      neighborhoods: [],
+      mustHaves: ["Laundry"],
+      dealbreakers: [],
+      priorities: ["Price"],
+      groupSize: 2,
+      notes: nil,
+      rentalReadiness: nil,
+      advisorFinancialMode: advisorSetupVersion == nil ? nil : "available_on_request",
+      advisorIncomeMultiple: nil,
+      advisorCreditScore: nil,
+      advisorSetupCompletedAt: advisorSetupCompletedAt,
+      advisorSetupVersion: advisorSetupVersion
+    )
+  }
+
+  func testOlderServerCannotEraseCompletedAdvisorSetup() {
+    var local = RentalProfile()
+    local.advisorFinancialMode = "provided"
+    local.advisorIncomeMultiple = "3.5x"
+    local.advisorCreditScore = "760"
+    local.advisorSetupCompletedAt = "2026-09-27T04:30:00Z"
+    local.advisorSetupVersion = 2
+
+    let preserved = AppModel.profilePreservingAdvisorSetup(
+      remote: remoteProfile(),
+      fallback: local
+    )
+    XCTAssertEqual(preserved.advisorFinancialMode, "available_on_request")
+    XCTAssertNil(preserved.advisorIncomeMultiple)
+    XCTAssertNil(preserved.advisorCreditScore)
+    XCTAssertEqual(preserved.advisorSetupCompletedAt, "2026-09-27T04:30:00Z")
+    XCTAssertEqual(preserved.advisorSetupVersion, 2)
+
+    let current = AppModel.profilePreservingAdvisorSetup(
+      remote: remoteProfile(
+        advisorSetupVersion: 3,
+        advisorSetupCompletedAt: "2026-09-27T05:00:00Z"
+      ),
+      fallback: local
+    )
+    XCTAssertEqual(current.advisorSetupVersion, 3)
+    XCTAssertEqual(current.advisorSetupCompletedAt, "2026-09-27T05:00:00Z")
+  }
+
+  func testHTMLServerErrorsAreSafeForTheChatFeed() {
+    let error = HomeboardAPIError.response(
+      endpoint: "GET /api/mobile/boards/board-1/preference-proposals",
+      status: 404,
+      contentType: "text/html; charset=utf-8",
+      bodyExcerpt: "<!DOCTYPE html><html>private deployment details</html>",
+      message: "Request failed."
+    )
+    XCTAssertTrue(error.isMissingEndpoint("/preference-proposals"))
+    XCTAssertTrue(error.errorDescription?.contains("newer Homeboard server") == true)
+    XCTAssertFalse(error.errorDescription?.contains("<!DOCTYPE") == true)
+    XCTAssertTrue(error.diagnosticDescription.contains("<!DOCTYPE"))
+  }
+
   func testReplyScreenshotPreviewIsUnverifiedAndRequiresManualThreadChoice() throws {
     let preview = try XCTUnwrap(AdvisorReplyScreenshotExtractor.parseModelResponse(
       #"prefix {"apparentSender":"Alex Agent","replyText":"Unit 4B is available Saturday."} suffix"#

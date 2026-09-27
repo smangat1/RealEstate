@@ -42,6 +42,24 @@ final class AppModel {
     case setup
   }
 
+  static func profilePreservingAdvisorSetup(
+    remote: RemoteRentalProfilePayload,
+    fallback: RentalProfile?
+  ) -> RentalProfile {
+    var resolved = RentalProfile(remote: remote)
+    guard resolved.advisorSetupVersion == nil,
+          let fallback,
+          fallback.advisorSetupVersion != nil else { return resolved }
+    // Older servers safely ignore the newer optional Advisor keys. Preserve
+    // the board-scoped local copy until a matching server can echo them back.
+    resolved.advisorFinancialMode = "available_on_request"
+    resolved.advisorIncomeMultiple = nil
+    resolved.advisorCreditScore = nil
+    resolved.advisorSetupCompletedAt = fallback.advisorSetupCompletedAt
+    resolved.advisorSetupVersion = fallback.advisorSetupVersion
+    return resolved
+  }
+
   private struct VersionedPersistenceRecord<Payload: Codable>: Codable {
     var schemaVersion: Int
     var payload: Payload
@@ -978,7 +996,7 @@ final class AppModel {
       if let preferenceProposal = response.preferenceProposal {
         pendingPreferenceProposal = preferenceProposal
       }
-      profile = RentalProfile(remote: response.profile)
+      profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       board.chatMessages.removeAll { $0.id == temporaryID }
@@ -1100,7 +1118,7 @@ final class AppModel {
     }
     board = merged
     applyAdvisorPayload(payload)
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     storeCurrentBoardSnapshot()
     persist()
     return payload
@@ -1158,6 +1176,11 @@ final class AppModel {
     } catch is CancellationError {
       return
     } catch {
+      if let apiError = error as? HomeboardAPIError,
+         apiError.isMissingEndpoint("/preference-proposals") {
+        pendingPreferenceProposal = nil
+        return
+      }
       boardError = readable(error)
     }
   }
@@ -1762,12 +1785,13 @@ final class AppModel {
     }
 
     do {
+      let localProfile = profile
       let response = try await api.saveBoardProfile(accessToken: session.accessToken, boardId: boardId, profile: profile)
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
             board.id == boardId else { return }
       board = response.board
-      profile = RentalProfile(remote: response.profile)
+      profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: localProfile)
       storeCurrentBoardSnapshot()
       boardFeedback = "Board brief saved."
     } catch {
@@ -1951,7 +1975,10 @@ final class AppModel {
       listingInventoryHasMore = false
       listingInventoryError = nil
     }
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(
+      remote: response.profile,
+      fallback: localProfilesByBoard[id]
+    )
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     currentScreen = .board
@@ -3493,7 +3520,7 @@ final class AppModel {
       return
     }
     board = boardByApplyingRemovalTombstones(response.board, storageKey: storageKey)
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     persist()
@@ -3845,7 +3872,7 @@ final class AppModel {
     if let preferenceProposal = response.preferenceProposal {
       pendingPreferenceProposal = preferenceProposal
     }
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     if kinds.contains(.shortlist) {
       localShortlistsByBoard[key] = pendingListingCreatesByBoard[key] ?? []
     }

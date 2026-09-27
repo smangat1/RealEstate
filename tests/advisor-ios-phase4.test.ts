@@ -128,6 +128,10 @@ test("unlocking Advisor launches a two-screen setup and defers finances until se
   assert.doesNotMatch(card, /\[INCOME MULTIPLE\]|\[CREDIT SCORE\]/);
   assert.match(appModel, /func completeAdvisorSetup/);
   assert.match(appModel, /await saveBoardBrief\(\)/);
+  assert.match(appModel, /profilePreservingAdvisorSetup/);
+  assert.match(appModel, /isMissingEndpoint\("\/preference-proposals"\)/);
+  const setup = card.match(/private struct AdvisorSetupOnboardingView[\s\S]*?private struct AdvisorOnboardingStep/)?.[0] ?? "";
+  assert.doesNotMatch(setup, /\.background\(HomeboardPalette\.background\)/);
 });
 
 test("Apple Intelligence drafts on-device with a template fallback and no financial placeholders", () => {

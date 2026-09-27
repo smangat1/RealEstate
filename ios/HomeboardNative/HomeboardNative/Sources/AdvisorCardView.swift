@@ -1072,7 +1072,6 @@ private struct AdvisorSetupOnboardingView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
-        .background(HomeboardPalette.background)
       }
       .background(WorkspaceBackgroundView())
       .navigationTitle("Set up Advisor")

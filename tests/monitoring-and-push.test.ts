@@ -68,7 +68,9 @@ test("API failures and build versions are visible without exposing secrets", () 
   assert.match(envContract, /trustedBuildMetadataVariables = new Set\(\[\s*"GIT_COMMIT_SHA",\s*"SOURCE_VERSION",\s*"VERCEL_GIT_COMMIT_SHA",\s*\]\)/);
   assert.match(envContract, /!trustedBuildMetadataVariables\.has\(name\)/);
   assert.match(envContract, /!documentedVariables\.has\(name\)/);
+  assert.match(api, /var diagnosticDescription: String/);
   assert.match(api, /Endpoint \\\(endpoint\) · status \\\(status\) · content type \\\(contentType\) · body \\\(bodyExcerpt\)/);
+  assert.match(api, /contentType\.lowercased\(\)\.contains\("text\/html"\)/);
   assert.match(api, /String\(compactBody\.prefix\(240\)\)/);
   assert.match(api, /func fetchHealth/);
   assert.match(config, /static var appCommit/);
