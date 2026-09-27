@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:advisor-notification-db": "NODE_OPTIONS='--conditions=react-server' tsx scripts/verify-advisor-notification-db.ts",
     "typecheck": "tsc --noEmit --pretty false && tsc --project tsconfig.tests.json --pretty false",
     "secrets:check": "tsx scripts/check-tracked-secrets.ts",
     "env:check": "tsx scripts/check-env-contract.ts",

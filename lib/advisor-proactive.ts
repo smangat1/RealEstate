@@ -13,6 +13,7 @@ import {
   isFreshListingObservation,
   isGhostedOutreach,
   isListingUnavailable,
+  isVerifiedUnavailableTransition,
   type WatchedListingState,
 } from "@/lib/advisor-proactive-logic";
 import {
@@ -22,6 +23,7 @@ import {
 import {
   advisorNotificationCreateData,
   deliverUrgentAdvisorNotification,
+  ensureBoardNotificationPreferences,
 } from "@/lib/advisor-notifications";
 import { getBoardPageData } from "@/lib/board-data";
 import { findScamPriceWarnings } from "@/lib/listing-cost";
@@ -128,6 +130,7 @@ async function createPlainAction(input: {
   urgent: boolean;
   recipientUserIds: string[];
 }) {
+  await ensureBoardNotificationPreferences(input.boardId, input.recipientUserIds);
   try {
     await prisma.$transaction([
       prisma.advisorAction.create({
@@ -205,6 +208,7 @@ async function createFollowUpAction(input: {
   now: Date;
   recipientUserIds: string[];
 }) {
+  await ensureBoardNotificationPreferences(input.boardId, input.recipientUserIds, input.now);
   const boardData = await getBoardPageData(input.boardId, input.ownerUserId, {
     includeSuggestedListings: false,
     includeCommutes: false,
@@ -412,7 +416,8 @@ export async function runAdvisorProactiveBoard(
       continue;
     }
 
-    const changes = detectListingChanges(snapshotState(previousSnapshot), current);
+    const previous = snapshotState(previousSnapshot);
+    const changes = detectListingChanges(previous, current);
     if (changes.length === 0) continue;
     await prisma.listingChange.createMany({
       data: changes.map((change) => ({
@@ -459,7 +464,7 @@ export async function runAdvisorProactiveBoard(
       pushType: "listing_change",
       urgent: isUrgentAdvisorNotification({
         kind: "listing_change",
-        verifiedUnavailableTransition: offMarket,
+        verifiedUnavailableTransition: isVerifiedUnavailableTransition(previous, current, changes),
       }),
       recipientUserIds,
     });

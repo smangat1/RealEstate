@@ -140,9 +140,24 @@ enum AdvisorBackendCompatibility {
 struct BoardNotificationSettings: Codable, Hashable {
   var digestHourLocal: Int
   var timeZone: String
+  var timeZoneSource: String?
   var nonCriticalPushEnabled: Bool
   var urgentPushesAlwaysEnabled: Bool
   var scope: String
+}
+
+enum AdvisorNotificationTimeZonePolicy {
+  static func shouldOfferDeviceUpdate(stored: String, device: String) -> Bool {
+    stored != device && TimeZone(identifier: device) != nil
+  }
+
+  static func zoneAfterDeviceRegistration(
+    stored: String,
+    source: String,
+    device: String
+  ) -> String {
+    source == "fallback" && TimeZone(identifier: device) != nil ? device : stored
+  }
 }
 
 struct MobileBoardMessageCreateRequest: Encodable {
@@ -392,6 +407,7 @@ private struct MobileMemberPatchRequest: Encodable {
 private struct PushDeviceRequest: Encodable {
   var token: String
   var environment: String
+  var timeZone: String
 }
 
 private struct PushDeviceDeleteRequest: Encodable {
@@ -1541,7 +1557,11 @@ final class HomeboardAPI {
       path: "/api/mobile/push-devices",
       method: "POST",
       accessToken: accessToken,
-      body: PushDeviceRequest(token: token, environment: environment)
+      body: PushDeviceRequest(
+        token: token,
+        environment: environment,
+        timeZone: TimeZone.current.identifier
+      )
     )
   }
 

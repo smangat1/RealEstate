@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  advisorLocalDateKey,
+  advisorNotificationPreferenceKey,
   DEFAULT_ADVISOR_DIGEST_HOUR,
   DEFAULT_ADVISOR_TIME_ZONE,
   isValidAdvisorTimeZone,
   MAX_ADVISOR_DIGEST_HOUR,
   MIN_ADVISOR_DIGEST_HOUR,
+  nextAdvisorDigestAt,
 } from "@/lib/advisor-notification-diet";
+import { ensureBoardNotificationPreferences } from "@/lib/advisor-notifications";
 import { ensureBoard } from "@/lib/board-data";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { sendOperationalAlert } from "@/lib/monitoring";
@@ -25,11 +29,13 @@ function response(preference: {
   digestHourLocal: number;
   timeZone: string;
   nonCriticalPushEnabled: boolean;
+  timeZoneSource: string;
 }) {
   return {
     digestHourLocal: preference.digestHourLocal,
     timeZone: preference.timeZone,
     nonCriticalPushEnabled: preference.nonCriticalPushEnabled,
+    timeZoneSource: preference.timeZoneSource,
     urgentPushesAlwaysEnabled: true,
     scope: "board",
   };
@@ -46,13 +52,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const access = await contextFor(request, context);
     if (!access) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    await ensureBoardNotificationPreferences(access.boardId, [access.user.id]);
     const preference = await prisma.boardNotificationPreference.findUnique({
-      where: { boardId_userId: { boardId: access.boardId, userId: access.user.id } },
+      where: advisorNotificationPreferenceKey(access.boardId, access.user.id),
     });
     return NextResponse.json(response(preference ?? {
       digestHourLocal: DEFAULT_ADVISOR_DIGEST_HOUR,
       timeZone: DEFAULT_ADVISOR_TIME_ZONE,
       nonCriticalPushEnabled: true,
+      timeZoneSource: "fallback",
     }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     await sendOperationalAlert(error, {
@@ -75,10 +83,38 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!parsed.success) {
       return NextResponse.json({ error: "Notification settings are invalid." }, { status: 400 });
     }
+    const now = new Date();
+    const existing = await prisma.boardNotificationPreference.findUnique({
+      where: advisorNotificationPreferenceKey(access.boardId, access.user.id),
+      select: { lastDigestAt: true },
+    });
+    const nextDigestAt = nextAdvisorDigestAt(
+      now,
+      parsed.data.timeZone,
+      parsed.data.digestHourLocal,
+    );
+    if (!nextDigestAt) {
+      return NextResponse.json({ error: "Notification settings are invalid." }, { status: 400 });
+    }
     const preference = await prisma.boardNotificationPreference.upsert({
-      where: { boardId_userId: { boardId: access.boardId, userId: access.user.id } },
-      create: { boardId: access.boardId, userId: access.user.id, ...parsed.data },
-      update: parsed.data,
+      where: advisorNotificationPreferenceKey(access.boardId, access.user.id),
+      create: {
+        boardId: access.boardId,
+        userId: access.user.id,
+        ...parsed.data,
+        timeZoneSource: "manual",
+        nextDigestAt,
+      },
+      update: {
+        ...parsed.data,
+        timeZoneSource: "manual",
+        nextDigestAt,
+        digestLeaseToken: null,
+        digestLeaseUntil: null,
+        lastDigestLocalDate: existing?.lastDigestAt
+          ? advisorLocalDateKey(existing.lastDigestAt, parsed.data.timeZone)
+          : null,
+      },
     });
     return NextResponse.json(response(preference), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

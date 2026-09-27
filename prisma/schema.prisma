@@ -876,6 +876,7 @@ model PushDevice {
   token       String   @unique
   platform    String   @default("ios")
   environment String   @default("development")
+  timeZone    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   lastSeenAt  DateTime @default(now())
@@ -889,8 +890,14 @@ model BoardNotificationPreference {
   boardId                String
   userId                 String
   digestHourLocal        Int         @default(18)
-  timeZone               String      @default("America/New_York")
+  timeZone               String      @default("UTC")
+  timeZoneSource         String      @default("fallback")
   nonCriticalPushEnabled Boolean     @default(true)
+  nextDigestAt           DateTime    @default(now())
+  lastDigestAt           DateTime?
+  lastDigestLocalDate    String?
+  digestLeaseUntil       DateTime?
+  digestLeaseToken       String?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
   board                  SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
@@ -898,6 +905,7 @@ model BoardNotificationPreference {
 
   @@unique([boardId, userId])
   @@index([userId, updatedAt])
+  @@index([nonCriticalPushEnabled, nextDigestAt, digestLeaseUntil, id])
 }
 
 model AdvisorNotificationEvent {
@@ -925,6 +933,11 @@ model AdvisorNotificationDelivery {
   leaseToken   String?
   deliveredAt  DateTime?
   suppressedAt DateTime?
+  failedAt     DateTime?
+  attemptCount Int                      @default(0)
+  lastAttemptAt DateTime?
+  deliveryOutcome String?
+  failureReason String?
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt
   event        AdvisorNotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)

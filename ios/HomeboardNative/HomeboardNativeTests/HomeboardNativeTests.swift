@@ -286,6 +286,29 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(gate.begin(confirmationID))
   }
 
+  func testAdvisorNotificationTimezoneDoesNotSilentlyFollowTravel() {
+    XCTAssertEqual(
+      AdvisorNotificationTimeZonePolicy.zoneAfterDeviceRegistration(
+        stored: "UTC",
+        source: "fallback",
+        device: "America/Los_Angeles"
+      ),
+      "America/Los_Angeles"
+    )
+    XCTAssertEqual(
+      AdvisorNotificationTimeZonePolicy.zoneAfterDeviceRegistration(
+        stored: "America/New_York",
+        source: "manual",
+        device: "America/Los_Angeles"
+      ),
+      "America/New_York"
+    )
+    XCTAssertTrue(AdvisorNotificationTimeZonePolicy.shouldOfferDeviceUpdate(
+      stored: "America/New_York",
+      device: "America/Los_Angeles"
+    ))
+  }
+
   func testReplyRequestContainsMinimumConfirmedFieldsAndNoScreenshot() throws {
     let request = MobileAdvisorReplyRequest(
       text: "Unit 4B is available Saturday.",

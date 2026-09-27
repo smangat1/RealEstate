@@ -7,6 +7,9 @@ import {
 } from "node:http2";
 
 import { createAPNsProviderToken } from "@/lib/apns-token";
+import {
+  classifyBoardPushAttempt,
+} from "@/lib/apns-delivery";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
@@ -183,7 +186,7 @@ export async function notifyBoardMembers(input: {
   collapseId?: string;
 }) {
   const configuration = credentials();
-  if (!configuration) return { configured: false, attempted: 0, delivered: 0 };
+  if (!configuration) return classifyBoardPushAttempt({ configured: false, statuses: [] });
 
   const board = await prisma.searchBoard.findUnique({
     where: { id: input.boardId },
@@ -192,14 +195,14 @@ export async function notifyBoardMembers(input: {
       members: { select: { userId: true } },
     },
   });
-  if (!board) return { configured: true, attempted: 0, delivered: 0 };
+  if (!board) return classifyBoardPushAttempt({ configured: true, statuses: [] });
 
   const excluded = new Set(input.excludeUserIds ?? []);
   const requested = input.recipientUserIds ? new Set(input.recipientUserIds) : null;
   const recipientIds = Array.from(
     new Set([board.userId, ...board.members.map((member) => member.userId)]),
   ).filter((userId) => !excluded.has(userId) && (!requested || requested.has(userId)));
-  if (recipientIds.length === 0) return { configured: true, attempted: 0, delivered: 0 };
+  if (recipientIds.length === 0) return classifyBoardPushAttempt({ configured: true, statuses: [] });
 
   const devices = await prisma.pushDevice.findMany({
     where: {
@@ -238,19 +241,22 @@ export async function notifyBoardMembers(input: {
     await prisma.pushDevice.deleteMany({ where: { id: { in: staleDeviceIds } } });
   }
 
-  const failed = results.filter(({ response }) => response.status !== 200 && !isStaleToken(response));
-  if (failed.length > 0) {
+  const definitiveFailures = results.filter(({ response }) => response.status !== 0 && response.status !== 200);
+  const uncertainFailures = results.filter(({ response }) => response.status === 0);
+  if (definitiveFailures.length > 0 || uncertainFailures.length > 0) {
     await sendOperationalAlert(
-      new Error(`APNs rejected ${failed.length} ${input.type} notification request(s).`),
+      new Error(
+        `APNs ${definitiveFailures.length > 0 ? `rejected ${definitiveFailures.length}` : "rejected 0"}`
+        + ` and left ${uncertainFailures.length} uncertain ${input.type} notification request(s).`,
+      ),
       { area: "push", operation: `deliver_${input.type}`, severity: "error" },
     );
   }
 
-  return {
+  return classifyBoardPushAttempt({
     configured: true,
-    attempted: results.length,
-    delivered: results.filter(({ response }) => response.status === 200).length,
-  };
+    statuses: results.map(({ response }) => response.status),
+  });
 }
 
 export async function notifyBoardChat(input: {

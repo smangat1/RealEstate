@@ -23,7 +23,14 @@ export async function GET(request: Request) {
   const now = new Date();
   const deadline = Date.now() + ADVISOR_PROACTIVE_WORK_BUDGET_MS;
   const leaseUntil = new Date(now.getTime() + ADVISOR_PROACTIVE_LEASE_MS);
-  let digestResult = { deliveredDigests: 0, deliveredEvents: 0, suppressedEvents: 0, waitingEvents: 0 };
+  let digestResult = {
+    deliveredDigests: 0,
+    deliveredEvents: 0,
+    suppressedEvents: 0,
+    failedEvents: 0,
+    waitingEvents: 0,
+    retriedUrgent: 0,
+  };
   try {
     digestResult = await flushDueAdvisorDigests(now);
   } catch (error) {

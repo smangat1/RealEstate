@@ -89,6 +89,16 @@ export function isListingUnavailable(state: WatchedListingState) {
   return listingAvailabilityState(state) === "unavailable";
 }
 
+export function isVerifiedUnavailableTransition(
+  previous: WatchedListingState,
+  current: WatchedListingState,
+  changes: DetectedListingChange[],
+) {
+  return listingAvailabilityState(previous) === "available"
+    && listingAvailabilityState(current) === "unavailable"
+    && changes.some((change) => change.kind === "status");
+}
+
 export function detectListingChanges(
   previous: WatchedListingState,
   current: WatchedListingState,

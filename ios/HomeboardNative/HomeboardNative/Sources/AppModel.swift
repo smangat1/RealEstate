@@ -3333,6 +3333,7 @@ final class AppModel {
 
   func saveBoardNotificationSettings(
     digestHourLocal: Int,
+    timeZone: String,
     nonCriticalPushEnabled: Bool
   ) async throws -> BoardNotificationSettings {
     guard let session = authSession,
@@ -3344,7 +3345,7 @@ final class AppModel {
       accessToken: session.accessToken,
       boardId: boardId,
       digestHourLocal: digestHourLocal,
-      timeZone: TimeZone.current.identifier,
+      timeZone: timeZone,
       nonCriticalPushEnabled: nonCriticalPushEnabled
     )
   }

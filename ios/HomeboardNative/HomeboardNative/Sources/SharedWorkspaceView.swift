@@ -5350,6 +5350,8 @@ private struct SharedAdvisorNotificationSettingsSheet: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
   @State private var digestHourLocal = 18
+  @State private var storedTimeZone = "UTC"
+  @State private var timeZoneSource = "fallback"
   @State private var nonCriticalPushEnabled = true
   @State private var isLoading = true
   @State private var isSaving = false
@@ -5407,9 +5409,35 @@ private struct SharedAdvisorNotificationSettingsSheet: View {
                 .disabled(!nonCriticalPushEnabled)
                 .accessibilityIdentifier("homeboard.notifications.digest-time")
 
-                Text("Uses this device’s time zone: \(TimeZone.current.localizedName(for: .standard, locale: .current) ?? TimeZone.current.identifier).")
+                Text("Stored time zone: \(TimeZone(identifier: storedTimeZone)?.localizedName(for: .standard, locale: .current) ?? storedTimeZone).")
                   .font(.caption)
                   .foregroundStyle(HomeboardPalette.tertiaryText)
+
+                if AdvisorNotificationTimeZonePolicy.shouldOfferDeviceUpdate(
+                  stored: storedTimeZone,
+                  device: TimeZone.current.identifier
+                ) {
+                  Button {
+                    storedTimeZone = TimeZone.current.identifier
+                    timeZoneSource = "manual"
+                    savedMessage = nil
+                  } label: {
+                    Label("Use current device time zone", systemImage: "location.fill")
+                      .font(.caption.weight(.semibold))
+                  }
+                  .foregroundStyle(HomeboardPalette.accent)
+                  .accessibilityIdentifier("homeboard.notifications.use-device-time-zone")
+                } else {
+                  Text(
+                    timeZoneSource == "manual"
+                      ? "Chosen for this board."
+                      : timeZoneSource == "device"
+                        ? "Initialized from this device."
+                        : "Using the stored server fallback until you choose a zone."
+                  )
+                    .font(.caption)
+                    .foregroundStyle(HomeboardPalette.tertiaryText)
+                }
               }
               .padding(16)
               .sharedSurface(cornerRadius: 20)
@@ -5473,6 +5501,8 @@ private struct SharedAdvisorNotificationSettingsSheet: View {
     do {
       let settings = try await appModel.loadBoardNotificationSettings()
       digestHourLocal = settings.digestHourLocal
+      storedTimeZone = settings.timeZone
+      timeZoneSource = settings.timeZoneSource ?? "fallback"
       nonCriticalPushEnabled = settings.nonCriticalPushEnabled
     } catch {
       errorMessage = error.localizedDescription
@@ -5489,9 +5519,12 @@ private struct SharedAdvisorNotificationSettingsSheet: View {
       do {
         let settings = try await appModel.saveBoardNotificationSettings(
           digestHourLocal: digestHourLocal,
+          timeZone: storedTimeZone,
           nonCriticalPushEnabled: nonCriticalPushEnabled
         )
         digestHourLocal = settings.digestHourLocal
+        storedTimeZone = settings.timeZone
+        timeZoneSource = settings.timeZoneSource ?? "fallback"
         nonCriticalPushEnabled = settings.nonCriticalPushEnabled
         savedMessage = "Saved for this board."
       } catch {

@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  pendingFollowUpSuppressionScope,
   replyConfirmationFingerprint,
   selectReplyOutreach,
 } from "../lib/advisor-reply-intake";
@@ -79,4 +80,18 @@ test("one confirmation token produces one reply identity even across retries", (
     confirmationId: "d9085635-2376-48bd-933d-a94ce6801777",
     text: "Saturday works.",
   }));
+});
+
+test("a confirmed reply suppresses only that outreach's pending follow-up notification", () => {
+  assert.deepEqual(pendingFollowUpSuppressionScope("board-a", "outreach-a"), {
+    status: "pending",
+    event: {
+      boardId: "board-a",
+      fingerprint: "follow-up:outreach-a",
+    },
+  });
+  assert.notDeepEqual(
+    pendingFollowUpSuppressionScope("board-a", "outreach-a"),
+    pendingFollowUpSuppressionScope("board-b", "outreach-a"),
+  );
 });

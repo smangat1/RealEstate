@@ -1,10 +1,18 @@
+ALTER TABLE "PushDevice" ADD COLUMN "timeZone" TEXT;
+
 CREATE TABLE "BoardNotificationPreference" (
   "id" TEXT NOT NULL,
   "boardId" TEXT NOT NULL,
   "userId" TEXT NOT NULL,
   "digestHourLocal" INTEGER NOT NULL DEFAULT 18,
-  "timeZone" TEXT NOT NULL DEFAULT 'America/New_York',
+  "timeZone" TEXT NOT NULL DEFAULT 'UTC',
+  "timeZoneSource" TEXT NOT NULL DEFAULT 'fallback',
   "nonCriticalPushEnabled" BOOLEAN NOT NULL DEFAULT true,
+  "nextDigestAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lastDigestAt" TIMESTAMP(3),
+  "lastDigestLocalDate" TEXT,
+  "digestLeaseUntil" TIMESTAMP(3),
+  "digestLeaseToken" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "BoardNotificationPreference_pkey" PRIMARY KEY ("id")
@@ -14,6 +22,8 @@ CREATE UNIQUE INDEX "BoardNotificationPreference_boardId_userId_key"
 ON "BoardNotificationPreference"("boardId", "userId");
 CREATE INDEX "BoardNotificationPreference_userId_updatedAt_idx"
 ON "BoardNotificationPreference"("userId", "updatedAt");
+CREATE INDEX "BoardNotificationPreference_nonCriticalPushEnabled_nextDigestAt_digestLeaseUntil_id_idx"
+ON "BoardNotificationPreference"("nonCriticalPushEnabled", "nextDigestAt", "digestLeaseUntil", "id");
 
 CREATE TABLE "AdvisorNotificationEvent" (
   "id" TEXT NOT NULL,
@@ -42,6 +52,11 @@ CREATE TABLE "AdvisorNotificationDelivery" (
   "leaseToken" TEXT,
   "deliveredAt" TIMESTAMP(3),
   "suppressedAt" TIMESTAMP(3),
+  "failedAt" TIMESTAMP(3),
+  "attemptCount" INTEGER NOT NULL DEFAULT 0,
+  "lastAttemptAt" TIMESTAMP(3),
+  "deliveryOutcome" TEXT,
+  "failureReason" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "AdvisorNotificationDelivery_pkey" PRIMARY KEY ("id")
