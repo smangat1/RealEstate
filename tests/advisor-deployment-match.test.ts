@@ -16,7 +16,12 @@ const previewScheme = source(
 );
 
 test("health advertises Advisor PATCH only when its persistence schema is available", () => {
-  assert.match(healthRoute, /SELECT 1 FROM "AdvisorMessagePayload" LIMIT 0/);
+  assert.match(healthRoute, /to_regclass\('\"AdvisorMessagePayload\"'\)/);
+  assert.match(healthRoute, /to_regclass\('\"AdvisorMemberFinancialProfile\"'\)/);
+  assert.match(healthRoute, /column_name = 'proactiveCheckedAt'/);
+  assert.match(healthRoute, /column_name = 'proactiveLeaseUntil'/);
+  assert.match(healthRoute, /value\.enumlabel = 'reported_sent'/);
+  assert.match(healthRoute, /value\.enumlabel = 'negotiation_comp'/);
   assert.match(healthRoute, /advisorDraftAcceptance: advisorDraftPersistenceReady/);
   assert.match(
     healthRoute,

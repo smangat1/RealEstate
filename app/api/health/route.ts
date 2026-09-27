@@ -24,8 +24,49 @@ export async function GET() {
   }
   if (databaseReady) {
     try {
-      await prisma.$queryRaw`SELECT 1 FROM "AdvisorMessagePayload" LIMIT 0`;
-      advisorDraftPersistenceReady = true;
+      const [schema] = await prisma.$queryRaw<Array<{ ready: boolean }>>`
+        SELECT (
+          to_regclass('"AdvisorMessagePayload"') IS NOT NULL
+          AND to_regclass('"AdvisorMemberFinancialProfile"') IS NOT NULL
+          AND to_regclass('"ListingSnapshot"') IS NOT NULL
+          AND to_regclass('"ListingChange"') IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'AdvisorSubscription'
+              AND column_name = 'proactiveCheckedAt'
+          )
+          AND EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'AdvisorSubscription'
+              AND column_name = 'proactiveLeaseUntil'
+          )
+          AND EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'BrokerOutreachRecord'
+              AND column_name = 'advisorMessageId'
+          )
+          AND EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'AdvisorMemberFinancialProfile'
+              AND column_name = 'promptCompletedAt'
+          )
+          AND EXISTS (
+            SELECT 1 FROM pg_type type
+            JOIN pg_enum value ON value.enumtypid = type.oid
+            WHERE type.typname = 'InquiryStatus' AND value.enumlabel = 'reported_sent'
+          )
+          AND EXISTS (
+            SELECT 1 FROM pg_type type
+            JOIN pg_enum value ON value.enumtypid = type.oid
+            WHERE type.typname = 'AdvisorActionKind' AND value.enumlabel = 'negotiation_comp'
+          )
+        ) AS ready
+      `;
+      advisorDraftPersistenceReady = schema?.ready === true;
     } catch {
       advisorDraftPersistenceReady = false;
     }
