@@ -155,7 +155,7 @@ private struct PostAuthNotificationPrompt: View {
             .font(.title3.weight(.bold))
             .foregroundStyle(HomeboardPalette.primaryText)
 
-          Text("Turn on notifications for roommate messages, Advisor follow-ups, listing changes, and negotiation flags.")
+          Text("Turn on notifications for roommate messages, one daily Advisor digest, and genuinely urgent listing or safety alerts.")
             .font(.subheadline)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)

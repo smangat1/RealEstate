@@ -179,6 +179,8 @@ enum AdvisorActionKind {
   tour_note_summary
   application_checklist
   negotiation_comp
+  scam_warning
+  room_assignment
 }
 
 enum AdvisorActionStatus {
@@ -209,6 +211,13 @@ enum InquiryStatus {
   stale
 }
 
+enum AdvisorPreferenceProposalStatus {
+  pending
+  accepted
+  rejected
+  expired
+}
+
 model User {
   id                        String                          @id @default(cuid())
   authUserId                String?                         @unique
@@ -231,6 +240,9 @@ model User {
   walletLedgers             BoardWalletLedger[]
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   brokerOutreachRecords     BrokerOutreachRecord[]
+  boardExpensesPaid         BoardExpense[]
+  boardNotificationPreferences  BoardNotificationPreference[]
+  advisorNotificationDeliveries AdvisorNotificationDelivery[]
 }
 
 model DevicePairing {
@@ -275,6 +287,10 @@ model SearchBoard {
   advisorSubscription       AdvisorSubscription?
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   advisorActions            AdvisorAction[]
+  expenses                  BoardExpense[]
+  advisorPreferenceProposals AdvisorPreferenceProposal[]
+  notificationPreferences    BoardNotificationPreference[]
+  advisorNotificationEvents  AdvisorNotificationEvent[]
 
   @@index([userId])
 }
@@ -577,6 +593,8 @@ model RoommateProfile {
   dealbreakers              String?
   petsRequired              Boolean?
   accessibilityNeeds        String?
+  preferenceSignals         Json                       @default("{}")
+  tourAvailability          Json                       @default("[]")
   notes                     String?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
@@ -592,9 +610,29 @@ model RoommateProfile {
   listingReviews            BoardListingReview[]
   listingDecisionsCreated   BoardListingDecision[]
   listingDecisionVotes      BoardListingDecisionVote[]
+  advisorPreferenceProposals AdvisorPreferenceProposal[]
 
   @@index([boardId, createdAt])
   @@index([linkedUserId])
+}
+
+model AdvisorPreferenceProposal {
+  id                   String                          @id @default(cuid())
+  boardId              String
+  roommateId           String
+  userId               String
+  sourceMessageId      String
+  status               AdvisorPreferenceProposalStatus @default(pending)
+  baseProfileUpdatedAt DateTime
+  changes              Json
+  createdAt            DateTime                        @default(now())
+  resolvedAt           DateTime?
+  board                SearchBoard                     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  roommate             RoommateProfile                 @relation(fields: [roommateId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceMessageId])
+  @@index([boardId, userId, status, createdAt])
+  @@index([roommateId, status])
 }
 
 model BoardListingVote {
@@ -790,6 +828,22 @@ model ListingChange {
   @@index([snapshotId])
 }
 
+model BoardExpense {
+  id           String      @id @default(cuid())
+  boardId      String
+  paidByUserId String
+  description  String
+  category     String
+  amountCents  Int
+  paidAt       DateTime    @default(now())
+  createdAt    DateTime    @default(now())
+  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  paidBy       User        @relation(fields: [paidByUserId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, paidAt])
+  @@index([paidByUserId])
+}
+
 model AnalyticsEvent {
   id         String   @id @default(cuid())
   eventName  String
@@ -822,12 +876,76 @@ model PushDevice {
   token       String   @unique
   platform    String   @default("ios")
   environment String   @default("development")
+  timeZone    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   lastSeenAt  DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, lastSeenAt])
+}
+
+model BoardNotificationPreference {
+  id                     String      @id @default(cuid())
+  boardId                String
+  userId                 String
+  digestHourLocal        Int         @default(18)
+  timeZone               String      @default("UTC")
+  timeZoneSource         String      @default("fallback")
+  nonCriticalPushEnabled Boolean     @default(true)
+  nextDigestAt           DateTime    @default(now())
+  lastDigestAt           DateTime?
+  lastDigestLocalDate    String?
+  digestLeaseUntil       DateTime?
+  digestLeaseToken       String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  board                  SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user                   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([userId, updatedAt])
+  @@index([nonCriticalPushEnabled, nextDigestAt, digestLeaseUntil, id])
+}
+
+model AdvisorNotificationEvent {
+  id             String                        @id @default(cuid())
+  boardId        String
+  boardListingId String?
+  type           String
+  title          String
+  body           String
+  fingerprint    String                        @unique
+  urgent         Boolean                       @default(false)
+  createdAt      DateTime                      @default(now())
+  board          SearchBoard                   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  deliveries     AdvisorNotificationDelivery[]
+
+  @@index([boardId, urgent, createdAt])
+}
+
+model AdvisorNotificationDelivery {
+  id           String                   @id @default(cuid())
+  eventId      String
+  userId       String
+  status       String                   @default("pending")
+  leaseUntil   DateTime?
+  leaseToken   String?
+  deliveredAt  DateTime?
+  suppressedAt DateTime?
+  failedAt     DateTime?
+  attemptCount Int                      @default(0)
+  lastAttemptAt DateTime?
+  deliveryOutcome String?
+  failureReason String?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  event        AdvisorNotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([status, leaseUntil, createdAt])
+  @@index([userId, status, createdAt])
 }
 
 model BoardWalletLedger {

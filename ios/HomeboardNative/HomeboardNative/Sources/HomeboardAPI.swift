@@ -29,11 +29,31 @@ enum HomeboardAPIError: LocalizedError {
       return "Advisor draft was not saved because this build is connected to an incompatible server (\(origin), \(serverCommit)): \(reason)"
     case .server(let message):
       return message
-    case .response(let endpoint, let status, let contentType, let bodyExcerpt, let message):
-      let details = "Endpoint \(endpoint) · status \(status) · content type \(contentType) · body \(bodyExcerpt)"
-      guard let message, !message.isEmpty else { return details }
-      return "\(message) \(details)"
+    case .response(let endpoint, let status, let contentType, _, let message):
+      if contentType.lowercased().contains("text/html") {
+        return status == 404
+          ? "This app build needs a newer Homeboard server. Use the matching preview build and try again."
+          : "Homeboard’s server returned an unexpected page. Try again in a moment."
+      }
+      let summary = message?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let resolved = summary.flatMap { $0.isEmpty ? nil : $0 } ?? "Request failed."
+      return "\(resolved) (HTTP \(status), \(endpoint))"
     }
+  }
+
+  var diagnosticDescription: String {
+    guard case .response(let endpoint, let status, let contentType, let bodyExcerpt, let message) = self else {
+      return errorDescription ?? "Unknown Homeboard API error."
+    }
+    return [
+      message,
+      "Endpoint \(endpoint) · status \(status) · content type \(contentType) · body \(bodyExcerpt)",
+    ].compactMap { $0 }.joined(separator: " ")
+  }
+
+  func isMissingEndpoint(_ path: String) -> Bool {
+    guard case .response(let endpoint, let status, _, _, _) = self else { return false }
+    return status == 404 && endpoint.hasSuffix(path)
   }
 }
 
@@ -62,6 +82,17 @@ struct MobileBoardLoadResponse: Decodable {
   var profile: RemoteRentalProfilePayload
   var missingFields: [String]
   var advisorPayload: AdvisorMessagePayload?
+  var replyAnalysis: AdvisorReplyAnalysis?
+  var replyLog: AdvisorReplyLog?
+  var preferenceProposal: AdvisorPreferenceProposal?
+}
+
+struct AdvisorPreferenceProposalResponse: Decodable {
+  var preferenceProposal: AdvisorPreferenceProposal?
+}
+
+struct AdvisorPreferenceProposalActionRequest: Encodable {
+  var action: String
 }
 
 struct MobileListingInventoryResponse: Decodable {
@@ -106,18 +137,67 @@ enum AdvisorBackendCompatibility {
   }
 }
 
+struct BoardNotificationSettings: Codable, Hashable {
+  var digestHourLocal: Int
+  var timeZone: String
+  var timeZoneSource: String?
+  var nonCriticalPushEnabled: Bool
+  var urgentPushesAlwaysEnabled: Bool
+  var scope: String
+}
+
+enum AdvisorNotificationTimeZonePolicy {
+  static func shouldOfferDeviceUpdate(stored: String, device: String) -> Bool {
+    stored != device && TimeZone(identifier: device) != nil
+  }
+
+  static func zoneAfterDeviceRegistration(
+    stored: String,
+    source: String,
+    device: String
+  ) -> String {
+    source == "fallback" && TimeZone(identifier: device) != nil ? device : stored
+  }
+}
+
 struct MobileBoardMessageCreateRequest: Encodable {
   var content: String
   var tone: String?
   var regenerateOnly: Bool?
   var originatingMessageId: String?
+  var messageId: String?
+  var preferenceCandidate: AdvisorPreferenceCandidate?
 
-  init(content: String, tone: String? = nil, regenerateOnly: Bool? = nil, originatingMessageId: String? = nil) {
+  init(
+    content: String,
+    tone: String? = nil,
+    regenerateOnly: Bool? = nil,
+    originatingMessageId: String? = nil,
+    messageId: String? = nil,
+    preferenceCandidate: AdvisorPreferenceCandidate? = nil
+  ) {
     self.content = content
     self.tone = tone
     self.regenerateOnly = regenerateOnly
     self.originatingMessageId = originatingMessageId
+    self.messageId = messageId
+    self.preferenceCandidate = preferenceCandidate
   }
+}
+
+struct AdvisorPreferenceCandidateSignal: Codable, Hashable {
+  var feature: String
+  var weight: Int
+  var evidence: String
+  var intent: String
+}
+
+struct AdvisorPreferenceCandidate: Codable, Hashable {
+  var boardId: String
+  var messageId: String
+  var boardRevision: String
+  var source: String
+  var signals: [AdvisorPreferenceCandidateSignal]
 }
 
 private struct MobileAdvisorAcceptedDraftRequest: Encodable {
@@ -128,6 +208,26 @@ private struct MobileAdvisorAcceptedDraftRequest: Encodable {
 private struct MobileAdvisorOutreachRequest: Encodable {
   var advisorMessageId: String
   var method: String
+}
+
+struct MobileAdvisorReplyRequest: Encodable {
+  var text: String
+  var outreachId: String
+  var confirmationId: String
+}
+
+private struct MobileBoardExpenseRequest: Encodable {
+  var description: String
+  var category: String
+  var amountCents: Int
+}
+
+private struct MobileRoomAssignmentRequest: Encodable {
+  var rooms: [AdvisorRoomInput]
+}
+
+private struct MobileTourAvailabilityRequest: Encodable {
+  var windows: [TourAvailabilityWindow]
 }
 
 private struct MobileAdvisorFinancialUpdateRequest: Encodable {
@@ -252,10 +352,14 @@ private struct BoardAnalyticsRequest: Encodable {
 private struct MobileBoardUpdateRequest: Encodable {
   let action: String
   let content: String
+  let messageId: String?
+  let preferenceCandidate: AdvisorPreferenceCandidate?
 
-  init(content: String) {
+  init(content: String, messageId: String? = nil, preferenceCandidate: AdvisorPreferenceCandidate? = nil) {
     action = "update"
     self.content = content
+    self.messageId = messageId
+    self.preferenceCandidate = preferenceCandidate
   }
 }
 
@@ -303,10 +407,17 @@ private struct MobileMemberPatchRequest: Encodable {
 private struct PushDeviceRequest: Encodable {
   var token: String
   var environment: String
+  var timeZone: String
 }
 
 private struct PushDeviceDeleteRequest: Encodable {
   var token: String
+}
+
+private struct BoardNotificationSettingsRequest: Encodable {
+  var digestHourLocal: Int
+  var timeZone: String
+  var nonCriticalPushEnabled: Bool
 }
 
 private struct NativeDiagnosticsRequest: Encodable {
@@ -810,13 +921,46 @@ final class HomeboardAPI {
     content: String,
     tone: String? = nil,
     regenerateOnly: Bool? = nil,
-    originatingMessageId: String? = nil
+    originatingMessageId: String? = nil,
+    messageId: String? = nil,
+    preferenceCandidate: AdvisorPreferenceCandidate? = nil
   ) async throws -> MobileBoardLoadResponse {
     return try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly, originatingMessageId: originatingMessageId)
+      body: MobileBoardMessageCreateRequest(
+        content: content,
+        tone: tone,
+        regenerateOnly: regenerateOnly,
+        originatingMessageId: originatingMessageId,
+        messageId: messageId,
+        preferenceCandidate: preferenceCandidate
+      )
+    )
+  }
+
+  func loadAdvisorPreferenceProposal(
+    accessToken: String,
+    boardId: String
+  ) async throws -> AdvisorPreferenceProposalResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/preference-proposals",
+      accessToken: accessToken
+    )
+  }
+
+  func resolveAdvisorPreferenceProposal(
+    accessToken: String,
+    boardId: String,
+    proposalId: String,
+    action: String
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/preference-proposals/\(proposalId)",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: AdvisorPreferenceProposalActionRequest(action: action)
     )
   }
 
@@ -964,6 +1108,104 @@ final class HomeboardAPI {
         advisorMessageId: advisorMessageId,
         method: method
       )
+    )
+  }
+
+  func loadAdvisorApplicationPacket(
+    accessToken: String,
+    boardId: String,
+    listingId: String
+  ) async throws -> AdvisorApplicationPacket {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/application-packet",
+      accessToken: accessToken
+    )
+  }
+
+  func submitAdvisorReply(
+    accessToken: String,
+    boardId: String,
+    listingId: String,
+    text: String,
+    outreachId: String,
+    confirmationId: UUID
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/reply",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileAdvisorReplyRequest(
+        text: text,
+        outreachId: outreachId,
+        confirmationId: confirmationId.uuidString.lowercased()
+      )
+    )
+  }
+
+  func loadAdvisorReplyThreads(
+    accessToken: String,
+    boardId: String
+  ) async throws -> [AdvisorReplyThreadOption] {
+    let response: AdvisorReplyThreadsResponse = try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/advisor/reply-threads",
+      accessToken: accessToken
+    )
+    return response.threads
+  }
+
+  func loadBoardExpenses(accessToken: String, boardId: String) async throws -> BoardExpenseLedger {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/expenses",
+      accessToken: accessToken
+    )
+  }
+
+  func addBoardExpense(
+    accessToken: String,
+    boardId: String,
+    description: String,
+    category: String,
+    amountCents: Int
+  ) async throws -> BoardExpenseLedger {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/expenses",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileBoardExpenseRequest(description: description, category: category, amountCents: amountCents)
+    )
+  }
+
+  func optimizeRoomAssignment(
+    accessToken: String,
+    boardId: String,
+    listingId: String,
+    rooms: [AdvisorRoomInput]
+  ) async throws -> AdvisorRoomAssignmentResult {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/room-assignment",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileRoomAssignmentRequest(rooms: rooms)
+    )
+  }
+
+  func loadTourAvailability(accessToken: String, boardId: String) async throws -> TourAvailabilityPayload {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/tour-availability",
+      accessToken: accessToken
+    )
+  }
+
+  func saveTourAvailability(
+    accessToken: String,
+    boardId: String,
+    windows: [TourAvailabilityWindow]
+  ) async throws -> TourAvailabilityPayload {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/tour-availability",
+      method: "PUT",
+      accessToken: accessToken,
+      body: MobileTourAvailabilityRequest(windows: windows)
     )
   }
 
@@ -1177,8 +1419,18 @@ final class HomeboardAPI {
     )
   }
 
-  func addBoardUpdate(accessToken: String, boardId: String, content: String) async throws -> MobileBoardLoadResponse {
-    try await boardUpdate(accessToken: accessToken, boardId: boardId, body: .init(content: content))
+  func addBoardUpdate(
+    accessToken: String,
+    boardId: String,
+    content: String,
+    messageId: String? = nil,
+    preferenceCandidate: AdvisorPreferenceCandidate? = nil
+  ) async throws -> MobileBoardLoadResponse {
+    try await boardUpdate(
+      accessToken: accessToken,
+      boardId: boardId,
+      body: .init(content: content, messageId: messageId, preferenceCandidate: preferenceCandidate)
+    )
   }
 
   private func boardUpdate(accessToken: String, boardId: String, body: MobileBoardUpdateRequest) async throws -> MobileBoardLoadResponse {
@@ -1305,7 +1557,11 @@ final class HomeboardAPI {
       path: "/api/mobile/push-devices",
       method: "POST",
       accessToken: accessToken,
-      body: PushDeviceRequest(token: token, environment: environment)
+      body: PushDeviceRequest(
+        token: token,
+        environment: environment,
+        timeZone: TimeZone.current.identifier
+      )
     )
   }
 
@@ -1315,6 +1571,35 @@ final class HomeboardAPI {
       method: "DELETE",
       accessToken: accessToken,
       body: PushDeviceDeleteRequest(token: token)
+    )
+  }
+
+  func loadBoardNotificationSettings(
+    accessToken: String,
+    boardId: String
+  ) async throws -> BoardNotificationSettings {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/notification-settings",
+      accessToken: accessToken
+    )
+  }
+
+  func updateBoardNotificationSettings(
+    accessToken: String,
+    boardId: String,
+    digestHourLocal: Int,
+    timeZone: String,
+    nonCriticalPushEnabled: Bool
+  ) async throws -> BoardNotificationSettings {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/notification-settings",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: BoardNotificationSettingsRequest(
+        digestHourLocal: digestHourLocal,
+        timeZone: timeZone,
+        nonCriticalPushEnabled: nonCriticalPushEnabled
+      )
     )
   }
 

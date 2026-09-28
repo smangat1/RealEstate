@@ -1000,6 +1000,15 @@ private struct ConversationView: View {
       }
       .toolbar(.hidden, for: .navigationBar)
     }
+    .sheet(item: Binding(
+      get: { appModel.pendingPreferenceProposal },
+      set: { appModel.pendingPreferenceProposal = $0 }
+    )) { proposal in
+      AdvisorPreferenceProposalView(proposal: proposal)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
   }
 
   @ViewBuilder

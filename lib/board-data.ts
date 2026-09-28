@@ -510,6 +510,7 @@ function mapRoommateRow(row: {
   dealbreakers: string | null;
   petsRequired: boolean | null;
   accessibilityNeeds: string | null;
+  preferenceSignals: Prisma.JsonValue;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -544,6 +545,10 @@ function mapRoommateRow(row: {
     dealbreakers: parseJsonArray(row.dealbreakers),
     petsRequired: row.petsRequired,
     accessibilityNeeds: parseJsonArray(row.accessibilityNeeds),
+    preferenceSignals:
+      row.preferenceSignals && typeof row.preferenceSignals === "object" && !Array.isArray(row.preferenceSignals)
+        ? Object.fromEntries(Object.entries(row.preferenceSignals).filter((entry): entry is [string, number] => typeof entry[1] === "number"))
+        : {},
     notes: row.notes,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -1956,12 +1961,18 @@ export async function saveBoardProfile(boardId: string, actingUserId: string, ne
   return finalizedProfile;
 }
 
-export async function sendChat(boardId: string, content: string, author: { userId: string; authorName: string }) {
+export async function sendChat(
+  boardId: string,
+  content: string,
+  author: { userId: string; authorName: string },
+  options?: { messageId?: string },
+) {
   if (!(await ensureBoard(boardId, author.userId))) throw new Error("Workspace not found.");
   const message = content.trim();
   if (!message || message.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters.");
-  await prisma.chatMessage.create({
+  const created = await prisma.chatMessage.create({
     data: {
+      ...(options?.messageId ? { id: options.messageId } : {}),
       boardId,
       role: "user",
       authorUserId: author.userId,
@@ -1971,6 +1982,7 @@ export async function sendChat(boardId: string, content: string, author: { userI
   });
   await addBoardEvent(boardId, "roommate", author.authorName, "chat_message", `${author.authorName} said: ${message}`);
   await touchBoard(boardId);
+  return created;
 }
 
 function extractListingFromText(text: string) {
@@ -3283,13 +3295,15 @@ export async function addManualBoardUpdate(
   boardId: string,
   actor: { userId: string; authorName: string },
   content: string,
+  options?: { messageId?: string },
 ) {
   const message = content.trim();
   if (!message) throw new Error("Update cannot be empty.");
 
-  await prisma.$transaction([
+  const [created] = await prisma.$transaction([
     prisma.chatMessage.create({
       data: {
+        ...(options?.messageId ? { id: options.messageId } : {}),
         boardId,
         role: "user",
         authorUserId: actor.userId,
@@ -3311,6 +3325,7 @@ export async function addManualBoardUpdate(
       data: { updatedAt: new Date() },
     }),
   ]);
+  return created;
 }
 
 export async function addBoardDecision(boardId: string, actorName: string, question: string) {

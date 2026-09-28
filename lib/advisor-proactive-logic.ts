@@ -89,6 +89,16 @@ export function isListingUnavailable(state: WatchedListingState) {
   return listingAvailabilityState(state) === "unavailable";
 }
 
+export function isVerifiedUnavailableTransition(
+  previous: WatchedListingState,
+  current: WatchedListingState,
+  changes: DetectedListingChange[],
+) {
+  return listingAvailabilityState(previous) === "available"
+    && listingAvailabilityState(current) === "unavailable"
+    && changes.some((change) => change.kind === "status");
+}
+
 export function detectListingChanges(
   previous: WatchedListingState,
   current: WatchedListingState,
@@ -199,4 +209,19 @@ export function isGhostedOutreach(input: {
     && input.lastFollowUpAt === null
     && input.sentAt !== null
     && input.sentAt.getTime() <= now.getTime() - ADVISOR_GHOST_WINDOW_MS;
+}
+
+export const REPLY_LOGGABLE_OUTREACH_STATUSES = [
+  "sent",
+  "stale",
+  "answered",
+  "reported_sent",
+] as const;
+
+export function canLogReplyForOutreach(status: string) {
+  return (REPLY_LOGGABLE_OUTREACH_STATUSES as readonly string[]).includes(status);
+}
+
+export function loggedReplyOutreachUpdate(now: Date) {
+  return { status: "answered" as const, answeredAt: now };
 }

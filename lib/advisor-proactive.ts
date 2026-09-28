@@ -13,11 +13,20 @@ import {
   isFreshListingObservation,
   isGhostedOutreach,
   isListingUnavailable,
+  isVerifiedUnavailableTransition,
   type WatchedListingState,
 } from "@/lib/advisor-proactive-logic";
-import { notifyBoardMembers, type BoardPushType } from "@/lib/apns";
+import {
+  isUrgentAdvisorNotification,
+  type AdvisorNotificationKind,
+} from "@/lib/advisor-notification-diet";
+import {
+  advisorNotificationCreateData,
+  deliverUrgentAdvisorNotification,
+  ensureBoardNotificationPreferences,
+} from "@/lib/advisor-notifications";
 import { getBoardPageData } from "@/lib/board-data";
-import { sendOperationalAlert } from "@/lib/monitoring";
+import { findScamPriceWarnings } from "@/lib/listing-cost";
 import { prisma } from "@/lib/prisma";
 
 function stateFingerprint(state: WatchedListingState) {
@@ -106,29 +115,10 @@ function isUniqueConflict(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-async function deliverPush(input: {
-  boardId: string;
-  boardListingId?: string;
-  type: BoardPushType;
-  title: string;
-  body: string;
-  collapseId: string;
-}) {
-  try {
-    await notifyBoardMembers(input);
-  } catch (error) {
-    await sendOperationalAlert(error, {
-      area: "push",
-      operation: `advisor_${input.type}`,
-      severity: "error",
-    });
-  }
-}
-
 async function createPlainAction(input: {
   boardId: string;
   boardListingId: string;
-  kind: "listing_change" | "negotiation_comp";
+  kind: "listing_change" | "negotiation_comp" | "scam_warning" | "decision_digest";
   priority: "medium" | "high";
   title: string;
   summary: string;
@@ -136,8 +126,11 @@ async function createPlainAction(input: {
   facts: Prisma.InputJsonObject;
   sourceUrl: string | null;
   fingerprint: string;
-  pushType: "listing_change" | "negotiation_comp";
+  pushType: AdvisorNotificationKind;
+  urgent: boolean;
+  recipientUserIds: string[];
 }) {
+  await ensureBoardNotificationPreferences(input.boardId, input.recipientUserIds);
   try {
     await prisma.$transaction([
       prisma.advisorAction.create({
@@ -174,20 +167,25 @@ async function createPlainAction(input: {
         },
       }),
       prisma.searchBoard.update({ where: { id: input.boardId }, data: { updatedAt: new Date() } }),
+      prisma.advisorNotificationEvent.create({
+        data: advisorNotificationCreateData({
+          boardId: input.boardId,
+          boardListingId: input.boardListingId,
+          type: input.pushType,
+          title: input.title,
+          body: input.summary,
+          fingerprint: input.fingerprint,
+          urgent: input.urgent,
+          recipientUserIds: input.recipientUserIds,
+        }),
+      }),
     ]);
   } catch (error) {
     if (isUniqueConflict(error)) return false;
     throw error;
   }
 
-  await deliverPush({
-    boardId: input.boardId,
-    boardListingId: input.boardListingId,
-    type: input.pushType,
-    title: input.title,
-    body: input.summary,
-    collapseId: input.fingerprint,
-  });
+  if (input.urgent) await deliverUrgentAdvisorNotification(input.fingerprint);
   return true;
 }
 
@@ -208,7 +206,9 @@ async function createFollowUpAction(input: {
     };
   };
   now: Date;
+  recipientUserIds: string[];
 }) {
+  await ensureBoardNotificationPreferences(input.boardId, input.recipientUserIds, input.now);
   const boardData = await getBoardPageData(input.boardId, input.ownerUserId, {
     includeSuggestedListings: false,
     includeCommutes: false,
@@ -310,6 +310,18 @@ async function createFollowUpAction(input: {
         where: { id: input.boardId },
         data: { updatedAt: input.now },
       });
+      await transaction.advisorNotificationEvent.create({
+        data: advisorNotificationCreateData({
+          boardId: input.boardId,
+          boardListingId: input.outreach.boardListingId,
+          type: "advisor_follow_up",
+          title: "Advisor follow-up ready",
+          body: summary,
+          fingerprint,
+          urgent: false,
+          recipientUserIds: input.recipientUserIds,
+        }),
+      });
     });
   } catch (error) {
     if (isUniqueConflict(error) || (error instanceof Error && error.message === "ADVISOR_FOLLOW_UP_ALREADY_CLAIMED")) {
@@ -318,14 +330,6 @@ async function createFollowUpAction(input: {
     throw error;
   }
 
-  await deliverPush({
-    boardId: input.boardId,
-    boardListingId: input.outreach.boardListingId,
-    type: "advisor_follow_up",
-    title: "Advisor follow-up ready",
-    body: summary,
-    collapseId: fingerprint,
-  });
   return true;
 }
 
@@ -334,6 +338,8 @@ export type AdvisorProactiveRunResult = {
   listingChangeMessages: number;
   followUpDrafts: number;
   negotiationFlags: number;
+  scamWarnings: number;
+  groupNags: number;
 };
 
 export async function runAdvisorProactiveBoard(
@@ -345,18 +351,26 @@ export async function runAdvisorProactiveBoard(
     select: {
       id: true,
       userId: true,
+      members: { select: { userId: true } },
       boardListings: {
         where: { deletedAt: null, userStatus: { not: "rejected" } },
         include: { listing: true },
       },
     },
   });
-  if (!board) return { baselinesCreated: 0, listingChangeMessages: 0, followUpDrafts: 0, negotiationFlags: 0 };
+  if (!board) return { baselinesCreated: 0, listingChangeMessages: 0, followUpDrafts: 0, negotiationFlags: 0, scamWarnings: 0, groupNags: 0 };
+
+  const recipientUserIds = Array.from(new Set([
+    board.userId,
+    ...board.members.map((member) => member.userId),
+  ]));
 
   let baselinesCreated = 0;
   let listingChangeMessages = 0;
   let followUpDrafts = 0;
   let negotiationFlags = 0;
+  let scamWarnings = 0;
+  let groupNags = 0;
   const observedAt = hourlyObservationSlot(now);
 
   for (const boardListing of board.boardListings) {
@@ -402,7 +416,8 @@ export async function runAdvisorProactiveBoard(
       continue;
     }
 
-    const changes = detectListingChanges(snapshotState(previousSnapshot), current);
+    const previous = snapshotState(previousSnapshot);
+    const changes = detectListingChanges(previous, current);
     if (changes.length === 0) continue;
     await prisma.listingChange.createMany({
       data: changes.map((change) => ({
@@ -447,6 +462,11 @@ export async function runAdvisorProactiveBoard(
       sourceUrl: boardListing.listing.sourceUrl,
       fingerprint: `listing-change:${snapshot.id}`,
       pushType: "listing_change",
+      urgent: isUrgentAdvisorNotification({
+        kind: "listing_change",
+        verifiedUnavailableTransition: isVerifiedUnavailableTransition(previous, current, changes),
+      }),
+      recipientUserIds,
     });
     if (created) listingChangeMessages += 1;
   }
@@ -465,7 +485,13 @@ export async function runAdvisorProactiveBoard(
   });
   for (const outreach of ghosted) {
     if (!isGhostedOutreach(outreach, now)) continue;
-    if (await createFollowUpAction({ boardId, ownerUserId: board.userId, outreach, now })) {
+    if (await createFollowUpAction({
+      boardId,
+      ownerUserId: board.userId,
+      outreach,
+      now,
+      recipientUserIds,
+    })) {
       followUpDrafts += 1;
     }
   }
@@ -507,9 +533,96 @@ export async function runAdvisorProactiveBoard(
       sourceUrl: null,
       fingerprint: `negotiation-comp:${fingerprint}`,
       pushType: "negotiation_comp",
+      urgent: false,
+      recipientUserIds,
     });
     if (created) negotiationFlags += 1;
   }
 
-  return { baselinesCreated, listingChangeMessages, followUpDrafts, negotiationFlags };
+  const scamFlags = findScamPriceWarnings(board.boardListings.map((entry) => ({
+    id: entry.id,
+    price: entry.listing.price,
+    bedrooms: entry.listing.bedrooms,
+    neighborhood: entry.listing.neighborhood,
+    city: entry.listing.city,
+    listingStatus: entry.listing.status,
+    userStatus: entry.userStatus,
+  })));
+  for (const flag of scamFlags) {
+    const listing = board.boardListings.find((entry) => entry.id === flag.boardListingId);
+    if (!listing) continue;
+    const fingerprint = createHash("sha256").update(JSON.stringify({
+      target: flag.boardListingId,
+      averagePrice: flag.averagePrice,
+      comparableIds: flag.comparableIds,
+      prices: board.boardListings
+        .filter((entry) => flag.comparableIds.includes(entry.id) || entry.id === flag.boardListingId)
+        .map((entry) => [entry.id, entry.listing.price]),
+    })).digest("hex");
+    const label = listingLabel(listing.listing);
+    const summary = `Verify this listing: ${label} is ${flag.percentBelow}% below ${flag.comparableCount} similar homes saved to this board. Confirm the exact unit, agent identity, and payment instructions before sharing documents or money.`;
+    const created = await createPlainAction({
+      boardId,
+      boardListingId: flag.boardListingId,
+      kind: "scam_warning",
+      priority: "high",
+      title: "Unusually low price",
+      summary,
+      whyItMatters: "A large price gap is not proof of fraud, but it is a reason to verify the listing and recipient before sharing sensitive information or funds.",
+      facts: {
+        comparableCount: flag.comparableCount,
+        averagePrice: flag.averagePrice,
+        difference: flag.difference,
+        percentBelow: flag.percentBelow,
+        comparableBoardListingIds: flag.comparableIds,
+      },
+      sourceUrl: listing.listing.sourceUrl,
+      fingerprint: `scam-warning:${fingerprint}`,
+      pushType: "scam_warning",
+      urgent: isUrgentAdvisorNotification({ kind: "scam_warning" }),
+      recipientUserIds,
+    });
+    if (created) scamWarnings += 1;
+  }
+
+  const decisionData = await getBoardPageData(boardId, board.userId, {
+    includeSuggestedListings: false,
+    includeCommutes: false,
+  });
+  if (decisionData && decisionData.members.length > 1) {
+    const activeMemberIds = new Set(decisionData.members.map((member) => member.userId));
+    for (const boardListing of decisionData.boardListings) {
+      const decisions = decisionData.listingDecisionsByBoardListingId[boardListing.id] ?? [];
+      for (const decision of decisions) {
+        if (decision.closedAt || new Date(decision.createdAt).getTime() > now.getTime() - 24 * 60 * 60 * 1_000) continue;
+        const responded = new Set(decision.votes
+          .map((vote) => vote.roommate.linkedUserId)
+          .filter((userId): userId is string => Boolean(userId)));
+        const remaining = decisionData.members.filter((member) =>
+          activeMemberIds.has(member.userId) && !responded.has(member.userId));
+        if (remaining.length === 0) continue;
+        const label = listingLabel(boardListing.listing);
+        const names = remaining.map((member) => member.user.displayName).sort();
+        const summary = `Group check-in: ${names.join(" and ")} still ${remaining.length === 1 ? "needs" : "need"} to vote on whether to ${decision.type.replace("_", " ")} for ${label}.`;
+        const created = await createPlainAction({
+          boardId,
+          boardListingId: boardListing.id,
+          kind: "decision_digest",
+          priority: "medium",
+          title: "Waiting on group votes",
+          summary,
+          whyItMatters: "The group can move forward once every active member has responded.",
+          facts: { decisionId: decision.id, remainingMemberNames: names },
+          sourceUrl: boardListing.listing.sourceUrl,
+          fingerprint: `decision-nag:${decision.id}:${names.join("|")}`,
+          pushType: "advisor_group_nag",
+          urgent: false,
+          recipientUserIds,
+        });
+        if (created) groupNags += 1;
+      }
+    }
+  }
+
+  return { baselinesCreated, listingChangeMessages, followUpDrafts, negotiationFlags, scamWarnings, groupNags };
 }

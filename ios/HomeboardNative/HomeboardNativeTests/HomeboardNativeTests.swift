@@ -110,6 +110,291 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(AdvisorDraftSafety.isPersistedDraftReady(payload))
   }
 
+  private func replyThread(
+    id: String = "outreach-1",
+    listingID: String = "listing-1"
+  ) -> AdvisorReplyThreadOption {
+    AdvisorReplyThreadOption(
+      id: id,
+      outreachId: id,
+      listingId: listingID,
+      listingName: "123 Main Street",
+      recipientName: "Alex Agent",
+      method: "email",
+      status: "reported_sent",
+      contactedAt: "2026-09-26T12:00:00.000Z"
+    )
+  }
+
+  private func remoteProfile(
+    advisorSetupVersion: Int? = nil,
+    advisorSetupCompletedAt: String? = nil
+  ) -> RemoteRentalProfilePayload {
+    RemoteRentalProfilePayload(
+      name: "Sam",
+      email: nil,
+      city: "New York",
+      moveInDate: "October",
+      budgetMin: nil,
+      budgetMax: 4_500,
+      commuteTarget: nil,
+      commuteAccess: "skip",
+      minCommuteMinutes: nil,
+      maxCommuteMinutes: nil,
+      neighborhoods: [],
+      mustHaves: ["Laundry"],
+      dealbreakers: [],
+      priorities: ["Price"],
+      groupSize: 2,
+      notes: nil,
+      rentalReadiness: nil,
+      advisorFinancialMode: advisorSetupVersion == nil ? nil : "available_on_request",
+      advisorIncomeMultiple: nil,
+      advisorCreditScore: nil,
+      advisorSetupCompletedAt: advisorSetupCompletedAt,
+      advisorSetupVersion: advisorSetupVersion
+    )
+  }
+
+  func testOlderServerCannotEraseCompletedAdvisorSetup() {
+    var local = RentalProfile()
+    local.advisorFinancialMode = "provided"
+    local.advisorIncomeMultiple = "3.5x"
+    local.advisorCreditScore = "760"
+    local.advisorSetupCompletedAt = "2026-09-27T04:30:00Z"
+    local.advisorSetupVersion = 2
+
+    let preserved = AppModel.profilePreservingAdvisorSetup(
+      remote: remoteProfile(),
+      fallback: local
+    )
+    XCTAssertEqual(preserved.advisorFinancialMode, "available_on_request")
+    XCTAssertNil(preserved.advisorIncomeMultiple)
+    XCTAssertNil(preserved.advisorCreditScore)
+    XCTAssertEqual(preserved.advisorSetupCompletedAt, "2026-09-27T04:30:00Z")
+    XCTAssertEqual(preserved.advisorSetupVersion, 2)
+
+    let current = AppModel.profilePreservingAdvisorSetup(
+      remote: remoteProfile(
+        advisorSetupVersion: 3,
+        advisorSetupCompletedAt: "2026-09-27T05:00:00Z"
+      ),
+      fallback: local
+    )
+    XCTAssertEqual(current.advisorSetupVersion, 3)
+    XCTAssertEqual(current.advisorSetupCompletedAt, "2026-09-27T05:00:00Z")
+  }
+
+  func testHTMLServerErrorsAreSafeForTheChatFeed() {
+    let error = HomeboardAPIError.response(
+      endpoint: "GET /api/mobile/boards/board-1/preference-proposals",
+      status: 404,
+      contentType: "text/html; charset=utf-8",
+      bodyExcerpt: "<!DOCTYPE html><html>private deployment details</html>",
+      message: "Request failed."
+    )
+    XCTAssertTrue(error.isMissingEndpoint("/preference-proposals"))
+    XCTAssertTrue(error.errorDescription?.contains("newer Homeboard server") == true)
+    XCTAssertFalse(error.errorDescription?.contains("<!DOCTYPE") == true)
+    XCTAssertTrue(error.diagnosticDescription.contains("<!DOCTYPE"))
+  }
+
+  func testAdvisorNotificationSettingsDecodeAsBoardScopedControls() throws {
+    let data = try XCTUnwrap(#"{"digestHourLocal":18,"timeZone":"America/New_York","nonCriticalPushEnabled":false,"urgentPushesAlwaysEnabled":true,"scope":"board"}"#.data(using: .utf8))
+    let settings = try JSONDecoder().decode(BoardNotificationSettings.self, from: data)
+    XCTAssertEqual(settings.digestHourLocal, 18)
+    XCTAssertEqual(settings.timeZone, "America/New_York")
+    XCTAssertFalse(settings.nonCriticalPushEnabled)
+    XCTAssertTrue(settings.urgentPushesAlwaysEnabled)
+    XCTAssertEqual(settings.scope, "board")
+  }
+
+  func testReplyScreenshotPreviewIsUnverifiedAndRequiresManualThreadChoice() throws {
+    let preview = try XCTUnwrap(AdvisorReplyScreenshotExtractor.parseModelResponse(
+      #"prefix {"apparentSender":"Alex Agent","replyText":"Unit 4B is available Saturday."} suffix"#
+    ))
+    XCTAssertEqual(preview.apparentSender, "Alex Agent")
+    XCTAssertEqual(preview.replyText, "Unit 4B is available Saturday.")
+    XCTAssertTrue(preview.sourceLabel.localizedCaseInsensitiveContains("unverified"))
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread()],
+      listingID: "listing-1",
+      source: .appleIntelligence
+    ))
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread()],
+      listingID: "listing-1",
+      source: .onDeviceOCR
+    ))
+  }
+
+  func testReplyManualFallbackHonorsOnlyOneExplicitListingThread() {
+    XCTAssertEqual(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread()],
+      listingID: "listing-1",
+      source: .manual
+    ), "outreach-1")
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread(id: "one"), replyThread(id: "two")],
+      listingID: "listing-1",
+      source: .manual
+    ))
+    XCTAssertNil(AdvisorReplyIntakePolicy.initialThreadID(
+      threads: [replyThread(listingID: "other-listing")],
+      listingID: "listing-1",
+      source: .manual
+    ))
+  }
+
+  func testReplyIntakeCannotSilentlyCrossListings() {
+    let listingAThread = replyThread(id: "outreach-a", listingID: "listing-a")
+    let listingBThread = replyThread(id: "outreach-b", listingID: "listing-b")
+    let threads = [listingAThread, listingBThread]
+
+    XCTAssertEqual(
+      AdvisorReplyIntakePolicy.threads(threads, for: "listing-a").map(\.id),
+      ["outreach-a"]
+    )
+    XCTAssertFalse(AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: "listing-a",
+      activeListingID: "listing-a",
+      selectedThread: listingBThread,
+      confirmedSwitchedListingID: nil
+    ))
+    XCTAssertFalse(AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: "listing-a",
+      activeListingID: "listing-b",
+      selectedThread: listingBThread,
+      confirmedSwitchedListingID: nil
+    ))
+    XCTAssertTrue(AdvisorReplyIntakePolicy.canSubmit(
+      openListingID: "listing-a",
+      activeListingID: "listing-b",
+      selectedThread: listingBThread,
+      confirmedSwitchedListingID: "listing-b"
+    ))
+  }
+
+  func testReplyConfirmationGatePreventsDuplicateSubmissionButAllowsRetryAfterFailure() {
+    let confirmationID = UUID()
+    var gate = AdvisorReplySubmissionGate()
+    XCTAssertTrue(gate.begin(confirmationID))
+    XCTAssertFalse(gate.begin(confirmationID))
+    gate.finish(confirmationID, succeeded: false)
+    XCTAssertTrue(gate.begin(confirmationID))
+    gate.finish(confirmationID, succeeded: true)
+    XCTAssertFalse(gate.begin(confirmationID))
+  }
+
+  func testAdvisorNotificationTimezoneDoesNotSilentlyFollowTravel() {
+    XCTAssertEqual(
+      AdvisorNotificationTimeZonePolicy.zoneAfterDeviceRegistration(
+        stored: "UTC",
+        source: "fallback",
+        device: "America/Los_Angeles"
+      ),
+      "America/Los_Angeles"
+    )
+    XCTAssertEqual(
+      AdvisorNotificationTimeZonePolicy.zoneAfterDeviceRegistration(
+        stored: "America/New_York",
+        source: "manual",
+        device: "America/Los_Angeles"
+      ),
+      "America/New_York"
+    )
+    XCTAssertTrue(AdvisorNotificationTimeZonePolicy.shouldOfferDeviceUpdate(
+      stored: "America/New_York",
+      device: "America/Los_Angeles"
+    ))
+  }
+
+  func testReplyRequestContainsMinimumConfirmedFieldsAndNoScreenshot() throws {
+    let request = MobileAdvisorReplyRequest(
+      text: "Unit 4B is available Saturday.",
+      outreachId: "outreach-1",
+      confirmationId: "d9085635-2376-48bd-933d-a94ce6801777"
+    )
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any]
+    )
+    XCTAssertEqual(Set(object.keys), Set(["text", "outreachId", "confirmationId"]))
+    XCTAssertNil(object["image"])
+    XCTAssertNil(object["screenshot"])
+    XCTAssertNil(object["apparentSender"])
+  }
+
+  func testPreferenceFallbackRequiresExplicitFirstPersonEvidence() {
+    let positive = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I really need parking and natural light is important to me."
+    )
+    XCTAssertEqual(Set(positive.map(\.feature)), Set(["parking", "natural_light"]))
+
+    for unsafe in [
+      "Maybe I need parking.",
+      "She needs parking.",
+      "If I needed parking, I would say so.",
+      "The broker wrote \"I need parking\".",
+      "I need parking, but I don't care about the garage.",
+    ] {
+      XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: unsafe).isEmpty, unsafe)
+    }
+  }
+
+  func testPreferenceFallbackRejectsPastAndRetractedAssertions() {
+    for retraction in [
+      "I used to say I need parking, but I changed my mind",
+      "Yesterday I said I need parking, but not anymore",
+      "Back then I said I need parking",
+      "In the past I said \"I need parking\"",
+      "\"I need parking\"",
+      "I need parking back then",
+      "I need parking, but I no longer do",
+      "I need parking, but I don't anymore",
+      "I need parking, however I do not anymore",
+      "I need parking, but I changed my mind",
+    ] {
+      XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: retraction).isEmpty, retraction)
+    }
+
+    for current in [
+      "I need parking",
+      "we really need parking now",
+      "Back then I said I need parking, but I need parking now",
+    ] {
+      let signals = AdvisorPreferenceExtractor.deterministicSignals(in: current)
+      XCTAssertEqual(signals.count, 1, current)
+      XCTAssertEqual(signals.first?.feature, "parking", current)
+      XCTAssertEqual(signals.first?.weight, 2, current)
+      XCTAssertEqual(signals.first?.intent, "preference", current)
+    }
+
+    let independent = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I need parking, but I don't need the gym anymore"
+    )
+    XCTAssertEqual(independent.map(\.feature), ["gym", "parking"])
+    XCTAssertEqual(independent.map(\.intent), ["remove_must_have", "preference"])
+
+    let unrelated = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I need parking, however natural light is important to me"
+    )
+    XCTAssertEqual(unrelated.map(\.feature), ["natural_light", "parking"])
+  }
+
+  func testPreferenceFallbackSeparatesLowPriorityFromMustHaveRemoval() throws {
+    let lower = try XCTUnwrap(
+      AdvisorPreferenceExtractor.deterministicSignals(in: "I don't care about parking").first
+    )
+    XCTAssertEqual(lower.intent, "preference")
+    XCTAssertEqual(lower.weight, -2)
+
+    let removal = try XCTUnwrap(
+      AdvisorPreferenceExtractor.deterministicSignals(in: "I don't need parking anymore").first
+    )
+    XCTAssertEqual(removal.intent, "remove_must_have")
+    XCTAssertEqual(removal.feature, "parking")
+  }
+
   func testAdvisorRegenerationRejectsRenderedAssistantContent() {
     XCTAssertThrowsError(
       try AppModel.advisorRegenerationCommand(

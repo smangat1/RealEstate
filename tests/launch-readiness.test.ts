@@ -130,7 +130,7 @@ test("notification permission is offered after auth and not buried in workspace 
   assert.match(app, /authorizationStatus == \.notDetermined/);
   assert.match(root, /Stay in sync with your board/);
   assert.match(root, /Turn on notifications/);
-  assert.match(root, /Advisor follow-ups, listing changes, and negotiation flags/);
+  assert.match(root, /one daily Advisor digest/);
   assert.doesNotMatch(root, /new listings, roommate reactions, invitations/);
   assert.match(root, /if appModel\.showsPostAuthInvitePrompt/);
   assert.match(root, /PostAuthInvitePrompt\(\)/);
