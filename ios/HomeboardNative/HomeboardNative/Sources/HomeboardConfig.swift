@@ -22,6 +22,19 @@ enum HomeboardConfig {
       : String(value.prefix(12))
   }
 
+  static var buildChannel: String {
+    #if DEBUG
+    if let override = ProcessInfo.processInfo.environment["HOMEBOARD_BUILD_CHANNEL"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines),
+       !override.isEmpty {
+      return override
+    }
+    #endif
+    let value = (Bundle.main.object(forInfoDictionaryKey: "HomeboardBuildChannel") as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return value.isEmpty || value.contains("$(") ? "production" : value
+  }
+
   static let supabaseURL = URL(string: "https://zlhniurrhhstivtmixuh.supabase.co")!
   static let supabasePublishableKey = "sb_publishable_eNgMkBhv8l___GC0IjgIBQ_4jqCepCK"
 
@@ -47,6 +60,20 @@ enum HomeboardConfig {
     // fallback; local development remains available through the DEBUG-only
     // process environment override above.
     return productionBackendBaseURL
+  }
+
+  static var backendConfigurationSource: String {
+    #if DEBUG
+    if let override = ProcessInfo.processInfo.environment["HOMEBOARD_API_BASE_URL"],
+       validBaseURL(override, allowsInsecureLocalhost: true) != nil {
+      return "debug launch override"
+    }
+    #endif
+    if let configured = Bundle.main.object(forInfoDictionaryKey: "HomeboardAPIBaseURL") as? String,
+       validBaseURL(configured, allowsInsecureLocalhost: false) != nil {
+      return "bundle substitution"
+    }
+    return "production fallback"
   }
 
   static var publicWebBaseURL: URL {

@@ -184,6 +184,7 @@ final class AppModel {
   var isPostingBoardUpdate = false
   var apiVersion: String?
   var apiCommit: String?
+  var apiAdvisorDraftAcceptanceReady: Bool?
   var apiVersionError: String?
   var authError: String?
   var authFeedback: String?
@@ -198,6 +199,7 @@ final class AppModel {
   var boardFeedback: String?
   var boardMessageDraft = ""
   var advisorWalletStatus: AdvisorWalletStatus?
+  var advisorFinancialStatus: AdvisorFinancialStatus?
   var isAdvisorWalletLoading = false
   var isAdvisorProcessing = false
   var advisorFundingAmountCents = 100
@@ -756,9 +758,11 @@ final class AppModel {
       let health = try await api.fetchHealth()
       apiVersion = health.apiVersion
       apiCommit = health.serverCommit
+      apiAdvisorDraftAcceptanceReady = AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health) == nil
     } catch {
       apiVersion = nil
       apiCommit = nil
+      apiAdvisorDraftAcceptanceReady = nil
       apiVersionError = readable(error)
     }
   }
@@ -968,27 +972,64 @@ final class AppModel {
   }
 
   func regenerateAdvisorDraft(
-    originalCommand: String,
+    payload: AdvisorMessagePayload,
     tone: String,
     toggles: [AdvisorToggleOption],
-    originatingMessageId: String?
+    financialDisclosure: String? = nil,
+    groupFinances: AdvisorGroupFinancialStatus? = nil
   ) async throws -> MobileBoardLoadResponse {
     guard let session = authSession, let boardId = board.id else {
       throw HomeboardAPIError.missingSession
     }
-
-    let command = try Self.advisorRegenerationCommand(
-      originalCommand: originalCommand,
-      toggles: toggles
+    guard let messageId = payload.messageId,
+          let originalCommand = payload.originalCommand,
+          originalCommand.range(
+            of: #"^@advisor\b"#,
+            options: [.regularExpression, .caseInsensitive]
+          ) != nil else {
+      throw HomeboardAPIError.server("Advisor regeneration requires the original @advisor request.")
+    }
+    let disclosure = financialDisclosure ?? payload.financialDisclosure ?? "available_on_request"
+    let sentence = AdvisorDraftGenerator.financialSentence(
+      mode: disclosure,
+      group: groupFinances
     )
+    let generated = await AdvisorDraftGenerator.generate(
+      payload: payload,
+      tone: tone,
+      toggles: toggles,
+      financialSentence: sentence,
+      senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants"
+    )
+    var accepted = payload
+    accepted.draftText = generated.text
+    accepted.tone = tone
+    accepted.toggleOptions = toggles
+    accepted.executionStatus = "draft_ready"
+    accepted.missingInputs = []
+    accepted.generationSource = generated.source
+    accepted.financialDisclosure = disclosure
+    let generationTimestamp = ISO8601DateFormatter()
+    generationTimestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    accepted.clientGeneratedAt = generationTimestamp.string(from: Date())
 
-    return try await api.sendBoardMessage(
+    guard board.id == boardId,
+          authSession?.userId == session.userId else {
+      throw HomeboardAPIError.server(
+        "The active board changed while Advisor was drafting. Reopen the card before saving."
+      )
+    }
+    guard !AdvisorDraftSafety.hasFinancialPlaceholder(accepted) else {
+      throw HomeboardAPIError.server(
+        "Advisor generated a financial placeholder. The draft was not saved or unlocked."
+      )
+    }
+
+    return try await api.acceptAdvisorDraft(
       accessToken: session.accessToken,
       boardId: boardId,
-      content: command,
-      tone: tone,
-      regenerateOnly: true,
-      originatingMessageId: originatingMessageId
+      messageId: messageId,
+      payload: accepted
     )
   }
 
@@ -1024,9 +1065,12 @@ final class AppModel {
   func applyAdvisorRegenerationResponse(
     _ response: MobileBoardLoadResponse,
     payload: AdvisorMessagePayload,
-    expectedBoardId: String
+    expectedBoardId: String,
+    expectedMessageId: String?
   ) -> AdvisorMessagePayload? {
-    guard board.id == expectedBoardId, response.board.id == expectedBoardId else { return nil }
+    guard board.id == expectedBoardId,
+          response.board.id == expectedBoardId,
+          payload.messageId == expectedMessageId else { return nil }
     // Preserve suggestions and recentlyDeleted from the current board: the regen
     // endpoint fetches a full board, but we still merge defensively so a race
     // cannot inadvertently wipe listings the user can see.
@@ -1048,6 +1092,7 @@ final class AppModel {
   func refreshAdvisorWalletStatus() async {
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
       advisorWalletStatus = nil
+      advisorFinancialStatus = nil
       return
     }
     isAdvisorWalletLoading = true
@@ -1063,6 +1108,50 @@ final class AppModel {
       return
     } catch {
       boardError = readable(error)
+    }
+  }
+
+  @discardableResult
+  func refreshAdvisorFinancialStatus() async -> AdvisorFinancialStatus? {
+    guard let session = authSession, let boardId = board.id else { return nil }
+    do {
+      let status = try await api.fetchAdvisorFinancialStatus(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+      advisorFinancialStatus = status
+      return status
+    } catch {
+      boardError = readable(error)
+      return nil
+    }
+  }
+
+  @discardableResult
+  func updateAdvisorFinancialStatus(
+    disclosureMode: String,
+    annualIncomeMin: Int?,
+    annualIncomeMax: Int?,
+    creditScoreMin: Int?,
+    creditScoreMax: Int?
+  ) async -> AdvisorFinancialStatus? {
+    guard let session = authSession, let boardId = board.id else { return nil }
+    do {
+      let status = try await api.updateAdvisorFinancialStatus(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        disclosureMode: disclosureMode,
+        annualIncomeMin: annualIncomeMin,
+        annualIncomeMax: annualIncomeMax,
+        creditScoreMin: creditScoreMin,
+        creditScoreMax: creditScoreMax,
+        promptCompleted: true
+      )
+      advisorFinancialStatus = status
+      return status
+    } catch {
+      boardError = readable(error)
+      return nil
     }
   }
 
@@ -1083,16 +1172,79 @@ final class AppModel {
     }
   }
 
-  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload) {
+  @discardableResult
+  func completeAdvisorSetup(
+    hasOfferLetter: Bool,
+    hasProofOfIncome: Bool,
+    needsGuarantor: Bool,
+    city: String,
+    moveInDate: String,
+    budgetMax: String,
+    commuteAccess: String,
+    commuteTarget: String,
+    minimumCommuteMinutes: String,
+    maximumCommuteMinutes: String,
+    mustHaves: [String],
+    dealbreakers: [String],
+    priorities: [String]
+  ) async -> Bool {
+    let previousProfile = profile
+    profile.advisorFinancialMode = "available_on_request"
+    profile.advisorIncomeMultiple = nil
+    profile.advisorCreditScore = nil
+    profile.advisorSetupCompletedAt = ISO8601DateFormatter().string(from: Date())
+    profile.advisorSetupVersion = 2
+    profile.readiness.hasOfferLetter = hasOfferLetter
+    profile.readiness.hasProofOfIncome = hasProofOfIncome
+    profile.readiness.needsGuarantor = needsGuarantor
+    profile.city = city.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.moveInDate = moveInDate.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.budgetMax = budgetMax.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.commuteAccess = commuteAccess
+    profile.commuteTarget = commuteAccess == "remote" || commuteAccess == "skip"
+      ? ""
+      : commuteTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.minCommuteMinutes = minimumCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.maxCommuteMinutes = maximumCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)
+    profile.mustHaves = mustHaves
+    profile.dealbreakers = dealbreakers
+    profile.priorities = priorities
+
+    await saveBoardBrief()
+    guard boardError == nil && profile.advisorSetupCompletedAt != nil else {
+      profile = previousProfile
+      persist()
+      return false
+    }
+    return true
+  }
+
+  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload, method: String) {
     // Prefer the specific target carried in the payload; fall back to the strongest
     // listing for legacy cards that predate targetListingBoardId.
     let listingId = payload.targetListingBoardId
       ?? payload.context?.leverage?.strongestListings?.first?.boardListingId
-    guard let listingId else {
+    guard let listingId, let messageId = payload.messageId else {
       boardError = "Advisor could not identify the listing for this outreach."
       return
     }
-    updateManualListingStatus(id: listingId, status: "Outreach Sent")
+    guard let session = authSession, let boardId = board.id else { return }
+    Task {
+      do {
+        let response = try await api.recordAdvisorOutreach(
+          accessToken: session.accessToken,
+          boardId: boardId,
+          listingId: listingId,
+          advisorMessageId: messageId,
+          method: method
+        )
+        guard authSession?.userId == session.userId, board.id == boardId else { return }
+        applyRemoteMutation(response, clearing: [])
+      } catch {
+        guard authSession?.userId == session.userId else { return }
+        boardError = "The composer reported sent, but Homeboard could not record that member report. \(readable(error))"
+      }
+    }
   }
 
   func signOut() {
@@ -1608,6 +1760,7 @@ final class AppModel {
       Task { await refreshAdvisorWalletStatus() }
     } else {
       advisorWalletStatus = nil
+      advisorFinancialStatus = nil
     }
     resumePendingListingMutations(boardId: id)
     scheduleRecentlyDeletedPurge(boardId: id)

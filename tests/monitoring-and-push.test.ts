@@ -32,6 +32,7 @@ test("web and server failures are connected to privacy-safe Sentry monitoring", 
   assert.match(healthWorkflow, /body\.betaReady!==true/);
   assert.match(healthRoute, /const betaReady = ok/);
   assert.match(healthRoute, /runtime\.boardChatPushConfigured/);
+  assert.match(healthRoute, /runtime\.advisorAutomationConfigured/);
 });
 
 test("native crash and hang diagnostics are retained until authenticated upload", () => {
@@ -103,27 +104,29 @@ test("settings sends authenticated bug reports and returns a tracking receipt", 
   assert.match(analytics, /"bug_report_submitted"/);
 });
 
-test("push delivery is limited to human board chat and excludes the sender", () => {
+test("push delivery supports board chat and deduplicated proactive Advisor events", () => {
   const apns = read("lib/apns.ts");
   const apnsToken = read("lib/apns-token.ts");
   const messages = read("app/api/mobile/boards/[id]/messages/route.ts");
   const updates = read("app/api/mobile/boards/[id]/updates/route.ts");
-  const reactions = read("app/api/mobile/boards/[id]/listings/[listingId]/reactions/route.ts");
-  const listings = read("app/api/mobile/boards/[id]/listings/route.ts");
+  const proactive = read("lib/advisor-proactive.ts");
   const rootView = read("ios/HomeboardNative/HomeboardNative/Sources/RootView.swift");
   const nativeApp = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardNativeApp.swift");
 
   assert.match(apns, /api\.push\.apple\.com/);
   assert.match(apns, /api\.sandbox\.push\.apple\.com/);
   assert.match(apnsToken, /ES256/);
-  assert.match(apns, /filter\(\(userId\) => userId !== input\.authorUserId\)/);
-  assert.match(apns, /type: "board_chat"/);
+  assert.match(apns, /export async function notifyBoardMembers/);
+  assert.match(apns, /"advisor_follow_up"/);
+  assert.match(apns, /"listing_change"/);
+  assert.match(apns, /"negotiation_comp"/);
+  assert.match(apns, /excludeUserIds/);
+  assert.match(apns, /apns-collapse-id/);
   assert.match(messages, /notifyBoardChat/);
   assert.match(updates, /action: z\.literal\("update"\)[\s\S]*notifyBoardChat/);
-  assert.doesNotMatch(reactions, /notifyBoardChat/);
-  assert.doesNotMatch(listings, /notifyBoardChat/);
-  assert.match(rootView, /when a roommate posts a new message/);
-  assert.doesNotMatch(rootView, /new listings, roommate reactions, invitations/);
+  assert.match(proactive, /notifyBoardMembers/);
+  assert.match(rootView, /Advisor follow-ups, listing changes, and negotiation flags/);
   assert.match(nativeApp, /homeboardOpenBoardChat/);
   assert.match(nativeApp, /willPresent notification/);
+  assert.match(nativeApp, /boardNotificationTypes/);
 });

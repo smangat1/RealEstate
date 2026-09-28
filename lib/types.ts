@@ -51,6 +51,11 @@ export type RentalProfile = {
   groupSize?: number;
   hasRoommates?: boolean;
   rentalReadiness?: RentalReadiness;
+  advisorFinancialMode?: "available_on_request" | "provided" | "template";
+  advisorIncomeMultiple?: string | null;
+  advisorCreditScore?: string | null;
+  advisorSetupCompletedAt?: string | null;
+  advisorSetupVersion?: number;
   completionStatus: "incomplete" | "complete" | "confirmed";
   notes?: string | null;
   createdAt: string;

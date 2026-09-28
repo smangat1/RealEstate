@@ -1,6 +1,7 @@
 import XCTest
 @testable import HomeboardNative
 
+@MainActor
 final class HomeboardNativeTests: XCTestCase {
   private let appModelPersistenceKeys = [
     "homeboard.native.state",
@@ -10,6 +11,104 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.onboarding",
     "homeboard.native.pending-operations",
   ]
+
+  func testAdvisorDraftBackendCompatibilityRejectsLegacyHealthPayload() {
+    let health = MobileHealthResponse(
+      apiVersion: "0.0.13",
+      serverCommit: "2c34b55c6968",
+      checks: nil,
+      capabilities: nil,
+      routeMethods: nil
+    )
+
+    XCTAssertEqual(
+      AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health),
+      "Advisor draft persistence is unavailable."
+    )
+  }
+
+  func testAdvisorDraftBackendCompatibilityRequiresSchemaAndPatchMethod() {
+    var health = MobileHealthResponse(
+      apiVersion: "0.0.13",
+      serverCommit: "8d9942b5320e",
+      checks: MobileHealthChecks(advisorDraftPersistence: "ok"),
+      capabilities: MobileHealthCapabilities(advisorDraftAcceptance: true),
+      routeMethods: MobileHealthRouteMethods(boardMessages: ["POST"])
+    )
+
+    XCTAssertEqual(
+      AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health),
+      "PATCH /api/mobile/boards/[id]/messages is unavailable."
+    )
+
+    health.routeMethods = MobileHealthRouteMethods(boardMessages: ["POST", "PATCH"])
+    XCTAssertNil(AdvisorBackendCompatibility.advisorDraftAcceptanceIssue(health))
+  }
+
+  func testLegacyNeedsInputAdvisorCardStaysBlockedUntilPersistedRecovery() {
+    var payload = AdvisorMessagePayload(
+      messageId: "advisor-message-1",
+      originalCommand: "@advisor draft a tour request",
+      draftText: "Advisor needs more information.",
+      executionStatus: "needs_input",
+      generationSource: "server_template"
+    )
+
+    XCTAssertTrue(AdvisorDraftSafety.hasOriginalAdvisorCommand(payload))
+    XCTAssertFalse(
+      AdvisorDraftSafety.isPersistedDraftReady(
+        payload,
+        expectedMessageId: "advisor-message-1"
+      )
+    )
+
+    payload.draftText = "Hi, could we tour this weekend?"
+    payload.executionStatus = "draft_ready"
+    payload.generationSource = "device_template"
+    payload.acceptedAt = "2026-09-27T20:30:00.000Z"
+    XCTAssertTrue(
+      AdvisorDraftSafety.isPersistedDraftReady(
+        payload,
+        expectedMessageId: "advisor-message-1"
+      )
+    )
+  }
+
+  func testRecoveredAdvisorDraftRejectsWrongMessageAndFinancialPlaceholders() {
+    var payload = AdvisorMessagePayload(
+      messageId: "advisor-message-1",
+      originalCommand: "@advisor write to the broker",
+      draftText: "Financial information is available on request.",
+      executionStatus: "draft_ready",
+      generationSource: "apple_intelligence",
+      acceptedAt: "2026-09-27T20:30:00.000Z"
+    )
+
+    XCTAssertFalse(
+      AdvisorDraftSafety.isPersistedDraftReady(
+        payload,
+        expectedMessageId: "different-message"
+      )
+    )
+    payload.draftText = "Our income is [income multiple] and credit is [credit score]."
+    XCTAssertFalse(
+      AdvisorDraftSafety.isPersistedDraftReady(
+        payload,
+        expectedMessageId: "advisor-message-1"
+      )
+    )
+  }
+
+  func testLegacyAdvisorCardWithoutOriginalCommandRequiresReask() {
+    let payload = AdvisorMessagePayload(
+      messageId: "advisor-message-1",
+      draftText: "Old rendered text",
+      executionStatus: "needs_input"
+    )
+
+    XCTAssertFalse(AdvisorDraftSafety.hasOriginalAdvisorCommand(payload))
+    XCTAssertFalse(AdvisorDraftSafety.isPersistedDraftReady(payload))
+  }
 
   func testAdvisorRegenerationRejectsRenderedAssistantContent() {
     XCTAssertThrowsError(

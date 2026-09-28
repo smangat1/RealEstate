@@ -45,7 +45,7 @@ export type MobileListingPreviewPayload = {
   modelInsights: ListingModelInsight[];
   contact?: ListingContactInfo | null;
   openRisks: string[];
-  status: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied" | "outreach_sent";
+  status: "new" | "interested" | "maybe" | "rejected" | "toured" | "applied" | "outreach_sent" | "outreach_reported";
   workflowStatus: "suggested" | "source_confirmed" | "considering" | "shortlisted" | "viewing" | "applying" | "decided";
   sourceUrl: string;
   exactSources: {

@@ -1,0 +1,36 @@
+name: Advisor proactive checks
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: advisor-proactive
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run Homeboard Advisor checks
+        env:
+          ADVISOR_URL: https://real-estate-samyanmangat-6662s-projects.vercel.app/api/cron/advisor-proactive
+          OIDC_AUDIENCE: homeboard-advisor-proactive
+        run: |
+          token_response=$(curl --fail --silent --show-error --max-time 20 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}")
+          oidc_token=$(node -e 'const chunks=[]; process.stdin.on("data", chunk => chunks.push(chunk)); process.stdin.on("end", () => { const body=JSON.parse(Buffer.concat(chunks)); if(typeof body.value!=="string") process.exit(1); process.stdout.write(body.value); });' <<< "$token_response")
+          test -n "$oidc_token"
+          curl --fail --silent --show-error \
+            --retry 2 --retry-delay 5 --max-time 90 \
+            -H "Authorization: Bearer $oidc_token" \
+            "$ADVISOR_URL" \
+            | tee /tmp/advisor-proactive.json
+          node -e 'const fs=require("fs"); const body=JSON.parse(fs.readFileSync("/tmp/advisor-proactive.json","utf8")); if(body.ok!==true) { console.error("Advisor checks failed:", body); process.exit(1) } console.log(`Advisor checked ${body.checkedBoards} active board(s).`);'

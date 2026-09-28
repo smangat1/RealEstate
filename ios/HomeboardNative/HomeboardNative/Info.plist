@@ -18,6 +18,8 @@
 	<string>$(HOMEBOARD_API_BASE_URL)</string>
 	<key>HomeboardAppCommit</key>
 	<string>$(HOMEBOARD_APP_COMMIT)</string>
+	<key>HomeboardBuildChannel</key>
+	<string>$(HOMEBOARD_BUILD_CHANNEL)</string>
 	<key>HomeboardKeychainAccessGroup</key>
 	<string>$(AppIdentifierPrefix)com.homeboard.native.shared</string>
 	<key>HomeboardPublicWebURL</key>

@@ -30,6 +30,12 @@ type ProviderCredentials = {
   topic: string;
 };
 
+export type BoardPushType =
+  | "board_chat"
+  | "advisor_follow_up"
+  | "listing_change"
+  | "negotiation_comp";
+
 let cachedProviderToken: { value: string; issuedAt: number } | null = null;
 
 function normalizePrivateKey(value: string) {
@@ -76,17 +82,20 @@ function sendToDevice(
   jwt: string,
   topic: string,
   payload: string,
+  collapseId?: string,
 ) {
   return new Promise<APNsResponse>((resolve) => {
-    const request = session.request({
+    const headers: Record<string, string> = {
       [constants.HTTP2_HEADER_METHOD]: "POST",
       [constants.HTTP2_HEADER_PATH]: `/3/device/${device.token}`,
       authorization: `bearer ${jwt}`,
       "apns-topic": topic,
       "apns-push-type": "alert",
       "apns-priority": "10",
-      "apns-expiration": "0",
-    });
+      "apns-expiration": String(Math.floor(Date.now() / 1_000) + 24 * 60 * 60),
+    };
+    if (collapseId) headers["apns-collapse-id"] = collapseId.slice(0, 64);
+    const request = session.request(headers);
     let status = 0;
     let responseBody = "";
     const timeout = setTimeout(() => {
@@ -124,6 +133,7 @@ async function sendBatch(
   environment: APNsEnvironment,
   configuration: ProviderCredentials,
   payload: string,
+  collapseId?: string,
 ) {
   if (devices.length === 0) return [];
   const session = connect(endpoint(environment));
@@ -135,7 +145,7 @@ async function sendBatch(
     return await Promise.all(
       devices.map(async (device) => ({
         device,
-        response: await sendToDevice(session, device, jwt, configuration.topic, payload),
+        response: await sendToDevice(session, device, jwt, configuration.topic, payload, collapseId),
       })),
     );
   } finally {
@@ -159,11 +169,14 @@ export function isBoardChatPushConfigured() {
   return credentials() !== null;
 }
 
-export async function notifyBoardChat(input: {
+export async function notifyBoardMembers(input: {
   boardId: string;
-  authorUserId: string;
-  authorName: string;
-  content: string;
+  type: BoardPushType;
+  title: string;
+  body: string;
+  boardListingId?: string | null;
+  excludeUserIds?: string[];
+  collapseId?: string;
 }) {
   const configuration = credentials();
   if (!configuration) return { configured: false, attempted: 0, delivered: 0 };
@@ -171,16 +184,16 @@ export async function notifyBoardChat(input: {
   const board = await prisma.searchBoard.findUnique({
     where: { id: input.boardId },
     select: {
-      title: true,
       userId: true,
       members: { select: { userId: true } },
     },
   });
   if (!board) return { configured: true, attempted: 0, delivered: 0 };
 
+  const excluded = new Set(input.excludeUserIds ?? []);
   const recipientIds = Array.from(
     new Set([board.userId, ...board.members.map((member) => member.userId)]),
-  ).filter((userId) => userId !== input.authorUserId);
+  ).filter((userId) => !excluded.has(userId));
   if (recipientIds.length === 0) return { configured: true, attempted: 0, delivered: 0 };
 
   const devices = await prisma.pushDevice.findMany({
@@ -193,22 +206,23 @@ export async function notifyBoardChat(input: {
   const payload = JSON.stringify({
     aps: {
       alert: {
-        title: `${input.authorName} in ${board.title}`,
-        body: notificationBody(input.content),
+        title: notificationBody(input.title),
+        body: notificationBody(input.body),
       },
       sound: "default",
       "thread-id": `homeboard-${input.boardId}`,
     },
-    type: "board_chat",
+    type: input.type,
     boardId: input.boardId,
+    ...(input.boardListingId ? { boardListingId: input.boardListingId } : {}),
   });
 
   const development = devices.filter((device) => device.environment !== "production");
   const production = devices.filter((device) => device.environment === "production");
   const results = (
     await Promise.all([
-      sendBatch(development, "development", configuration, payload),
-      sendBatch(production, "production", configuration, payload),
+      sendBatch(development, "development", configuration, payload, input.collapseId),
+      sendBatch(production, "production", configuration, payload, input.collapseId),
     ])
   ).flat();
 
@@ -222,8 +236,8 @@ export async function notifyBoardChat(input: {
   const failed = results.filter(({ response }) => response.status !== 200 && !isStaleToken(response));
   if (failed.length > 0) {
     await sendOperationalAlert(
-      new Error(`APNs rejected ${failed.length} board chat notification request(s).`),
-      { area: "push", operation: "deliver_board_chat", severity: "error" },
+      new Error(`APNs rejected ${failed.length} ${input.type} notification request(s).`),
+      { area: "push", operation: `deliver_${input.type}`, severity: "error" },
     );
   }
 
@@ -232,4 +246,23 @@ export async function notifyBoardChat(input: {
     attempted: results.length,
     delivered: results.filter(({ response }) => response.status === 200).length,
   };
+}
+
+export async function notifyBoardChat(input: {
+  boardId: string;
+  authorUserId: string;
+  authorName: string;
+  content: string;
+}) {
+  const board = await prisma.searchBoard.findUnique({
+    where: { id: input.boardId },
+    select: { title: true },
+  });
+  return notifyBoardMembers({
+    boardId: input.boardId,
+    type: "board_chat",
+    title: `${input.authorName} in ${board?.title ?? "Homeboard"}`,
+    body: input.content,
+    excludeUserIds: input.authorUserId ? [input.authorUserId] : [],
+  });
 }
