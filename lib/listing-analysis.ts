@@ -114,11 +114,19 @@ export function detectListingActiveOffer(
 }
 
 function memberWeights(member: RoommateRecord) {
+  const weight = (feature: string, fallback: number) => {
+    const signal = member.preferenceSignals?.[feature];
+    if (signal === 2) return fallback * 1.65;
+    if (signal === 1) return fallback * 1.3;
+    if (signal === -1) return fallback * 0.65;
+    if (signal === -2) return fallback * 0.35;
+    return fallback;
+  };
   return {
-    price: 1.2,
-    commute: member.commutePriority === "high" ? 1.5 : member.commutePriority === "low" ? 0.55 : 1,
-    location: member.neighborhoodPriority === "high" ? 1.5 : member.neighborhoodPriority === "low" ? 0.55 : 1,
-    space: member.spacePriority === "high" ? 1.5 : member.spacePriority === "low" ? 0.55 : 1,
+    price: weight("price", 1.2),
+    commute: weight("commute", member.commutePriority === "high" ? 1.5 : member.commutePriority === "low" ? 0.55 : 1),
+    location: weight("neighborhood", member.neighborhoodPriority === "high" ? 1.5 : member.neighborhoodPriority === "low" ? 0.55 : 1),
+    space: weight("space", member.spacePriority === "high" ? 1.5 : member.spacePriority === "low" ? 0.55 : 1),
     amenities: 1,
   };
 }
@@ -252,6 +260,31 @@ function analyzeMember(input: {
       amenitiesDimension = dimension(15, `The listing does not confirm: ${missingAmenities.join(", ")}.`);
     } else {
       amenitiesDimension = dimension(100, `The known amenities satisfy ${member.name}’s hard requirements.`);
+    }
+  } else {
+    const labels: Record<string, string[]> = {
+      gym: ["gym", "fitness center", "fitness room"],
+      laundry: ["laundry", "washer dryer", "washer/dryer"],
+      elevator: ["elevator", "lift"],
+      doorman: ["doorman", "concierge"],
+      outdoor_space: ["outdoor space", "balcony", "roof deck", "yard"],
+      dishwasher: ["dishwasher"],
+      natural_light: ["natural light", "sunlight", "bright"],
+      parking: ["parking", "garage"],
+      privacy: ["private room", "privacy"],
+    };
+    const stated = Object.entries(member.preferenceSignals ?? {})
+      .filter(([feature, signal]) => feature in labels && signal !== 0);
+    if (stated.length > 0 && amenities.length > 0) {
+      const listingText = [...amenities, listing.description?.toLowerCase() ?? ""].join(" ");
+      const scores = stated.map(([feature, signal]) => {
+        const present = labels[feature].some((label) => listingText.includes(label));
+        return signal > 0 ? (present ? 100 : 45) : (present ? 45 : 100);
+      });
+      amenitiesDimension = dimension(
+        scores.reduce((sum, score) => sum + score, 0) / scores.length,
+        `This reflects ${member.name}’s stated amenity preferences from board chat.`,
+      );
     }
   }
 

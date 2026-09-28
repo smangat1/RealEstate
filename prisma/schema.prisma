@@ -179,6 +179,8 @@ enum AdvisorActionKind {
   tour_note_summary
   application_checklist
   negotiation_comp
+  scam_warning
+  room_assignment
 }
 
 enum AdvisorActionStatus {
@@ -209,6 +211,13 @@ enum InquiryStatus {
   stale
 }
 
+enum AdvisorPreferenceProposalStatus {
+  pending
+  accepted
+  rejected
+  expired
+}
+
 model User {
   id                        String                          @id @default(cuid())
   authUserId                String?                         @unique
@@ -231,6 +240,7 @@ model User {
   walletLedgers             BoardWalletLedger[]
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   brokerOutreachRecords     BrokerOutreachRecord[]
+  boardExpensesPaid         BoardExpense[]
 }
 
 model DevicePairing {
@@ -275,6 +285,8 @@ model SearchBoard {
   advisorSubscription       AdvisorSubscription?
   advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
   advisorActions            AdvisorAction[]
+  expenses                  BoardExpense[]
+  advisorPreferenceProposals AdvisorPreferenceProposal[]
 
   @@index([userId])
 }
@@ -577,6 +589,8 @@ model RoommateProfile {
   dealbreakers              String?
   petsRequired              Boolean?
   accessibilityNeeds        String?
+  preferenceSignals         Json                       @default("{}")
+  tourAvailability          Json                       @default("[]")
   notes                     String?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
@@ -592,9 +606,29 @@ model RoommateProfile {
   listingReviews            BoardListingReview[]
   listingDecisionsCreated   BoardListingDecision[]
   listingDecisionVotes      BoardListingDecisionVote[]
+  advisorPreferenceProposals AdvisorPreferenceProposal[]
 
   @@index([boardId, createdAt])
   @@index([linkedUserId])
+}
+
+model AdvisorPreferenceProposal {
+  id                   String                          @id @default(cuid())
+  boardId              String
+  roommateId           String
+  userId               String
+  sourceMessageId      String
+  status               AdvisorPreferenceProposalStatus @default(pending)
+  baseProfileUpdatedAt DateTime
+  changes              Json
+  createdAt            DateTime                        @default(now())
+  resolvedAt           DateTime?
+  board                SearchBoard                     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  roommate             RoommateProfile                 @relation(fields: [roommateId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceMessageId])
+  @@index([boardId, userId, status, createdAt])
+  @@index([roommateId, status])
 }
 
 model BoardListingVote {
@@ -788,6 +822,22 @@ model ListingChange {
   @@unique([snapshotId, field])
   @@index([boardListingId, detectedAt])
   @@index([snapshotId])
+}
+
+model BoardExpense {
+  id           String      @id @default(cuid())
+  boardId      String
+  paidByUserId String
+  description  String
+  category     String
+  amountCents  Int
+  paidAt       DateTime    @default(now())
+  createdAt    DateTime    @default(now())
+  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  paidBy       User        @relation(fields: [paidByUserId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, paidAt])
+  @@index([paidByUserId])
 }
 
 model AnalyticsEvent {

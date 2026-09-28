@@ -62,6 +62,16 @@ struct MobileBoardLoadResponse: Decodable {
   var profile: RemoteRentalProfilePayload
   var missingFields: [String]
   var advisorPayload: AdvisorMessagePayload?
+  var replyAnalysis: AdvisorReplyAnalysis?
+  var preferenceProposal: AdvisorPreferenceProposal?
+}
+
+struct AdvisorPreferenceProposalResponse: Decodable {
+  var preferenceProposal: AdvisorPreferenceProposal?
+}
+
+struct AdvisorPreferenceProposalActionRequest: Encodable {
+  var action: String
 }
 
 struct MobileListingInventoryResponse: Decodable {
@@ -128,6 +138,24 @@ private struct MobileAdvisorAcceptedDraftRequest: Encodable {
 private struct MobileAdvisorOutreachRequest: Encodable {
   var advisorMessageId: String
   var method: String
+}
+
+private struct MobileAdvisorReplyRequest: Encodable {
+  var text: String
+}
+
+private struct MobileBoardExpenseRequest: Encodable {
+  var description: String
+  var category: String
+  var amountCents: Int
+}
+
+private struct MobileRoomAssignmentRequest: Encodable {
+  var rooms: [AdvisorRoomInput]
+}
+
+private struct MobileTourAvailabilityRequest: Encodable {
+  var windows: [TourAvailabilityWindow]
 }
 
 private struct MobileAdvisorFinancialUpdateRequest: Encodable {
@@ -820,6 +848,30 @@ final class HomeboardAPI {
     )
   }
 
+  func loadAdvisorPreferenceProposal(
+    accessToken: String,
+    boardId: String
+  ) async throws -> AdvisorPreferenceProposalResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/preference-proposals",
+      accessToken: accessToken
+    )
+  }
+
+  func resolveAdvisorPreferenceProposal(
+    accessToken: String,
+    boardId: String,
+    proposalId: String,
+    action: String
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/preference-proposals/\(proposalId)",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: AdvisorPreferenceProposalActionRequest(action: action)
+    )
+  }
+
   func acceptAdvisorDraft(
     accessToken: String,
     boardId: String,
@@ -964,6 +1016,87 @@ final class HomeboardAPI {
         advisorMessageId: advisorMessageId,
         method: method
       )
+    )
+  }
+
+  func loadAdvisorApplicationPacket(
+    accessToken: String,
+    boardId: String,
+    listingId: String
+  ) async throws -> AdvisorApplicationPacket {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/application-packet",
+      accessToken: accessToken
+    )
+  }
+
+  func submitAdvisorReply(
+    accessToken: String,
+    boardId: String,
+    listingId: String,
+    text: String
+  ) async throws -> MobileBoardLoadResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/reply",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileAdvisorReplyRequest(text: text)
+    )
+  }
+
+  func loadBoardExpenses(accessToken: String, boardId: String) async throws -> BoardExpenseLedger {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/expenses",
+      accessToken: accessToken
+    )
+  }
+
+  func addBoardExpense(
+    accessToken: String,
+    boardId: String,
+    description: String,
+    category: String,
+    amountCents: Int
+  ) async throws -> BoardExpenseLedger {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/expenses",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileBoardExpenseRequest(description: description, category: category, amountCents: amountCents)
+    )
+  }
+
+  func optimizeRoomAssignment(
+    accessToken: String,
+    boardId: String,
+    listingId: String,
+    rooms: [AdvisorRoomInput]
+  ) async throws -> AdvisorRoomAssignmentResult {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/room-assignment",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileRoomAssignmentRequest(rooms: rooms)
+    )
+  }
+
+  func loadTourAvailability(accessToken: String, boardId: String) async throws -> TourAvailabilityPayload {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/tour-availability",
+      accessToken: accessToken
+    )
+  }
+
+  func saveTourAvailability(
+    accessToken: String,
+    boardId: String,
+    windows: [TourAvailabilityWindow]
+  ) async throws -> TourAvailabilityPayload {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/tour-availability",
+      method: "PUT",
+      accessToken: accessToken,
+      body: MobileTourAvailabilityRequest(windows: windows)
     )
   }
 
