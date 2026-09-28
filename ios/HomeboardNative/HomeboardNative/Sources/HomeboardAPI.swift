@@ -29,11 +29,31 @@ enum HomeboardAPIError: LocalizedError {
       return "Advisor draft was not saved because this build is connected to an incompatible server (\(origin), \(serverCommit)): \(reason)"
     case .server(let message):
       return message
-    case .response(let endpoint, let status, let contentType, let bodyExcerpt, let message):
-      let details = "Endpoint \(endpoint) · status \(status) · content type \(contentType) · body \(bodyExcerpt)"
-      guard let message, !message.isEmpty else { return details }
-      return "\(message) \(details)"
+    case .response(let endpoint, let status, let contentType, _, let message):
+      if contentType.lowercased().contains("text/html") {
+        return status == 404
+          ? "This app build needs a newer Homeboard server. Use the matching preview build and try again."
+          : "Homeboard’s server returned an unexpected page. Try again in a moment."
+      }
+      let summary = message?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let resolved = summary.flatMap { $0.isEmpty ? nil : $0 } ?? "Request failed."
+      return "\(resolved) (HTTP \(status), \(endpoint))"
     }
+  }
+
+  var diagnosticDescription: String {
+    guard case .response(let endpoint, let status, let contentType, let bodyExcerpt, let message) = self else {
+      return errorDescription ?? "Unknown Homeboard API error."
+    }
+    return [
+      message,
+      "Endpoint \(endpoint) · status \(status) · content type \(contentType) · body \(bodyExcerpt)",
+    ].compactMap { $0 }.joined(separator: " ")
+  }
+
+  func isMissingEndpoint(_ path: String) -> Bool {
+    guard case .response(let endpoint, let status, _, _, _) = self else { return false }
+    return status == 404 && endpoint.hasSuffix(path)
   }
 }
 
@@ -63,6 +83,7 @@ struct MobileBoardLoadResponse: Decodable {
   var missingFields: [String]
   var advisorPayload: AdvisorMessagePayload?
   var replyAnalysis: AdvisorReplyAnalysis?
+  var replyLog: AdvisorReplyLog?
   var preferenceProposal: AdvisorPreferenceProposal?
 }
 
@@ -166,8 +187,10 @@ private struct MobileAdvisorOutreachRequest: Encodable {
   var method: String
 }
 
-private struct MobileAdvisorReplyRequest: Encodable {
+struct MobileAdvisorReplyRequest: Encodable {
   var text: String
+  var outreachId: String
+  var confirmationId: String
 }
 
 private struct MobileBoardExpenseRequest: Encodable {
@@ -1073,14 +1096,31 @@ final class HomeboardAPI {
     accessToken: String,
     boardId: String,
     listingId: String,
-    text: String
+    text: String,
+    outreachId: String,
+    confirmationId: UUID
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/reply",
       method: "POST",
       accessToken: accessToken,
-      body: MobileAdvisorReplyRequest(text: text)
+      body: MobileAdvisorReplyRequest(
+        text: text,
+        outreachId: outreachId,
+        confirmationId: confirmationId.uuidString.lowercased()
+      )
     )
+  }
+
+  func loadAdvisorReplyThreads(
+    accessToken: String,
+    boardId: String
+  ) async throws -> [AdvisorReplyThreadOption] {
+    let response: AdvisorReplyThreadsResponse = try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/advisor/reply-threads",
+      accessToken: accessToken
+    )
+    return response.threads
   }
 
   func loadBoardExpenses(accessToken: String, boardId: String) async throws -> BoardExpenseLedger {

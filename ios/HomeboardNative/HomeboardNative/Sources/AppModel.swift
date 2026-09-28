@@ -42,6 +42,24 @@ final class AppModel {
     case setup
   }
 
+  static func profilePreservingAdvisorSetup(
+    remote: RemoteRentalProfilePayload,
+    fallback: RentalProfile?
+  ) -> RentalProfile {
+    var resolved = RentalProfile(remote: remote)
+    guard resolved.advisorSetupVersion == nil,
+          let fallback,
+          fallback.advisorSetupVersion != nil else { return resolved }
+    // Older servers safely ignore the newer optional Advisor keys. Preserve
+    // the board-scoped local copy until a matching server can echo them back.
+    resolved.advisorFinancialMode = "available_on_request"
+    resolved.advisorIncomeMultiple = nil
+    resolved.advisorCreditScore = nil
+    resolved.advisorSetupCompletedAt = fallback.advisorSetupCompletedAt
+    resolved.advisorSetupVersion = fallback.advisorSetupVersion
+    return resolved
+  }
+
   private struct VersionedPersistenceRecord<Payload: Codable>: Codable {
     var schemaVersion: Int
     var payload: Payload
@@ -978,7 +996,7 @@ final class AppModel {
       if let preferenceProposal = response.preferenceProposal {
         pendingPreferenceProposal = preferenceProposal
       }
-      profile = RentalProfile(remote: response.profile)
+      profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       board.chatMessages.removeAll { $0.id == temporaryID }
@@ -1100,7 +1118,7 @@ final class AppModel {
     }
     board = merged
     applyAdvisorPayload(payload)
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     storeCurrentBoardSnapshot()
     persist()
     return payload
@@ -1158,6 +1176,11 @@ final class AppModel {
     } catch is CancellationError {
       return
     } catch {
+      if let apiError = error as? HomeboardAPIError,
+         apiError.isMissingEndpoint("/preference-proposals") {
+        pendingPreferenceProposal = nil
+        return
+      }
       boardError = readable(error)
     }
   }
@@ -1319,7 +1342,28 @@ final class AppModel {
     }
   }
 
-  func submitAdvisorReply(listingId: String, text: String) async -> AdvisorReplyAnalysis? {
+  func loadAdvisorReplyThreads() async -> [AdvisorReplyThreadOption] {
+    guard let session = authSession, let boardId = board.id else {
+      boardError = "Open a real board before adding a broker reply."
+      return []
+    }
+    do {
+      return try await api.loadAdvisorReplyThreads(
+        accessToken: session.accessToken,
+        boardId: boardId
+      )
+    } catch {
+      boardError = readable(error)
+      return []
+    }
+  }
+
+  func submitAdvisorReply(
+    listingId: String,
+    outreachId: String,
+    text: String,
+    confirmationId: UUID
+  ) async -> AdvisorReplySubmissionResult? {
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before adding a broker reply."
       return nil
@@ -1329,10 +1373,16 @@ final class AppModel {
         accessToken: session.accessToken,
         boardId: boardId,
         listingId: listingId,
-        text: text
+        text: text,
+        outreachId: outreachId,
+        confirmationId: confirmationId
       )
+      guard let analysis = response.replyAnalysis, let log = response.replyLog else {
+        boardError = "Homeboard could not confirm that the reply was logged. Please try again."
+        return nil
+      }
       applyRemoteMutation(response, clearing: [.activity, .shortlist])
-      return response.replyAnalysis
+      return AdvisorReplySubmissionResult(analysis: analysis, log: log)
     } catch {
       boardError = readable(error)
       return nil
@@ -1735,12 +1785,13 @@ final class AppModel {
     }
 
     do {
+      let localProfile = profile
       let response = try await api.saveBoardProfile(accessToken: session.accessToken, boardId: boardId, profile: profile)
       guard requestEpoch == sessionEpoch,
             authSession?.userId == session.userId,
             board.id == boardId else { return }
       board = response.board
-      profile = RentalProfile(remote: response.profile)
+      profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: localProfile)
       storeCurrentBoardSnapshot()
       boardFeedback = "Board brief saved."
     } catch {
@@ -1924,7 +1975,10 @@ final class AppModel {
       listingInventoryHasMore = false
       listingInventoryError = nil
     }
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(
+      remote: response.profile,
+      fallback: localProfilesByBoard[id]
+    )
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     currentScreen = .board
@@ -3466,7 +3520,7 @@ final class AppModel {
       return
     }
     board = boardByApplyingRemovalTombstones(response.board, storageKey: storageKey)
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     persist()
@@ -3818,7 +3872,7 @@ final class AppModel {
     if let preferenceProposal = response.preferenceProposal {
       pendingPreferenceProposal = preferenceProposal
     }
-    profile = RentalProfile(remote: response.profile)
+    profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     if kinds.contains(.shortlist) {
       localShortlistsByBoard[key] = pendingListingCreatesByBoard[key] ?? []
     }

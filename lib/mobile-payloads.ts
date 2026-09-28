@@ -337,7 +337,7 @@ function listingModelInsights(listing: ListingRecord): ListingModelInsight[] {
   }).slice(0, 16);
 }
 
-export function listingContactInfo(listing: Pick<ListingRecord, "providerData">): ListingContactInfo | null {
+export function listingContactInfo(listing: { providerData: unknown }): ListingContactInfo | null {
   if (!listing.providerData || typeof listing.providerData !== "object" || Array.isArray(listing.providerData)) {
     return null;
   }

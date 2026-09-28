@@ -1,11 +1,10 @@
-import { createHash } from "node:crypto";
-
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { analyzeAdvisorReply } from "@/lib/advisor-reply";
+import { replyConfirmationFingerprint, selectReplyOutreach } from "@/lib/advisor-reply-intake";
 import {
   loggedReplyOutreachUpdate,
   REPLY_LOGGABLE_OUTREACH_STATUSES,
@@ -16,7 +15,18 @@ import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 import { prisma } from "@/lib/prisma";
 
-const schema = z.object({ text: z.string().trim().min(2).max(10_000) });
+const schema = z.object({
+  text: z.string().trim().min(2).max(10_000),
+  outreachId: z.string().trim().min(1).max(128).optional(),
+  confirmationId: z.string().uuid().optional(),
+}).strict();
+
+const replyFactsSchema = z.object({
+  available: z.boolean().nullable(),
+  mentionsApplication: z.boolean(),
+  mentionsTour: z.boolean(),
+  quotedPrice: z.number().nullable(),
+});
 
 export async function POST(
   request: Request,
@@ -45,23 +55,52 @@ export async function POST(
     }
     const listing = data.boardListings.find((entry) => entry.id === listingId);
     if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
-    const outreach = await prisma.brokerOutreachRecord.findFirst({
+    const outreachCandidates = await prisma.brokerOutreachRecord.findMany({
       where: { boardListingId: listingId, status: { in: [...REPLY_LOGGABLE_OUTREACH_STATUSES] } },
       orderBy: [
         { contactedAt: { sort: "desc", nulls: "last" } },
         { createdAt: "desc" },
       ],
     });
-    if (!outreach) return NextResponse.json({ error: "Send or record outreach before adding a reply." }, { status: 409 });
+    const selection = selectReplyOutreach(outreachCandidates, listingId, parsed.data.outreachId);
+    if (!selection.ok) {
+      const error = selection.reason === "ambiguous"
+        ? "Choose the outreach thread this reply belongs to."
+        : selection.reason === "mismatch"
+          ? "That outreach thread does not belong to this listing."
+          : "Send or record outreach before adding a reply.";
+      return NextResponse.json({ error }, { status: 409 });
+    }
+    const outreach = outreachCandidates.find((candidate) => candidate.id === selection.outreach.id)!;
 
-    const analysis = analyzeAdvisorReply(parsed.data.text);
+    let analysis = analyzeAdvisorReply(parsed.data.text);
     const listingName = [listing.listing.address, listing.listing.unit ? `Unit ${listing.listing.unit}` : null]
       .filter(Boolean).join(" · ") || "this listing";
     const content = `Broker reply for ${listingName}: ${analysis.summary} Next move: ${analysis.nextMove}`;
-    const fingerprint = `reply:${createHash("sha256").update(`${outreach.id}:${parsed.data.text}`).digest("hex")}`;
+    const fingerprint = replyConfirmationFingerprint({
+      boardId: id,
+      outreachId: outreach.id,
+      confirmationId: parsed.data.confirmationId,
+      text: parsed.data.text,
+    });
     const now = new Date();
+    let persistedAction = await prisma.advisorAction.findUnique({
+      where: { fingerprint },
+      select: {
+        boardId: true,
+        boardListingId: true,
+        summary: true,
+        whyItMatters: true,
+        facts: true,
+      },
+    });
+    let duplicate = Boolean(persistedAction);
+    if (persistedAction
+        && (persistedAction.boardId !== id || persistedAction.boardListingId !== listingId)) {
+      throw new Error("REPLY_CONFIRMATION_SCOPE_MISMATCH");
+    }
     try {
-      await prisma.$transaction([
+      if (!duplicate) await prisma.$transaction([
         prisma.brokerOutreachRecord.update({
           where: { id: outreach.id },
           data: {
@@ -96,6 +135,44 @@ export async function POST(
       ]);
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
+      duplicate = true;
+    }
+
+    const [persistedOutreach, confirmedAction] = await Promise.all([
+      prisma.brokerOutreachRecord.findUnique({
+        where: { id: outreach.id },
+        select: { answeredAt: true },
+      }),
+      duplicate && !persistedAction
+        ? prisma.advisorAction.findUnique({
+            where: { fingerprint },
+            select: {
+              boardId: true,
+              boardListingId: true,
+              summary: true,
+              whyItMatters: true,
+              facts: true,
+            },
+          })
+        : Promise.resolve(persistedAction),
+    ]);
+    persistedAction = confirmedAction;
+    if (!persistedOutreach?.answeredAt) {
+      throw new Error("REPLY_CONFIRMATION_NOT_PERSISTED");
+    }
+    if (duplicate) {
+      if (!persistedAction
+          || persistedAction.boardId !== id
+          || persistedAction.boardListingId !== listingId) {
+        throw new Error("REPLY_CONFIRMATION_SCOPE_MISMATCH");
+      }
+      const persistedFacts = replyFactsSchema.safeParse(persistedAction.facts);
+      if (!persistedFacts.success) throw new Error("REPLY_CONFIRMATION_INVALID");
+      analysis = {
+        summary: persistedAction.summary,
+        nextMove: persistedAction.whyItMatters,
+        facts: persistedFacts.data,
+      };
     }
 
     const next = await getBoardPageData(id, user.id, { includeSuggestedListings: false, includeCommutes: false });
@@ -105,6 +182,13 @@ export async function POST(
       profile: next.profile,
       missingFields: next.missingFields,
       replyAnalysis: analysis,
+      replyLog: {
+        confirmationId: parsed.data.confirmationId ?? null,
+        outreachId: outreach.id,
+        listingId,
+        answeredAt: persistedOutreach.answeredAt.toISOString(),
+        duplicate,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to review reply.";
