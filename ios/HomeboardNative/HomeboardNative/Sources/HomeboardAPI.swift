@@ -137,6 +137,29 @@ enum AdvisorBackendCompatibility {
   }
 }
 
+struct BoardNotificationSettings: Codable, Hashable {
+  var digestHourLocal: Int
+  var timeZone: String
+  var timeZoneSource: String?
+  var nonCriticalPushEnabled: Bool
+  var urgentPushesAlwaysEnabled: Bool
+  var scope: String
+}
+
+enum AdvisorNotificationTimeZonePolicy {
+  static func shouldOfferDeviceUpdate(stored: String, device: String) -> Bool {
+    stored != device && TimeZone(identifier: device) != nil
+  }
+
+  static func zoneAfterDeviceRegistration(
+    stored: String,
+    source: String,
+    device: String
+  ) -> String {
+    source == "fallback" && TimeZone(identifier: device) != nil ? device : stored
+  }
+}
+
 struct MobileBoardMessageCreateRequest: Encodable {
   var content: String
   var tone: String?
@@ -384,10 +407,17 @@ private struct MobileMemberPatchRequest: Encodable {
 private struct PushDeviceRequest: Encodable {
   var token: String
   var environment: String
+  var timeZone: String
 }
 
 private struct PushDeviceDeleteRequest: Encodable {
   var token: String
+}
+
+private struct BoardNotificationSettingsRequest: Encodable {
+  var digestHourLocal: Int
+  var timeZone: String
+  var nonCriticalPushEnabled: Bool
 }
 
 private struct NativeDiagnosticsRequest: Encodable {
@@ -1527,7 +1557,11 @@ final class HomeboardAPI {
       path: "/api/mobile/push-devices",
       method: "POST",
       accessToken: accessToken,
-      body: PushDeviceRequest(token: token, environment: environment)
+      body: PushDeviceRequest(
+        token: token,
+        environment: environment,
+        timeZone: TimeZone.current.identifier
+      )
     )
   }
 
@@ -1537,6 +1571,35 @@ final class HomeboardAPI {
       method: "DELETE",
       accessToken: accessToken,
       body: PushDeviceDeleteRequest(token: token)
+    )
+  }
+
+  func loadBoardNotificationSettings(
+    accessToken: String,
+    boardId: String
+  ) async throws -> BoardNotificationSettings {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/notification-settings",
+      accessToken: accessToken
+    )
+  }
+
+  func updateBoardNotificationSettings(
+    accessToken: String,
+    boardId: String,
+    digestHourLocal: Int,
+    timeZone: String,
+    nonCriticalPushEnabled: Bool
+  ) async throws -> BoardNotificationSettings {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/notification-settings",
+      method: "PATCH",
+      accessToken: accessToken,
+      body: BoardNotificationSettingsRequest(
+        digestHourLocal: digestHourLocal,
+        timeZone: timeZone,
+        nonCriticalPushEnabled: nonCriticalPushEnabled
+      )
     )
   }
 

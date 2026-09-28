@@ -3319,6 +3319,37 @@ final class AppModel {
     }
   }
 
+  func loadBoardNotificationSettings() async throws -> BoardNotificationSettings {
+    guard let session = authSession,
+          let boardId = board.id,
+          !boardId.hasPrefix("local-") else {
+      throw HomeboardAPIError.missingSession
+    }
+    return try await api.loadBoardNotificationSettings(
+      accessToken: session.accessToken,
+      boardId: boardId
+    )
+  }
+
+  func saveBoardNotificationSettings(
+    digestHourLocal: Int,
+    timeZone: String,
+    nonCriticalPushEnabled: Bool
+  ) async throws -> BoardNotificationSettings {
+    guard let session = authSession,
+          let boardId = board.id,
+          !boardId.hasPrefix("local-") else {
+      throw HomeboardAPIError.missingSession
+    }
+    return try await api.updateBoardNotificationSettings(
+      accessToken: session.accessToken,
+      boardId: boardId,
+      digestHourLocal: digestHourLocal,
+      timeZone: timeZone,
+      nonCriticalPushEnabled: nonCriticalPushEnabled
+    )
+  }
+
   func uploadPendingNativeDiagnostics() async {
     guard let session = authSession else { return }
     let payloads = PendingNativeDiagnostics.snapshot()

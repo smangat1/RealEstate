@@ -4,7 +4,11 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { analyzeAdvisorReply } from "@/lib/advisor-reply";
-import { replyConfirmationFingerprint, selectReplyOutreach } from "@/lib/advisor-reply-intake";
+import {
+  pendingFollowUpSuppressionScope,
+  replyConfirmationFingerprint,
+  selectReplyOutreach,
+} from "@/lib/advisor-reply-intake";
 import {
   loggedReplyOutreachUpdate,
   REPLY_LOGGABLE_OUTREACH_STATUSES,
@@ -123,6 +127,19 @@ export async function POST(
             primaryAction: { type: "open_listing", boardListingId: listingId },
             secondaryActions: [{ type: "draft_reply" }],
             fingerprint,
+          },
+        }),
+        prisma.advisorNotificationDelivery.updateMany({
+          where: {
+            ...pendingFollowUpSuppressionScope(id, outreach.id),
+          },
+          data: {
+            status: "suppressed",
+            leaseToken: null,
+            leaseUntil: null,
+            suppressedAt: now,
+            deliveryOutcome: "reply_logged",
+            failureReason: null,
           },
         }),
         prisma.chatMessage.create({

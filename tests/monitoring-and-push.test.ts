@@ -112,6 +112,8 @@ test("push delivery supports board chat and deduplicated proactive Advisor event
   const messages = read("app/api/mobile/boards/[id]/messages/route.ts");
   const updates = read("app/api/mobile/boards/[id]/updates/route.ts");
   const proactive = read("lib/advisor-proactive.ts");
+  const advisorNotifications = read("lib/advisor-notifications.ts");
+  const notificationSettings = read("app/api/mobile/boards/[id]/notification-settings/route.ts");
   const rootView = read("ios/HomeboardNative/HomeboardNative/Sources/RootView.swift");
   const nativeApp = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardNativeApp.swift");
 
@@ -126,8 +128,12 @@ test("push delivery supports board chat and deduplicated proactive Advisor event
   assert.match(apns, /apns-collapse-id/);
   assert.match(messages, /notifyBoardChat/);
   assert.match(updates, /action: z\.literal\("update"\)[\s\S]*notifyBoardChat/);
-  assert.match(proactive, /notifyBoardMembers/);
-  assert.match(rootView, /Advisor follow-ups, listing changes, and negotiation flags/);
+  assert.match(proactive, /advisorNotificationEvent\.create/);
+  assert.match(advisorNotifications, /notifyBoardMembers/);
+  assert.match(advisorNotifications, /flushDueAdvisorDigests/);
+  assert.match(notificationSettings, /nonCriticalPushEnabled/);
+  assert.match(notificationSettings, /digestHourLocal/);
+  assert.match(rootView, /one daily Advisor digest/);
   assert.match(nativeApp, /homeboardOpenBoardChat/);
   assert.match(nativeApp, /willPresent notification/);
   assert.match(nativeApp, /boardNotificationTypes/);

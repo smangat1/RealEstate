@@ -7,6 +7,7 @@ import {
   ADVISOR_PROACTIVE_LEASE_MS,
   ADVISOR_PROACTIVE_WORK_BUDGET_MS,
 } from "@/lib/advisor-cron-rotation";
+import { flushDueAdvisorDigests } from "@/lib/advisor-notifications";
 import { isAdvisorCronRequestAuthorized } from "@/lib/github-actions-oidc";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
@@ -22,6 +23,23 @@ export async function GET(request: Request) {
   const now = new Date();
   const deadline = Date.now() + ADVISOR_PROACTIVE_WORK_BUDGET_MS;
   const leaseUntil = new Date(now.getTime() + ADVISOR_PROACTIVE_LEASE_MS);
+  let digestResult = {
+    deliveredDigests: 0,
+    deliveredEvents: 0,
+    suppressedEvents: 0,
+    failedEvents: 0,
+    waitingEvents: 0,
+    retriedUrgent: 0,
+  };
+  try {
+    digestResult = await flushDueAdvisorDigests(now);
+  } catch (error) {
+    await sendOperationalAlert(error, {
+      area: "push",
+      operation: "flush_advisor_digests",
+      severity: "error",
+    });
+  }
   const subscriptions = await prisma.advisorSubscription.findMany({
     where: {
       validUntil: { gte: now },
@@ -73,6 +91,7 @@ export async function GET(request: Request) {
     candidateBoards: subscriptions.length,
     batchSize: ADVISOR_PROACTIVE_BATCH_SIZE,
     workBudgetMs: ADVISOR_PROACTIVE_WORK_BUDGET_MS,
+    digestResult,
     results,
     checkedAt: now.toISOString(),
   }, {

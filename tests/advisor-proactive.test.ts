@@ -11,6 +11,7 @@ import {
   followUpFinancialDisclosure,
   isFreshListingObservation,
   isGhostedOutreach,
+  isVerifiedUnavailableTransition,
   loggedReplyOutreachUpdate,
   listingAvailabilityState,
 } from "../lib/advisor-proactive-logic";
@@ -104,6 +105,30 @@ test("listing watch ignores equivalent provider wording", () => {
   assert.equal(listingAvailabilityState(previous), "available");
   assert.equal(listingAvailabilityState(current), "available");
   assert.deepEqual(detectListingChanges(previous, current), []);
+});
+
+test("only an available-to-unavailable status change is an urgent listing transition", () => {
+  const available = { price: 3200, fees: null, availableDate: null, listingStatus: "active", providerStatus: "Available" };
+  const unavailable = { ...available, listingStatus: "removed", providerStatus: "Off market" };
+  const unavailablePriceChange = { ...unavailable, price: 3100 };
+  const unknown = { ...available, listingStatus: "saved", providerStatus: null };
+
+  assert.equal(
+    isVerifiedUnavailableTransition(available, unavailable, detectListingChanges(available, unavailable)),
+    true,
+  );
+  assert.equal(
+    isVerifiedUnavailableTransition(unavailable, unavailablePriceChange, detectListingChanges(unavailable, unavailablePriceChange)),
+    false,
+  );
+  assert.equal(
+    isVerifiedUnavailableTransition(unknown, unavailable, detectListingChanges(unknown, unavailable)),
+    false,
+  );
+  assert.equal(
+    isVerifiedUnavailableTransition(unavailable, available, detectListingChanges(unavailable, available)),
+    false,
+  );
 });
 
 test("listing watch requires a newer fresh importer observation", () => {

@@ -42,3 +42,13 @@ export function replyConfirmationFingerprint(input: {
     .digest("hex");
   return `reply:${digest}`;
 }
+
+export function pendingFollowUpSuppressionScope(boardId: string, outreachId: string) {
+  return {
+    status: "pending",
+    event: {
+      boardId,
+      fingerprint: `follow-up:${outreachId}`,
+    },
+  } as const;
+}
