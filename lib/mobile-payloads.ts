@@ -141,6 +141,7 @@ export type MobileListingPreviewPayload = {
 
 export type MobileBoardPayload = {
   id: string;
+  revision: string;
   title: string;
   city: string;
   moveInTimeline: string;
@@ -623,6 +624,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
 
   return {
     id: board.id,
+    revision: board.updatedAt,
     title: board.title,
     city: profile.city || board.city || "City still open",
     moveInTimeline: profile.moveInDate || profile.moveInTimeframe || "Move-in still open",

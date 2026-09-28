@@ -110,6 +110,77 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(AdvisorDraftSafety.isPersistedDraftReady(payload))
   }
 
+  func testPreferenceFallbackRequiresExplicitFirstPersonEvidence() {
+    let positive = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I really need parking and natural light is important to me."
+    )
+    XCTAssertEqual(Set(positive.map(\.feature)), Set(["parking", "natural_light"]))
+
+    for unsafe in [
+      "Maybe I need parking.",
+      "She needs parking.",
+      "If I needed parking, I would say so.",
+      "The broker wrote \"I need parking\".",
+      "I need parking, but I don't care about the garage.",
+    ] {
+      XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: unsafe).isEmpty, unsafe)
+    }
+  }
+
+  func testPreferenceFallbackRejectsPastAndRetractedAssertions() {
+    for retraction in [
+      "I used to say I need parking, but I changed my mind",
+      "Yesterday I said I need parking, but not anymore",
+      "Back then I said I need parking",
+      "In the past I said \"I need parking\"",
+      "\"I need parking\"",
+      "I need parking back then",
+      "I need parking, but I no longer do",
+      "I need parking, but I don't anymore",
+      "I need parking, however I do not anymore",
+      "I need parking, but I changed my mind",
+    ] {
+      XCTAssertTrue(AdvisorPreferenceExtractor.deterministicSignals(in: retraction).isEmpty, retraction)
+    }
+
+    for current in [
+      "I need parking",
+      "we really need parking now",
+      "Back then I said I need parking, but I need parking now",
+    ] {
+      let signals = AdvisorPreferenceExtractor.deterministicSignals(in: current)
+      XCTAssertEqual(signals.count, 1, current)
+      XCTAssertEqual(signals.first?.feature, "parking", current)
+      XCTAssertEqual(signals.first?.weight, 2, current)
+      XCTAssertEqual(signals.first?.intent, "preference", current)
+    }
+
+    let independent = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I need parking, but I don't need the gym anymore"
+    )
+    XCTAssertEqual(independent.map(\.feature), ["gym", "parking"])
+    XCTAssertEqual(independent.map(\.intent), ["remove_must_have", "preference"])
+
+    let unrelated = AdvisorPreferenceExtractor.deterministicSignals(
+      in: "I need parking, however natural light is important to me"
+    )
+    XCTAssertEqual(unrelated.map(\.feature), ["natural_light", "parking"])
+  }
+
+  func testPreferenceFallbackSeparatesLowPriorityFromMustHaveRemoval() throws {
+    let lower = try XCTUnwrap(
+      AdvisorPreferenceExtractor.deterministicSignals(in: "I don't care about parking").first
+    )
+    XCTAssertEqual(lower.intent, "preference")
+    XCTAssertEqual(lower.weight, -2)
+
+    let removal = try XCTUnwrap(
+      AdvisorPreferenceExtractor.deterministicSignals(in: "I don't need parking anymore").first
+    )
+    XCTAssertEqual(removal.intent, "remove_must_have")
+    XCTAssertEqual(removal.feature, "parking")
+  }
+
   func testAdvisorRegenerationRejectsRenderedAssistantContent() {
     XCTAssertThrowsError(
       try AppModel.advisorRegenerationCommand(

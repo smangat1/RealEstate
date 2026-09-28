@@ -227,9 +227,9 @@ test("room assignment warns instead of hiding an unaffordable split", () => {
 });
 
 test("explicit preference talk changes only named features", () => {
-  assert.deepEqual(parsePreferenceTalk("idgaf about the gym, but natural light is a high priority"), [
-    { feature: "gym", label: "gym", weight: -2 },
-    { feature: "natural_light", label: "natural light", weight: 2 },
+  assert.deepEqual(parsePreferenceTalk("idgaf about the gym, but natural light is a high priority for me"), [
+    { feature: "gym", label: "gym", weight: -2, evidence: "idgaf about the gym", intent: "preference" },
+    { feature: "natural_light", label: "natural light", weight: 2, evidence: "natural light is a high priority for me", intent: "preference" },
   ]);
   assert.deepEqual(parsePreferenceTalk("That apartment has a gym"), []);
 });

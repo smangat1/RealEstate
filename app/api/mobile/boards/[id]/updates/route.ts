@@ -8,10 +8,13 @@ import { notifyBoardChat } from "@/lib/apns";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 import { sendOperationalAlert } from "@/lib/monitoring";
+import { preferenceCandidateSchema } from "@/lib/preference-candidate";
 
 const schema = z.object({
   action: z.literal("update"),
   content: z.string().trim().min(1).max(2000),
+  messageId: z.string().uuid().optional(),
+  preferenceCandidate: preferenceCandidateSchema.optional(),
 }).strict();
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -30,11 +33,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid board update." }, { status: 400 });
 
+    if (parsed.data.preferenceCandidate
+        && (parsed.data.preferenceCandidate.boardId !== id
+          || parsed.data.preferenceCandidate.messageId !== parsed.data.messageId)) {
+      return NextResponse.json({ error: "Preference candidate context is invalid." }, { status: 400 });
+    }
+
     const content = parsed.data.content;
+    const preMessageBoardRevision = current.board.updatedAt;
+    const candidate = parsed.data.preferenceCandidate?.boardRevision === preMessageBoardRevision
+      ? parsed.data.preferenceCandidate
+      : null;
     const sentMessage = await addManualBoardUpdate(
       id,
       { userId: user.id, authorName: user.displayName },
       content,
+      { messageId: parsed.data.messageId },
     );
     const preferenceProposal = await stageAdvisorPreferenceProposal({
       boardId: id,
@@ -42,6 +56,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       authorName: user.displayName,
       sourceMessageId: sentMessage.id,
       content,
+      boardRevision: preMessageBoardRevision,
+      candidate,
     });
     after(async () => {
       try {

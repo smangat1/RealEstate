@@ -121,13 +121,39 @@ struct MobileBoardMessageCreateRequest: Encodable {
   var tone: String?
   var regenerateOnly: Bool?
   var originatingMessageId: String?
+  var messageId: String?
+  var preferenceCandidate: AdvisorPreferenceCandidate?
 
-  init(content: String, tone: String? = nil, regenerateOnly: Bool? = nil, originatingMessageId: String? = nil) {
+  init(
+    content: String,
+    tone: String? = nil,
+    regenerateOnly: Bool? = nil,
+    originatingMessageId: String? = nil,
+    messageId: String? = nil,
+    preferenceCandidate: AdvisorPreferenceCandidate? = nil
+  ) {
     self.content = content
     self.tone = tone
     self.regenerateOnly = regenerateOnly
     self.originatingMessageId = originatingMessageId
+    self.messageId = messageId
+    self.preferenceCandidate = preferenceCandidate
   }
+}
+
+struct AdvisorPreferenceCandidateSignal: Codable, Hashable {
+  var feature: String
+  var weight: Int
+  var evidence: String
+  var intent: String
+}
+
+struct AdvisorPreferenceCandidate: Codable, Hashable {
+  var boardId: String
+  var messageId: String
+  var boardRevision: String
+  var source: String
+  var signals: [AdvisorPreferenceCandidateSignal]
 }
 
 private struct MobileAdvisorAcceptedDraftRequest: Encodable {
@@ -280,10 +306,14 @@ private struct BoardAnalyticsRequest: Encodable {
 private struct MobileBoardUpdateRequest: Encodable {
   let action: String
   let content: String
+  let messageId: String?
+  let preferenceCandidate: AdvisorPreferenceCandidate?
 
-  init(content: String) {
+  init(content: String, messageId: String? = nil, preferenceCandidate: AdvisorPreferenceCandidate? = nil) {
     action = "update"
     self.content = content
+    self.messageId = messageId
+    self.preferenceCandidate = preferenceCandidate
   }
 }
 
@@ -838,13 +868,22 @@ final class HomeboardAPI {
     content: String,
     tone: String? = nil,
     regenerateOnly: Bool? = nil,
-    originatingMessageId: String? = nil
+    originatingMessageId: String? = nil,
+    messageId: String? = nil,
+    preferenceCandidate: AdvisorPreferenceCandidate? = nil
   ) async throws -> MobileBoardLoadResponse {
     return try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/messages",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardMessageCreateRequest(content: content, tone: tone, regenerateOnly: regenerateOnly, originatingMessageId: originatingMessageId)
+      body: MobileBoardMessageCreateRequest(
+        content: content,
+        tone: tone,
+        regenerateOnly: regenerateOnly,
+        originatingMessageId: originatingMessageId,
+        messageId: messageId,
+        preferenceCandidate: preferenceCandidate
+      )
     )
   }
 
@@ -1310,8 +1349,18 @@ final class HomeboardAPI {
     )
   }
 
-  func addBoardUpdate(accessToken: String, boardId: String, content: String) async throws -> MobileBoardLoadResponse {
-    try await boardUpdate(accessToken: accessToken, boardId: boardId, body: .init(content: content))
+  func addBoardUpdate(
+    accessToken: String,
+    boardId: String,
+    content: String,
+    messageId: String? = nil,
+    preferenceCandidate: AdvisorPreferenceCandidate? = nil
+  ) async throws -> MobileBoardLoadResponse {
+    try await boardUpdate(
+      accessToken: accessToken,
+      boardId: boardId,
+      body: .init(content: content, messageId: messageId, preferenceCandidate: preferenceCandidate)
+    )
   }
 
   private func boardUpdate(accessToken: String, boardId: String, body: MobileBoardUpdateRequest) async throws -> MobileBoardLoadResponse {

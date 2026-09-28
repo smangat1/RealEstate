@@ -40,7 +40,7 @@ const preferenceProfile = {
 };
 
 test("clear preference talk stages an exact before/after proposal without mutating the profile", () => {
-  const signals = parsePreferenceTalk("idgaf about the gym, but commute is a high priority");
+  const signals = parsePreferenceTalk("I don't need the gym anymore, but commute is a high priority for me");
   const changes = buildPreferenceProposal(preferenceProfile, signals);
   assert.deepEqual(changes.find((change) => change.field === "commutePriority"), {
     field: "commutePriority",
@@ -65,6 +65,13 @@ test("ambiguous chat creates no preference proposal", () => {
   const signals = parsePreferenceTalk("That apartment has a gym near the train.");
   assert.deepEqual(signals, []);
   assert.deepEqual(buildPreferenceProposal(preferenceProfile, signals), []);
+});
+
+test("a negative preference never silently removes a must-have", () => {
+  const signals = parsePreferenceTalk("I don't care about the gym");
+  const changes = buildPreferenceProposal(preferenceProfile, signals);
+  assert.equal(changes.some((change) => change.field === "mustHaves"), false);
+  assert.equal(changes.find((change) => change.field === "preferenceSignals.gym")?.newValue, -2);
 });
 
 test("preference confirmation accepts current proposals, while rejection and stale proposals never apply", () => {
