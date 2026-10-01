@@ -16,9 +16,11 @@
 		161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */; };
 		185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */; };
 		1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */; };
+		1E283618879F96B0621CC64B /* UITestFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16454DD4523AE8F09B3F99E2 /* UITestFixture.swift */; };
 		1EC933E2D2158B93F82E8994 /* HomeboardActionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		259CD0CAF10A02CDFA9E0CD4 /* InAppSafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */; };
 		2A5AF129395DD2397F963D4E /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
+		2ABADFC14739AD453650A29D /* HomeboardNativeAdvisorChatUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9823B166F6A5B12565336371 /* HomeboardNativeAdvisorChatUITests.swift */; };
 		2B0B41E40E5521A48B544A95 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C193B56530767CD0B8E7D7F /* Assets.xcassets */; };
 		2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */; };
 		358AF2106356FAE938364071 /* homeboard-mark.png in Resources */ = {isa = PBXBuildFile; fileRef = 672F37334EE5BCC5C9714B2A /* homeboard-mark.png */; };
@@ -49,6 +51,7 @@
 		8C797C5D6D06865FC6AF413D /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */; };
 		8D6928B3E220035C109D7683 /* HomeboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */; };
+		8DFFD86620BA89F818C96386 /* FixtureUITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6BC158033945502CA476990 /* FixtureUITestCase.swift */; };
 		91DA4A62482097EA943047E6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5ECFD84B81DF02A593DA0F24 /* Assets.xcassets */; };
 		98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69FCB73F4C2B9E99A5B401A /* AppModel.swift */; };
 		9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9F3B2B705031CFD24F556D /* BoardShellView.swift */; };
@@ -65,6 +68,8 @@
 		B7855DB36D0A397147C979C8 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */; };
 		BB00C219498B248279BC3A3B /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
+		BDD9844EDC35CAD4368FC2AE /* UITestFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */; };
+		C0AB8E085FDAE0C1CCF061EA /* HomeboardNativeCoreFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570ABFDFBBCB9AE752A46C4C /* HomeboardNativeCoreFlowUITests.swift */; };
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
 		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */; };
@@ -156,6 +161,7 @@
 		033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardBackgroundView.swift; sourceTree = "<group>"; };
 		06D1804AE923BECAF92C7D0A /* HomeboardActionExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardActionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeApp.swift; sourceTree = "<group>"; };
+		16454DD4523AE8F09B3F99E2 /* UITestFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestFixture.swift; sourceTree = "<group>"; };
 		2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeTests.swift; sourceTree = "<group>"; };
 		3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDevicePairingView.swift; sourceTree = "<group>"; };
 		3C193B56530767CD0B8E7D7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -167,6 +173,7 @@
 		4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorDraftGenerator.swift; sourceTree = "<group>"; };
 		4E61E97384A9AFC7C18F3E63 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		52BC4419FB3FD9C9031892FD /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		570ABFDFBBCB9AE752A46C4C /* HomeboardNativeCoreFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeCoreFlowUITests.swift; sourceTree = "<group>"; };
 		575C511E3BC5CCE16A232686 /* toolbar-icon.svg */ = {isa = PBXFileReference; path = "toolbar-icon.svg"; sourceTree = "<group>"; };
 		5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardMacApp.swift; sourceTree = "<group>"; };
@@ -186,6 +193,7 @@
 		935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDispatcher.swift; sourceTree = "<group>"; };
 		958E86AF374173284BD9D79E /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		9823B166F6A5B12565336371 /* HomeboardNativeAdvisorChatUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeAdvisorChatUITests.swift; sourceTree = "<group>"; };
 		9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardActiveOffer.swift; sourceTree = "<group>"; };
 		A69FCB73F4C2B9E99A5B401A /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardListingIntelligence.swift; sourceTree = "<group>"; };
@@ -195,7 +203,9 @@
 		C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = SharePreprocessor.js; sourceTree = "<group>"; };
 		C9F52927D18A60DB80024121 /* HomeboardAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAPI.swift; sourceTree = "<group>"; };
 		CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedWorkspaceView.swift; sourceTree = "<group>"; };
+		D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestFixtureTests.swift; sourceTree = "<group>"; };
 		D2CF740AFC2099E6B35681BD /* HomeboardNative.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HomeboardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D6BC158033945502CA476990 /* FixtureUITestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureUITestCase.swift; sourceTree = "<group>"; };
 		EA1F1A64964C190A30B424C5 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorCardView.swift; sourceTree = "<group>"; };
 		ECCA1195B39BB81562240A6C /* AdvisorReplyIntake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorReplyIntake.swift; sourceTree = "<group>"; };
@@ -330,6 +340,7 @@
 				935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */,
 				EA1F1A64964C190A30B424C5 /* RootView.swift */,
 				CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */,
+				16454DD4523AE8F09B3F99E2 /* UITestFixture.swift */,
 				95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */,
 			);
 			name = Sources;
@@ -339,6 +350,9 @@
 		EE2311E913ECF36308A7C1E0 /* HomeboardNativeUITests */ = {
 			isa = PBXGroup;
 			children = (
+				D6BC158033945502CA476990 /* FixtureUITestCase.swift */,
+				9823B166F6A5B12565336371 /* HomeboardNativeAdvisorChatUITests.swift */,
+				570ABFDFBBCB9AE752A46C4C /* HomeboardNativeCoreFlowUITests.swift */,
 				BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */,
 			);
 			path = HomeboardNativeUITests;
@@ -356,6 +370,7 @@
 			isa = PBXGroup;
 			children = (
 				2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */,
+				D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */,
 			);
 			path = HomeboardNativeTests;
 			sourceTree = "<group>";
@@ -664,6 +679,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */,
+				BDD9844EDC35CAD4368FC2AE /* UITestFixtureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -740,6 +756,7 @@
 				D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */,
 				6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */,
 				DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */,
+				1E283618879F96B0621CC64B /* UITestFixture.swift in Sources */,
 				13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -748,6 +765,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8DFFD86620BA89F818C96386 /* FixtureUITestCase.swift in Sources */,
+				2ABADFC14739AD453650A29D /* HomeboardNativeAdvisorChatUITests.swift in Sources */,
+				C0AB8E085FDAE0C1CCF061EA /* HomeboardNativeCoreFlowUITests.swift in Sources */,
 				F7844558BD8DC715DB2DD24A /* HomeboardNativeUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

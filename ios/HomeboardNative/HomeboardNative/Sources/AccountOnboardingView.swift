@@ -20,6 +20,9 @@ final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocalSearchCo
   }
 
   func updateCity(query: String) {
+    #if DEBUG
+    if UITestFixtureState.enabled { return }
+    #endif
     let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
     pendingQuery = clean
     pendingCity = ""
@@ -33,6 +36,9 @@ final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocalSearchCo
   }
 
   func update(query: String, city: String) {
+    #if DEBUG
+    if UITestFixtureState.enabled { return }
+    #endif
     let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
     pendingQuery = clean
     pendingCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -47,6 +53,9 @@ final class OnboardingAddressSearch: NSObject, ObservableObject, MKLocalSearchCo
   }
 
   func primeRegion(city: String) {
+    #if DEBUG
+    if UITestFixtureState.enabled { return }
+    #endif
     resolveRegionIfNeeded(
       for: city.trimmingCharacters(in: .whitespacesAndNewlines)
     )
@@ -1567,6 +1576,7 @@ struct OnboardingView: View {
         }
         .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(!canContinue || isFinishing)
+        .accessibilityIdentifier("homeboard.onboarding.continue")
         .opacity(canContinue ? 1 : 0.42)
       }
     }

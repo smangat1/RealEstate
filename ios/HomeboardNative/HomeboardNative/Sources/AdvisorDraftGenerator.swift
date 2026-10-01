@@ -331,7 +331,7 @@ enum AdvisorDraftGenerator {
 
     #if canImport(FoundationModels)
     if #available(iOS 26.0, *),
-       SystemLanguageModel.default.isAvailable,
+       draftModelAvailable,
        let generated = await generateWithAppleIntelligence(
          payload: payload,
          tone: tone,
@@ -345,6 +345,16 @@ enum AdvisorDraftGenerator {
 
     return AdvisorDraftGeneration(text: fallback, source: "device_template")
   }
+
+  #if canImport(FoundationModels)
+  @available(iOS 26.0, *)
+  private static var draftModelAvailable: Bool {
+    #if DEBUG
+    if UITestFixtureState.enabled && ProcessInfo.processInfo.environment["UITEST_ADVISOR_PROVIDER"] == "fallback" { return false }
+    #endif
+    return SystemLanguageModel.default.isAvailable
+  }
+  #endif
 
   static func financialSentence(
     mode: String,
