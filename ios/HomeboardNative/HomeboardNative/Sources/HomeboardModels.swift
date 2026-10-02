@@ -818,6 +818,14 @@ struct AdvisorWalletStatus: Hashable, Codable {
   }
 }
 
+enum AdvisorWalletLoadState: Hashable {
+  case idle
+  case loading
+  case failed
+  case inactive
+  case active
+}
+
 struct AdvisorSubscriptionStatus: Hashable, Codable {
   var active: Bool
   var validUntil: String?

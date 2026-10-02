@@ -3854,19 +3854,17 @@ struct SharedUpdatesView: View {
       VStack(alignment: .leading, spacing: 7) {
         if isAdvisorCommandBlocked {
           HStack(alignment: .top, spacing: 10) {
-            Image(systemName: appModel.isAdvisorWalletLoading ? "clock.fill" : "lock.fill")
+            Image(systemName: advisorAccessIcon)
               .font(.caption.weight(.bold))
               .foregroundStyle(HomeboardPalette.accent)
               .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 3) {
-              Text(appModel.isAdvisorWalletLoading ? "Checking Advisor access" : "Advisor needs an active board week")
+              Text(advisorAccessTitle)
                 .accessibilityIdentifier("homeboard.advisor.unlock")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(HomeboardPalette.primaryText)
-              Text(appModel.isAdvisorWalletLoading
-                   ? "Wait a moment while Homeboard checks the shared wallet."
-                   : "Roommates can chip in above. Advisor unlocks when the board reaches the $4 weekly goal.")
+              Text(advisorAccessMessage)
                 .font(.caption2)
                 .foregroundStyle(HomeboardPalette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3874,7 +3872,14 @@ struct SharedUpdatesView: View {
 
             Spacer(minLength: 6)
 
-            if !appModel.isAdvisorWalletLoading {
+            if appModel.advisorWalletLoadState == .failed {
+              Button("Retry") {
+                Task { await appModel.refreshAdvisorWalletStatus() }
+              }
+              .font(.caption.weight(.bold))
+              .foregroundStyle(HomeboardPalette.accent)
+              .buttonStyle(HomeboardAreaButtonStyle())
+            } else if appModel.advisorWalletLoadState == .inactive {
               Button("View wallet") {
                 updateFieldFocused = false
                 scrollsToAdvisorWallet = true
@@ -3893,7 +3898,7 @@ struct SharedUpdatesView: View {
           advisorSuggestionsBar
         }
 
-        if let error = appModel.boardError, !isAdvisorCommandBlocked {
+        if let error = appModel.boardError {
           Text(error)
             .accessibilityIdentifier("homeboard.chat.boardError")
             .font(.caption.weight(.semibold))
@@ -4051,6 +4056,36 @@ struct SharedUpdatesView: View {
 
   private var isAdvisorCommandBlocked: Bool {
     isCompleteAdvisorCommand(updateDraft) && !appModel.isAdvisorAccessActive
+  }
+
+  private var advisorAccessIcon: String {
+    switch appModel.advisorWalletLoadState {
+    case .loading, .idle: return "clock.fill"
+    case .failed: return "exclamationmark.triangle.fill"
+    case .inactive, .active: return "lock.fill"
+    }
+  }
+
+  private var advisorAccessTitle: String {
+    switch appModel.advisorWalletLoadState {
+    case .loading, .idle: return "Checking Advisor access"
+    case .failed: return "Couldn’t check Advisor access"
+    case .inactive: return "Advisor needs an active board week"
+    case .active: return "Advisor is ready"
+    }
+  }
+
+  private var advisorAccessMessage: String {
+    switch appModel.advisorWalletLoadState {
+    case .loading, .idle:
+      return "Wait a moment while Homeboard checks the shared wallet."
+    case .failed:
+      return appModel.advisorWalletError ?? "Homeboard couldn’t load the wallet. Your command is still here; retry when the connection is ready."
+    case .inactive:
+      return "Roommates can chip in above. Advisor unlocks when the board reaches the $4 weekly goal."
+    case .active:
+      return "Advisor is ready for this board."
+    }
   }
 
   private var advisorMentionCompletionBar: some View {

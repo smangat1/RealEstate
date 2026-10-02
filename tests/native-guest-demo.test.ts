@@ -16,7 +16,7 @@ const macInfo = native("HomeboardMac/Info.plist");
 
 test("signed-out launches and sign-outs open the welcome flow without a preview board", () => {
   const initializer = appModel.slice(
-    appModel.indexOf("init()"),
+    appModel.indexOf("init(api: HomeboardAPI"),
     appModel.indexOf("func bootstrap"),
   );
   const clearedSession = appModel.slice(

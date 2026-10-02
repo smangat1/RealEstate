@@ -801,9 +801,26 @@ struct AdvisorWalletPanel: View {
         }
       }
 
-      ProgressView(value: appModel.advisorWalletStatus?.progressFraction ?? 0)
-        .accessibilityIdentifier("homeboard.wallet.progress")
-        .tint(appModel.advisorWalletStatus?.isUnlocked == true ? HomeboardPalette.success : HomeboardPalette.accent)
+      if appModel.advisorWalletLoadState == .failed {
+        VStack(alignment: .leading, spacing: 8) {
+          Label("Wallet unavailable", systemImage: "exclamationmark.triangle.fill")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(HomeboardPalette.danger)
+          Text(appModel.advisorWalletError ?? "Homeboard couldn’t load Advisor access.")
+            .font(.caption)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+          Button("Retry") {
+            Task { await appModel.refreshAdvisorWalletStatus() }
+          }
+          .font(.caption.weight(.bold))
+          .buttonStyle(HomeboardAreaButtonStyle())
+        }
+      } else {
+        ProgressView(value: appModel.advisorWalletStatus?.progressFraction ?? 0)
+          .accessibilityIdentifier("homeboard.wallet.progress")
+          .tint(appModel.advisorWalletStatus?.isUnlocked == true ? HomeboardPalette.success : HomeboardPalette.accent)
+      }
 
       if appModel.advisorWalletStatus?.isUnlocked == true {
         HStack {
@@ -819,7 +836,7 @@ struct AdvisorWalletPanel: View {
         }
       }
 
-      if appModel.advisorWalletStatus?.isUnlocked != true
+      if appModel.advisorWalletLoadState == .inactive
           || (appModel.advisorWalletStatus?.isTestMode == true
               && (appModel.advisorWalletStatus?.remainingCents ?? 0) > 0) {
         VStack(alignment: .leading, spacing: 8) {
@@ -895,12 +912,17 @@ struct AdvisorWalletPanel: View {
   }
 
   private var statusLine: String {
-    guard let status = appModel.advisorWalletStatus else {
-      return "Loading weekly progress."
-    }
-    if status.subscription.active {
+    switch appModel.advisorWalletLoadState {
+    case .idle, .loading:
+      return "Checking weekly progress."
+    case .failed:
+      return "Access status could not be loaded."
+    case .active:
       return "Unlocked this week."
+    case .inactive:
+      break
     }
+    guard let status = appModel.advisorWalletStatus else { return "Checking weekly progress." }
     return "\(Self.money(status.rolling7DayTotalCents)) of \(Self.money(status.thresholdCents)) funded this week."
   }
 
