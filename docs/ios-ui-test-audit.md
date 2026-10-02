@@ -71,7 +71,9 @@ Focused reruns passed the six Advisor cases and ten core cases, including ordina
 
 Initial iterations exposed an outdated Advisor setup version, missing polling/photo handling, combined accessibility labels, refresh positioning and gestures crossing fixed UI/keyboard overlays. These were repaired; assertions and production draft validation were retained.
 
-`npm run verify:all` was invoked exactly once. It stopped at a repository copy-rule test because a reused fixture message contained an em dash (285/286 tests passed). That fixture copy was corrected. A subsequent `npm run verify` passed secrets, environment contract, lint, all 286 tests and both TypeScript checks, but its build stopped because the fresh clone had no Supabase environment settings. `npm run build` then passed with the same non-production placeholders used by `.github/workflows/verify.yml`; `npm run prisma:validate` passed with a dummy loopback database URL. Prisma validation/generation performed no migrations or database verification. The aggregate command itself remains a recorded failed attempt; successful individual checks are reported separately.
+Before revision `697d3fca5e701498a222a806098e1fe8434c4fa0` was pushed, `npm run verify:all` was invoked exactly once in the local working tree. It stopped at a repository copy-rule test because a reused fixture message contained an em dash (285/286 tests passed). That fixture copy was corrected. A later local working-tree `npm run verify` passed secrets, environment contract, lint, all 286 tests and both TypeScript checks, but its build stopped because the fresh clone had no Supabase environment settings. `npm run build` then passed locally with the same non-production placeholders used by `.github/workflows/verify.yml`; `npm run prisma:validate` passed with a password-free dummy loopback database URL. Prisma validation/generation performed no migrations or database verification. These are earlier local results, not validation of the pushed revision.
+
+On pushed revision `697d3fca5e701498a222a806098e1fe8434c4fa0`, GitHub Actions reproduced a different failure: `npm run verify` stopped immediately in `npm run secrets:check` because this audit contained two password-shaped dummy database URLs. No later verify stage ran in that CI job. The continuation replaced those examples with the password-free local/CI placeholder below; `npm run secrets:check` then passed on the corrected revision.
 
 The opt-in **Homeboard Advisor Inference Tests** run actually launched with `UITEST_ADVISOR_PROVIDER=apple_intelligence`. FoundationModels reported `modelAvailable=true`, `availability=available`, but production generation and acceptance returned `device_template`. The strict `apple_intelligence` source assertion failed after 48.653 seconds. This is a failed inference validation, not an AI pass or an unavailable-model skip. Real tone inference was NOT RUN after that failure. The specific internal model-error/output-validation fallback reason was not recorded by the production generator. A ready supported physical-device inference pass remains the validation gate; the PR is draft/not merge-ready for that reason.
 
@@ -99,7 +101,7 @@ chmod +x /tmp/homeboard-xcode-bin/xcodebuild
 The single aggregate attempt was:
 
 ```sh
-PATH="/tmp/homeboard-xcode-bin:$PATH" DATABASE_URL='postgresql://fixture:fixture@127.0.0.1:1/fixture' npm run verify:all
+PATH="/tmp/homeboard-xcode-bin:$PATH" DATABASE_URL='postgresql://fixture@127.0.0.1:1/fixture' npm run verify:all
 ```
 
 After correcting fixture copy, `npm run verify` used that same environment. The remaining build/Prisma/full-iOS/Release checks used:
@@ -111,7 +113,7 @@ env PATH="/tmp/homeboard-xcode-bin:$PATH" \
   SUPABASE_SECRET_KEY=ci-secret-placeholder \
   NEXT_PUBLIC_SUPABASE_URL=https://ci.invalid \
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci-publishable-placeholder \
-  DATABASE_URL='postgresql://fixture:fixture@127.0.0.1:1/fixture' \
+  DATABASE_URL='postgresql://fixture@127.0.0.1:1/fixture' \
   ENABLE_APP=false DEMO_MODE=false HOMEBOARD_NOINDEX=true \
   /bin/sh -c 'npm run build && npm run prisma:validate && npm run ios:test && npm run ios:release'
 ```
