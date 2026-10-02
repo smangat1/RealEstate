@@ -260,7 +260,7 @@ struct MobileAdvisorReplyRequest: Encodable {
   var text: String
   var outreachId: String
   var confirmationId: String
-  var extractionSource: String
+  var extractionSource: String = "manual"
 }
 
 private struct MobileBoardExpenseRequest: Encodable {

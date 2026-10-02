@@ -1020,11 +1020,19 @@ enum AdvisorListingRanker {
   }
 
   private static func ranked(_ listings: [ListingPreview], profile: RentalProfile) -> [RankedListing] {
-    listings
-      .map { ($0, score($0, profile: profile)) }
-      .sorted { lhs, rhs in lhs.1 == rhs.1 ? lhs.0.title < rhs.0.title : lhs.1 > rhs.1 }
-      .enumerated()
-      .map { RankedListing(listing: $0.element.0, score: $0.element.1, rank: $0.offset + 1) }
+    let scored: [(listing: ListingPreview, score: Int)] = listings.map { listing in
+      (listing: listing, score: score(listing, profile: profile))
+    }
+    let sorted = scored.sorted { lhs, rhs in
+      if lhs.score == rhs.score { return lhs.listing.title < rhs.listing.title }
+      return lhs.score > rhs.score
+    }
+    var result: [RankedListing] = []
+    result.reserveCapacity(sorted.count)
+    for (offset, item) in sorted.enumerated() {
+      result.append(RankedListing(listing: item.listing, score: item.score, rank: offset + 1))
+    }
+    return result
   }
 
   private static func firstCurrencyValue(in line: String) -> Int? {
