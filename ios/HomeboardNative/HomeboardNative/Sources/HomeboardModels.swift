@@ -918,6 +918,25 @@ struct AdvisorConfirmation: Identifiable, Equatable {
   var message: String
 }
 
+enum AdvisorFeedbackReason: String, CaseIterable, Identifiable {
+  case wrongListing = "wrong_listing"
+  case wrongFact = "wrong_fact"
+  case notRelevant = "not_relevant"
+  case badTone = "bad_tone"
+  case other
+
+  var id: String { rawValue }
+  var label: String {
+    switch self {
+    case .wrongListing: "Wrong listing"
+    case .wrongFact: "Wrong fact"
+    case .notRelevant: "Not relevant"
+    case .badTone: "Bad tone"
+    case .other: "Other"
+    }
+  }
+}
+
 struct AdvisorListingRankChange: Identifiable, Equatable {
   var id: String { listingId }
   var listingId: String

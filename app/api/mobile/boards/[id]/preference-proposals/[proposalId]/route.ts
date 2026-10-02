@@ -108,6 +108,18 @@ export async function PATCH(
           content: `${user.displayName} confirmed an Advisor preference proposal after reviewing the before/after values.`,
         },
       });
+      await transaction.advisorFeedback.createMany({
+        data: [{
+          boardId: id,
+          userId: user.id,
+          subjectType: "preference_proposal",
+          subjectId: proposal.id,
+          signal: "confirmed",
+          engine: "deterministic",
+          snapshot: { changeFields: changes.data.map((change) => change.field) },
+        }],
+        skipDuplicates: true,
+      });
       return { kind: "accepted" as const };
     });
 

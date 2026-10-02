@@ -1471,7 +1471,8 @@ final class AppModel {
     listingId: String,
     outreachId: String,
     text: String,
-    confirmationId: UUID
+    confirmationId: UUID,
+    extractionSource: String
   ) async -> AdvisorReplySubmissionResult? {
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before adding a broker reply."
@@ -1484,7 +1485,8 @@ final class AppModel {
         listingId: listingId,
         text: text,
         outreachId: outreachId,
-        confirmationId: confirmationId
+        confirmationId: confirmationId,
+        extractionSource: extractionSource
       )
       guard let analysis = response.replyAnalysis, let log = response.replyLog else {
         boardError = "Homeboard could not confirm that the reply was logged. Please try again."
@@ -1510,6 +1512,39 @@ final class AppModel {
       try? await Task.sleep(nanoseconds: 5_000_000_000)
       guard self?.advisorConfirmation?.id == confirmation.id else { return }
       self?.advisorConfirmation = nil
+    }
+  }
+
+  func submitAdvisorFeedback(
+    subjectType: String,
+    subjectId: String,
+    reason: AdvisorFeedbackReason?,
+    note: String,
+    engine: String?,
+    subjectKind: String?,
+    boardListingId: String?,
+    snapshot: AdvisorFeedbackSnapshot
+  ) async -> Bool {
+    guard let session = authSession, let boardId = board.id else { return false }
+    do {
+      _ = try await api.submitAdvisorFeedback(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        request: AdvisorFeedbackRequest(
+          subjectType: subjectType,
+          subjectId: subjectId,
+          signal: "rejected",
+          reasonCode: reason?.rawValue,
+          note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : String(note.prefix(280)),
+          engine: engine,
+          subjectKind: subjectKind,
+          boardListingId: boardListingId,
+          snapshot: snapshot
+        )
+      )
+      return true
+    } catch {
+      return false
     }
   }
 

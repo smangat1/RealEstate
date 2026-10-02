@@ -24,6 +24,7 @@ const schema = z.object({
   text: z.string().trim().min(2).max(10_000),
   outreachId: z.string().trim().min(1).max(128).optional(),
   confirmationId: z.string().uuid().optional(),
+  extractionSource: z.enum(["apple_intelligence", "on_device_ocr", "manual"]).default("manual"),
 }).strict();
 
 const replyFactsSchema = z.object({
@@ -152,6 +153,23 @@ export async function POST(
           data: { boardId: id, actorType: "assistant", actorName: "Advisor", eventType: "broker_reply_reviewed", content },
         }),
         prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
+        prisma.advisorFeedback.createMany({
+          data: [{
+            boardId: id,
+            userId: user.id,
+            boardListingId: listingId,
+            subjectType: "reply_extraction",
+            subjectId: outreach.id,
+            signal: "confirmed",
+            engine: "deterministic",
+            snapshot: {
+              listingId,
+              outreachId: outreach.id,
+              source: parsed.data.extractionSource,
+            },
+          }],
+          skipDuplicates: true,
+        }),
         ]);
         followUpCancelled = replyLogConfirmation(transactionResults[2].count).followUpCancelled;
       }

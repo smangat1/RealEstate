@@ -60,6 +60,8 @@ struct AdvisorCardView: View {
   @State private var dispatchMessage: String?
   @State private var showsFinancialPrompt = false
   @State private var pendingDispatch: AdvisorDispatchChannel?
+  @State private var showsWrongFeedback = false
+  @State private var isDismissed = false
 
   private static let tones = ["Professional", "Casual", "Stern", "Passive-Aggressive"]
 
@@ -74,7 +76,9 @@ struct AdvisorCardView: View {
 
   var body: some View {
     Group {
-      if let payload, !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      if isDismissed {
+        EmptyView()
+      } else if let payload, !payload.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         advisorCard(payload)
       } else {
         legacyMessage
@@ -121,6 +125,27 @@ struct AdvisorCardView: View {
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
       .presentationBackground(HomeboardPalette.background)
+    }
+    .sheet(isPresented: $showsWrongFeedback) {
+      AdvisorWrongFeedbackSheet { reason, note in
+        isDismissed = true
+        let saved = await appModel.submitAdvisorFeedback(
+          subjectType: "draft",
+          subjectId: message.id,
+          reason: reason,
+          note: note,
+          engine: payload?.generationSource,
+          subjectKind: "outreach_draft",
+          boardListingId: payload?.targetListingBoardId,
+          snapshot: AdvisorFeedbackSnapshot(
+            tone: payload?.tone ?? selectedTone,
+            generationSource: payload?.generationSource,
+            executionStatus: payload?.executionStatus
+          )
+        )
+        appModel.showAdvisorConfirmation(saved ? "Feedback recorded. Draft dismissed." : "Saved on this device only. Draft dismissed.")
+        return saved
+      }
     }
   }
 
@@ -319,6 +344,14 @@ struct AdvisorCardView: View {
           .font(.footnote)
           .foregroundStyle(HomeboardPalette.secondaryText)
       }
+
+      Button("That’s wrong") {
+        showsWrongFeedback = true
+      }
+      .font(.footnote.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.secondaryText)
+      .buttonStyle(HomeboardAreaButtonStyle())
+      .accessibilityIdentifier("homeboard.advisor.wrong.\(message.id)")
     }
     .padding(16)
     .homeboardPanel(cornerRadius: 22)
@@ -626,6 +659,72 @@ struct AdvisorConfirmationBanner: View {
     .accessibilityIdentifier("homeboard.advisor.confirmation")
     .onAppear {
       UIAccessibility.post(notification: .announcement, argument: message)
+    }
+  }
+}
+
+struct AdvisorWrongFeedbackSheet: View {
+  @Environment(\.dismiss) private var dismiss
+  let onSubmit: (AdvisorFeedbackReason?, String) async -> Bool
+  @State private var selectedReason: AdvisorFeedbackReason?
+  @State private var note = ""
+  @State private var isSubmitting = false
+
+  var body: some View {
+    NavigationStack {
+      VStack(alignment: .leading, spacing: 18) {
+        Text("What was wrong?")
+          .font(.title2.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Text("Optional. This records feedback; it never silently edits your board.")
+          .font(.subheadline)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], alignment: .leading, spacing: 8) {
+          ForEach(AdvisorFeedbackReason.allCases) { reason in
+            Button(reason.label) { selectedReason = reason }
+              .font(.caption.weight(.semibold))
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .background(selectedReason == reason ? HomeboardPalette.accent : Color.white.opacity(0.07))
+              .foregroundStyle(selectedReason == reason ? HomeboardPalette.buttonText : HomeboardPalette.primaryText)
+              .clipShape(Capsule())
+              .buttonStyle(HomeboardAreaButtonStyle())
+          }
+        }
+
+        TextField("Optional note", text: $note, axis: .vertical)
+          .lineLimit(3...6)
+          .textFieldStyle(.roundedBorder)
+          .onChange(of: note) { _, value in
+            if value.count > 280 { note = String(value.prefix(280)) }
+          }
+        Text("\(note.count)/280")
+          .font(.caption2)
+          .foregroundStyle(HomeboardPalette.tertiaryText)
+
+        Button {
+          guard !isSubmitting else { return }
+          isSubmitting = true
+          Task {
+            _ = await onSubmit(selectedReason, note)
+            isSubmitting = false
+            dismiss()
+          }
+        } label: {
+          if isSubmitting { ProgressView().tint(Color.black) } else { Text("Submit feedback") }
+        }
+        .buttonStyle(AdvisorCTAButtonStyle())
+        .disabled(isSubmitting)
+        Spacer()
+      }
+      .padding(20)
+      .background(WorkspaceBackgroundView())
+      .navigationTitle("Advisor feedback")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) { Button("Cancel") { dismiss() } }
+      }
     }
   }
 }
@@ -1580,6 +1679,7 @@ struct AdvisorPreferenceProposalView: View {
   @Environment(\.dismiss) private var dismiss
   let proposal: AdvisorPreferenceProposal
   @State private var isResolving = false
+  @State private var showsWrongFeedback = false
 
   var body: some View {
     NavigationStack {
@@ -1621,6 +1721,10 @@ struct AdvisorPreferenceProposalView: View {
               .font(.subheadline.weight(.semibold))
               .foregroundStyle(HomeboardPalette.secondaryText)
               .disabled(isResolving)
+            Button("That’s wrong") { showsWrongFeedback = true }
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .buttonStyle(HomeboardAreaButtonStyle())
           }
           .frame(maxWidth: .infinity)
         }
@@ -1630,6 +1734,23 @@ struct AdvisorPreferenceProposalView: View {
       .navigationTitle("Preference proposal")
       .navigationBarTitleDisplayMode(.inline)
       .interactiveDismissDisabled(isResolving)
+    }
+    .sheet(isPresented: $showsWrongFeedback) {
+      AdvisorWrongFeedbackSheet { reason, note in
+        await appModel.resolveAdvisorPreferenceProposal(proposal, accept: false)
+        let saved = await appModel.submitAdvisorFeedback(
+          subjectType: "preference_proposal",
+          subjectId: proposal.id,
+          reason: reason,
+          note: note,
+          engine: "deterministic",
+          subjectKind: "preference_diff",
+          boardListingId: nil,
+          snapshot: AdvisorFeedbackSnapshot(changeFields: proposal.changes.map(\.field))
+        )
+        appModel.showAdvisorConfirmation(saved ? "No change made. Feedback recorded." : "No change made. Saved on this device only.")
+        return saved
+      }
     }
   }
 
