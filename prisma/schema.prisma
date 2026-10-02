@@ -189,6 +189,19 @@ enum AdvisorActionStatus {
   dismissed
 }
 
+enum AdvisorFeedbackSubjectType {
+  action
+  reply_extraction
+  preference_proposal
+  draft
+}
+
+enum AdvisorFeedbackSignal {
+  rejected
+  revised
+  confirmed
+}
+
 enum AdvisorActionPriority {
   low
   medium
@@ -243,6 +256,7 @@ model User {
   boardExpensesPaid         BoardExpense[]
   boardNotificationPreferences  BoardNotificationPreference[]
   advisorNotificationDeliveries AdvisorNotificationDelivery[]
+  advisorFeedback              AdvisorFeedback[]
 }
 
 model DevicePairing {
@@ -291,6 +305,7 @@ model SearchBoard {
   advisorPreferenceProposals AdvisorPreferenceProposal[]
   notificationPreferences    BoardNotificationPreference[]
   advisorNotificationEvents  AdvisorNotificationEvent[]
+  advisorFeedback            AdvisorFeedback[]
 
   @@index([userId])
 }
@@ -422,6 +437,7 @@ model BoardListing {
   advisorActions     AdvisorAction[]
   listingSnapshots   ListingSnapshot[]
   listingChanges     ListingChange[]
+  advisorFeedback    AdvisorFeedback[]
 
   @@unique([boardId, listingId])
   @@index([boardId, userStatus])
@@ -787,6 +803,29 @@ model AdvisorAction {
 
   @@index([boardId, status, createdAt])
   @@index([boardListingId, status, createdAt])
+}
+
+model AdvisorFeedback {
+  id             String                     @id @default(cuid())
+  boardId        String
+  userId         String
+  boardListingId String?
+  subjectType    AdvisorFeedbackSubjectType
+  subjectId      String
+  signal         AdvisorFeedbackSignal
+  reasonCode     String?
+  note           String?
+  engine         String?
+  subjectKind    String?
+  snapshot       Json
+  createdAt      DateTime                   @default(now())
+  board          SearchBoard                @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user           User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  boardListing   BoardListing?              @relation(fields: [boardListingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectType, subjectId, signal])
+  @@index([boardId, subjectType, createdAt])
+  @@index([userId, createdAt])
 }
 
 model ListingSnapshot {

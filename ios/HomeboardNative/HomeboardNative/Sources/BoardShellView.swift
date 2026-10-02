@@ -13,6 +13,16 @@ struct BoardShellView: View {
         authenticatedBoard
       }
     }
+    .overlay(alignment: .top) {
+      if let confirmation = appModel.advisorConfirmation {
+        AdvisorConfirmationBanner(message: confirmation.message)
+          .padding(.horizontal, 16)
+          .padding(.top, 10)
+          .transition(.move(edge: .top).combined(with: .opacity))
+          .zIndex(20)
+      }
+    }
+    .animation(.easeInOut(duration: 0.2), value: appModel.advisorConfirmation)
     .background(HomeboardPalette.background)
     .onAppear {
       guard !appModel.isGuestPreview else { return }
@@ -770,14 +780,7 @@ private struct CompareWorkspaceView: View {
   }
 
   private func score(for listing: ListingPreview) -> Int {
-    var score = 0
-
-    if budgetFits(listing) { score += 2 }
-    if commuteFits(listing) { score += 1 }
-    if neighborhoodFits(listing) { score += 1 }
-    if mustHaveSignals(listing) { score += 1 }
-
-    return score
+    AdvisorListingRanker.score(listing, profile: appModel.profile)
   }
 
   private func budgetFits(_ listing: ListingPreview) -> Bool {

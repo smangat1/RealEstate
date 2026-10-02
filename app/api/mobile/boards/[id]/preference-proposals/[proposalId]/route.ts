@@ -108,7 +108,10 @@ export async function PATCH(
           content: `${user.displayName} confirmed an Advisor preference proposal after reviewing the before/after values.`,
         },
       });
-      return { kind: "accepted" as const };
+      return {
+        kind: "accepted" as const,
+        changeFields: changes.data.map((change) => change.field),
+      };
     });
 
     if (result.kind === "missing") return NextResponse.json({ error: "Preference proposal not found." }, { status: 404 });
@@ -121,6 +124,25 @@ export async function PATCH(
     }
     if (result.kind === "invalid") return NextResponse.json({ error: "Preference proposal is invalid." }, { status: 422 });
 
+    if (result.kind === "accepted") {
+      try {
+        await prisma.advisorFeedback.createMany({
+          data: [{
+            boardId: id,
+            userId: user.id,
+            subjectType: "preference_proposal",
+            subjectId: proposalId,
+            signal: "confirmed",
+            engine: "deterministic",
+            snapshot: { changeFields: result.changeFields },
+          }],
+          skipDuplicates: true,
+        });
+      } catch {
+        console.error("[advisor-feedback] confirmed preference signal unavailable");
+      }
+    }
+
     const next = await getBoardPageData(id, user.id);
     if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     return NextResponse.json({
@@ -128,6 +150,7 @@ export async function PATCH(
       profile: next.profile,
       missingFields: next.missingFields,
       preferenceProposal: null,
+      preferenceResolution: { status: result.kind },
     });
   } catch (error) {
     const unauthorized = error instanceof Error && error.message === "MOBILE_AUTH_REQUIRED";

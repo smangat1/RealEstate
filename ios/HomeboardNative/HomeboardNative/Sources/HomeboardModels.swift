@@ -905,11 +905,144 @@ struct AdvisorReplyLog: Hashable, Codable {
   var listingId: String
   var answeredAt: String
   var duplicate: Bool
+  var followUpCancelled: Bool
 }
 
 struct AdvisorReplySubmissionResult: Hashable {
   var analysis: AdvisorReplyAnalysis
   var log: AdvisorReplyLog
+}
+
+struct AdvisorConfirmation: Identifiable, Equatable {
+  var id = UUID()
+  var message: String
+}
+
+enum AdvisorFeedbackReason: String, CaseIterable, Identifiable {
+  case wrongListing = "wrong_listing"
+  case wrongFact = "wrong_fact"
+  case notRelevant = "not_relevant"
+  case badTone = "bad_tone"
+  case other
+
+  var id: String { rawValue }
+  var label: String {
+    switch self {
+    case .wrongListing: "Wrong listing"
+    case .wrongFact: "Wrong fact"
+    case .notRelevant: "Not relevant"
+    case .badTone: "Bad tone"
+    case .other: "Other"
+    }
+  }
+}
+
+struct AdvisorListingRankChange: Identifiable, Equatable {
+  var id: String { listingId }
+  var listingId: String
+  var title: String
+  var oldRank: Int
+  var newRank: Int
+  var oldScore: Int
+  var newScore: Int
+  var hasHardFailure: Bool
+}
+
+struct AdvisorListingRankingUpdate: Equatable {
+  var changes: [AdvisorListingRankChange]
+  var topListingTitle: String?
+
+  var message: String {
+    guard !changes.isEmpty else { return "Scores updated: no ranking change." }
+    let suffix = topListingTitle.map { " \($0) is now #1." } ?? ""
+    return "Scores updated: \(changes.count) listing\(changes.count == 1 ? "" : "s") moved.\(suffix)"
+  }
+}
+
+enum AdvisorListingRanker {
+  private struct RankedListing {
+    var listing: ListingPreview
+    var score: Int
+    var rank: Int
+  }
+
+  static func score(_ listing: ListingPreview, profile: RentalProfile) -> Int {
+    var score = 0
+    if let listingValue = firstCurrencyValue(in: listing.priceLine),
+       let boardMax = Int(profile.budgetMax.trimmingCharacters(in: .whitespacesAndNewlines)),
+       listingValue <= boardMax {
+      score += 2
+    }
+
+    if let minMinutes = Int(profile.minCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)),
+       let maxMinutes = Int(profile.maxCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)) {
+      let listingMinutes = commuteMinutes(from: listing.commuteLine)
+      if listingMinutes != Int.max, (minMinutes...maxMinutes).contains(listingMinutes) { score += 1 }
+    }
+
+    let neighborhoodText = "\(listing.location) \(listing.summary) \(listing.groupNote)".lowercased()
+    if profile.neighborhoods.map({ $0.lowercased() }).contains(where: neighborhoodText.contains) { score += 1 }
+
+    let mustHaveText = "\(listing.summary) \(listing.groupNote) \(listing.highlights.joined(separator: " "))".lowercased()
+    if profile.mustHaves.map({ $0.lowercased() }).contains(where: mustHaveText.contains) { score += 1 }
+    return score
+  }
+
+  static func diff(
+    listings: [ListingPreview],
+    oldProfile: RentalProfile,
+    newProfile: RentalProfile
+  ) -> AdvisorListingRankingUpdate {
+    let oldRanked = ranked(listings, profile: oldProfile)
+    let newRanked = ranked(listings, profile: newProfile)
+    let oldByID = Dictionary(uniqueKeysWithValues: oldRanked.map { ($0.listing.id, $0) })
+    let changes = newRanked.compactMap { current -> AdvisorListingRankChange? in
+      guard let previous = oldByID[current.listing.id], previous.rank != current.rank else { return nil }
+      return AdvisorListingRankChange(
+        listingId: current.listing.id,
+        title: current.listing.title,
+        oldRank: previous.rank,
+        newRank: current.rank,
+        oldScore: previous.score,
+        newScore: current.score,
+        hasHardFailure: (current.listing.analysis?.hardFailureCount ?? 0) > 0
+      )
+    }
+    return AdvisorListingRankingUpdate(changes: changes, topListingTitle: newRanked.first?.listing.title)
+  }
+
+  static func scoreRelevantPreferencesChanged(from old: RentalProfile, to new: RentalProfile) -> Bool {
+    old.budgetMax != new.budgetMax
+      || old.minCommuteMinutes != new.minCommuteMinutes
+      || old.maxCommuteMinutes != new.maxCommuteMinutes
+      || old.neighborhoods != new.neighborhoods
+      || old.mustHaves != new.mustHaves
+  }
+
+  private static func ranked(_ listings: [ListingPreview], profile: RentalProfile) -> [RankedListing] {
+    let scored: [(listing: ListingPreview, score: Int)] = listings.map { listing in
+      (listing: listing, score: score(listing, profile: profile))
+    }
+    let sorted = scored.sorted { lhs, rhs in
+      if lhs.score == rhs.score { return lhs.listing.title < rhs.listing.title }
+      return lhs.score > rhs.score
+    }
+    var result: [RankedListing] = []
+    result.reserveCapacity(sorted.count)
+    for (offset, item) in sorted.enumerated() {
+      result.append(RankedListing(listing: item.listing, score: item.score, rank: offset + 1))
+    }
+    return result
+  }
+
+  private static func firstCurrencyValue(in line: String) -> Int? {
+    let digits = line.filter(\.isNumber)
+    return digits.isEmpty ? nil : Int(digits)
+  }
+
+  private static func commuteMinutes(from line: String) -> Int {
+    line.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }.first ?? Int.max
+  }
 }
 
 struct BoardExpense: Identifiable, Hashable, Codable {

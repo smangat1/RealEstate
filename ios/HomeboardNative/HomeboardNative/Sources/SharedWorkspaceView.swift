@@ -8510,12 +8510,13 @@ struct SharedListingDetailView: View {
       SharedBrokerReplyIntakeSheet(
         listing: liveListing,
         loadThreads: { await appModel.loadAdvisorReplyThreads() },
-        onSubmit: { thread, text, confirmationID in
+        onSubmit: { thread, text, confirmationID, extractionSource in
           await appModel.submitAdvisorReply(
             listingId: thread.listingId,
             outreachId: thread.outreachId,
             text: text,
-            confirmationId: confirmationID
+            confirmationId: confirmationID,
+            extractionSource: extractionSource
           )
         }
       )
@@ -9391,8 +9392,9 @@ private struct SharedApplicationPacketSheet: View {
 private struct SharedBrokerReplyIntakeSheet: View {
   let listing: ListingPreview
   let loadThreads: () async -> [AdvisorReplyThreadOption]
-  let onSubmit: (AdvisorReplyThreadOption, String, UUID) async -> AdvisorReplySubmissionResult?
+  let onSubmit: (AdvisorReplyThreadOption, String, UUID, String) async -> AdvisorReplySubmissionResult?
   @Environment(\.dismiss) private var dismiss
+  @Environment(AppModel.self) private var appModel
   @State private var replyText = ""
   @State private var analysis: AdvisorReplyAnalysis?
   @State private var loggedReply: AdvisorReplyLog?
@@ -9411,6 +9413,7 @@ private struct SharedBrokerReplyIntakeSheet: View {
   @State private var localError: String?
   @State private var confirmationID = UUID()
   @State private var submissionGate = AdvisorReplySubmissionGate()
+  @State private var showsWrongFeedback = false
 
   private var selectedThread: AdvisorReplyThreadOption? {
     threads.first { $0.id == selectedThreadID }
@@ -9523,6 +9526,14 @@ private struct SharedBrokerReplyIntakeSheet: View {
             }
             .padding(12)
             .sharedSurface(cornerRadius: 14)
+
+            if selectedThread != nil {
+              Button("That’s wrong") { showsWrongFeedback = true }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.secondaryText)
+                .buttonStyle(HomeboardAreaButtonStyle())
+                .accessibilityIdentifier("homeboard.reply.wrong")
+            }
           }
 
           if isLoadingThreads {
@@ -9709,6 +9720,32 @@ private struct SharedBrokerReplyIntakeSheet: View {
       } message: {
         Text("Recipient: \(selectedThread?.recipientName ?? "Recipient not recorded")\nOnly the selected listing’s outreach will be marked answered.")
       }
+      .sheet(isPresented: $showsWrongFeedback) {
+        AdvisorWrongFeedbackSheet { reason, note in
+          guard let thread = selectedThread, let preview = extractionPreview else { return false }
+          extractionPreview = nil
+          let saved = await appModel.submitAdvisorFeedback(
+            subjectType: "reply_extraction",
+            subjectId: thread.outreachId,
+            reason: reason,
+            note: note,
+            engine: preview.source == .appleIntelligence ? "apple_intelligence" : "deterministic",
+            subjectKind: "reply_extraction",
+            boardListingId: thread.listingId,
+            snapshot: AdvisorFeedbackSnapshot(
+              listingId: thread.listingId,
+              outreachId: thread.outreachId,
+              source: preview.source.feedbackValue
+            )
+          )
+          if loggedReply != nil {
+            appModel.showAdvisorConfirmation(saved ? "Feedback recorded. The logged reply was not changed." : "Saved on this device only. The logged reply was not changed.")
+          } else {
+            appModel.showAdvisorConfirmation(saved ? "Feedback recorded." : "Saved on this device only.")
+          }
+          return saved
+        }
+      }
     }
   }
 
@@ -9719,7 +9756,12 @@ private struct SharedBrokerReplyIntakeSheet: View {
     isSubmitting = true
     localError = nil
     Task {
-      let result = await onSubmit(selectedThread, replyText, confirmationID)
+      let result = await onSubmit(
+        selectedThread,
+        replyText,
+        confirmationID,
+        extractionPreview?.source.feedbackValue ?? "manual"
+      )
       submissionGate.finish(confirmationID, succeeded: result != nil)
       analysis = result?.analysis
       loggedReply = result?.log

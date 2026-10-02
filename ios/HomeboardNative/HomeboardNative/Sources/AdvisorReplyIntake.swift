@@ -12,6 +12,16 @@ enum AdvisorReplyExtractionSource: String, Hashable {
   case manual
 }
 
+extension AdvisorReplyExtractionSource {
+  var feedbackValue: String {
+    switch self {
+    case .appleIntelligence: "apple_intelligence"
+    case .onDeviceOCR: "on_device_ocr"
+    case .manual: "manual"
+    }
+  }
+}
+
 struct AdvisorReplyExtractionPreview: Hashable {
   var apparentSender: String?
   var replyText: String

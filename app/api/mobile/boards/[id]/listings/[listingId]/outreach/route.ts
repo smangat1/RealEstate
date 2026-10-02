@@ -118,8 +118,10 @@ export async function POST(
       missingFields: next.missingFields,
       outreachEvidence: {
         kind: "member_reported",
+        recorded: true,
         deliveryVerified: false,
         followUpEligible: false,
+        followUpScheduledFor: null,
       },
     });
   } catch (error) {

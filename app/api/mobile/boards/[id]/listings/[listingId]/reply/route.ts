@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { analyzeAdvisorReply } from "@/lib/advisor-reply";
+import { replyLogConfirmation } from "@/lib/advisor-confirmations";
 import {
   pendingFollowUpSuppressionScope,
   replyConfirmationFingerprint,
@@ -23,6 +24,7 @@ const schema = z.object({
   text: z.string().trim().min(2).max(10_000),
   outreachId: z.string().trim().min(1).max(128).optional(),
   confirmationId: z.string().uuid().optional(),
+  extractionSource: z.enum(["apple_intelligence", "on_device_ocr", "manual"]).default("manual"),
 }).strict();
 
 const replyFactsSchema = z.object({
@@ -88,6 +90,7 @@ export async function POST(
       text: parsed.data.text,
     });
     const now = new Date();
+    let followUpCancelled = false;
     let persistedAction = await prisma.advisorAction.findUnique({
       where: { fingerprint },
       select: {
@@ -104,7 +107,8 @@ export async function POST(
       throw new Error("REPLY_CONFIRMATION_SCOPE_MISMATCH");
     }
     try {
-      if (!duplicate) await prisma.$transaction([
+      if (!duplicate) {
+        const transactionResults = await prisma.$transaction([
         prisma.brokerOutreachRecord.update({
           where: { id: outreach.id },
           data: {
@@ -149,10 +153,36 @@ export async function POST(
           data: { boardId: id, actorType: "assistant", actorName: "Advisor", eventType: "broker_reply_reviewed", content },
         }),
         prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
-      ]);
+        ]);
+        followUpCancelled = replyLogConfirmation(transactionResults[2].count).followUpCancelled;
+      }
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
       duplicate = true;
+    }
+
+    if (!duplicate) {
+      try {
+        await prisma.advisorFeedback.createMany({
+          data: [{
+            boardId: id,
+            userId: user.id,
+            boardListingId: listingId,
+            subjectType: "reply_extraction",
+            subjectId: outreach.id,
+            signal: "confirmed",
+            engine: "deterministic",
+            snapshot: {
+              listingId,
+              outreachId: outreach.id,
+              source: parsed.data.extractionSource,
+            },
+          }],
+          skipDuplicates: true,
+        });
+      } catch {
+        console.error("[advisor-feedback] confirmed reply signal unavailable");
+      }
     }
 
     const [persistedOutreach, confirmedAction] = await Promise.all([
@@ -205,6 +235,7 @@ export async function POST(
         listingId,
         answeredAt: persistedOutreach.answeredAt.toISOString(),
         duplicate,
+        followUpCancelled,
       },
     });
   } catch (error) {

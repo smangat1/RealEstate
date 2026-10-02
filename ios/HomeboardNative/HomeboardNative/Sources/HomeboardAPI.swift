@@ -85,6 +85,20 @@ struct MobileBoardLoadResponse: Decodable {
   var replyAnalysis: AdvisorReplyAnalysis?
   var replyLog: AdvisorReplyLog?
   var preferenceProposal: AdvisorPreferenceProposal?
+  var preferenceResolution: AdvisorPreferenceResolution?
+  var outreachEvidence: AdvisorOutreachEvidence?
+}
+
+struct AdvisorPreferenceResolution: Decodable {
+  var status: String
+}
+
+struct AdvisorOutreachEvidence: Decodable {
+  var kind: String
+  var recorded: Bool
+  var deliveryVerified: Bool
+  var followUpEligible: Bool
+  var followUpScheduledFor: String?
 }
 
 struct AdvisorPreferenceProposalResponse: Decodable {
@@ -93,6 +107,38 @@ struct AdvisorPreferenceProposalResponse: Decodable {
 
 struct AdvisorPreferenceProposalActionRequest: Encodable {
   var action: String
+}
+
+struct AdvisorFeedbackSnapshot: Encodable {
+  var kind: String? = nil
+  var listingId: String? = nil
+  var outreachId: String? = nil
+  var source: String? = nil
+  var changeFields: [String]? = nil
+  var tone: String? = nil
+  var generationSource: String? = nil
+  var executionStatus: String? = nil
+}
+
+struct AdvisorFeedbackRequest: Encodable {
+  var subjectType: String
+  var subjectId: String
+  var signal: String
+  var reasonCode: String?
+  var note: String?
+  var engine: String?
+  var subjectKind: String?
+  var boardListingId: String?
+  var snapshot: AdvisorFeedbackSnapshot
+}
+
+struct AdvisorFeedbackResponse: Decodable {
+  struct SavedFeedback: Decodable {
+    var id: String
+    var createdAt: String
+    var duplicate: Bool
+  }
+  var feedback: SavedFeedback
 }
 
 struct MobileListingInventoryResponse: Decodable {
@@ -214,6 +260,7 @@ struct MobileAdvisorReplyRequest: Encodable {
   var text: String
   var outreachId: String
   var confirmationId: String
+  var extractionSource: String = "manual"
 }
 
 private struct MobileBoardExpenseRequest: Encodable {
@@ -967,6 +1014,19 @@ final class HomeboardAPI {
     )
   }
 
+  func submitAdvisorFeedback(
+    accessToken: String,
+    boardId: String,
+    request: AdvisorFeedbackRequest
+  ) async throws -> AdvisorFeedbackResponse {
+    try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/advisor/feedback",
+      method: "POST",
+      accessToken: accessToken,
+      body: request
+    )
+  }
+
   func acceptAdvisorDraft(
     accessToken: String,
     boardId: String,
@@ -1131,7 +1191,8 @@ final class HomeboardAPI {
     listingId: String,
     text: String,
     outreachId: String,
-    confirmationId: UUID
+    confirmationId: UUID,
+    extractionSource: String
   ) async throws -> MobileBoardLoadResponse {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/listings/\(listingId)/reply",
@@ -1140,7 +1201,8 @@ final class HomeboardAPI {
       body: MobileAdvisorReplyRequest(
         text: text,
         outreachId: outreachId,
-        confirmationId: confirmationId.uuidString.lowercased()
+        confirmationId: confirmationId.uuidString.lowercased(),
+        extractionSource: extractionSource
       )
     )
   }
