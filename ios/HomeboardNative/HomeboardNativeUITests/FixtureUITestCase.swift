@@ -96,11 +96,32 @@ class FixtureUITestCase: XCTestCase {
     XCTAssertEqual(app.state, .runningForeground, file: file, line: line)
   }
   @discardableResult
-  func assertSaved(_ id: String, command: String, source: String = "device_template", timeout: TimeInterval = 30) -> String {
+  func assertSaved(
+    _ id: String,
+    command: String,
+    source: String = "device_template",
+    tone: String? = nil,
+    afterAcceptanceCount: Int = 0,
+    afterGenerationCount: Int = 0,
+    timeout: TimeInterval = 30
+  ) -> String {
     wait("Matching generation and acceptance did not finish", timeout: timeout) {
-      self.records("acceptances").contains { $0["messageId"] as? String == id && $0["saved"] as? Bool == true }
+      self.records("acceptances").dropFirst(afterAcceptanceCount).contains {
+        $0["messageId"] as? String == id
+          && $0["saved"] as? Bool == true
+          && $0["generationSource"] as? String == source
+          && (tone == nil || $0["tone"] as? String == tone)
+      }
     }
-    let receipt = records("acceptances").last { $0["messageId"] as? String == id && $0["saved"] as? Bool == true }!
+    guard let receipt = records("acceptances").dropFirst(afterAcceptanceCount).last(where: {
+      $0["messageId"] as? String == id
+        && $0["saved"] as? Bool == true
+        && $0["generationSource"] as? String == source
+        && (tone == nil || $0["tone"] as? String == tone)
+    }) else {
+      XCTFail("No new matching saved acceptance after boundary \(afterAcceptanceCount)")
+      return ""
+    }
     let text = receipt["draftText"] as? String ?? ""
     XCTAssertFalse(text.isEmpty)
     XCTAssertFalse(text.contains("Initial server template"))
@@ -109,10 +130,17 @@ class FixtureUITestCase: XCTestCase {
     XCTAssertEqual(receipt["originalCommand"] as? String, command)
     XCTAssertEqual(receipt["boardId"] as? String, "fixture-board-001")
     XCTAssertEqual(receipt["generationSource"] as? String, source)
+    if let tone { XCTAssertEqual(receipt["tone"] as? String, tone) }
     XCTAssertNotNil(receipt["clientGeneratedAt"] as? String)
-    let generation = records("generations").last { $0["messageId"] as? String == id && $0["text"] as? String == text }
+    let generation = records("generations").dropFirst(afterGenerationCount).last {
+      $0["messageId"] as? String == id
+        && $0["text"] as? String == text
+        && $0["source"] as? String == source
+        && (tone == nil || $0["tone"] as? String == tone)
+    }
     XCTAssertEqual(generation?["originalCommand"] as? String, command)
     XCTAssertEqual(generation?["source"] as? String, source)
+    if let tone { XCTAssertEqual(generation?["tone"] as? String, tone) }
     let context = generation?["context"] as? [String: Any]
     XCTAssertNotNil(context?["requirements"])
     let stored = records("storedMessages").first { $0["id"] as? String == id }?["advisorPayload"] as? [String: Any]
@@ -128,5 +156,35 @@ class FixtureUITestCase: XCTestCase {
     XCTAssertTrue(ready.exists)
     XCTAssertFalse(app.progressIndicators["homeboard.advisor.generating.\(id)"].exists)
     return text
+  }
+
+  func refreshBoardReadback(timeout: TimeInterval = 30) {
+    let before = diagnostics()["boardReadCount"] as? Int ?? 0
+    reveal(app.buttons["homeboard.settings.open"], upwards: false, attempts: 30)
+    let scroll = app.scrollViews.firstMatch
+    scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+      .press(forDuration: 0.1, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
+    wait("Saved board was not read back", timeout: timeout) {
+      (self.diagnostics()["boardReadCount"] as? Int ?? 0) > before
+    }
+  }
+
+  func assertReadback(
+    _ id: String,
+    text: String,
+    tone: String,
+    source: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let payload = records("lastReadMessages").first {
+      $0["id"] as? String == id
+    }?["advisorPayload"] as? [String: Any]
+    XCTAssertEqual(payload?["messageId"] as? String, id, file: file, line: line)
+    XCTAssertEqual(payload?["draftText"] as? String, text, file: file, line: line)
+    XCTAssertEqual(payload?["tone"] as? String, tone, file: file, line: line)
+    XCTAssertEqual(payload?["generationSource"] as? String, source, file: file, line: line)
+    XCTAssertEqual(payload?["executionStatus"] as? String, "draft_ready", file: file, line: line)
+    XCTAssertNotNil(payload?["acceptedAt"] as? String, file: file, line: line)
   }
 }

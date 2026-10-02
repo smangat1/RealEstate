@@ -486,6 +486,25 @@ enum AdvisorDraftGenerator {
 #if canImport(FoundationModels)
 @available(iOS 26.0, *)
 private extension AdvisorDraftGenerator {
+  static func recordDraftModelDiagnostic(
+    payload: AdvisorMessagePayload,
+    tone: String,
+    stage: String,
+    reason: String
+  ) async {
+    #if DEBUG
+    guard UITestFixtureState.enabled else { return }
+    await MainActor.run {
+      UITestFixtureState.shared.recordModelDiagnostic(
+        messageId: payload.messageId ?? "missing",
+        tone: tone,
+        stage: stage,
+        reason: reason
+      )
+    }
+    #endif
+  }
+
   static func generateWithAppleIntelligence(
     payload: AdvisorMessagePayload,
     tone: String,
@@ -525,20 +544,48 @@ private extension AdvisorDraftGenerator {
     do {
       let response = try await session.respond(to: prompt)
       let draft = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !draft.isEmpty,
-            draft.count <= 4_000,
-            draft.range(of: #"\[(?:income|credit)[^\]]*\]"#, options: .regularExpression) == nil else {
+      guard !draft.isEmpty else {
+        await recordDraftModelDiagnostic(
+          payload: payload, tone: tone, stage: "validation_failure", reason: "empty_output"
+        )
+        return nil
+      }
+      guard draft.count <= 4_000 else {
+        await recordDraftModelDiagnostic(
+          payload: payload, tone: tone, stage: "validation_failure", reason: "output_too_long"
+        )
+        return nil
+      }
+      guard draft.range(
+        of: #"\[(?:income|credit)[^\]]*\]"#,
+        options: .regularExpression
+      ) == nil else {
+        await recordDraftModelDiagnostic(
+          payload: payload, tone: tone, stage: "validation_failure", reason: "financial_placeholder"
+        )
         return nil
       }
       if let financialSentence, financialToggleEnabled(toggles), !draft.contains(financialSentence) {
+        await recordDraftModelDiagnostic(
+          payload: payload, tone: tone, stage: "validation_failure", reason: "financial_sentence_missing"
+        )
         return nil
       }
       if financialSentence == nil,
          draft.range(of: #"\b(income|credit score|financial information)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+        await recordDraftModelDiagnostic(
+          payload: payload, tone: tone, stage: "validation_failure", reason: "unexpected_financial_mention"
+        )
         return nil
       }
+      await recordDraftModelDiagnostic(
+        payload: payload, tone: tone, stage: "success", reason: "accepted_output"
+      )
       return draft
     } catch {
+      await recordDraftModelDiagnostic(
+        payload: payload, tone: tone, stage: "model_error", reason: "session_respond_failed"
+      )
       return nil
     }
   }

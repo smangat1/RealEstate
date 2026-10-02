@@ -123,3 +123,34 @@ The actual simulator inference probe selected the three new classes in the opt-i
 ```sh
 xcodebuild test -project ios/HomeboardNative/HomeboardNative.xcodeproj -scheme 'Homeboard Advisor Inference Tests' -destination 'platform=iOS Simulator,id=20E336D1-C356-40CF-BB38-4B256E7BC18D' -derivedDataPath /tmp/homeboard-ui-derived -only-testing:HomeboardNativeUITests/HomeboardNativeAdvisorChatUITests -only-testing:HomeboardNativeUITests/HomeboardNativeCoreFlowUITests -only-testing:HomeboardNativeUITests/HomeboardNativeAppleIntelligenceUITests CODE_SIGNING_ALLOWED=NO
 ```
+
+## PR #15 continuation validation
+
+Revision `697d3fca5e701498a222a806098e1fe8434c4fa0` was re-audited from freshly fetched `main` `c2eb1fe8d0c08ec8fe286326d9119305b0f6af5c`. Its GitHub `web` check failed in `npm run secrets:check` before any later verify stage. A clean-clone reproduction failed the same way. Commit `f9f9ac2f98c758baafae284aafab3c5fc94df494` replaced only the two credential-shaped documentation examples with `postgresql://fixture@127.0.0.1:1/fixture`; the strict scanner was unchanged and then passed with 401 tracked files scanned.
+
+The real-inference tone assertion previously searched all saved acceptances, so its first Professional receipt could satisfy the Casual assertion. The continuation requires a successful acceptance and matching generator record after captured acceptance/generation boundaries, for the same message ID, exact requested tone and exact `apple_intelligence` source. It also compares the rendered card to that generated/saved text, forces a subsequent board GET and verifies the same text, tone, source, ready status and accepted timestamp in readback. The ordinary-scheme opt-in skip and strict fallback rejection remain unchanged.
+
+A delayed POST-failure fixture now exposes an explicit pending window. The regression types a different roommate message while the Advisor POST is still pending and verifies that the later failure does not overwrite that newer composer text. The first focused combined run had one pass (the existing stale-generation tone case) and one failure: the original two-second fixture delay expired during UI input, leaving a suffix of the restored Advisor command in the field. The delay was widened to eight seconds, the test now proves the composer was empty and the error absent before typing, and its focused rerun passed. `HomeboardNativeTests/UITestFixtureTests` also passed after adding post-boundary tone persistence/readback and bounded-diagnostic coverage.
+
+The DEBUG-only FoundationModels diagnostic records at most 20 entries and only message identity, selected tone, stage and a fixed reason code. It records no draft text, prompt, board context or financial values, and does not alter Release behavior or any production validation/fallback decision. The strict opt-in run on the iPhone 17 / iOS 26.5 simulator reported `modelAvailable=true` and `availability=available`. Professional generation produced and saved a fresh `apple_intelligence` acceptance. Casual regeneration produced `device_template`; the new diagnostic identified `validation_failure / financial_sentence_missing`, rather than a model exception. The strict test therefore failed as intended before claiming a Casual AI save or GET readback. Result bundle: `/tmp/homeboard-pr15-inference.xcresult`.
+
+The only connected physical device was an iPhone 15 Pro on iOS 18.7.8 (`22H352`), which cannot run the iOS 26 FoundationModels lane. A ready physical-device pass remains unresolved; simulator fallback is not relabeled as AI. The retained inference screenshot was inspected: the Advisor card remained readable, but the result activities contained `Invalid frame dimension (negative or non-finite).` while the chat field was tapped. This continuation does not claim the UI layout warning is clean or resolved.
+
+Final continuation gates used the repository CI placeholders and made no database connection or migration:
+
+```sh
+env \
+  SUPABASE_URL=https://ci.invalid \
+  SUPABASE_PUBLISHABLE_KEY=ci-publishable-placeholder \
+  SUPABASE_SECRET_KEY=ci-secret-placeholder \
+  NEXT_PUBLIC_SUPABASE_URL=https://ci.invalid \
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci-publishable-placeholder \
+  DATABASE_URL='postgresql://ci@localhost:5432/homeboard' \
+  ENABLE_APP=false DEMO_MODE=false HOMEBOARD_NOINDEX=true \
+  npm run verify
+
+npm run ios:test
+npm run ios:release
+```
+
+`npm run verify` passed in full on the final working revision. The full ordinary HomeboardNative scheme passed, with the opt-in inference test skipped by its ordinary-scheme guard. The Release simulator build and fixture-isolation marker/symbol checks passed: the fixture launch/diagnostic markers and fixture/protocol/diagnostic/injected-generator symbol families were absent from Release and present in Debug as positive controls. Existing extension activation-rule and debugger-version warnings remain.

@@ -287,6 +287,8 @@ final class UITestFixtureState {
   var patchCount = 0
   var boardReadCount = 0
   var lastReadMessages: [[String: Any]] = []
+  var delayedPostStarted = false
+  var modelDiagnostics: [[String: String]] = []
   var created = false
 
   var availability: String {
@@ -309,6 +311,7 @@ final class UITestFixtureState {
       "requests": requests, "unexpected": unexpected, "generations": generations,
       "acceptances": acceptances, "postCount": postCount, "patchCount": patchCount,
       "boardReadCount": boardReadCount, "lastReadMessages": lastReadMessages, "storedMessages": object(board.chatMessages),
+      "delayedPostStarted": delayedPostStarted, "modelDiagnostics": modelDiagnostics,
       "boardTitle": board.title, "inviteCode": board.inviteCode, "inviteURL": "https://example.com/invite/\(board.inviteCode)",
       "storedListings": object(board.shortlist), "created": created
     ]
@@ -350,6 +353,21 @@ final class UITestFixtureState {
     generations.append(["invocation": generations.count + 1, "messageId": payload.messageId ?? "",
       "originalCommand": payload.originalCommand ?? "", "context": object(payload.context),
       "tone": tone, "toggles": object(toggles), "text": output.text, "source": output.source, "completed": true])
+  }
+
+  func recordModelDiagnostic(messageId: String, tone: String, stage: String, reason: String) {
+    guard modelDiagnostics.count < 20 else { return }
+    modelDiagnostics.append([
+      "messageId": String(messageId.prefix(80)),
+      "tone": String(tone.prefix(40)),
+      "stage": String(stage.prefix(40)),
+      "reason": String(reason.prefix(80)),
+    ])
+  }
+
+  func shouldDelayResponse(_ request: URLRequest) -> Bool {
+    guard scenario == "delayed-fail", request.httpMethod == "POST" else { return false }
+    return request.url?.path == "/api/mobile/boards/\(board.id!)/messages"
   }
 
   func respond(_ request: URLRequest, body: Data) throws -> (Int, [String: Any]) {
@@ -419,7 +437,9 @@ final class UITestFixtureState {
       let advisor = text.lowercased().hasPrefix("@advisor")
       if advisor {
         postCount += 1
-        if scenario == "fail" { return (500, ["error": "Fixture Advisor POST failure"]) }
+        if scenario == "fail" || scenario == "delayed-fail" {
+          return (500, ["error": "Fixture Advisor POST failure"])
+        }
         if inactive { return reject(route) }
       }
       board.chatMessages.append(BoardMessage(id: "fixture-user-\(board.chatMessages.count)", role: "user", authorName: "Sam", content: text, createdAt: "2026-09-28T10:00:00Z"))
@@ -523,6 +543,11 @@ final class HomeboardUITestStubProtocol: URLProtocol {
         }
       }
       do {
+        if UITestFixtureState.shared.shouldDelayResponse(request) {
+          UITestFixtureState.shared.delayedPostStarted = true
+          try await Task.sleep(for: .seconds(8))
+        }
+        guard !Task.isCancelled else { return }
         let (status, json) = try UITestFixtureState.shared.respond(request, body: body)
         guard !Task.isCancelled else { return }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!

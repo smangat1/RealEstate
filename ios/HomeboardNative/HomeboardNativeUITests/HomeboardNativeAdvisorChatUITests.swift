@@ -24,12 +24,7 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
     }
     XCTAssertEqual(diagnostics()["postCount"] as? Int, advisorPrompts.count)
     // Exercise the real read route after saving, rather than trusting only the PATCH reply.
-    let before = diagnostics()["boardReadCount"] as? Int ?? 0
-    reveal(app.buttons["homeboard.settings.open"], upwards: false, attempts: 30)
-    let scroll = app.scrollViews.firstMatch
-    scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
-      .press(forDuration: 0.1, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
-    wait("Saved board was not read back") { (self.diagnostics()["boardReadCount"] as? Int ?? 0) > before }
+    refreshBoardReadback()
     XCTAssertEqual(records("lastReadMessages").filter { $0["authorName"] as? String == "Advisor" }.count, 5)
     for receipt in records("acceptances").filter({ $0["saved"] as? Bool == true }) {
       let saved = records("lastReadMessages").first { $0["id"] as? String == receipt["messageId"] as? String }?["advisorPayload"] as? [String: Any]
@@ -43,6 +38,29 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
     send(prompt)
     XCTAssertTrue(app.staticTexts["homeboard.chat.boardError"].waitForExistence(timeout: 15))
     wait("Failed prompt was not restored to the composer") { self.app.textFields["homeboard.chat.field"].value as? String == prompt }
+    XCTAssertEqual(records("generations").count, 0)
+    XCTAssertEqual(records("acceptances").count, 0)
+    XCTAssertEqual(diagnostics()["postCount"] as? Int, 1)
+    XCTAssertFalse(app.otherElements["homeboard.advisor.card.fixture-advisor-1"].exists)
+    XCTAssertTrue((diagnostics()["unexpected"] as? [String] ?? []).isEmpty)
+    XCTAssertEqual(app.state, .runningForeground)
+  }
+  func testDelayedPostFailureDoesNotOverwriteNewComposerText() {
+    launchFixture(["UITEST_ADVISOR_MODE": "delayed-fail"])
+    let prompt = advisorPrompts[0]
+    let newerDraft = "Do not overwrite this newer roommate message"
+    send(prompt)
+    wait("Fixture POST did not enter its delayed response window") {
+      self.diagnostics()["delayedPostStarted"] as? Bool == true
+    }
+    XCTAssertFalse(app.staticTexts["homeboard.chat.boardError"].exists)
+    wait("Composer did not clear while the delayed POST was pending") {
+      let value = self.app.textFields["homeboard.chat.field"].value as? String ?? ""
+      return value.isEmpty || value == self.app.textFields["homeboard.chat.field"].placeholderValue
+    }
+    fill(app.textFields["homeboard.chat.field"], newerDraft)
+    XCTAssertTrue(app.staticTexts["homeboard.chat.boardError"].waitForExistence(timeout: 15))
+    XCTAssertEqual(app.textFields["homeboard.chat.field"].value as? String, newerDraft)
     XCTAssertEqual(records("generations").count, 0)
     XCTAssertEqual(records("acceptances").count, 0)
     XCTAssertEqual(diagnostics()["postCount"] as? Int, 1)
@@ -132,13 +150,35 @@ final class HomeboardNativeAppleIntelligenceUITests: FixtureUITestCase {
     }
     let command = "@advisor draft an email to the agent for the first listing"
     send(command)
-    assertSaved("fixture-advisor-1", command: command, source: "apple_intelligence", timeout: 120)
-    let previous = records("acceptances").count
+    let first = assertSaved(
+      "fixture-advisor-1",
+      command: command,
+      source: "apple_intelligence",
+      tone: "Professional",
+      timeout: 120
+    )
+    let acceptanceBoundary = records("acceptances").count
+    let generationBoundary = records("generations").count
     let tone = app.buttons["homeboard.advisor.tone.fixture-advisor-1.Casual"]
     reveal(tone)
     tone.tap()
-    wait("Real tone generation was not saved", timeout: 120) { self.records("acceptances").count > previous }
-    assertSaved("fixture-advisor-1", command: command, source: "apple_intelligence", timeout: 120)
+    let casual = assertSaved(
+      "fixture-advisor-1",
+      command: command,
+      source: "apple_intelligence",
+      tone: "Casual",
+      afterAcceptanceCount: acceptanceBoundary,
+      afterGenerationCount: generationBoundary,
+      timeout: 120
+    )
+    XCTAssertNotEqual(first, casual, "A new tone must render the newly accepted generator output")
+    refreshBoardReadback(timeout: 60)
+    assertReadback(
+      "fixture-advisor-1",
+      text: casual,
+      tone: "Casual",
+      source: "apple_intelligence"
+    )
     assertClean()
   }
 }
