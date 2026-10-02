@@ -125,7 +125,7 @@ class FixtureUITestCase: XCTestCase {
     let text = receipt["draftText"] as? String ?? ""
     XCTAssertFalse(text.isEmpty)
     XCTAssertFalse(text.contains("Initial server template"))
-    XCTAssertFalse(text.lowercased().range(of: #"\[(?:income|credit)[^\]]*\]"#, options: .regularExpression) != nil)
+    XCTAssertNil(text.range(of: #"\[[^\]\n]{1,80}\]"#, options: .regularExpression))
     XCTAssertLessThanOrEqual(text.count, 4000)
     XCTAssertEqual(receipt["originalCommand"] as? String, command)
     XCTAssertEqual(receipt["boardId"] as? String, "fixture-board-001")

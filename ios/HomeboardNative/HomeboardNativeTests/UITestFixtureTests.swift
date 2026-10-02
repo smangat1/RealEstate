@@ -3,6 +3,81 @@ import XCTest
 @testable import HomeboardNative
 
 final class UITestFixtureTests: XCTestCase {
+  func testAppleIntelligenceCompositionAppendsExactFinancialSentence() {
+    let sentence = "Financial information is available on request."
+    let draft = AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Hi, is 123 Valencia St available for a tour?",
+      financialSentence: sentence,
+      toggles: [.init(id: "financial", label: "Financial information", enabled: true, required: false)],
+      senderName: "Sam"
+    )
+    XCTAssertEqual(
+      draft,
+      "Hi, is 123 Valencia St available for a tour?\n\nFinancial information is available on request."
+    )
+    XCTAssertEqual(draft?.components(separatedBy: sentence).count, 2)
+  }
+
+  func testAppleIntelligenceCompositionOmitsFinancialSentenceWhenNotSelected() {
+    let draft = AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Hi, is 123 Valencia St available for a tour?",
+      financialSentence: "Financial information is available on request.",
+      toggles: [.init(id: "financial", label: "Financial information", enabled: false, required: false)],
+      senderName: "Sam"
+    )
+    XCTAssertEqual(draft, "Hi, is 123 Valencia St available for a tour?")
+  }
+
+  func testAppleIntelligenceCompositionRejectsModelAuthoredFinancialClaims() {
+    let toggles = [
+      AdvisorToggleOption(id: "financial", label: "Financial information", enabled: true, required: false),
+    ]
+    XCTAssertNil(AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Our income is well above the requirement.",
+      financialSentence: "Financial information is available on request.",
+      toggles: toggles,
+      senderName: "Sam"
+    ))
+    XCTAssertNil(AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Our credit score is excellent.",
+      financialSentence: nil,
+      toggles: [],
+      senderName: "Sam"
+    ))
+    XCTAssertEqual(AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Let me know if it is available.\n\nBest,\n[advisor]",
+      financialSentence: nil,
+      toggles: [],
+      senderName: "Sam"
+    ), "Let me know if it is available.\n\nBest,\nSam")
+    XCTAssertEqual(AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Best,\n[Your Name Here]\n[Contact Info]",
+      financialSentence: nil,
+      toggles: [],
+      senderName: "Sam"
+    ), "Best,\nSam")
+    XCTAssertNil(AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Please ask [broker name] whether it is available.",
+      financialSentence: nil,
+      toggles: [],
+      senderName: "Sam"
+    ))
+  }
+
+  func testAppleIntelligenceCompositionPlacesDisclosureBeforeSignoff() {
+    let sentence = "Financial information is available on request."
+    let draft = AdvisorDraftGenerator.composeAppleIntelligenceDraft(
+      modelDraft: "Could you confirm availability?\n\nBest,\n[advisor]",
+      financialSentence: sentence,
+      toggles: [.init(id: "financial", label: "Financial information", enabled: true, required: false)],
+      senderName: "Sam"
+    )
+    XCTAssertEqual(
+      draft,
+      "Could you confirm availability?\n\nFinancial information is available on request.\n\nBest,\nSam"
+    )
+  }
+
   @MainActor
   func testUnknownRouteFailsClosed() throws {
     let state = UITestFixtureState()
