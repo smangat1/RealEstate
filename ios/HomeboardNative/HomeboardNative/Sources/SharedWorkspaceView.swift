@@ -3746,6 +3746,7 @@ struct SharedUpdatesView: View {
               }
               .buttonStyle(HomeboardAreaButtonStyle())
               .accessibilityLabel("Board settings")
+              .accessibilityIdentifier("homeboard.settings.open")
             }
 
             SharedDecisionHub()
@@ -3792,6 +3793,8 @@ struct SharedUpdatesView: View {
                       content: msg.content
                     )
                   )
+                  .accessibilityElement(children: .contain)
+                  .accessibilityIdentifier("homeboard.chat.user.\(msg.id)")
                   .id("message-\(msg.id)")
                 }
               }
@@ -3799,6 +3802,7 @@ struct SharedUpdatesView: View {
 
             if appModel.isAdvisorProcessing {
               AdvisorTypingBubble()
+                .accessibilityIdentifier("homeboard.chat.processing")
                 .id("advisor-typing-indicator")
             }
 
@@ -3857,6 +3861,7 @@ struct SharedUpdatesView: View {
 
             VStack(alignment: .leading, spacing: 3) {
               Text(advisorAccessTitle)
+                .accessibilityIdentifier("homeboard.advisor.unlock")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(HomeboardPalette.primaryText)
               Text(advisorAccessMessage)
@@ -3895,6 +3900,7 @@ struct SharedUpdatesView: View {
 
         if let error = appModel.boardError {
           Text(error)
+            .accessibilityIdentifier("homeboard.chat.boardError")
             .font(.caption.weight(.semibold))
             .foregroundStyle(HomeboardPalette.danger)
             .fixedSize(horizontal: false, vertical: true)
@@ -3905,6 +3911,7 @@ struct SharedUpdatesView: View {
             "Message your roommates or @advisor...",
             text: $updateDraft
           )
+          .accessibilityIdentifier("homeboard.chat.field")
           .focused($updateFieldFocused)
           .submitLabel(.send)
           .onSubmit(submitUpdate)
@@ -3948,6 +3955,7 @@ struct SharedUpdatesView: View {
           }
           .buttonStyle(HomeboardAreaButtonStyle())
           .accessibilityLabel("Send group message")
+          .accessibilityIdentifier("homeboard.chat.send")
           .disabled(
             updateDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
               || appModel.isPostingBoardUpdate
@@ -4012,6 +4020,10 @@ struct SharedUpdatesView: View {
       appModel.boardMessageDraft = message
       Task {
         await appModel.sendBoardMessage()
+        if !appModel.boardMessageDraft.isEmpty, updateDraft.isEmpty {
+          updateDraft = appModel.boardMessageDraft
+          updateFieldFocused = true
+        }
       }
       return
     }
@@ -4544,6 +4556,7 @@ struct SharedSetupView: View {
             SharedSettingsRow(icon: "person.3.fill", title: "People and invitations", subtitle: "Members, preferences, invite links") {
               showsGroup = true
             }
+            .accessibilityIdentifier("homeboard.settings.people")
 
             SharedDivider()
 
@@ -8284,6 +8297,7 @@ struct SharedListingDetailView: View {
                   .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(HomeboardAreaButtonStyle())
+                .accessibilityIdentifier("homeboard.listing.vote.\(listing.id).\(vote)")
               }
             }
 
@@ -8316,6 +8330,7 @@ struct SharedListingDetailView: View {
 
             if !liveListing.reactions.isEmpty {
               Text(liveListing.reactions.map { "\($0.name): \($0.vote)" }.joined(separator: " · "))
+                .accessibilityIdentifier("homeboard.listing.votes.\(liveListing.id)")
                 .font(.caption)
                 .foregroundStyle(HomeboardPalette.secondaryText)
             }
@@ -10355,17 +10370,21 @@ struct AddSharedListingSheet: View {
           }
 
           SharedField(title: "Exact street address", prompt: "219 Kent Ave", text: $title)
+            .accessibilityIdentifier("homeboard.listing.field.title")
 
           HStack(spacing: 10) {
             SharedField(title: "Unit (optional)", prompt: "3B", text: $unit)
             SharedField(title: "Price", prompt: "$4,800 / month", text: $price)
+            .accessibilityIdentifier("homeboard.listing.field.price")
           }
 
           SharedField(title: "Neighborhood", prompt: "Williamsburg", text: $location)
 
           HStack(spacing: 10) {
             SharedField(title: "Beds", prompt: "3", text: $bedrooms, keyboard: .decimalPad)
+            .accessibilityIdentifier("homeboard.listing.field.bedrooms")
             SharedField(title: "Baths", prompt: "2", text: $bathrooms, keyboard: .decimalPad)
+            .accessibilityIdentifier("homeboard.listing.field.bathrooms")
           }
 
           if !importedAmenities.isEmpty {
@@ -10417,6 +10436,7 @@ struct AddSharedListingSheet: View {
           .sharedSurface(cornerRadius: 14)
           VStack(alignment: .leading, spacing: 10) {
             SharedField(title: "Listing link (optional)", prompt: "Add one only if a page exists", text: $sourceURL, keyboard: .URL)
+              .accessibilityIdentifier("homeboard.listing.url")
 
             if !sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
               Button {
@@ -10441,6 +10461,7 @@ struct AddSharedListingSheet: View {
               }
               .buttonStyle(HomeboardAreaButtonStyle())
               .disabled(isInspectingLink)
+              .accessibilityIdentifier("homeboard.listing.prefill")
             }
 
             if let preview = importPreview {
@@ -10523,6 +10544,7 @@ struct AddSharedListingSheet: View {
           }
           .buttonStyle(HomeboardAreaButtonStyle())
           .disabled(!hasRequiredFacts || isSaving)
+          .accessibilityIdentifier("homeboard.listing.save")
           .opacity(hasRequiredFacts ? 1 : 0.55)
 
           if !hasRequiredFacts {
@@ -10608,6 +10630,9 @@ struct AddSharedListingSheet: View {
   }
 
   private func resolveListingCoordinate() async -> CLLocationCoordinate2D? {
+    #if DEBUG
+    if UITestFixtureState.enabled { return nil }
+    #endif
     if let latitude = initialImport?.latitude,
        let longitude = initialImport?.longitude,
        (-90...90).contains(latitude),
@@ -10749,6 +10774,9 @@ private struct SharedInviteCard: View {
                 .clipShape(Circle())
             }
 
+            .accessibilityIdentifier("homeboard.invite.share")
+            .accessibilityValue(inviteURL.absoluteString)
+
             Button(action: onCopy) {
               Text(copied ? "Copied" : "Copy")
                 .font(.caption.weight(.bold))
@@ -10769,6 +10797,7 @@ private struct SharedInviteCard: View {
           .font(.caption.weight(.bold))
           .foregroundStyle(Color.black)
           .buttonStyle(HomeboardAreaButtonStyle())
+          .accessibilityIdentifier("homeboard.invite.create")
 
         Button("Add commute point", action: onAddCommutePoint)
           .font(.caption.weight(.semibold))
@@ -12227,6 +12256,9 @@ private struct SharedListingArtwork: View {
   }
 
   private var remotePhotoURL: URL? {
+    #if DEBUG
+    if UITestFixtureState.enabled { return nil }
+    #endif
     let value = listing.photoURL.trimmingCharacters(in: .whitespacesAndNewlines)
     if !value.isEmpty {
       if let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {

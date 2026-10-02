@@ -276,9 +276,18 @@ final class AppModel {
     }
   }
 
+  #if DEBUG
+  @ObservationIgnored var uiTestDraftGenerator: ((AdvisorMessagePayload, String, [AdvisorToggleOption], String?, String) async -> AdvisorDraftGeneration)?
+  #endif
+
   init(api: HomeboardAPI = HomeboardAPI()) {
     self.api = api
-    if ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") {
+    #if DEBUG
+    let resetsForUITesting = ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") || UITestFixtureState.enabled
+    #else
+    let resetsForUITesting = ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting")
+    #endif
+    if resetsForUITesting {
       for key in persistenceKeys + [legacyPersistenceKey] {
         UserDefaults.standard.removeObject(forKey: key)
       }
@@ -296,6 +305,30 @@ final class AppModel {
       opensWelcomeOnAccessPage = false
       currentScreen = .welcome
     }
+    #if DEBUG
+    if UITestFixtureState.enabled {
+      URLProtocol.registerClass(HomeboardUITestStubProtocol.self)
+      let fixture = UITestFixtureState.shared
+      for key in ["search", "shortlist", "updates"] {
+        UserDefaults.standard.set(true, forKey: "homeboard.guide.\(key).dismissed")
+      }
+      UserDefaults.standard.set(false, forKey: "homeboard.guide.first-listing.pending")
+      authSession = UITestFixture.session // In memory only: never persist fake credentials.
+      account = UITestFixture.account
+      profile = UITestFixture.profile
+      board = fixture.board
+      availableBoards = [.init(id: UITestFixture.boardID, title: board.title, city: board.city, createdAt: "", updatedAt: "")]
+      authenticatedMembershipState = .member
+      advisorWalletStatus = fixture.inactive ? UITestFixture.walletInactive : UITestFixture.walletActive
+      currentScreen = fixture.onboarding ? .onboarding : .board
+      boardTab = .updates
+      if fixture.provider == "deterministic" {
+        uiTestDraftGenerator = { payload, tone, toggles, sentence, sender in
+          await fixture.generate(payload: payload, tone: tone, toggles: toggles, financialSentence: sentence, senderName: sender)
+        }
+      }
+    }
+    #endif
     persist()
   }
 
@@ -1038,13 +1071,28 @@ final class AppModel {
       mode: disclosure,
       group: groupFinances
     )
-    let generated = await AdvisorDraftGenerator.generate(
+    let generated: AdvisorDraftGeneration
+    #if DEBUG
+    if let generator = uiTestDraftGenerator {
+      generated = await generator(payload, tone, toggles, sentence, account?.name ?? "The prospective tenants")
+    } else {
+      generated = await AdvisorDraftGenerator.generate(
+        payload: payload, tone: tone, toggles: toggles, financialSentence: sentence,
+        senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants"
+      )
+      if UITestFixtureState.enabled {
+        UITestFixtureState.shared.recordRealGeneration(payload: payload, tone: tone, toggles: toggles, output: generated)
+      }
+    }
+    #else
+    generated = await AdvisorDraftGenerator.generate(
       payload: payload,
       tone: tone,
       toggles: toggles,
       financialSentence: sentence,
       senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants"
     )
+    #endif
     var accepted = payload
     accepted.draftText = generated.text
     accepted.tone = tone
@@ -3524,6 +3572,9 @@ final class AppModel {
   }
 
   func consumeSharedListingImport() {
+    #if DEBUG
+    if UITestFixtureState.enabled { return }
+    #endif
     let imports = HomeboardSharedImportStore.all()
     guard !imports.isEmpty else { return }
 
@@ -4747,6 +4798,10 @@ final class AppModel {
   }
 
   func persist() {
+    #if DEBUG
+    // Fixture state and credentials must never survive into an ordinary launch.
+    if UITestFixtureState.enabled { return }
+    #endif
     let accountSession = AccountSessionPersistence(
       currentScreen: currentScreen,
       authMode: authMode,
@@ -5181,6 +5236,9 @@ private enum NativeAuthSessionStore {
   }
 
   static func save(_ session: NativeAuthSession) {
+    #if DEBUG
+    if UITestFixtureState.enabled { return }
+    #endif
     let record = StoredSessionRecord(schemaVersion: schemaVersion, session: session)
     guard let data = try? JSONEncoder().encode(record) else { return }
 

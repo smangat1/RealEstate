@@ -46,6 +46,7 @@ enum HomeboardConfig {
 
   static var backendBaseURL: URL {
     #if DEBUG
+    if UITestFixtureState.enabled { return URL(string: "https://homeboard-fixture.invalid")! }
     if let override = ProcessInfo.processInfo.environment["HOMEBOARD_API_BASE_URL"],
        let url = validBaseURL(override, allowsInsecureLocalhost: true) {
       return url
@@ -78,6 +79,7 @@ enum HomeboardConfig {
 
   static var publicWebBaseURL: URL {
     #if DEBUG
+    if UITestFixtureState.enabled { return URL(string: "https://example.com")! }
     if let override = ProcessInfo.processInfo.environment["HOMEBOARD_PUBLIC_WEB_URL"],
        let url = validBaseURL(override, allowsInsecureLocalhost: true) {
       return url

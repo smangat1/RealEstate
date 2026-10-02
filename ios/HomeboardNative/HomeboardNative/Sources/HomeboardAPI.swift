@@ -711,6 +711,9 @@ final class HomeboardAPI {
 
   private static func makeNetworkSession() -> URLSession {
     let configuration = URLSessionConfiguration.default
+    #if DEBUG
+    if UITestFixtureState.enabled { configuration.protocolClasses = [HomeboardUITestStubProtocol.self] }
+    #endif
     configuration.waitsForConnectivity = true
     configuration.timeoutIntervalForRequest = 20
     configuration.timeoutIntervalForResource = 45

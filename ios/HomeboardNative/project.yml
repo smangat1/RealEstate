@@ -37,6 +37,7 @@ targets:
       - path: HomeboardNative/Sources/SharedWorkspaceView.swift
       - path: HomeboardNative/Sources/HomeboardActiveOffer.swift
       - path: HomeboardNative/Sources/MessageDispatcher.swift
+      - path: HomeboardNative/Sources/UITestFixture.swift
       - path: HomeboardNative/Sources/AdvisorCardView.swift
       - path: HomeboardNative/Sources/AdvisorDraftGenerator.swift
       - path: HomeboardNative/Sources/AdvisorReplyIntake.swift
@@ -280,6 +281,17 @@ schemes:
       targets:
         - HomeboardNativeTests
         - HomeboardNativeUITests
+  Homeboard Advisor Inference Tests:
+    build:
+      targets:
+        HomeboardNative: all
+        HomeboardNativeUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - HomeboardNativeUITests
+      environmentVariables:
+        HOMEBOARD_RUN_REAL_AI: "1"
   Homeboard Advisor Preview:
     build:
       targets:

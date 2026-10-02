@@ -71,6 +71,9 @@ struct RootView: View {
     .animation(.easeInOut(duration: 0.24), value: appModel.currentScreen)
     .animation(.easeInOut(duration: 0.20), value: appModel.showsPostAuthNotificationPrompt)
     .animation(.easeInOut(duration: 0.20), value: appModel.showsPostAuthInvitePrompt)
+    #if DEBUG
+    .modifier(UITestDiagnosticsModifier())
+    #endif
     .environment(appModel)
     .task {
       await appModel.bootstrap()

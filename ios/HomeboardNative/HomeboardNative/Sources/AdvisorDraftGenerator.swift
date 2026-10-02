@@ -313,6 +313,22 @@ private extension AdvisorPreferenceExtractor {
 #endif
 
 enum AdvisorDraftGenerator {
+  private enum AppleIntelligenceDraftValidation: Error {
+    case emptyOutput
+    case outputTooLong
+    case placeholder
+    case unexpectedFinancialMention
+
+    var diagnosticReason: String {
+      switch self {
+      case .emptyOutput: "empty_output"
+      case .outputTooLong: "output_too_long"
+      case .placeholder: "placeholder"
+      case .unexpectedFinancialMention: "unexpected_financial_mention"
+      }
+    }
+  }
+
   static func generate(
     payload: AdvisorMessagePayload,
     tone: String,
@@ -331,7 +347,7 @@ enum AdvisorDraftGenerator {
 
     #if canImport(FoundationModels)
     if #available(iOS 26.0, *),
-       SystemLanguageModel.default.isAvailable,
+       draftModelAvailable,
        let generated = await generateWithAppleIntelligence(
          payload: payload,
          tone: tone,
@@ -346,6 +362,16 @@ enum AdvisorDraftGenerator {
     return AdvisorDraftGeneration(text: fallback, source: "device_template")
   }
 
+  #if canImport(FoundationModels)
+  @available(iOS 26.0, *)
+  private static var draftModelAvailable: Bool {
+    #if DEBUG
+    if UITestFixtureState.enabled && ProcessInfo.processInfo.environment["UITEST_ADVISOR_PROVIDER"] == "fallback" { return false }
+    #endif
+    return SystemLanguageModel.default.isAvailable
+  }
+  #endif
+
   static func financialSentence(
     mode: String,
     group _: AdvisorGroupFinancialStatus?
@@ -358,6 +384,122 @@ enum AdvisorDraftGenerator {
     default:
       return "Financial information is available on request."
     }
+  }
+
+  /// Keeps required disclosure wording app-owned instead of asking a language model
+  /// to reproduce policy text. Model-authored financial claims fail closed whether
+  /// disclosure is included or omitted.
+  static func composeAppleIntelligenceDraft(
+    modelDraft: String,
+    financialSentence: String?,
+    toggles: [AdvisorToggleOption],
+    senderName: String
+  ) -> String? {
+    switch validateAndComposeAppleIntelligenceDraft(
+      modelDraft: modelDraft,
+      financialSentence: financialSentence,
+      toggles: toggles,
+      senderName: senderName
+    ) {
+    case .success(let draft): draft
+    case .failure: nil
+    }
+  }
+
+  private static func validateAndComposeAppleIntelligenceDraft(
+    modelDraft: String,
+    financialSentence: String?,
+    toggles: [AdvisorToggleOption],
+    senderName: String
+  ) -> Result<String, AppleIntelligenceDraftValidation> {
+    let namedDraft = modelDraft
+      .replacingOccurrences(
+        of: #"\[(?:advisor|sender|your name|name)\]"#,
+        with: senderName,
+        options: [.regularExpression, .caseInsensitive]
+      )
+    let draft = replacingTrailingSignaturePlaceholders(in: namedDraft, senderName: senderName)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !draft.isEmpty else { return .failure(.emptyOutput) }
+    guard draft.count <= 4_000 else { return .failure(.outputTooLong) }
+    guard draft.range(
+      of: #"\[[^\]\n]{1,80}\]"#,
+      options: .regularExpression
+    ) == nil else { return .failure(.placeholder) }
+    guard draft.range(
+      of: #"\b(income|credit score|financial information)\b"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) == nil else { return .failure(.unexpectedFinancialMention) }
+
+    let disclosure = financialToggleEnabled(toggles)
+      ? financialSentence?.trimmingCharacters(in: .whitespacesAndNewlines)
+      : nil
+    let composed = disclosure.flatMap { $0.isEmpty ? nil : $0 }
+      .map { insertingDisclosure($0, beforeSignoffIn: draft) }
+      ?? draft
+    guard composed.count <= 4_000 else { return .failure(.outputTooLong) }
+    return .success(composed)
+  }
+
+  private static func replacingTrailingSignaturePlaceholders(
+    in draft: String,
+    senderName: String
+  ) -> String {
+    var lines = draft.components(separatedBy: .newlines)
+    var removedPlaceholder = false
+    while let last = lines.last {
+      let trimmed = last.trimmingCharacters(in: .whitespacesAndNewlines)
+      if trimmed.isEmpty {
+        lines.removeLast()
+      } else if trimmed.range(
+        of: #"^(?:[\s,;]*\[[^\]\n]{1,80}\][\s,;.!]*)+$"#,
+        options: .regularExpression
+      ) != nil {
+        lines.removeLast()
+        removedPlaceholder = true
+      } else {
+        break
+      }
+    }
+    if removedPlaceholder { lines.append(senderName) }
+
+    if let lastIndex = lines.indices.last,
+       lines[lastIndex].range(of: #"\[[^\]\n]{1,80}\]"#, options: .regularExpression) != nil {
+      let normalized = lines[lastIndex].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+      let signoffs = ["best", "best regards", "thanks", "thank you", "sincerely", "regards"]
+      if signoffs.contains(where: { normalized.hasPrefix($0) }) {
+        lines[lastIndex] = lines[lastIndex].replacingOccurrences(
+          of: #"\[[^\]\n]{1,80}\]"#,
+          with: senderName,
+          options: .regularExpression
+        )
+      }
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  private static func insertingDisclosure(_ disclosure: String, beforeSignoffIn draft: String) -> String {
+    var lines = draft.components(separatedBy: .newlines)
+    while lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+      lines.removeLast()
+    }
+    let signoffs = ["best", "best regards", "thanks", "thank you", "sincerely", "regards"]
+    let normalized: (String) -> String = {
+      $0.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).lowercased()
+    }
+    let signoffIndex: Int?
+    if lines.count >= 2, signoffs.contains(normalized(lines[lines.count - 2])) {
+      signoffIndex = lines.count - 2
+    } else if let last = lines.last,
+              signoffs.contains(where: { normalized(last).hasPrefix($0 + " ") }) {
+      signoffIndex = lines.count - 1
+    } else {
+      signoffIndex = nil
+    }
+
+    guard let signoffIndex else { return "\(draft)\n\n\(disclosure)" }
+    lines.insert(contentsOf: [disclosure, ""], at: signoffIndex)
+    return lines.joined(separator: "\n")
   }
 
   private static func templateDraft(
@@ -476,6 +618,25 @@ enum AdvisorDraftGenerator {
 #if canImport(FoundationModels)
 @available(iOS 26.0, *)
 private extension AdvisorDraftGenerator {
+  static func recordDraftModelDiagnostic(
+    payload: AdvisorMessagePayload,
+    tone: String,
+    stage: String,
+    reason: String
+  ) async {
+    #if DEBUG
+    guard UITestFixtureState.enabled else { return }
+    await MainActor.run {
+      UITestFixtureState.shared.recordModelDiagnostic(
+        messageId: payload.messageId ?? "missing",
+        tone: tone,
+        stage: stage,
+        reason: reason
+      )
+    }
+    #endif
+  }
+
   static func generateWithAppleIntelligence(
     payload: AdvisorMessagePayload,
     tone: String,
@@ -491,8 +652,9 @@ private extension AdvisorDraftGenerator {
       prior contact, financial strength, application readiness, or listing details.
       Write in the requested tone. Return only the recipient-facing message.
       Never output bracketed placeholders. Never ask the recipient to fill anything in.
-      If an exact financial sentence is supplied, copy it verbatim. If none is supplied,
-      do not mention income, credit, finances, or qualifications.
+      Do not mention income, credit, finances, or qualifications. Homeboard adds any
+      selected financial-disclosure policy text after your draft is validated. Sign
+      with the supplied sender name exactly; never use a bracketed name placeholder.
       """
     )
     let contextData = try? JSONEncoder().encode(payload.context)
@@ -505,7 +667,6 @@ private extension AdvisorDraftGenerator {
 
     Selected tone: \(tone)
     Included details: \(enabledLabels.isEmpty ? "none" : enabledLabels)
-    Exact financial sentence: \(financialSentence ?? "NONE")
     Sender name: \(senderName)
 
     HOMEBOARD CONTEXT START
@@ -514,21 +675,32 @@ private extension AdvisorDraftGenerator {
     """
     do {
       let response = try await session.respond(to: prompt)
-      let draft = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !draft.isEmpty,
-            draft.count <= 4_000,
-            draft.range(of: #"\[(?:income|credit)[^\]]*\]"#, options: .regularExpression) == nil else {
+      let validation = validateAndComposeAppleIntelligenceDraft(
+        modelDraft: response.content,
+        financialSentence: financialSentence,
+        toggles: toggles,
+        senderName: senderName
+      )
+      guard case .success(let draft) = validation else {
+        let reason: String
+        if case .failure(let failure) = validation {
+          reason = failure.diagnosticReason
+        } else {
+          reason = "validation_failed"
+        }
+        await recordDraftModelDiagnostic(
+          payload: payload, tone: tone, stage: "validation_failure", reason: reason
+        )
         return nil
       }
-      if let financialSentence, financialToggleEnabled(toggles), !draft.contains(financialSentence) {
-        return nil
-      }
-      if financialSentence == nil,
-         draft.range(of: #"\b(income|credit score|financial information)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
-        return nil
-      }
+      await recordDraftModelDiagnostic(
+        payload: payload, tone: tone, stage: "success", reason: "accepted_output"
+      )
       return draft
     } catch {
+      await recordDraftModelDiagnostic(
+        payload: payload, tone: tone, stage: "model_error", reason: "session_respond_failed"
+      )
       return nil
     }
   }
