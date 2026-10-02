@@ -82,3 +82,22 @@ test("each wrong-feedback path applies its local effect independently of the fee
   assert.ok(replyBlock.indexOf("extractionPreview = nil") < replyBlock.indexOf("await appModel.submitAdvisorFeedback"));
   assert.match(replyBlock, /logged reply was not changed/);
 });
+
+test("confirmed feedback never participates in reply or preference core transactions", () => {
+  const replyRoute = read("app/api/mobile/boards/[id]/listings/[listingId]/reply/route.ts");
+  const replyTransaction = replyRoute.slice(
+    replyRoute.indexOf("const transactionResults = await prisma.$transaction(["),
+    replyRoute.indexOf("followUpCancelled = replyLogConfirmation"),
+  );
+  assert.doesNotMatch(replyTransaction, /advisorFeedback/);
+  assert.match(replyTransaction, /advisorNotificationDelivery\.updateMany/);
+  assert.match(replyRoute, /if \(!duplicate\) \{[\s\S]*?try \{[\s\S]*?prisma\.advisorFeedback\.createMany[\s\S]*?catch \{[\s\S]*?confirmed reply signal unavailable/);
+
+  const preferenceRoute = read("app/api/mobile/boards/[id]/preference-proposals/[proposalId]/route.ts");
+  const preferenceTransaction = preferenceRoute.slice(
+    preferenceRoute.indexOf("const result = await prisma.$transaction"),
+    preferenceRoute.indexOf("if (result.kind === \"missing\")"),
+  );
+  assert.doesNotMatch(preferenceTransaction, /advisorFeedback/);
+  assert.match(preferenceRoute, /if \(result\.kind === "accepted"\) \{[\s\S]*?try \{[\s\S]*?prisma\.advisorFeedback\.createMany[\s\S]*?catch \{[\s\S]*?confirmed preference signal unavailable/);
+});

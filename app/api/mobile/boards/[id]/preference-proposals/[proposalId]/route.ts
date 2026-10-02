@@ -108,19 +108,10 @@ export async function PATCH(
           content: `${user.displayName} confirmed an Advisor preference proposal after reviewing the before/after values.`,
         },
       });
-      await transaction.advisorFeedback.createMany({
-        data: [{
-          boardId: id,
-          userId: user.id,
-          subjectType: "preference_proposal",
-          subjectId: proposal.id,
-          signal: "confirmed",
-          engine: "deterministic",
-          snapshot: { changeFields: changes.data.map((change) => change.field) },
-        }],
-        skipDuplicates: true,
-      });
-      return { kind: "accepted" as const };
+      return {
+        kind: "accepted" as const,
+        changeFields: changes.data.map((change) => change.field),
+      };
     });
 
     if (result.kind === "missing") return NextResponse.json({ error: "Preference proposal not found." }, { status: 404 });
@@ -132,6 +123,25 @@ export async function PATCH(
       }, { status: 409 });
     }
     if (result.kind === "invalid") return NextResponse.json({ error: "Preference proposal is invalid." }, { status: 422 });
+
+    if (result.kind === "accepted") {
+      try {
+        await prisma.advisorFeedback.createMany({
+          data: [{
+            boardId: id,
+            userId: user.id,
+            subjectType: "preference_proposal",
+            subjectId: proposalId,
+            signal: "confirmed",
+            engine: "deterministic",
+            snapshot: { changeFields: result.changeFields },
+          }],
+          skipDuplicates: true,
+        });
+      } catch {
+        console.error("[advisor-feedback] confirmed preference signal unavailable");
+      }
+    }
 
     const next = await getBoardPageData(id, user.id);
     if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });

@@ -153,7 +153,17 @@ export async function POST(
           data: { boardId: id, actorType: "assistant", actorName: "Advisor", eventType: "broker_reply_reviewed", content },
         }),
         prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
-        prisma.advisorFeedback.createMany({
+        ]);
+        followUpCancelled = replyLogConfirmation(transactionResults[2].count).followUpCancelled;
+      }
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
+      duplicate = true;
+    }
+
+    if (!duplicate) {
+      try {
+        await prisma.advisorFeedback.createMany({
           data: [{
             boardId: id,
             userId: user.id,
@@ -169,13 +179,10 @@ export async function POST(
             },
           }],
           skipDuplicates: true,
-        }),
-        ]);
-        followUpCancelled = replyLogConfirmation(transactionResults[2].count).followUpCancelled;
+        });
+      } catch {
+        console.error("[advisor-feedback] confirmed reply signal unavailable");
       }
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
-      duplicate = true;
     }
 
     const [persistedOutreach, confirmedAction] = await Promise.all([
