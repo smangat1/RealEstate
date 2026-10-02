@@ -138,7 +138,7 @@ final class AppModel {
     var removedListingIdentityKeysByBoard: [String: Set<String>]?
   }
 
-  @ObservationIgnored private let api = HomeboardAPI()
+  @ObservationIgnored private let api: HomeboardAPI
   @ObservationIgnored private var didBootstrap = false
   @ObservationIgnored private var didFinishBootstrap = false
   @ObservationIgnored private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
@@ -155,6 +155,7 @@ final class AppModel {
   @ObservationIgnored private var restoredAuthUserID: String?
   @ObservationIgnored private var unreadablePersistenceKeys = Set<String>()
   @ObservationIgnored private var sessionEpoch = UUID()
+  @ObservationIgnored private var activeAdvisorWalletRequestID: UUID?
   private let persistenceSchemaVersion = 1
   private let legacyPersistenceKey = "homeboard.native.state"
   private let accountSessionPersistenceKey = "homeboard.native.account-session"
@@ -217,13 +218,20 @@ final class AppModel {
   var boardFeedback: String?
   var boardMessageDraft = ""
   var advisorWalletStatus: AdvisorWalletStatus?
+  var advisorWalletError: String?
   var advisorFinancialStatus: AdvisorFinancialStatus?
   var pendingPreferenceProposal: AdvisorPreferenceProposal?
   var isAdvisorWalletLoading = false
   var isAdvisorProcessing = false
   var advisorFundingAmountCents = 100
   var isAdvisorAccessActive: Bool {
-    advisorWalletStatus?.subscription.active == true
+    advisorWalletLoadState == .active
+  }
+  var advisorWalletLoadState: AdvisorWalletLoadState {
+    if isAdvisorWalletLoading { return .loading }
+    if advisorWalletError != nil { return .failed }
+    guard let advisorWalletStatus else { return .idle }
+    return advisorWalletStatus.subscription.active ? .active : .inactive
   }
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
@@ -268,7 +276,8 @@ final class AppModel {
     }
   }
 
-  init() {
+  init(api: HomeboardAPI = HomeboardAPI()) {
+    self.api = api
     if ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") {
       for key in persistenceKeys + [legacyPersistenceKey] {
         UserDefaults.standard.removeObject(forKey: key)
@@ -1126,24 +1135,61 @@ final class AppModel {
 
   func refreshAdvisorWalletStatus() async {
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
-      advisorWalletStatus = nil
+      clearAdvisorWalletState()
       advisorFinancialStatus = nil
       return
     }
+    let requestID = UUID()
+    let requestEpoch = sessionEpoch
+    activeAdvisorWalletRequestID = requestID
     isAdvisorWalletLoading = true
-    defer { isAdvisorWalletLoading = false }
+    advisorWalletError = nil
+    advisorWalletStatus = nil
+    defer {
+      if activeAdvisorWalletRequestID == requestID,
+         requestEpoch == sessionEpoch,
+         authSession?.userId == session.userId,
+         board.id == boardId {
+        activeAdvisorWalletRequestID = nil
+        isAdvisorWalletLoading = false
+      }
+    }
     do {
-      advisorWalletStatus = try await api.fetchAdvisorWalletStatus(
+      let status = try await api.fetchAdvisorWalletStatus(
         accessToken: session.accessToken,
         boardId: boardId
       )
+      guard activeAdvisorWalletRequestID == requestID,
+            requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return }
+      advisorWalletStatus = status
+      #if DEBUG
+      print(
+        "[Homeboard][AdvisorWallet] load_succeeded active=\(status.subscription.active) test_mode=\(status.isTestMode)"
+      )
+      #endif
     } catch is CancellationError {
       // SwiftUI cancels view-bound wallet refreshes during launch/navigation.
       // Cancellation is lifecycle control, not a chat-facing failure.
       return
     } catch {
-      boardError = readable(error)
+      guard activeAdvisorWalletRequestID == requestID,
+            requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return }
+      advisorWalletError = readable(error)
+      #if DEBUG
+      print("[Homeboard][AdvisorWallet] load_failed type=\(String(describing: type(of: error)))")
+      #endif
     }
+  }
+
+  private func clearAdvisorWalletState() {
+    activeAdvisorWalletRequestID = nil
+    advisorWalletStatus = nil
+    advisorWalletError = nil
+    isAdvisorWalletLoading = false
   }
 
   @discardableResult
@@ -1986,7 +2032,7 @@ final class AppModel {
       Task { await refreshAdvisorWalletStatus() }
       Task { await refreshAdvisorPreferenceProposal() }
     } else {
-      advisorWalletStatus = nil
+      clearAdvisorWalletState()
       advisorFinancialStatus = nil
       pendingPreferenceProposal = nil
     }
@@ -2073,6 +2119,7 @@ final class AppModel {
     listingInventoryHasMore = false
     listingInventoryError = nil
     pendingSharedListingImport = nil
+    clearAdvisorWalletState()
     HomeboardSharedImportStore.clearAccountData()
     UserDefaults.standard.set(false, forKey: "homeboard.guide.first-listing.pending")
     authError = nil
@@ -2122,6 +2169,7 @@ final class AppModel {
     listingInventoryHasMore = false
     listingInventoryError = nil
     pendingSharedListingImport = nil
+    clearAdvisorWalletState()
     HomeboardSharedImportStore.clearAccountData()
     boardTab = .board
     boardError = nil

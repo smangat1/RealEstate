@@ -1611,4 +1611,167 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertEqual(listing.activeOffer?.badgeLabel, "1 Mo Free")
   }
 
+  func testAdvisorWalletFailureIsNotPresentedAsInactiveAndRetryCanRecover() async {
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
+    AdvisorWalletURLProtocol.response = { _ in
+      .init(status: 503, body: #"{"error":"Temporarily unavailable"}"#)
+    }
+    let model = makeWalletTestModel(userID: "wallet-user", boardID: "wallet-board")
+
+    await model.refreshAdvisorWalletStatus()
+
+    XCTAssertEqual(model.advisorWalletLoadState, .failed)
+    XCTAssertNil(model.advisorWalletStatus)
+    XCTAssertFalse(model.isAdvisorAccessActive)
+    XCTAssertNotNil(model.advisorWalletError)
+
+    AdvisorWalletURLProtocol.response = { _ in
+      .init(status: 200, body: Self.walletJSON(active: true, testMode: true))
+    }
+    await model.refreshAdvisorWalletStatus()
+
+    XCTAssertEqual(model.advisorWalletLoadState, .active)
+    XCTAssertNil(model.advisorWalletError)
+    XCTAssertTrue(model.isAdvisorAccessActive)
+  }
+
+  func testAdvisorWalletTrueInactiveResponseRemainsInactive() async {
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
+    AdvisorWalletURLProtocol.response = { _ in
+      .init(status: 200, body: Self.walletJSON(active: false, testMode: false))
+    }
+    let model = makeWalletTestModel(userID: "wallet-user", boardID: "wallet-board")
+
+    await model.refreshAdvisorWalletStatus()
+
+    XCTAssertEqual(model.advisorWalletLoadState, .inactive)
+    XCTAssertEqual(model.advisorWalletStatus?.subscription.active, false)
+    XCTAssertFalse(model.isAdvisorAccessActive)
+    XCTAssertNil(model.advisorWalletError)
+  }
+
+  func testAdvisorWalletIgnoresResponseAfterBoardSwitch() async {
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
+    AdvisorWalletURLProtocol.response = { request in
+      if request.url?.path.contains("board-a") == true {
+        return .init(status: 200, body: Self.walletJSON(active: true, testMode: true), delay: 0.2)
+      }
+      return .init(status: 200, body: Self.walletJSON(active: false, testMode: false))
+    }
+    let model = makeWalletTestModel(userID: "wallet-user", boardID: "board-a")
+    let firstRequest = Task { await model.refreshAdvisorWalletStatus() }
+    try? await Task.sleep(nanoseconds: 30_000_000)
+    model.board.id = "board-b"
+
+    await model.refreshAdvisorWalletStatus()
+    await firstRequest.value
+
+    XCTAssertEqual(model.board.id, "board-b")
+    XCTAssertEqual(model.advisorWalletLoadState, .inactive)
+    XCTAssertEqual(model.advisorWalletStatus?.testMode, false)
+  }
+
+  func testAdvisorWalletIgnoresResponseAfterSessionSwitch() async {
+    let previousState = isolateAppModelPersistence()
+    defer { restoreAppModelPersistence(previousState) }
+    AdvisorWalletURLProtocol.response = { request in
+      let token = request.value(forHTTPHeaderField: "Authorization") ?? ""
+      if token.contains("token-a") {
+        return .init(status: 200, body: Self.walletJSON(active: true, testMode: true), delay: 0.2)
+      }
+      return .init(status: 200, body: Self.walletJSON(active: false, testMode: false))
+    }
+    let model = makeWalletTestModel(userID: "user-a", boardID: "wallet-board", token: "token-a")
+    let firstRequest = Task { await model.refreshAdvisorWalletStatus() }
+    try? await Task.sleep(nanoseconds: 30_000_000)
+    model.authSession = NativeAuthSession(
+      accessToken: "token-b",
+      refreshToken: "refresh-b",
+      userId: "user-b",
+      email: "user-b@example.com",
+      displayName: "User B"
+    )
+
+    await model.refreshAdvisorWalletStatus()
+    await firstRequest.value
+
+    XCTAssertEqual(model.authSession?.userId, "user-b")
+    XCTAssertEqual(model.advisorWalletLoadState, .inactive)
+    XCTAssertEqual(model.advisorWalletStatus?.testMode, false)
+  }
+
+  private func makeWalletTestModel(
+    userID: String,
+    boardID: String,
+    token: String = "wallet-token"
+  ) -> AppModel {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
+    let model = AppModel(api: HomeboardAPI(session: URLSession(configuration: configuration)))
+    model.authSession = NativeAuthSession(
+      accessToken: token,
+      refreshToken: "wallet-refresh",
+      userId: userID,
+      email: "\(userID)@example.com",
+      displayName: "Wallet User"
+    )
+    model.board = .empty
+    model.board.id = boardID
+    return model
+  }
+
+  private static func walletJSON(active: Bool, testMode: Bool) -> String {
+    """
+    {
+      "rolling7DayTotalCents": 0,
+      "thresholdCents": 400,
+      "remainingCents": 400,
+      "windowStartedAt": "2026-10-01T00:00:00.000Z",
+      "subscription": { "active": \(active), "validUntil": null },
+      "testMode": \(testMode)
+    }
+    """
+  }
+
+}
+
+private final class AdvisorWalletURLProtocol: URLProtocol {
+  struct Stub {
+    var status: Int
+    var body: String
+    var delay: TimeInterval = 0
+  }
+
+  static var response: (URLRequest) -> Stub = { _ in
+    Stub(status: 500, body: #"{"error":"Missing test stub"}"#)
+  }
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    let stub = Self.response(request)
+    let complete = { [weak self] in
+      guard let self, let url = request.url else { return }
+      let response = HTTPURLResponse(
+        url: url,
+        statusCode: stub.status,
+        httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: Data(stub.body.utf8))
+      client?.urlProtocolDidFinishLoading(self)
+    }
+    if stub.delay > 0 {
+      DispatchQueue.global().asyncAfter(deadline: .now() + stub.delay, execute: complete)
+    } else {
+      complete()
+    }
+  }
+
+  override func stopLoading() {}
 }
