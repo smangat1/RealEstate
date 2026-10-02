@@ -559,17 +559,17 @@ struct AdvisorCardView: View {
   private func handleDispatchResult(_ result: MessageDispatchResult, channel: AdvisorDispatchChannel) {
     switch result {
     case .sent:
-      dispatchMessage = "Composer reported sent. Recipient delivery is not verified."
       if let payload {
         let method: String
         switch channel {
         case .email: method = "email"
         case .message: method = "message"
         }
-        appModel.markAdvisorOutreachSent(
-          for: payload,
-          method: method
-        )
+        dispatchMessage = "Recording member-reported send…"
+        Task {
+          let recorded = await appModel.markAdvisorOutreachSent(for: payload, method: method)
+          dispatchMessage = recorded ? "Marked sent." : "The send was not recorded. Try again from this card."
+        }
       }
     case .cancelled:
       dispatchMessage = nil
@@ -590,6 +590,43 @@ struct AdvisorCardView: View {
     payload.executionStatus == "draft_ready"
       && (payload.generationSource == "server_template" || hasFinancialPlaceholder(payload))
       && AdvisorDraftSafety.hasOriginalAdvisorCommand(payload)
+  }
+}
+
+struct AdvisorConfirmationBanner: View {
+  let message: String
+  var undo: (() -> Void)? = nil
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "checkmark.circle.fill")
+        .foregroundStyle(HomeboardPalette.success)
+      Text(message)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(HomeboardPalette.primaryText)
+      Spacer(minLength: 4)
+      if let undo {
+        Button("Undo", action: undo)
+          .font(.subheadline.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+          .buttonStyle(HomeboardAreaButtonStyle())
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 12)
+    .background(HomeboardPalette.surface)
+    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .stroke(HomeboardPalette.success.opacity(0.45), lineWidth: 1)
+    }
+    .shadow(color: Color.black.opacity(0.22), radius: 12, y: 6)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(message)
+    .accessibilityIdentifier("homeboard.advisor.confirmation")
+    .onAppear {
+      UIAccessibility.post(notification: .announcement, argument: message)
+    }
   }
 }
 

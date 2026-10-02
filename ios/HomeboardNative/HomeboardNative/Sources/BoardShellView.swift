@@ -13,6 +13,16 @@ struct BoardShellView: View {
         authenticatedBoard
       }
     }
+    .overlay(alignment: .top) {
+      if let confirmation = appModel.advisorConfirmation {
+        AdvisorConfirmationBanner(message: confirmation.message)
+          .padding(.horizontal, 16)
+          .padding(.top, 10)
+          .transition(.move(edge: .top).combined(with: .opacity))
+          .zIndex(20)
+      }
+    }
+    .animation(.easeInOut(duration: 0.2), value: appModel.advisorConfirmation)
     .background(HomeboardPalette.background)
     .onAppear {
       guard !appModel.isGuestPreview else { return }

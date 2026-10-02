@@ -128,6 +128,7 @@ export async function PATCH(
       profile: next.profile,
       missingFields: next.missingFields,
       preferenceProposal: null,
+      preferenceResolution: { status: result.kind },
     });
   } catch (error) {
     const unauthorized = error instanceof Error && error.message === "MOBILE_AUTH_REQUIRED";

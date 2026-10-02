@@ -85,6 +85,20 @@ struct MobileBoardLoadResponse: Decodable {
   var replyAnalysis: AdvisorReplyAnalysis?
   var replyLog: AdvisorReplyLog?
   var preferenceProposal: AdvisorPreferenceProposal?
+  var preferenceResolution: AdvisorPreferenceResolution?
+  var outreachEvidence: AdvisorOutreachEvidence?
+}
+
+struct AdvisorPreferenceResolution: Decodable {
+  var status: String
+}
+
+struct AdvisorOutreachEvidence: Decodable {
+  var kind: String
+  var recorded: Bool
+  var deliveryVerified: Bool
+  var followUpEligible: Bool
+  var followUpScheduledFor: String?
 }
 
 struct AdvisorPreferenceProposalResponse: Decodable {

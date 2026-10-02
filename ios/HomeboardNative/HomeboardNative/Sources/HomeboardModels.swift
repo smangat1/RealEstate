@@ -905,11 +905,17 @@ struct AdvisorReplyLog: Hashable, Codable {
   var listingId: String
   var answeredAt: String
   var duplicate: Bool
+  var followUpCancelled: Bool
 }
 
 struct AdvisorReplySubmissionResult: Hashable {
   var analysis: AdvisorReplyAnalysis
   var log: AdvisorReplyLog
+}
+
+struct AdvisorConfirmation: Identifiable, Equatable {
+  var id = UUID()
+  var message: String
 }
 
 struct BoardExpense: Identifiable, Hashable, Codable {

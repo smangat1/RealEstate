@@ -216,6 +216,7 @@ final class AppModel {
   var inviteFeedback: String?
   var incomingLinkError: String?
   var boardFeedback: String?
+  var advisorConfirmation: AdvisorConfirmation?
   var boardMessageDraft = ""
   var advisorWalletStatus: AdvisorWalletStatus?
   var advisorWalletError: String?
@@ -1290,7 +1291,11 @@ final class AppModel {
       )
       applyRemoteMutation(response, clearing: [])
       pendingPreferenceProposal = nil
-      boardFeedback = accept ? "Preference changes confirmed." : "Preference proposal dismissed. Nothing changed."
+      if response.preferenceResolution?.status == "accepted" {
+        showAdvisorConfirmation("Preference updated")
+      } else if response.preferenceResolution?.status == "rejected" {
+        showAdvisorConfirmation("No change made")
+      }
     } catch {
       boardError = readable(error)
       if !accept {
@@ -1391,31 +1396,34 @@ final class AppModel {
     return true
   }
 
-  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload, method: String) {
+  @discardableResult
+  func markAdvisorOutreachSent(for payload: AdvisorMessagePayload, method: String) async -> Bool {
     // Prefer the specific target carried in the payload; fall back to the strongest
     // listing for legacy cards that predate targetListingBoardId.
     let listingId = payload.targetListingBoardId
       ?? payload.context?.leverage?.strongestListings?.first?.boardListingId
     guard let listingId, let messageId = payload.messageId else {
       boardError = "Advisor could not identify the listing for this outreach."
-      return
+      return false
     }
-    guard let session = authSession, let boardId = board.id else { return }
-    Task {
-      do {
-        let response = try await api.recordAdvisorOutreach(
-          accessToken: session.accessToken,
-          boardId: boardId,
-          listingId: listingId,
-          advisorMessageId: messageId,
-          method: method
-        )
-        guard authSession?.userId == session.userId, board.id == boardId else { return }
-        applyRemoteMutation(response, clearing: [])
-      } catch {
-        guard authSession?.userId == session.userId else { return }
-        boardError = "The composer reported sent, but Homeboard could not record that member report. \(readable(error))"
-      }
+    guard let session = authSession, let boardId = board.id else { return false }
+    do {
+      let response = try await api.recordAdvisorOutreach(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        listingId: listingId,
+        advisorMessageId: messageId,
+        method: method
+      )
+      guard authSession?.userId == session.userId, board.id == boardId,
+            response.outreachEvidence?.recorded == true else { return false }
+      applyRemoteMutation(response, clearing: [])
+      showAdvisorConfirmation("Marked sent.")
+      return true
+    } catch {
+      guard authSession?.userId == session.userId else { return false }
+      boardError = "The composer reported sent, but Homeboard could not record that member report. \(readable(error))"
+      return false
     }
   }
 
@@ -1476,10 +1484,25 @@ final class AppModel {
         return nil
       }
       applyRemoteMutation(response, clearing: [.activity, .shortlist])
+      showAdvisorConfirmation(
+        log.followUpCancelled
+          ? "Reply logged. Follow-up cancelled."
+          : "Reply logged."
+      )
       return AdvisorReplySubmissionResult(analysis: analysis, log: log)
     } catch {
       boardError = readable(error)
       return nil
+    }
+  }
+
+  func showAdvisorConfirmation(_ message: String) {
+    let confirmation = AdvisorConfirmation(message: message)
+    advisorConfirmation = confirmation
+    Task { @MainActor [weak self] in
+      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      guard self?.advisorConfirmation?.id == confirmation.id else { return }
+      self?.advisorConfirmation = nil
     }
   }
 

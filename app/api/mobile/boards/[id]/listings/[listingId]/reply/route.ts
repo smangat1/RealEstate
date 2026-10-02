@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { analyzeAdvisorReply } from "@/lib/advisor-reply";
+import { replyLogConfirmation } from "@/lib/advisor-confirmations";
 import {
   pendingFollowUpSuppressionScope,
   replyConfirmationFingerprint,
@@ -88,6 +89,7 @@ export async function POST(
       text: parsed.data.text,
     });
     const now = new Date();
+    let followUpCancelled = false;
     let persistedAction = await prisma.advisorAction.findUnique({
       where: { fingerprint },
       select: {
@@ -104,7 +106,8 @@ export async function POST(
       throw new Error("REPLY_CONFIRMATION_SCOPE_MISMATCH");
     }
     try {
-      if (!duplicate) await prisma.$transaction([
+      if (!duplicate) {
+        const transactionResults = await prisma.$transaction([
         prisma.brokerOutreachRecord.update({
           where: { id: outreach.id },
           data: {
@@ -149,7 +152,9 @@ export async function POST(
           data: { boardId: id, actorType: "assistant", actorName: "Advisor", eventType: "broker_reply_reviewed", content },
         }),
         prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
-      ]);
+        ]);
+        followUpCancelled = replyLogConfirmation(transactionResults[2].count).followUpCancelled;
+      }
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
       duplicate = true;
@@ -205,6 +210,7 @@ export async function POST(
         listingId,
         answeredAt: persistedOutreach.answeredAt.toISOString(),
         duplicate,
+        followUpCancelled,
       },
     });
   } catch (error) {
