@@ -216,7 +216,7 @@ test("board loading avoids read-time maintenance writes and shows cached data im
 
 test("native cached board state clears only after a successful different-user response", () => {
   const initFlow = appModelSource.slice(
-    appModelSource.indexOf("init()"),
+    appModelSource.indexOf("init(api: HomeboardAPI"),
     appModelSource.indexOf("func bootstrap"),
   );
   const sessionFlow = appModelSource.slice(
