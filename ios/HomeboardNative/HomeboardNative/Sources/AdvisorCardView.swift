@@ -145,6 +145,7 @@ struct AdvisorCardView: View {
 
         if isRegenerating {
           ProgressView()
+            .accessibilityIdentifier("homeboard.advisor.generating.\(message.id)")
             .tint(HomeboardPalette.accent)
             .scaleEffect(0.8)
         } else if isDraftReady(currentPayload) {
@@ -152,6 +153,7 @@ struct AdvisorCardView: View {
             Image(systemName: "checkmark.circle.fill")
               .font(.caption2)
             Text("Ready to send")
+              .accessibilityIdentifier("homeboard.advisor.ready.\(message.id)")
               .font(.caption2.weight(.semibold))
           }
           .foregroundStyle(HomeboardPalette.success)
@@ -192,6 +194,7 @@ struct AdvisorCardView: View {
         }
 
         Text(currentPayload.draftText)
+          .accessibilityIdentifier("homeboard.advisor.draft.\(message.id)")
           .font(.body)
           .foregroundStyle(HomeboardPalette.primaryText)
           .fixedSize(horizontal: false, vertical: true)
@@ -238,6 +241,8 @@ struct AdvisorCardView: View {
                   }
               }
               .buttonStyle(HomeboardAreaButtonStyle())
+              .accessibilityIdentifier("homeboard.advisor.tone.\(message.id).\(tone)")
+              .accessibilityValue(isSelected ? "Selected" : "Not selected")
             }
           }
         }
@@ -277,6 +282,8 @@ struct AdvisorCardView: View {
                 }
                 .buttonStyle(HomeboardAreaButtonStyle())
                 .disabled(isRequired)
+                .accessibilityIdentifier("homeboard.advisor.toggle.\(message.id).\(toggles[index].id)")
+                .accessibilityValue(isEnabled ? "Included" : "Excluded")
                 .accessibilityHint(isRequired ? "Required qualification" : "Regenerates the draft")
               }
             }
@@ -293,6 +300,7 @@ struct AdvisorCardView: View {
         }
         .buttonStyle(AdvisorCTAButtonStyle(isPrimary: true))
         .disabled(!MessageDispatcher.canSendText || !isDraftReady(currentPayload))
+        .accessibilityIdentifier("homeboard.advisor.message.\(message.id)")
 
         Button {
           prepareDispatch(.email)
@@ -302,16 +310,20 @@ struct AdvisorCardView: View {
         }
         .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
         .disabled(!MessageDispatcher.canSendMail || !isDraftReady(currentPayload))
+        .accessibilityIdentifier("homeboard.advisor.email.\(message.id)")
       }
 
       if let dispatchMessage {
         Text(dispatchMessage)
+          .accessibilityIdentifier("homeboard.advisor.error.\(message.id)")
           .font(.footnote)
           .foregroundStyle(HomeboardPalette.secondaryText)
       }
     }
     .padding(16)
     .homeboardPanel(cornerRadius: 22)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("homeboard.advisor.card.\(message.id)")
   }
 
   private var legacyMessage: some View {
@@ -790,6 +802,7 @@ struct AdvisorWalletPanel: View {
       }
 
       ProgressView(value: appModel.advisorWalletStatus?.progressFraction ?? 0)
+        .accessibilityIdentifier("homeboard.wallet.progress")
         .tint(appModel.advisorWalletStatus?.isUnlocked == true ? HomeboardPalette.success : HomeboardPalette.accent)
 
       if appModel.advisorWalletStatus?.isUnlocked == true {
@@ -836,6 +849,7 @@ struct AdvisorWalletPanel: View {
             }
             .buttonStyle(AdvisorCTAButtonStyle())
             .disabled(isPreparingPayment)
+            .accessibilityIdentifier("homeboard.wallet.fund")
           }
         }
       }
