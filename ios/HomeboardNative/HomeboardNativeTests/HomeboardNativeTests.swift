@@ -286,6 +286,54 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(gate.begin(confirmationID))
   }
 
+  func testAdvisorRankingDiffReportsMovesWithoutChangingScoreMath() {
+    let downtown = ListingPreview(
+      id: "downtown", title: "Downtown", location: "SoHo", priceLine: "$3,200",
+      commuteLine: "15 min", summary: "Doorman", fitLabel: "", highlights: ["Elevator"], openRisks: []
+    )
+    let uptown = ListingPreview(
+      id: "uptown", title: "Uptown", location: "Harlem", priceLine: "$2,700",
+      commuteLine: "35 min", summary: "Parking", fitLabel: "", highlights: ["Parking"], openRisks: []
+    )
+    var old = RentalProfile()
+    old.budgetMax = "3000"
+    old.minCommuteMinutes = "10"
+    old.maxCommuteMinutes = "20"
+    old.neighborhoods = ["SoHo"]
+    var updated = old
+    updated.maxCommuteMinutes = "40"
+    updated.neighborhoods = ["Harlem"]
+    updated.mustHaves = ["parking"]
+
+    let result = AdvisorListingRanker.diff(listings: [downtown, uptown], oldProfile: old, newProfile: updated)
+    XCTAssertEqual(result.changes.count, 2)
+    XCTAssertEqual(result.topListingTitle, "Uptown")
+    XCTAssertTrue(result.message.contains("2 listings moved"))
+  }
+
+  func testAdvisorRankingDiffReportsNoChangeAndPreservesHardFailureFlag() {
+    var listing = ListingPreview(
+      id: "same", title: "Same", location: "SoHo", priceLine: "$2,500",
+      commuteLine: "20 min", summary: "Elevator", fitLabel: "", highlights: [], openRisks: []
+    )
+    listing.analysis = GroupListingAnalysis(
+      overallScore: 40, lowestRoommateScore: 20, disagreement: 10, fairnessScore: 30,
+      hardFailureCount: 1, rankingLabel: "Review", verdict: "Hard limit", confidence: "high",
+      confidenceReason: "Known", nextActions: [], members: []
+    )
+    let profile = RentalProfile()
+    let unchanged = AdvisorListingRanker.diff(listings: [listing], oldProfile: profile, newProfile: profile)
+    XCTAssertTrue(unchanged.changes.isEmpty)
+    XCTAssertEqual(unchanged.message, "Scores updated: no ranking change.")
+
+    var updated = profile
+    updated.mustHaves = ["elevator"]
+    let scoreOnly = AdvisorListingRanker.diff(listings: [listing], oldProfile: profile, newProfile: updated)
+    XCTAssertTrue(scoreOnly.changes.isEmpty, "A score change without a rank change must not claim movement")
+    XCTAssertEqual(AdvisorListingRanker.score(listing, profile: updated), 1)
+    XCTAssertEqual(listing.analysis?.hardFailureCount, 1)
+  }
+
   func testAdvisorNotificationTimezoneDoesNotSilentlyFollowTravel() {
     XCTAssertEqual(
       AdvisorNotificationTimeZonePolicy.zoneAfterDeviceRegistration(

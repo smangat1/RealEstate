@@ -780,14 +780,7 @@ private struct CompareWorkspaceView: View {
   }
 
   private func score(for listing: ListingPreview) -> Int {
-    var score = 0
-
-    if budgetFits(listing) { score += 2 }
-    if commuteFits(listing) { score += 1 }
-    if neighborhoodFits(listing) { score += 1 }
-    if mustHaveSignals(listing) { score += 1 }
-
-    return score
+    AdvisorListingRanker.score(listing, profile: appModel.profile)
   }
 
   private func budgetFits(_ listing: ListingPreview) -> Bool {

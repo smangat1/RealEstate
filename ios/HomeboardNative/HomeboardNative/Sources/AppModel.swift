@@ -1282,6 +1282,8 @@ final class AppModel {
 
   func resolveAdvisorPreferenceProposal(_ proposal: AdvisorPreferenceProposal, accept: Bool) async {
     guard let session = authSession, let boardId = board.id else { return }
+    let previousProfile = profile
+    let scoredListings = board.shortlist
     do {
       let response = try await api.resolveAdvisorPreferenceProposal(
         accessToken: session.accessToken,
@@ -1292,7 +1294,12 @@ final class AppModel {
       applyRemoteMutation(response, clearing: [])
       pendingPreferenceProposal = nil
       if response.preferenceResolution?.status == "accepted" {
-        showAdvisorConfirmation("Preference updated")
+        let ranking = AdvisorListingRanker.diff(
+          listings: scoredListings,
+          oldProfile: previousProfile,
+          newProfile: profile
+        )
+        showAdvisorConfirmation("Preference updated. \(ranking.message)")
       } else if response.preferenceResolution?.status == "rejected" {
         showAdvisorConfirmation("No change made")
       }
@@ -1888,9 +1895,20 @@ final class AppModel {
     boardError = nil
     boardFeedback = nil
 
+    let previousProfile = localProfilesByBoard[boardStorageKey()]
     guard let session = authSession, let boardId = board.id else {
       syncBoardFromProfile()
       boardFeedback = "Board brief updated locally."
+      if let previousProfile,
+         AdvisorListingRanker.scoreRelevantPreferencesChanged(from: previousProfile, to: profile) {
+        showAdvisorConfirmation(
+          AdvisorListingRanker.diff(
+            listings: board.shortlist,
+            oldProfile: previousProfile,
+            newProfile: profile
+          ).message
+        )
+      }
       return
     }
     let requestEpoch = sessionEpoch
@@ -1911,6 +1929,16 @@ final class AppModel {
       profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: localProfile)
       storeCurrentBoardSnapshot()
       boardFeedback = "Board brief saved."
+      if let previousProfile,
+         AdvisorListingRanker.scoreRelevantPreferencesChanged(from: previousProfile, to: profile) {
+        showAdvisorConfirmation(
+          AdvisorListingRanker.diff(
+            listings: board.shortlist,
+            oldProfile: previousProfile,
+            newProfile: profile
+          ).message
+        )
+      }
     } catch {
       guard requestEpoch == sessionEpoch, authSession?.userId == session.userId else { return }
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
