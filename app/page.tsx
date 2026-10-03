@@ -116,6 +116,19 @@ export default function HomeboardPage() {
           -webkit-text-decoration-skip-ink: none !important;
         }
 
+        .doc-grammar {
+          text-decoration: underline wavy #1a73e8 !important;
+          text-decoration-skip-ink: none !important;
+          text-underline-offset: 3px !important;
+          -webkit-text-decoration-line: underline !important;
+          -webkit-text-decoration-style: wavy !important;
+          -webkit-text-decoration-color: #1a73e8 !important;
+          -webkit-text-decoration-skip-ink: none !important;
+          background-color: rgba(26, 115, 232, 0.12) !important;
+          border-radius: 2px;
+          padding: 0 1px;
+        }
+
         @media (max-width: 640px) {
           .doc-desktop-only {
             display: none !important;
@@ -739,7 +752,7 @@ export default function HomeboardPage() {
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> send approximately 217 emails and 521 texts to agents but have to settle for a place that you hate anyway.
+                  <span className="doc-typo">you</span> send <span className="doc-typo">hundres</span> of texts and emails to agents but <span className="doc-grammar">have to</span> settle for a place <span className="doc-grammar">that</span> you hate <span className="doc-grammar">anyway</span>.
                 </p>
 
                 <p style={{ margin: 0 }}>
@@ -747,7 +760,7 @@ export default function HomeboardPage() {
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-typo">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
+                  <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-grammar">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
                 </p>
 
                 <p style={{ margin: "4px 0 0 0" }}>
