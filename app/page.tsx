@@ -817,7 +817,7 @@ export default function HomeboardPage() {
                         <span className="doc-typo">doomscroll</span> listings:
                       </strong>{" "}
                       <span style={{ color: "#3c4043" }}>
-                        from any platform (<span className="doc-typo">seamless</span> <span className="doc-typo">mac</span> connection included).
+                        from any platform (<span className="doc-typo">seamless</span> <span className="doc-typo">mac</span> connection included)
                       </span>
                     </div>
 
@@ -838,7 +838,7 @@ export default function HomeboardPage() {
                         <span className="doc-typo">commute</span> math:
                       </strong>{" "}
                       <span style={{ color: "#3c4043" }}>
-                        door-to-door transit times for <span className="doc-typo">evryone</span>.
+                        door-to-door transit times for <span className="doc-typo">evryone</span>
                       </span>
                     </div>
 
@@ -858,7 +858,7 @@ export default function HomeboardPage() {
                       <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
                         <span className="doc-typo">group</span> shortlist:
                       </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>vote and react on listings together.</span>
+                      <span style={{ color: "#3c4043" }}>vote and react on listings together</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -877,7 +877,7 @@ export default function HomeboardPage() {
                       <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
                         <span className="doc-typo">advisor</span>:
                       </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>automated outreach and texting with agents.</span>
+                      <span style={{ color: "#3c4043" }}>automated outreach and texting with agents</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -897,7 +897,7 @@ export default function HomeboardPage() {
                         <span className="doc-typo">stores</span> nothing:
                       </strong>{" "}
                       <span style={{ color: "#3c4043" }}>
-                        no data captured outside of saved listings. all the sensitive stuff <span className="doc-typo">isnt</span> in our hands anyway.
+                        no data captured outside of saved listings, none of the sensitive stuff is in our hands anyway
                       </span>
                     </div>
                   </div>
