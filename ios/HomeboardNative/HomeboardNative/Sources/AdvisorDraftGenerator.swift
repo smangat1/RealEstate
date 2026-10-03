@@ -759,10 +759,10 @@ extension AdvisorDraftGenerator {
       return "Draft outreach for the selected rental."
     }
     let patterns = [
-      #"(?i)\b(?:income|salary|earnings?|earns?|makes?|fico|credit(?:\s+score)?|budget|rent ceiling)\b[^\n,.!?;]*"#,
-      #"(?i)\$\s?[0-9][0-9,]*(?:\.[0-9]{1,2})?"#,
+      #"(?i)\$\s?[0-9][0-9,]*(?:\.[0-9]+)?k?\b"#,
       #"(?i)\b[0-9]+(?:\.[0-9]+)?x\b"#,
-      #"(?i)\b[0-9]{3,}(?:k)?\b"#,
+      #"(?i)\b(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent|makes?|earns?)\b\s*(?:(?:is|of|around|about|approximately)\s+|:\s*)?\$?[0-9][0-9,]*(?:\.[0-9]+)?k?\b"#,
+      #"(?i)\b\$?[0-9][0-9,]*(?:\.[0-9]+)?k?\s+(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent)\b"#,
     ]
     for pattern in patterns {
       command = command.replacingOccurrences(

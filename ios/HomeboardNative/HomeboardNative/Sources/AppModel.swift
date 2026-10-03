@@ -282,10 +282,11 @@ final class AppModel {
   @ObservationIgnored var uiTestDraftGenerator: ((AdvisorMessagePayload, String, [AdvisorToggleOption], String?, String) async -> AdvisorDraftGeneration)?
   #endif
 
-  init(
-    api: HomeboardAPI = HomeboardAPI(),
-    advisorOutcomeMemory: AdvisorOutcomeMemory = .shared
-  ) {
+  convenience init(api: HomeboardAPI = HomeboardAPI()) {
+    self.init(api: api, advisorOutcomeMemory: .shared)
+  }
+
+  init(api: HomeboardAPI, advisorOutcomeMemory: AdvisorOutcomeMemory) {
     self.api = api
     self.advisorOutcomeMemory = advisorOutcomeMemory
     #if DEBUG
@@ -1174,7 +1175,8 @@ final class AppModel {
     _ response: MobileBoardLoadResponse,
     payload: AdvisorMessagePayload,
     expectedBoardId: String,
-    expectedMessageId: String?
+    expectedMessageId: String?,
+    recordAcceptance: Bool = true
   ) -> AdvisorMessagePayload? {
     guard board.id == expectedBoardId,
           response.board.id == expectedBoardId,
@@ -1194,7 +1196,9 @@ final class AppModel {
     profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     storeCurrentBoardSnapshot()
     persist()
-    recordAdvisorOutcome(payload, outcome: .accepted)
+    if recordAcceptance {
+      recordAdvisorOutcome(payload, outcome: .accepted)
+    }
     return payload
   }
 
@@ -1695,8 +1699,12 @@ final class AppModel {
 
   func signOut() {
     let session = authSession
+    let memoryUserId = session?.userId ?? account?.id
     let pushToken = UserDefaults.standard.string(forKey: pushTokenKey)
     let apiClient = api
+    if let memoryUserId {
+      advisorOutcomeMemory.clear(userId: memoryUserId)
+    }
     NativeAuthSessionStore.delete()
     clearSessionState()
     persist()
@@ -1760,6 +1768,7 @@ final class AppModel {
     Task {
       do {
         try await api.deleteAccount(accessToken: session.accessToken)
+        advisorOutcomeMemory.clear(userId: session.userId)
         HomeboardShareDiagnosticStore.clear()
         HomeboardShareBootDiagnosticStore.clear()
         NativeAuthSessionStore.delete()

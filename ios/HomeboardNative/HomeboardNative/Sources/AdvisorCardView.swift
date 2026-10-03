@@ -46,6 +46,14 @@ enum AdvisorDraftSafety {
   }
 }
 
+enum AdvisorCardMemorySignalPolicy {
+  static func toneSwitched() -> [AdvisorDraftOutcome] { [] }
+  static func includeToggled() -> [AdvisorDraftOutcome] { [] }
+  static func draftRejected(afterPersistedToneChange: Bool) -> [AdvisorDraftOutcome] {
+    afterPersistedToneChange ? [.revised, .rejected] : [.rejected]
+  }
+}
+
 struct AdvisorCardView: View {
   @Environment(AppModel.self) private var appModel
 
@@ -57,6 +65,8 @@ struct AdvisorCardView: View {
   @State private var memoryReason: String?
   @State private var memorySummary: String?
   @State private var hasExplicitToneSelection: Bool
+  @State private var requestedToneRevision: String?
+  @State private var hasPersistedToneRevision = false
   @State private var toggles: [AdvisorToggleOption]
   @State private var isRegenerating = false
   @State private var regenerationTask: Task<Void, Never>?
@@ -79,6 +89,7 @@ struct AdvisorCardView: View {
     _memoryReason = State(initialValue: nil)
     _memorySummary = State(initialValue: nil)
     _hasExplicitToneSelection = State(initialValue: initialPayload?.toneWasExplicit == true)
+    _requestedToneRevision = State(initialValue: nil)
     _toggles = State(initialValue: initialPayload?.toggleOptions ?? [])
   }
 
@@ -157,7 +168,13 @@ struct AdvisorCardView: View {
           )
         )
         if let payload {
-          appModel.recordAdvisorOutcome(payload, outcome: .rejected, reasonCode: reason?.rawValue)
+          recordMemorySignals(
+            AdvisorCardMemorySignalPolicy.draftRejected(
+              afterPersistedToneChange: hasPersistedToneRevision
+            ),
+            for: payload,
+            reasonCode: reason?.rawValue
+          )
         }
         appModel.showAdvisorConfirmation(saved ? "Feedback recorded. Draft dismissed." : "Saved on this device only. Draft dismissed.")
         return saved
@@ -266,10 +283,11 @@ struct AdvisorCardView: View {
               Button {
                 guard selectedTone != tone else { return }
                 if let payload {
-                  appModel.recordAdvisorOutcome(payload, outcome: .revised, reasonCode: "bad_tone")
+                  recordMemorySignals(AdvisorCardMemorySignalPolicy.toneSwitched(), for: payload)
                 }
                 selectedTone = tone
                 hasExplicitToneSelection = true
+                requestedToneRevision = tone
                 memoryReason = nil
                 scheduleRegeneration()
               } label: {
@@ -316,7 +334,7 @@ struct AdvisorCardView: View {
                 Button {
                   guard !isRequired else { return }
                   if let payload {
-                    appModel.recordAdvisorOutcome(payload, outcome: .revised)
+                    recordMemorySignals(AdvisorCardMemorySignalPolicy.includeToggled(), for: payload)
                   }
                   toggles[index].enabled.toggle()
                   scheduleRegeneration()
@@ -494,13 +512,18 @@ struct AdvisorCardView: View {
           response,
           payload: next,
           expectedBoardId: expectedBoardId,
-          expectedMessageId: expectedMessageId
+          expectedMessageId: expectedMessageId,
+          recordAcceptance: false
         ) else {
           throw HomeboardAPIError.server(
             "The board or Advisor card changed before the saved draft returned. Sending remains blocked."
           )
         }
         payload = applied
+        if requestedToneRevision == applied.tone {
+          hasPersistedToneRevision = true
+          requestedToneRevision = nil
+        }
         dispatchMessage = nil
       } catch is CancellationError {
         return
@@ -518,6 +541,16 @@ struct AdvisorCardView: View {
     selectedTemplateId = selection.templateId
     memoryReason = selection.reason
     memorySummary = selection.promptSummary
+  }
+
+  private func recordMemorySignals(
+    _ outcomes: [AdvisorDraftOutcome],
+    for payload: AdvisorMessagePayload,
+    reasonCode: String? = nil
+  ) {
+    for outcome in outcomes {
+      appModel.recordAdvisorOutcome(payload, outcome: outcome, reasonCode: reasonCode)
+    }
   }
 
   private func prepareDispatch(_ channel: AdvisorDispatchChannel) {
