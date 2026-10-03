@@ -132,16 +132,41 @@ export default function HomeboardPage() {
           .doc-desktop-only {
             display: none !important;
           }
+          /* Sheet fills viewport edge-to-edge like Google Docs mobile */
           .doc-sheet {
             margin: 0 !important;
             border-radius: 0 !important;
             border-left: none !important;
             border-right: none !important;
             box-shadow: none !important;
-            padding: 24px 18px 48px 18px !important;
+            padding: 20px 16px 48px 16px !important;
+            min-height: unset !important;
           }
           .doc-canvas {
             padding: 0 !important;
+          }
+          /* Hide toolbar ribbon entirely on mobile — Google Docs mobile does this */
+          .doc-toolbar-ribbon {
+            display: none !important;
+          }
+          /* Tighten header on mobile */
+          .doc-header-bar {
+            padding: 6px 12px !important;
+          }
+          /* Smaller title text on mobile */
+          .doc-title-text {
+            font-size: 13px !important;
+          }
+          /* Shrink Share button on mobile */
+          .doc-share-btn {
+            padding: 5px 12px !important;
+            font-size: 12px !important;
+          }
+          /* Body text tightens on mobile like Google Docs */
+          .doc-body-text {
+            font-size: 15px !important;
+            line-height: 1.6 !important;
+            gap: 18px !important;
           }
         }
       `}</style>
@@ -175,6 +200,7 @@ export default function HomeboardPage() {
         >
           {/* Main App Bar Row */}
           <div
+            className="doc-header-bar"
             style={{
               padding: "8px 16px",
               display: "flex",
@@ -215,11 +241,16 @@ export default function HomeboardPage() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                   <span
+                    className="doc-title-text"
                     style={{
                       fontSize: "15px",
                       fontWeight: 600,
                       color: "#202124",
                       letterSpacing: "-0.01em",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      maxWidth: "180px",
                     }}
                   >
                     apartment_search_brief
@@ -428,6 +459,7 @@ export default function HomeboardPage() {
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <button
                 type="button"
+                className="doc-share-btn"
                 onClick={handleShareClick}
                 style={{
                   backgroundColor: "#1a73e8",
@@ -456,6 +488,7 @@ export default function HomeboardPage() {
           {/* FUNCTIONAL TOOLBAR RIBBON (Google Docs / Word Toolbar)    */}
           {/* ========================================================= */}
           <div
+            className="doc-toolbar-ribbon"
             style={{
               backgroundColor: "#edf2fa",
               borderTop: "1px solid #dadce0",
@@ -720,6 +753,7 @@ export default function HomeboardPage() {
           >
             <div>
               <div
+                className="doc-body-text"
                 style={{
                   fontFamily: getComputedFontFamily(),
                   fontSize: `${fontSizeChoice}px`,
