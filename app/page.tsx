@@ -9,9 +9,8 @@ export default function HomeboardPage() {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [fontChoice, setFontChoice] = useState<"serif" | "sans" | "mono">("serif");
   const [fontSizeChoice, setFontSizeChoice] = useState(16);
-  const [isBold, setIsBold] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
-  const [isUnderline, setIsUnderline] = useState(false);
+  const [showEditAccessPopup, setShowEditAccessPopup] = useState(false);
+  const [popupTimeoutId, setPopupTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   // Close modals on Escape key
@@ -21,11 +20,19 @@ export default function HomeboardPage() {
         setIsPrivacyOpen(false);
         setIsShareModalOpen(false);
         setActiveMenu(null);
+        setShowEditAccessPopup(false);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  const handleNoEditAccess = () => {
+    setShowEditAccessPopup(true);
+    if (popupTimeoutId) clearTimeout(popupTimeoutId);
+    const tid = setTimeout(() => setShowEditAccessPopup(false), 3500);
+    setPopupTimeoutId(tid);
+  };
 
   const handleShareClick = async () => {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -132,6 +139,7 @@ export default function HomeboardPage() {
         }}
         onClick={() => {
           if (activeMenu) setActiveMenu(null);
+          if (showEditAccessPopup) setShowEditAccessPopup(false);
         }}
       >
         {/* ========================================================= */}
@@ -579,65 +587,146 @@ export default function HomeboardPage() {
 
               <span className="doc-desktop-only" style={{ color: "#dadce0", margin: "0 2px" }}>|</span>
 
-              {/* Bold Button */}
-              <button
-                type="button"
-                onClick={() => setIsBold(!isBold)}
-                title="Toggle Bold"
+              {/* Formatting Controls Group (with Edit Access Alert Tooltip) */}
+              <div
                 className="doc-desktop-only"
-                style={{
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  fontWeight: 700,
-                  fontSize: "12px",
-                  backgroundColor: isBold ? "#d3e3fd" : "transparent",
-                  border: isBold ? "1px solid #a8c7fa" : "1px solid transparent",
-                  color: "#202124",
-                  cursor: "pointer",
-                }}
+                style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "2px" }}
               >
-                B
-              </button>
+                {/* Bold Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNoEditAccess();
+                  }}
+                  title="Bold (Edit access required)"
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    backgroundColor: "transparent",
+                    border: "1px solid transparent",
+                    color: "#444746",
+                    cursor: "pointer",
+                    transition: "background-color 150ms ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#dadce0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  B
+                </button>
 
-              {/* Italic Button */}
-              <button
-                type="button"
-                onClick={() => setIsItalic(!isItalic)}
-                title="Toggle Italic"
-                className="doc-desktop-only"
-                style={{
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  fontStyle: "italic",
-                  fontSize: "12px",
-                  backgroundColor: isItalic ? "#d3e3fd" : "transparent",
-                  border: isItalic ? "1px solid #a8c7fa" : "1px solid transparent",
-                  color: "#202124",
-                  cursor: "pointer",
-                }}
-              >
-                I
-              </button>
+                {/* Italic Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNoEditAccess();
+                  }}
+                  title="Italic (Edit access required)"
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    fontStyle: "italic",
+                    fontSize: "12px",
+                    backgroundColor: "transparent",
+                    border: "1px solid transparent",
+                    color: "#444746",
+                    cursor: "pointer",
+                    transition: "background-color 150ms ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#dadce0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  I
+                </button>
 
-              {/* Underline Button */}
-              <button
-                type="button"
-                onClick={() => setIsUnderline(!isUnderline)}
-                title="Toggle Underline"
-                className="doc-desktop-only"
-                style={{
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  textDecoration: "underline",
-                  fontSize: "12px",
-                  backgroundColor: isUnderline ? "#d3e3fd" : "transparent",
-                  border: isUnderline ? "1px solid #a8c7fa" : "1px solid transparent",
-                  color: "#202124",
-                  cursor: "pointer",
-                }}
-              >
-                U
-              </button>
+                {/* Underline Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNoEditAccess();
+                  }}
+                  title="Underline (Edit access required)"
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    textDecoration: "underline",
+                    fontSize: "12px",
+                    backgroundColor: "transparent",
+                    border: "1px solid transparent",
+                    color: "#444746",
+                    cursor: "pointer",
+                    transition: "background-color 150ms ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#dadce0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  U
+                </button>
+
+                {/* Edit Access Popup Tooltip */}
+                {showEditAccessPopup && (
+                  <div
+                    role="alert"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 8px)",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      backgroundColor: "#202124",
+                      color: "#ffffff",
+                      padding: "7px 12px",
+                      borderRadius: "6px",
+                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.28)",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      zIndex: 100,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {/* Upward pointing arrow */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "-4px",
+                        left: "50%",
+                        transform: "translateX(-50%) rotate(45deg)",
+                        width: "8px",
+                        height: "8px",
+                        backgroundColor: "#202124",
+                      }}
+                      aria-hidden="true"
+                    />
+                    <span style={{ fontWeight: 500, letterSpacing: "-0.01em" }}>
+                      Hey! You don&apos;t have edit access
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowEditAccessPopup(false)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#9aa0a6",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        padding: "0 2px",
+                        lineHeight: 1,
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                      aria-label="Close message"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Document Status */}
@@ -729,9 +818,6 @@ export default function HomeboardPage() {
                   display: "flex",
                   flexDirection: "column",
                   gap: "14px",
-                  fontWeight: isBold ? 700 : 400,
-                  fontStyle: isItalic ? "italic" : "normal",
-                  textDecoration: isUnderline ? "underline" : "none",
                 }}
               >
                 <p style={{ margin: 0 }}>
