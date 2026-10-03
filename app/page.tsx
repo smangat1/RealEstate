@@ -316,8 +316,8 @@ export default function HomeboardPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          window.print();
                           setActiveMenu(null);
+                          setShowEditAccessPopup(true);
                         }}
                         style={{
                           width: "100%",
@@ -332,7 +332,7 @@ export default function HomeboardPage() {
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                       >
-                        Print / Save as PDF...
+                        Download Homeboard...
                       </button>
                       <button
                         type="button"
@@ -1137,16 +1137,22 @@ export default function HomeboardPage() {
                       height: "36px",
                       borderRadius: "50%",
                       backgroundColor: "#e8f0fe",
-                      color: "#1a73e8",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "18px",
                       flexShrink: 0,
                     }}
                     aria-hidden="true"
                   >
-                    🔒
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="#1a73e8"
+                      aria-hidden="true"
+                    >
+                      <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
+                    </svg>
                   </div>
                   <div>
                     <h3
@@ -1193,7 +1199,7 @@ export default function HomeboardPage() {
                   lineHeight: 1.55,
                 }}
               >
-                Hey! You don&apos;t have edit access. You are viewing this document in read-only mode. You can request edit access from the team or download an offline copy for yourself.
+                Hey! You don&apos;t have edit access. You are viewing this document in read-only mode. You can request edit access from the team or download Homeboard to sync your search.
               </p>
 
               {/* Download Option Box (Google Docs Style) */}
@@ -1212,38 +1218,39 @@ export default function HomeboardPage() {
               >
                 <div>
                   <div style={{ fontSize: "13px", fontWeight: 600, color: "#202124" }}>
-                    Download offline copy
+                    Download Homeboard
                   </div>
                   <div style={{ fontSize: "12px", color: "#5f6368" }}>
-                    Save as PDF or print this brief
+                    Available for iOS and Safari on Mac
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => {
-                    window.print();
                     setShowEditAccessPopup(false);
+                    setIsShareModalOpen(true);
                   }}
                   style={{
-                    backgroundColor: "#ffffff",
-                    border: "1px solid #dadce0",
+                    backgroundColor: "#1a73e8",
+                    border: "none",
                     borderRadius: "4px",
-                    padding: "6px 12px",
+                    padding: "7px 14px",
                     fontSize: "12px",
                     fontWeight: 500,
-                    color: "#1a73e8",
+                    color: "#ffffff",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
                     whiteSpace: "nowrap",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                    transition: "background-color 150ms ease",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1557b0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#1a73e8")}
                 >
-                  <span>Download as PDF ↓</span>
+                  <span>Download Homeboard ↓</span>
                 </button>
               </div>
 
