@@ -751,25 +751,6 @@ export default function HomeboardPage() {
                   <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-typo">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
                 </p>
 
-                <p style={{ margin: "4px 0 0 0" }}>
-                  <a
-                    href="#download"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowEditAccessPopup(true);
-                    }}
-                    style={{
-                      color: "#1a73e8",
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                      fontWeight: 500,
-                      fontSize: `${fontSizeChoice}px`,
-                      fontStyle: "italic",
-                    }}
-                  >
-                    <span className="doc-typo">[sync your search]</span>
-                  </a>
-                </p>
 
                 {/* Section Break / Notes on the Solution */}
                 <div
