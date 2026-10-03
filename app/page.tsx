@@ -119,12 +119,12 @@ export default function HomeboardPage() {
         }
 
         .doc-grammar {
-          text-decoration: underline wavy #1a73e8 !important;
+          text-decoration: underline wavy #ea4335 !important;
           text-decoration-skip-ink: none !important;
           text-underline-offset: 3px !important;
           -webkit-text-decoration-line: underline !important;
           -webkit-text-decoration-style: wavy !important;
-          -webkit-text-decoration-color: #1a73e8 !important;
+          -webkit-text-decoration-color: #ea4335 !important;
           -webkit-text-decoration-skip-ink: none !important;
         }
 
@@ -732,15 +732,15 @@ export default function HomeboardPage() {
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> want to move in with your best friends. <span className="doc-typo">you</span> guys <em>will</em> beat the housing market.
+                  <span className="doc-typo">you</span> want to move in with your best <span className="doc-typo">freinds</span>. <span className="doc-typo">you</span> guys <em>will</em> beat the <span className="doc-typo">hosuing</span> market.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> drop the link at midnight. <span className="doc-typo">someone</span> hearts it at 3 a.m. <span className="doc-typo">it’s</span> rented by 9 a.m.
+                  <span className="doc-typo">you</span> drop the link at <span className="doc-typo">midngiht</span>. <span className="doc-typo">somone</span> hearts it at 3 a.m. <span className="doc-typo">it’s</span> rented by 9 a.m.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> send <span className="doc-typo">hundres</span> of texts and emails to agents but <span className="doc-grammar">have to</span> settle for a place <span className="doc-grammar">that</span> you hate <span className="doc-grammar">anyway</span>.
+                  <span className="doc-typo">you</span> send <span className="doc-typo">hundres</span> of texts and emails to agents but have to settle for a <span className="doc-typo">plaec</span> you hate <span className="doc-typo">anyway</span>.
                 </p>
 
                 <p style={{ margin: 0 }}>
@@ -748,7 +748,7 @@ export default function HomeboardPage() {
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-grammar">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
+                  <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-typo">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
                 </p>
 
                 <p style={{ margin: "4px 0 0 0" }}>
@@ -767,7 +767,7 @@ export default function HomeboardPage() {
                       fontStyle: "italic",
                     }}
                   >
-                    [sync your search]
+                    <span className="doc-typo">[sync your search]</span>
                   </a>
                 </p>
 
@@ -813,8 +813,12 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>one-tap capture:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>Save listings from Safari into your board.</span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                        <span className="doc-typo">doomscroll</span> listings:
+                      </strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        save listings from <span className="doc-typo">safari</span> into your <span className="doc-typo">baord</span>.
+                      </span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -830,8 +834,12 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>commute math:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>Door-to-door transit times for everyone.</span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                        <span className="doc-typo">commute</span> math:
+                      </strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        door-to-door transit times for <span className="doc-typo">evryone</span>.
+                      </span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -847,8 +855,10 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>group shortlist:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>Vote and react on listings together.</span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                        <span className="doc-typo">group</span> shortlist:
+                      </strong>{" "}
+                      <span style={{ color: "#3c4043" }}>vote and react on listings together.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -864,8 +874,10 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>Homeboard Advisor:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>Automated outreach and texting with agents.</span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                        <span className="doc-typo">advisor</span>:
+                      </strong>{" "}
+                      <span style={{ color: "#3c4043" }}>automated outreach and texting with agents.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -881,25 +893,10 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>document locker:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>Submit paystubs, IDs, and W-2s instantly.</span>
-                    </div>
-
-                    <div style={{ paddingLeft: "16px", position: "relative" }}>
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          top: 0,
-                          color: "#5f6368",
-                          fontWeight: 600,
-                        }}
-                        aria-hidden="true"
-                      >
-                        -
-                      </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>deposit splits:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>Split holding deposits instantly via Apple Pay.</span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                        <span className="doc-typo">we</span> store nothing:
+                      </strong>{" "}
+                      <span style={{ color: "#3c4043" }}>it&apos;s not in our hands anyway.</span>
                     </div>
                   </div>
 
@@ -919,7 +916,7 @@ export default function HomeboardPage() {
                         fontStyle: "italic",
                       }}
                     >
-                      [sync your search]
+                      <span className="doc-typo">[sync your search]</span>
                     </a>
                   </p>
                 </div>
@@ -943,7 +940,9 @@ export default function HomeboardPage() {
                 position: "relative",
               }}
             >
-              <span>Homeboard</span>
+              <span>
+                <span className="doc-typo">homeboard</span>
+              </span>
 
               {/* Universal Blue Hyperlink for Privacy Policy */}
               <div style={{ position: "relative" }}>
@@ -1082,7 +1081,7 @@ export default function HomeboardPage() {
                     fontWeight: 500,
                   }}
                 >
-                  Privacy Policy
+                  <span className="doc-typo">privacy policy</span>
                 </a>
               </div>
             </footer>
