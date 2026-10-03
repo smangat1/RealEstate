@@ -4,18 +4,77 @@ import React, { useState, useEffect } from "react";
 
 export default function HomeboardPage() {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [fontChoice, setFontChoice] = useState<"serif" | "sans" | "mono">("serif");
+  const [fontSizeChoice, setFontSizeChoice] = useState(16);
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  const [isUnderline, setIsUnderline] = useState(false);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
+  // Close modals on Escape key
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsPrivacyOpen(false);
+        setIsShareModalOpen(false);
+        setActiveMenu(null);
       }
     }
-    if (isPrivacyOpen) {
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleShareClick = async () => {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Homeboard · apartment_search_brief",
+          text: "Homeboard: Finding an apartment without losing your mind",
+          url: window.location.href,
+        });
+        return;
+      } catch {
+        // Fallback to modal if user cancelled or share failed
+      }
     }
-  }, [isPrivacyOpen]);
+    setIsShareModalOpen(true);
+  };
+
+  const handleCopyLink = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    }
+  };
+
+  const cycleZoom = () => {
+    if (zoomLevel === 100) setZoomLevel(115);
+    else if (zoomLevel === 115) setZoomLevel(125);
+    else if (zoomLevel === 125) setZoomLevel(90);
+    else setZoomLevel(100);
+  };
+
+  const cycleFont = () => {
+    if (fontChoice === "serif") setFontChoice("sans");
+    else if (fontChoice === "sans") setFontChoice("mono");
+    else setFontChoice("serif");
+  };
+
+  const cycleFontSize = () => {
+    if (fontSizeChoice === 16) setFontSizeChoice(18);
+    else if (fontSizeChoice === 18) setFontSizeChoice(14);
+    else setFontSizeChoice(16);
+  };
+
+  const getComputedFontFamily = () => {
+    if (fontChoice === "serif") return 'Georgia, Cambria, "Times New Roman", Times, serif';
+    if (fontChoice === "sans") return '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    return 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+  };
 
   return (
     <>
@@ -44,7 +103,6 @@ export default function HomeboardPage() {
           box-sizing: border-box;
         }
 
-        /* Responsive overrides */
         @media (max-width: 640px) {
           .doc-desktop-only {
             display: none !important;
@@ -63,7 +121,7 @@ export default function HomeboardPage() {
         }
       `}</style>
 
-      {/* Full Window Shell styled like Google Docs / Word */}
+      {/* Main Document Editor Shell */}
       <div
         style={{
           minHeight: "100vh",
@@ -72,9 +130,12 @@ export default function HomeboardPage() {
           backgroundColor: "#f0f2f5",
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         }}
+        onClick={() => {
+          if (activeMenu) setActiveMenu(null);
+        }}
       >
         {/* ========================================================= */}
-        {/* DOCUMENT HEADER / APPLICATION BAR (Google Docs / Word style) */}
+        {/* TOP BAR / APPLICATION HEADER (Google Docs / Word Style)   */}
         {/* ========================================================= */}
         <header
           style={{
@@ -96,7 +157,7 @@ export default function HomeboardPage() {
               gap: "12px",
             }}
           >
-            {/* Left: Document Icon & Document Title */}
+            {/* Left: Document Icon & Title */}
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               {/* Blue Document Page Icon */}
               <div
@@ -117,7 +178,6 @@ export default function HomeboardPage() {
                 }}
                 aria-hidden="true"
               >
-                {/* Folded corner */}
                 <div
                   style={{
                     position: "absolute",
@@ -131,13 +191,12 @@ export default function HomeboardPage() {
                     borderTopRightRadius: "2px",
                   }}
                 />
-                {/* Document text lines */}
                 <div style={{ width: "12px", height: "2px", backgroundColor: "#1a73e8", borderRadius: "1px" }} />
                 <div style={{ width: "16px", height: "2px", backgroundColor: "#1a73e8", borderRadius: "1px" }} />
                 <div style={{ width: "10px", height: "2px", backgroundColor: "#8ab4f8", borderRadius: "1px" }} />
               </div>
 
-              {/* Title & Status */}
+              {/* Title, Badge & Functional Menu Bar */}
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                   <span
@@ -166,51 +225,217 @@ export default function HomeboardPage() {
                   </span>
                 </div>
 
-                {/* Submenu / Cloud Status */}
+                {/* Submenu Dropdowns (Functional) */}
                 <div
                   className="doc-desktop-only"
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "14px",
+                    gap: "10px",
                     fontSize: "12px",
                     color: "#5f6368",
                     marginTop: "2px",
+                    position: "relative",
                   }}
                 >
-                  <span style={{ cursor: "default" }}>File</span>
-                  <span style={{ cursor: "default" }}>Edit</span>
-                  <span style={{ cursor: "default" }}>View</span>
-                  <span style={{ cursor: "default" }}>Tools</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveMenu(activeMenu === "file" ? null : "file");
+                    }}
+                    style={{
+                      background: activeMenu === "file" ? "#f1f3f4" : "transparent",
+                      border: "none",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      color: "#444746",
+                      cursor: "pointer",
+                    }}
+                  >
+                    File
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveMenu(activeMenu === "view" ? null : "view");
+                    }}
+                    style={{
+                      background: activeMenu === "view" ? "#f1f3f4" : "transparent",
+                      border: "none",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      color: "#444746",
+                      cursor: "pointer",
+                    }}
+                  >
+                    View
+                  </button>
+
                   <span style={{ color: "#dadce0" }}>|</span>
                   <span style={{ fontSize: "11px", color: "#70757a" }}>Saved to Homeboard Cloud</span>
+
+                  {/* File Dropdown Menu */}
+                  {activeMenu === "file" && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        marginTop: "4px",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #dadce0",
+                        borderRadius: "6px",
+                        boxShadow: "0 4px 12px rgba(60,64,67,0.18)",
+                        padding: "6px 0",
+                        minWidth: "180px",
+                        zIndex: 50,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.print();
+                          setActiveMenu(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "6px 16px",
+                          background: "none",
+                          border: "none",
+                          fontSize: "12px",
+                          color: "#202124",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        Print / Save as PDF...
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleCopyLink();
+                          setActiveMenu(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "6px 16px",
+                          background: "none",
+                          border: "none",
+                          fontSize: "12px",
+                          color: "#202124",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        Copy link
+                      </button>
+                    </div>
+                  )}
+
+                  {/* View Dropdown Menu */}
+                  {activeMenu === "view" && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: "36px",
+                        marginTop: "4px",
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #dadce0",
+                        borderRadius: "6px",
+                        boxShadow: "0 4px 12px rgba(60,64,67,0.18)",
+                        padding: "6px 0",
+                        minWidth: "160px",
+                        zIndex: 50,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cycleZoom();
+                          setActiveMenu(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "6px 16px",
+                          background: "none",
+                          border: "none",
+                          fontSize: "12px",
+                          color: "#202124",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        Zoom: {zoomLevel}%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cycleFont();
+                          setActiveMenu(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "6px 16px",
+                          background: "none",
+                          border: "none",
+                          fontSize: "12px",
+                          color: "#202124",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        Switch Font
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Right: Document Viewing Mode Badge (Clean, no 2 ppl viewing) */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div
+            {/* Right: Functional "Share / Install" Button */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={handleShareClick}
                 style={{
+                  backgroundColor: "#1a73e8",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "20px",
+                  padding: "6px 16px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: "5px",
-                  backgroundColor: "#e8f0fe",
-                  color: "#1967d2",
-                  border: "1px solid #d2e3fc",
-                  borderRadius: "16px",
-                  padding: "4px 12px",
-                  fontSize: "12px",
-                  fontWeight: 500,
+                  gap: "6px",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                  transition: "background-color 150ms ease",
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1557b0")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#1a73e8")}
               >
-                <span>Viewing</span>
-              </div>
+                <span>Share / Install</span>
+              </button>
             </div>
           </div>
 
           {/* ========================================================= */}
-          {/* DOCUMENT TOOLBAR RIBBON (Google Docs / Word Toolbar)      */}
+          {/* FUNCTIONAL TOOLBAR RIBBON (Google Docs / Word Toolbar)    */}
           {/* ========================================================= */}
           <div
             style={{
@@ -224,9 +449,13 @@ export default function HomeboardPage() {
               color: "#444746",
             }}
           >
-            {/* Toolbar Buttons (Clean: No link mode) */}
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto" }}>
-              <span
+            {/* Functional Formatting Buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: "4px", overflowX: "auto" }}>
+              {/* Zoom Button */}
+              <button
+                type="button"
+                onClick={cycleZoom}
+                title="Change Document Zoom"
                 style={{
                   padding: "3px 8px",
                   borderRadius: "4px",
@@ -234,11 +463,18 @@ export default function HomeboardPage() {
                   border: "1px solid #dadce0",
                   fontWeight: 500,
                   fontSize: "11px",
+                  color: "#444746",
+                  cursor: "pointer",
                 }}
               >
-                100% ▾
-              </span>
-              <span
+                {zoomLevel}% ▾
+              </button>
+
+              {/* Font Selector Button */}
+              <button
+                type="button"
+                onClick={cycleFont}
+                title="Cycle Font Family (Serif / Sans / Mono)"
                 className="doc-desktop-only"
                 style={{
                   padding: "3px 8px",
@@ -246,11 +482,19 @@ export default function HomeboardPage() {
                   backgroundColor: "#ffffff",
                   border: "1px solid #dadce0",
                   fontSize: "11px",
+                  color: "#444746",
+                  cursor: "pointer",
+                  textTransform: "capitalize",
                 }}
               >
-                Georgia ▾
-              </span>
-              <span
+                {fontChoice === "serif" ? "Georgia ▾" : fontChoice === "sans" ? "Sans ▾" : "Mono ▾"}
+              </button>
+
+              {/* Font Size Button */}
+              <button
+                type="button"
+                onClick={cycleFontSize}
+                title="Cycle Font Size"
                 className="doc-desktop-only"
                 style={{
                   padding: "3px 8px",
@@ -258,56 +502,74 @@ export default function HomeboardPage() {
                   backgroundColor: "#ffffff",
                   border: "1px solid #dadce0",
                   fontSize: "11px",
+                  color: "#444746",
+                  cursor: "pointer",
                 }}
               >
-                11 ▾
-              </span>
+                {fontSizeChoice} ▾
+              </button>
+
               <span className="doc-desktop-only" style={{ color: "#dadce0", margin: "0 2px" }}>|</span>
-              <span
+
+              {/* Bold Button */}
+              <button
+                type="button"
+                onClick={() => setIsBold(!isBold)}
+                title="Toggle Bold"
                 className="doc-desktop-only"
                 style={{
-                  padding: "3px 6px",
+                  padding: "3px 8px",
                   borderRadius: "4px",
                   fontWeight: 700,
                   fontSize: "12px",
+                  backgroundColor: isBold ? "#d3e3fd" : "transparent",
+                  border: isBold ? "1px solid #a8c7fa" : "1px solid transparent",
+                  color: "#202124",
+                  cursor: "pointer",
                 }}
               >
                 B
-              </span>
-              <span
+              </button>
+
+              {/* Italic Button */}
+              <button
+                type="button"
+                onClick={() => setIsItalic(!isItalic)}
+                title="Toggle Italic"
                 className="doc-desktop-only"
                 style={{
-                  padding: "3px 6px",
+                  padding: "3px 8px",
                   borderRadius: "4px",
                   fontStyle: "italic",
                   fontSize: "12px",
+                  backgroundColor: isItalic ? "#d3e3fd" : "transparent",
+                  border: isItalic ? "1px solid #a8c7fa" : "1px solid transparent",
+                  color: "#202124",
+                  cursor: "pointer",
                 }}
               >
                 I
-              </span>
-              <span
+              </button>
+
+              {/* Underline Button */}
+              <button
+                type="button"
+                onClick={() => setIsUnderline(!isUnderline)}
+                title="Toggle Underline"
                 className="doc-desktop-only"
                 style={{
-                  padding: "3px 6px",
+                  padding: "3px 8px",
                   borderRadius: "4px",
                   textDecoration: "underline",
                   fontSize: "12px",
+                  backgroundColor: isUnderline ? "#d3e3fd" : "transparent",
+                  border: isUnderline ? "1px solid #a8c7fa" : "1px solid transparent",
+                  color: "#202124",
+                  cursor: "pointer",
                 }}
               >
                 U
-              </span>
-              <span
-                className="doc-desktop-only"
-                style={{
-                  padding: "3px 6px",
-                  borderRadius: "4px",
-                  color: "#1a73e8",
-                  fontWeight: 600,
-                  fontSize: "12px",
-                }}
-              >
-                A
-              </span>
+              </button>
             </div>
 
             {/* Document Status */}
@@ -352,6 +614,7 @@ export default function HomeboardPage() {
               justifyContent: "space-between",
               position: "relative",
               minHeight: "860px",
+              zoom: `${zoomLevel}%`,
             }}
           >
             <div>
@@ -373,11 +636,11 @@ export default function HomeboardPage() {
                 <span>last edited 12m ago</span>
               </div>
 
-              {/* Document Title (Serif Editorial) */}
+              {/* Document Title */}
               <h1
                 style={{
-                  fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif',
-                  fontSize: "26px",
+                  fontFamily: getComputedFontFamily(),
+                  fontSize: `${fontSizeChoice + 10}px`,
                   fontWeight: 700,
                   lineHeight: 1.3,
                   color: "#202124",
@@ -385,19 +648,22 @@ export default function HomeboardPage() {
                   margin: "0 0 20px 0",
                 }}
               >
-                notes on finding an apartment without losing your mind
+                finding an apartment without losing your mind
               </h1>
 
               {/* Document Body: Candid, stream-of-consciousness, unpolished note */}
               <div
                 style={{
-                  fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif',
-                  fontSize: "16px",
+                  fontFamily: getComputedFontFamily(),
+                  fontSize: `${fontSizeChoice}px`,
                   lineHeight: 1.75,
                   color: "#202124",
                   display: "flex",
                   flexDirection: "column",
                   gap: "14px",
+                  fontWeight: isBold ? 700 : 400,
+                  fontStyle: isItalic ? "italic" : "normal",
+                  textDecoration: isUnderline ? "underline" : "none",
                 }}
               >
                 <p style={{ margin: 0 }}>
@@ -697,6 +963,159 @@ export default function HomeboardPage() {
             </footer>
           </article>
         </main>
+
+        {/* ========================================================= */}
+        {/* SHARE / INSTALL MODAL DIALOG                              */}
+        {/* ========================================================= */}
+        {isShareModalOpen && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(32, 33, 36, 0.4)",
+              backdropFilter: "blur(2px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 60,
+              padding: "16px",
+            }}
+            onClick={() => setIsShareModalOpen(false)}
+          >
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                borderRadius: "8px",
+                boxShadow: "0 8px 28px rgba(0, 0, 0, 0.28)",
+                width: "100%",
+                maxWidth: "460px",
+                padding: "20px 24px",
+                position: "relative",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "16px",
+                  borderBottom: "1px solid #e8eaed",
+                  paddingBottom: "12px",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    color: "#202124",
+                  }}
+                >
+                  Share / Install Homeboard
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsShareModalOpen(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "16px",
+                    color: "#5f6368",
+                    cursor: "pointer",
+                    padding: "4px",
+                  }}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Share Section */}
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#5f6368",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Share Document Link
+                </label>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input
+                    type="text"
+                    readOnly
+                    value={typeof window !== "undefined" ? window.location.href : "https://real-estate-samyanmangat-6662s-projects.vercel.app"}
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      fontSize: "13px",
+                      borderRadius: "4px",
+                      border: "1px solid #dadce0",
+                      backgroundColor: "#f8f9fa",
+                      color: "#3c4043",
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    style={{
+                      backgroundColor: copiedLink ? "#1e8e3e" : "#1a73e8",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "8px 14px",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      transition: "background-color 150ms ease",
+                    }}
+                  >
+                    {copiedLink ? "✓ Copied" : "Copy Link"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Install Section */}
+              <div
+                style={{
+                  backgroundColor: "#f8f9fa",
+                  border: "1px solid #e8eaed",
+                  borderRadius: "6px",
+                  padding: "14px 16px",
+                }}
+              >
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#5f6368",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Install App or Extension
+                </label>
+                <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
+                  <strong>iOS Safari:</strong> Tap the Share button <span style={{ fontFamily: "monospace" }}>[↑]</span> at the bottom of your browser, then tap <strong>&ldquo;Add to Home Screen&rdquo;</strong>.
+                </p>
+                <p style={{ margin: 0, fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
+                  <strong>Mac Safari:</strong> Visit <a href="/safari" style={{ color: "#1a73e8", textDecoration: "underline" }}>Homeboard for Safari</a> to install the extension.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
