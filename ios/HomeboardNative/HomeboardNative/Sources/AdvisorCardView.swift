@@ -46,6 +46,14 @@ enum AdvisorDraftSafety {
   }
 }
 
+enum AdvisorCardMemorySignalPolicy {
+  static func toneSwitched() -> [AdvisorDraftOutcome] { [] }
+  static func includeToggled() -> [AdvisorDraftOutcome] { [] }
+  static func draftRejected(afterPersistedToneChange: Bool) -> [AdvisorDraftOutcome] {
+    afterPersistedToneChange ? [.revised, .rejected] : [.rejected]
+  }
+}
+
 struct AdvisorCardView: View {
   @Environment(AppModel.self) private var appModel
 
@@ -53,6 +61,12 @@ struct AdvisorCardView: View {
 
   @State private var payload: AdvisorMessagePayload?
   @State private var selectedTone: String
+  @State private var selectedTemplateId: String
+  @State private var memoryReason: String?
+  @State private var memorySummary: String?
+  @State private var hasExplicitToneSelection: Bool
+  @State private var requestedToneRevision: String?
+  @State private var hasPersistedToneRevision = false
   @State private var toggles: [AdvisorToggleOption]
   @State private var isRegenerating = false
   @State private var regenerationTask: Task<Void, Never>?
@@ -71,6 +85,11 @@ struct AdvisorCardView: View {
     let initialTone = initialPayload.map(\.tone).flatMap { Self.tones.contains($0) ? $0 : nil } ?? "Professional"
     _payload = State(initialValue: initialPayload)
     _selectedTone = State(initialValue: initialTone)
+    _selectedTemplateId = State(initialValue: initialPayload?.templateId ?? AdvisorOutcomeMemory.standardTemplate)
+    _memoryReason = State(initialValue: nil)
+    _memorySummary = State(initialValue: nil)
+    _hasExplicitToneSelection = State(initialValue: initialPayload?.toneWasExplicit == true)
+    _requestedToneRevision = State(initialValue: nil)
     _toggles = State(initialValue: initialPayload?.toggleOptions ?? [])
   }
 
@@ -88,6 +107,9 @@ struct AdvisorCardView: View {
       // Keep generation alive if user scrolls within thread
     }
     .task {
+      if let payload, shouldAutomaticallyRegenerate(payload) {
+        applyMemoryDefault(payload)
+      }
       if payload.map(shouldAutomaticallyRegenerate) == true {
         scheduleRegeneration(delayNanoseconds: 0)
       }
@@ -100,6 +122,7 @@ struct AdvisorCardView: View {
       }
       toggles = incomingPayload.toggleOptions
       if shouldAutomaticallyRegenerate(incomingPayload) {
+        applyMemoryDefault(incomingPayload)
         scheduleRegeneration(delayNanoseconds: 0)
       }
     }
@@ -139,10 +162,20 @@ struct AdvisorCardView: View {
           boardListingId: payload?.targetListingBoardId,
           snapshot: AdvisorFeedbackSnapshot(
             tone: payload?.tone ?? selectedTone,
+            templateId: payload?.templateId ?? selectedTemplateId,
             generationSource: payload?.generationSource,
             executionStatus: payload?.executionStatus
           )
         )
+        if let payload {
+          recordMemorySignals(
+            AdvisorCardMemorySignalPolicy.draftRejected(
+              afterPersistedToneChange: hasPersistedToneRevision
+            ),
+            for: payload,
+            reasonCode: reason?.rawValue
+          )
+        }
         appModel.showAdvisorConfirmation(saved ? "Feedback recorded. Draft dismissed." : "Saved on this device only. Draft dismissed.")
         return saved
       }
@@ -249,7 +282,13 @@ struct AdvisorCardView: View {
               let isSelected = selectedTone == tone
               Button {
                 guard selectedTone != tone else { return }
+                if let payload {
+                  recordMemorySignals(AdvisorCardMemorySignalPolicy.toneSwitched(), for: payload)
+                }
                 selectedTone = tone
+                hasExplicitToneSelection = true
+                requestedToneRevision = tone
+                memoryReason = nil
                 scheduleRegeneration()
               } label: {
                 Text(tone.replacingOccurrences(of: "-", with: " "))
@@ -273,6 +312,13 @@ struct AdvisorCardView: View {
         }
       }
 
+      if let memoryReason {
+        Text(memoryReason)
+          .font(.caption)
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .accessibilityIdentifier("homeboard.advisor.memory-reason.\(message.id)")
+      }
+
       if !toggles.isEmpty {
         VStack(alignment: .leading, spacing: 5) {
           Text("INCLUDE")
@@ -287,6 +333,9 @@ struct AdvisorCardView: View {
                 let isRequired = toggles[index].required
                 Button {
                   guard !isRequired else { return }
+                  if let payload {
+                    recordMemorySignals(AdvisorCardMemorySignalPolicy.includeToggled(), for: payload)
+                  }
                   toggles[index].enabled.toggle()
                   scheduleRegeneration()
                 } label: {
@@ -444,7 +493,10 @@ struct AdvisorCardView: View {
           tone: tone,
           toggles: selectedToggles,
           financialDisclosure: currentPayload.financialDisclosure,
-          groupFinances: financeStatus?.group
+          groupFinances: financeStatus?.group,
+          templateId: selectedTemplateId,
+          memorySummary: memorySummary,
+          toneWasExplicit: hasExplicitToneSelection
         )
         guard revision == regenerationRevision, !Task.isCancelled else { return }
         guard let next = response.advisorPayload,
@@ -460,13 +512,18 @@ struct AdvisorCardView: View {
           response,
           payload: next,
           expectedBoardId: expectedBoardId,
-          expectedMessageId: expectedMessageId
+          expectedMessageId: expectedMessageId,
+          recordAcceptance: false
         ) else {
           throw HomeboardAPIError.server(
             "The board or Advisor card changed before the saved draft returned. Sending remains blocked."
           )
         }
         payload = applied
+        if requestedToneRevision == applied.tone {
+          hasPersistedToneRevision = true
+          requestedToneRevision = nil
+        }
         dispatchMessage = nil
       } catch is CancellationError {
         return
@@ -474,6 +531,25 @@ struct AdvisorCardView: View {
         guard revision == regenerationRevision, !Task.isCancelled else { return }
         dispatchMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
       }
+    }
+  }
+
+  private func applyMemoryDefault(_ currentPayload: AdvisorMessagePayload) {
+    let explicitTone = hasExplicitToneSelection ? currentPayload.tone : nil
+    let selection = appModel.advisorMemorySelection(for: currentPayload, explicitTone: explicitTone)
+    selectedTone = selection.tone
+    selectedTemplateId = selection.templateId
+    memoryReason = selection.reason
+    memorySummary = selection.promptSummary
+  }
+
+  private func recordMemorySignals(
+    _ outcomes: [AdvisorDraftOutcome],
+    for payload: AdvisorMessagePayload,
+    reasonCode: String? = nil
+  ) {
+    for outcome in outcomes {
+      appModel.recordAdvisorOutcome(payload, outcome: outcome, reasonCode: reasonCode)
     }
   }
 
@@ -534,7 +610,10 @@ struct AdvisorCardView: View {
         tone: selectedTone,
         toggles: toggles,
         financialDisclosure: mode,
-        groupFinances: status.group
+        groupFinances: status.group,
+        templateId: selectedTemplateId,
+        memorySummary: memorySummary,
+        toneWasExplicit: hasExplicitToneSelection
       )
       guard let accepted = response.advisorPayload,
             AdvisorDraftSafety.isPersistedDraftReady(

@@ -116,6 +116,7 @@ struct AdvisorFeedbackSnapshot: Encodable {
   var source: String? = nil
   var changeFields: [String]? = nil
   var tone: String? = nil
+  var templateId: String? = nil
   var generationSource: String? = nil
   var executionStatus: String? = nil
 }

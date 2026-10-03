@@ -139,6 +139,7 @@ final class AppModel {
   }
 
   @ObservationIgnored private let api: HomeboardAPI
+  @ObservationIgnored private let advisorOutcomeMemory: AdvisorOutcomeMemory
   @ObservationIgnored private var didBootstrap = false
   @ObservationIgnored private var didFinishBootstrap = false
   @ObservationIgnored private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
@@ -281,8 +282,13 @@ final class AppModel {
   @ObservationIgnored var uiTestDraftGenerator: ((AdvisorMessagePayload, String, [AdvisorToggleOption], String?, String) async -> AdvisorDraftGeneration)?
   #endif
 
-  init(api: HomeboardAPI = HomeboardAPI()) {
+  convenience init(api: HomeboardAPI = HomeboardAPI()) {
+    self.init(api: api, advisorOutcomeMemory: .shared)
+  }
+
+  init(api: HomeboardAPI, advisorOutcomeMemory: AdvisorOutcomeMemory) {
     self.api = api
+    self.advisorOutcomeMemory = advisorOutcomeMemory
     #if DEBUG
     let resetsForUITesting = ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") || UITestFixtureState.enabled
     #else
@@ -294,6 +300,7 @@ final class AppModel {
       }
       UserDefaults.standard.set(0, forKey: "homeboard.debug.welcomePage")
       NativeAuthSessionStore.delete()
+      advisorOutcomeMemory.clear()
     }
     restore()
     removePersistedStressTestListings()
@@ -1054,7 +1061,10 @@ final class AppModel {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialDisclosure: String? = nil,
-    groupFinances: AdvisorGroupFinancialStatus? = nil
+    groupFinances: AdvisorGroupFinancialStatus? = nil,
+    templateId: String? = nil,
+    memorySummary: String? = nil,
+    toneWasExplicit: Bool? = nil
   ) async throws -> MobileBoardLoadResponse {
     guard let session = authSession, let boardId = board.id else {
       throw HomeboardAPIError.missingSession
@@ -1079,7 +1089,9 @@ final class AppModel {
     } else {
       generated = await AdvisorDraftGenerator.generate(
         payload: payload, tone: tone, toggles: toggles, financialSentence: sentence,
-        senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants"
+        senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants",
+        templateId: templateId ?? payload.templateId ?? AdvisorOutcomeMemory.standardTemplate,
+        memorySummary: memorySummary
       )
       if UITestFixtureState.enabled {
         UITestFixtureState.shared.recordRealGeneration(payload: payload, tone: tone, toggles: toggles, output: generated)
@@ -1091,7 +1103,9 @@ final class AppModel {
       tone: tone,
       toggles: toggles,
       financialSentence: sentence,
-      senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants"
+      senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants",
+      templateId: templateId ?? payload.templateId ?? AdvisorOutcomeMemory.standardTemplate,
+      memorySummary: memorySummary
     )
     #endif
     var accepted = payload
@@ -1102,6 +1116,8 @@ final class AppModel {
     accepted.missingInputs = []
     accepted.generationSource = generated.source
     accepted.financialDisclosure = disclosure
+    accepted.templateId = generated.templateId
+    accepted.toneWasExplicit = toneWasExplicit ?? payload.toneWasExplicit
     let generationTimestamp = ISO8601DateFormatter()
     generationTimestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     accepted.clientGeneratedAt = generationTimestamp.string(from: Date())
@@ -1159,7 +1175,8 @@ final class AppModel {
     _ response: MobileBoardLoadResponse,
     payload: AdvisorMessagePayload,
     expectedBoardId: String,
-    expectedMessageId: String?
+    expectedMessageId: String?,
+    recordAcceptance: Bool = true
   ) -> AdvisorMessagePayload? {
     guard board.id == expectedBoardId,
           response.board.id == expectedBoardId,
@@ -1179,7 +1196,43 @@ final class AppModel {
     profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
     storeCurrentBoardSnapshot()
     persist()
+    if recordAcceptance {
+      recordAdvisorOutcome(payload, outcome: .accepted)
+    }
     return payload
+  }
+
+  func advisorMemorySelection(
+    for payload: AdvisorMessagePayload,
+    explicitTone: String?
+  ) -> AdvisorMemorySelection {
+    advisorOutcomeMemory.selection(
+      userId: authSession?.userId ?? account?.id ?? "local",
+      boardId: board.id ?? "local",
+      listingId: payload.targetListingBoardId,
+      fallbackTone: payload.tone,
+      explicitTone: explicitTone,
+      boardFeedback: payload.context?.picker?.boardFeedback
+    )
+  }
+
+  func recordAdvisorOutcome(
+    _ payload: AdvisorMessagePayload,
+    outcome: AdvisorDraftOutcome,
+    reasonCode: String? = nil
+  ) {
+    guard let boardId = board.id, let messageId = payload.messageId else { return }
+    advisorOutcomeMemory.record(AdvisorDraftOutcomeRecord(
+      userId: authSession?.userId ?? account?.id ?? "local",
+      boardId: boardId,
+      listingId: payload.targetListingBoardId,
+      messageId: messageId,
+      templateId: payload.templateId ?? AdvisorOutcomeMemory.standardTemplate,
+      tone: payload.tone,
+      outcome: outcome,
+      reasonCode: reasonCode,
+      timestamp: Date()
+    ))
   }
 
   func refreshAdvisorWalletStatus() async {
@@ -1425,6 +1478,7 @@ final class AppModel {
       guard authSession?.userId == session.userId, board.id == boardId,
             response.outreachEvidence?.recorded == true else { return false }
       applyRemoteMutation(response, clearing: [])
+      recordAdvisorOutcome(payload, outcome: .sent)
       showAdvisorConfirmation("Marked sent.")
       return true
     } catch {
@@ -1457,10 +1511,19 @@ final class AppModel {
       return []
     }
     do {
-      return try await api.loadAdvisorReplyThreads(
+      let threads = try await api.loadAdvisorReplyThreads(
         accessToken: session.accessToken,
         boardId: boardId
       )
+      for thread in threads where thread.status == "stale" || thread.status == "answered" {
+        advisorOutcomeMemory.recordDerivedOutcome(
+          userId: session.userId,
+          boardId: boardId,
+          listingId: thread.listingId,
+          outcome: thread.status == "answered" ? .replied : .stale
+        )
+      }
+      return threads
     } catch {
       boardError = readable(error)
       return []
@@ -1493,6 +1556,12 @@ final class AppModel {
         return nil
       }
       applyRemoteMutation(response, clearing: [.activity, .shortlist])
+      advisorOutcomeMemory.recordDerivedOutcome(
+        userId: session.userId,
+        boardId: boardId,
+        listingId: listingId,
+        outcome: .replied
+      )
       showAdvisorConfirmation(
         log.followUpCancelled
           ? "Reply logged. Follow-up cancelled."
@@ -1630,8 +1699,12 @@ final class AppModel {
 
   func signOut() {
     let session = authSession
+    let memoryUserId = session?.userId ?? account?.id
     let pushToken = UserDefaults.standard.string(forKey: pushTokenKey)
     let apiClient = api
+    if let memoryUserId {
+      advisorOutcomeMemory.clear(userId: memoryUserId)
+    }
     NativeAuthSessionStore.delete()
     clearSessionState()
     persist()
@@ -1695,6 +1768,7 @@ final class AppModel {
     Task {
       do {
         try await api.deleteAccount(accessToken: session.accessToken)
+        advisorOutcomeMemory.clear(userId: session.userId)
         HomeboardShareDiagnosticStore.clear()
         HomeboardShareBootDiagnosticStore.clear()
         NativeAuthSessionStore.delete()

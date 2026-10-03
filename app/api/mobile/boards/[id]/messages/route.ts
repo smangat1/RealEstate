@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
 import { normalizeAdvisorTone, runAdvisorEngine } from "@/lib/advisor-engine";
+import { loadAdvisorDraftFeedback, settledAdvisorFeedback } from "@/lib/advisor-memory";
 import { stageAdvisorPreferenceProposal } from "@/lib/advisor-preference-service";
 import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { getBoardPageData, sendChat } from "@/lib/board-data";
@@ -41,6 +42,8 @@ const acceptedAdvisorSchema = z.object({
     executionStatus: z.literal("draft_ready"),
     generationSource: z.enum(["apple_intelligence", "device_template"]),
     financialDisclosure: z.enum(["available_on_request", "combined_range", "omit"]),
+    templateId: z.string().trim().min(1).max(64).optional(),
+    toneWasExplicit: z.boolean().optional(),
     clientGeneratedAt: z.string().datetime(),
   }).passthrough(),
 });
@@ -78,10 +81,36 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (advisorMessage) {
       const now = new Date();
-      const subscription = await prisma.advisorSubscription.findUnique({
-        where: { boardId: id },
-        select: { validUntil: true },
+      const feedbackLookup = loadAdvisorDraftFeedback({
+        query: () => prisma.advisorFeedback.findMany({
+          where: { boardId: id, subjectType: "draft" },
+          select: { subjectId: true, signal: true, reasonCode: true, snapshot: true },
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        }),
+        diagnostic: (message) => console.info(message),
       });
+      const [subscription, outreachHistory] = await Promise.all([
+        prisma.advisorSubscription.findUnique({
+          where: { boardId: id },
+          select: { validUntil: true },
+        }),
+        prisma.brokerOutreachRecord.findMany({
+          where: { boardListing: { boardId: id } },
+          select: {
+            boardListingId: true,
+            status: true,
+            templateKey: true,
+            contactedAt: true,
+            sentAt: true,
+            answeredAt: true,
+            staleAt: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        }),
+      ]);
       const subscriptionActive = hasAdvisorTestAccess(user)
         || Boolean(subscription?.validUntil && subscription.validUntil >= now);
       if (!subscriptionActive) {
@@ -103,6 +132,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         command: parsed.data.content,
         tone: parsed.data.tone ? normalizeAdvisorTone(parsed.data.tone) : undefined,
         now,
+        outreachHistory: outreachHistory.map((entry) => ({
+          ...entry,
+          status: String(entry.status),
+          templateId: entry.templateKey,
+        })),
+        boardFeedback: await settledAdvisorFeedback(feedbackLookup),
       });
 
       // Use the originating message id so the client can match its existing chat bubble.
@@ -322,6 +357,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         executionStatus: "draft_ready",
         generationSource: parsed.data.payload.generationSource,
         financialDisclosure: parsed.data.payload.financialDisclosure,
+        templateId: parsed.data.payload.templateId ?? currentPayload.templateId ?? "availability_standard",
+        toneWasExplicit: parsed.data.payload.toneWasExplicit ?? currentPayload.toneWasExplicit ?? false,
         acceptedAt: new Date().toISOString(),
         clientGeneratedAt: parsed.data.payload.clientGeneratedAt,
       };
