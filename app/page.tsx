@@ -361,7 +361,7 @@ export default function HomeboardPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          cycleZoom();
+                          setZoomLevel(100);
                           setActiveMenu(null);
                         }}
                         style={{
@@ -377,7 +377,7 @@ export default function HomeboardPage() {
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                       >
-                        Zoom: {zoomLevel}%
+                        {zoomLevel === 100 ? "Zoom: 100%" : "Reset Zoom to 100%"}
                       </button>
                       <button
                         type="button"
@@ -451,63 +451,131 @@ export default function HomeboardPage() {
           >
             {/* Functional Formatting Buttons */}
             <div style={{ display: "flex", alignItems: "center", gap: "4px", overflowX: "auto" }}>
-              {/* Zoom Button */}
-              <button
-                type="button"
-                onClick={cycleZoom}
-                title="Change Document Zoom"
-                style={{
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #dadce0",
-                  fontWeight: 500,
-                  fontSize: "11px",
-                  color: "#444746",
-                  cursor: "pointer",
-                }}
-              >
-                {zoomLevel}% ▾
-              </button>
+              {/* Zoom Dropdown Select */}
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                <select
+                  value={zoomLevel}
+                  onChange={(e) => setZoomLevel(Number(e.target.value))}
+                  aria-label="Zoom level"
+                  style={{
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    MozAppearance: "none",
+                    padding: "3px 20px 3px 8px",
+                    borderRadius: "4px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #dadce0",
+                    fontWeight: 500,
+                    fontSize: "11px",
+                    color: "#444746",
+                    cursor: "pointer",
+                    outline: "none",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  <option value={50}>50%</option>
+                  <option value={75}>75%</option>
+                  <option value={90}>90%</option>
+                  <option value={100}>100%</option>
+                  <option value={115}>115%</option>
+                  <option value={125}>125%</option>
+                  <option value={150}>150%</option>
+                  <option value={200}>200%</option>
+                </select>
+                <span
+                  style={{
+                    position: "absolute",
+                    right: "6px",
+                    pointerEvents: "none",
+                    fontSize: "8px",
+                    color: "#5f6368",
+                  }}
+                  aria-hidden="true"
+                >
+                  ▼
+                </span>
+              </div>
 
-              {/* Font Selector Button */}
-              <button
-                type="button"
-                onClick={cycleFont}
-                title="Cycle Font Family (Serif / Sans / Mono)"
-                className="doc-desktop-only"
-                style={{
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #dadce0",
-                  fontSize: "11px",
-                  color: "#444746",
-                  cursor: "pointer",
-                  textTransform: "capitalize",
-                }}
-              >
-                {fontChoice === "serif" ? "Georgia ▾" : fontChoice === "sans" ? "Sans ▾" : "Mono ▾"}
-              </button>
+              {/* Font Dropdown Select */}
+              <div className="doc-desktop-only" style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                <select
+                  value={fontChoice}
+                  onChange={(e) => setFontChoice(e.target.value as "serif" | "sans" | "mono")}
+                  aria-label="Font family"
+                  style={{
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    MozAppearance: "none",
+                    padding: "3px 20px 3px 8px",
+                    borderRadius: "4px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #dadce0",
+                    fontSize: "11px",
+                    color: "#444746",
+                    cursor: "pointer",
+                    outline: "none",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  <option value="serif">Georgia (Serif)</option>
+                  <option value="sans">System (Sans)</option>
+                  <option value="mono">Monospace</option>
+                </select>
+                <span
+                  style={{
+                    position: "absolute",
+                    right: "6px",
+                    pointerEvents: "none",
+                    fontSize: "8px",
+                    color: "#5f6368",
+                  }}
+                  aria-hidden="true"
+                >
+                  ▼
+                </span>
+              </div>
 
-              {/* Font Size Button */}
-              <button
-                type="button"
-                onClick={cycleFontSize}
-                title="Cycle Font Size"
-                className="doc-desktop-only"
-                style={{
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #dadce0",
-                  fontSize: "11px",
-                  color: "#444746",
-                  cursor: "pointer",
-                }}
-              >
-                {fontSizeChoice} ▾
-              </button>
+              {/* Font Size Dropdown Select */}
+              <div className="doc-desktop-only" style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                <select
+                  value={fontSizeChoice}
+                  onChange={(e) => setFontSizeChoice(Number(e.target.value))}
+                  aria-label="Font size"
+                  style={{
+                    appearance: "none",
+                    WebkitAppearance: "none",
+                    MozAppearance: "none",
+                    padding: "3px 18px 3px 8px",
+                    borderRadius: "4px",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #dadce0",
+                    fontSize: "11px",
+                    color: "#444746",
+                    cursor: "pointer",
+                    outline: "none",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  <option value={12}>12</option>
+                  <option value={14}>14</option>
+                  <option value={16}>16</option>
+                  <option value={18}>18</option>
+                  <option value={20}>20</option>
+                  <option value={24}>24</option>
+                </select>
+                <span
+                  style={{
+                    position: "absolute",
+                    right: "5px",
+                    pointerEvents: "none",
+                    fontSize: "8px",
+                    color: "#5f6368",
+                  }}
+                  aria-hidden="true"
+                >
+                  ▼
+                </span>
+              </div>
 
               <span className="doc-desktop-only" style={{ color: "#dadce0", margin: "0 2px" }}>|</span>
 
@@ -667,19 +735,23 @@ export default function HomeboardPage() {
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  it&apos;s always the same story.
+                  it&apos;s always the same story in New York.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you find an apartment on StreetEasy at midnight. you drop the link into iMessage—or bookmark it yourself. hours pass before everyone sees it. by the time you reach out the next day, forty other applicants have emailed the broker, the open house is full, and the listing is gone.
+                  you find an apartment on StreetEasy at midnight. you drop the link into iMessage or WhatsApp. hours pass. someone is at work, someone is asleep, someone doesn&apos;t check the chat until lunch. by the time everyone sees it and agrees to tour, forty other applicants have already emailed the broker, the open house is full, and the listing is gone.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  rental search in NYC is broken whether you&apos;re coordinating three roommates, moving with a partner, or searching solo. you have links scattered across chats, spreadsheets nobody maintains, and zero coordination when a good unit drops. by the time everyone agrees on who emails the broker and gathers their tax returns, someone else signs the lease.
+                  searching for an apartment has turned into an unpaid, high-stress administrative job. whether you&apos;re coordinating three roommates, moving with a partner, or searching solo, the friction is everywhere: links scattered across fifteen browser tabs, dead spreadsheets nobody maintains, arguing about subway transfers, and scrambling to dig up last year&apos;s W-2s when an agent demands an application packet within two hours.
                 </p>
 
-                <p style={{ margin: "6px 0 0 0", color: "#444746", fontWeight: 500 }}>
-                  we built Homeboard around three things to fix this:
+                <p style={{ margin: 0 }}>
+                  we built Homeboard as a single, real-time rental workspace to eliminate the chaos and give you an unfair speed advantage.
+                </p>
+
+                <p style={{ margin: "8px 0 0 0", color: "#444746", fontWeight: 600 }}>
+                  how it actually works:
                 </p>
 
                 {/* Tabbed Document Blocks (No <ol>/<li> lists — clean indented tabs) */}
@@ -687,11 +759,95 @@ export default function HomeboardPage() {
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: "12px",
-                    margin: "4px 0 6px 0",
+                    gap: "18px",
+                    margin: "6px 0 10px 0",
                   }}
                 >
-                  {/* Tabbed Item 1 */}
+                  {/* Step 1: One-tap Capture */}
+                  <div
+                    style={{
+                      paddingLeft: "28px",
+                      position: "relative",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "6px",
+                        top: "0",
+                        color: "#9ca3af",
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        fontSize: "13px",
+                      }}
+                      aria-hidden="true"
+                    >
+                      &gt;
+                    </span>
+                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
+                      one-tap listing capture from Safari &amp; rental apps
+                    </strong>
+                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                      browse StreetEasy, Zillow, or any brokerage site like you normally do. instead of copying links or taking screenshots, tap the Homeboard Safari extension or iOS share sheet. it instantly reads the exact unit number, net vs. gross rent, broker fee status, pet policies, and floorplans, dropping a clean, structured card directly onto your shared board.
+                    </div>
+                  </div>
+
+                  {/* Step 2: Commute calculations */}
+                  <div
+                    style={{
+                      paddingLeft: "28px",
+                      position: "relative",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "6px",
+                        top: "0",
+                        color: "#9ca3af",
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        fontSize: "13px",
+                      }}
+                      aria-hidden="true"
+                    >
+                      &gt;
+                    </span>
+                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
+                      automatic door-to-door commute calculation for everyone
+                    </strong>
+                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                      each person sets their daily anchor—office in Midtown, hospital in Upper East Side, studio in Bushwick, or university campus. the second a unit is added, Homeboard calculates real door-to-door transit times, exact subway lines, transfers, and walking distances for every single member. no more opening Google Maps six times per listing to see who gets stuck with an impossible commute.
+                    </div>
+                  </div>
+
+                  {/* Step 3: Group shortlist & voting */}
+                  <div
+                    style={{
+                      paddingLeft: "28px",
+                      position: "relative",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "6px",
+                        top: "0",
+                        color: "#9ca3af",
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        fontSize: "13px",
+                      }}
+                      aria-hidden="true"
+                    >
+                      &gt;
+                    </span>
+                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
+                      unified shortlist, reactions, and dealbreaker filters
+                    </strong>
+                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                      react, vote, and comment directly on the listing card. Homeboard scores listings across a six-dimension group-fit model—balancing budget caps, transit equity, square footage, and must-haves (laundry in building, natural light, dishwasher). you immediately see where the group aligns and never waste time touring a place someone secretly hates.
+                    </div>
+                  </div>
+
+                  {/* Step 4: AI broker pitch generator */}
                   <div
                     style={{
                       paddingLeft: "28px",
@@ -713,11 +869,13 @@ export default function HomeboardPage() {
                     </span>
                     <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
                       AI broker pitch generator
-                    </strong>{" "}
-                    — drafts tailored agent inquiries in seconds with your verified income multiple, credit tiers, and target move-in date before the listing disappears.
+                    </strong>
+                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                      NYC brokers receive 50+ inquiries within an hour of posting and ignore generic &ldquo;is this available?&rdquo; messages. Homeboard drafts tailored, professional agent inquiries the second a listing drops. it automatically highlights your verified combined income multiple (confirming the NYC 40x rent rule), credit score tiers, move-in readiness, and guarantor status—getting you to the top of the broker&apos;s inbox before the open house slots fill up.
+                    </div>
                   </div>
 
-                  {/* Tabbed Item 2 */}
+                  {/* Step 5: Shared document locker */}
                   <div
                     style={{
                       paddingLeft: "28px",
@@ -738,12 +896,14 @@ export default function HomeboardPage() {
                       &gt;
                     </span>
                     <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      Shared document locker checklist
-                    </strong>{" "}
-                    — keeps W-2s, paystubs, IDs, and guarantor letters verified in one encrypted vault so nobody scrambles when an agent asks for a complete packet by 5 PM.
+                      encrypted document locker checklist
+                    </strong>
+                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                      in a competitive market, the first applicant to submit a 100% complete packet gets the lease. Homeboard provides an encrypted checklist vault for each searcher—keeping W-2s, recent paystubs, photo IDs, bank statements, and guarantor letters verified and ready. when you decide to apply, your entire group packet is organized and ready to submit in 60 seconds without emailing sensitive financial docs over an unencrypted group chat.
+                    </div>
                   </div>
 
-                  {/* Tabbed Item 3 */}
+                  {/* Step 6: Apple Pay deposit splits */}
                   <div
                     style={{
                       paddingLeft: "28px",
@@ -764,11 +924,17 @@ export default function HomeboardPage() {
                       &gt;
                     </span>
                     <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      Apple Pay deposit splits
-                    </strong>{" "}
-                    — instant, equal holding deposit splits for roommate groups—or one-tap authorization for solo applicants—so nobody has to front $4,000 on a personal debit card.
+                      50/50 Apple Pay deposit splits
+                    </strong>
+                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                      when an agent demands a good-faith holding deposit or application fee on the spot, nobody has to front $4,000 on a personal debit card and chase down roommates on Venmo for two weeks. roommates authorize their exact split instantly via Apple Pay—or solo searchers approve with a single tap.
+                    </div>
                   </div>
                 </div>
+
+                <p style={{ margin: "8px 0 0 0" }}>
+                  the difference is speed and clarity. instead of feeling like you&apos;re fighting your own group chat while twenty strangers take the apartment out from under you, you move as a synchronized unit from the moment a unit goes live to the moment you sign the lease.
+                </p>
 
                 {/* Universal Blue Hyperlink */}
                 <p style={{ margin: "14px 0 0 0" }}>
