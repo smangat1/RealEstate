@@ -74,8 +74,8 @@ export default function HomeboardPage() {
   };
 
   const getComputedFontFamily = () => {
+    if (fontChoice === "sans") return 'Arial, Helvetica, sans-serif';
     if (fontChoice === "serif") return 'Georgia, Cambria, "Times New Roman", Times, serif';
-    if (fontChoice === "sans") return '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     return 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
   };
 
@@ -104,6 +104,16 @@ export default function HomeboardPage() {
         }
         * {
           box-sizing: border-box;
+        }
+
+        .doc-typo {
+          text-decoration: underline wavy #ea4335 !important;
+          text-decoration-skip-ink: none !important;
+          text-underline-offset: 3px !important;
+          -webkit-text-decoration-line: underline !important;
+          -webkit-text-decoration-style: wavy !important;
+          -webkit-text-decoration-color: #ea4335 !important;
+          -webkit-text-decoration-skip-ink: none !important;
         }
 
         @media (max-width: 640px) {
@@ -524,8 +534,8 @@ export default function HomeboardPage() {
                     lineHeight: "1.4",
                   }}
                 >
-                  <option value="serif">Georgia (Serif)</option>
-                  <option value="sans">System (Sans)</option>
+                  <option value="sans">Arial</option>
+                  <option value="serif">Georgia</option>
                   <option value="mono">Monospace</option>
                 </select>
                 <span
@@ -721,23 +731,23 @@ export default function HomeboardPage() {
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  you want to move in with your best friends. you guys <em>will</em> beat the housing market.
+                  <span className="doc-typo">you</span> want to move in with your best friends. <span className="doc-typo">you</span> guys <em>will</em> beat the housing market.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you drop the link at midnight. someone hearts it at 3 a.m. it’s rented by 9 a.m.
+                  <span className="doc-typo">you</span> drop the link at midnight. <span className="doc-typo">someone</span> hearts it at 3 a.m. <span className="doc-typo">it’s</span> rented by 9 a.m.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you send approximately 217 emails and 521 texts to agents but have to settle for a place that you hate anyway.
+                  <span className="doc-typo">you</span> send approximately 217 emails and 521 texts to agents but have to settle for a place that you hate anyway.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  they walk 4 minutes to work. you take two trains and a bus.
+                  <span className="doc-typo">they</span> walk 4 minutes to work. <span className="doc-typo">you</span> take two trains and a bus.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you split the total down the middle, but your bedroom is a converted pantry. homeboard is the shared workspace so you don&apos;t sign a lease you quietly resent for 12 months.
+                  <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-typo">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
                 </p>
 
                 <p style={{ margin: "4px 0 0 0" }}>
