@@ -777,15 +777,15 @@ extension AdvisorDraftGenerator {
     let bareNumber = #"[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?"#
     let numberToken = #"(?:(?:USD|US\s+dollars?)\s*|\$\s*)?"# + bareNumber
     let numberExpression = numberToken
-      + #"(?:\s*(?:-|–|—|to|through|and)\s*"# + numberToken + #")?"#
+      + #"(?:\s*(?:-|\u2013|\u2014|to|through|and)\s*"# + numberToken + #")?"#
       + #"(?:\s*(?:USD|dollars?|per\s+(?:month|year)|/\s*(?:mo(?:nth)?|yr|year)|monthly|annually|yearly))?"#
     let financialTerm = #"(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent(?:al)?(?:\s+budget)?|makes?|earns?)"#
     let filler = #"(?:is|was|would|should|could|can|now|currently|typically|about|around|approximately|roughly|somewhere|between|from|up|to|at|least|most|maximum|max|minimum|min|of|near|under|over|below|above|range|for|the|our|my|monthly|annual|yearly|rent)"#
     let patterns = [
       #"(?i)(?:(?:USD|US\s+dollars?)\s*|\$\s*)"# + bareNumber
-        + #"(?:\s*(?:-|–|—|to|through|and)\s*"# + numberToken + #")?"#,
+        + #"(?:\s*(?:-|\u2013|\u2014|to|through|and)\s*"# + numberToken + #")?"#,
       #"(?i)\b"# + bareNumber
-        + #"(?:\s*(?:-|–|—|to|through|and)\s*"# + numberToken + #")?\s*(?:USD|dollars?)\b"#,
+        + #"(?:\s*(?:-|\u2013|\u2014|to|through|and)\s*"# + numberToken + #")?\s*(?:USD|dollars?)\b"#,
       #"(?i)\b[0-9]+(?:\.[0-9]+)?x\b"#,
       #"(?i)\b"# + financialTerm + #"\b"#
         + #"(?:(?:\s+|[,=:]\s*)"# + filler + #"\b){0,8}(?:\s+|[,=:]\s*)"#

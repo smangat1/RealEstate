@@ -825,7 +825,8 @@ final class HomeboardNativeTests: XCTestCase {
     let object = try XCTUnwrap(
       JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any]
     )
-    XCTAssertEqual(Set(object.keys), Set(["text", "outreachId", "confirmationId"]))
+    XCTAssertEqual(Set(object.keys), Set(["text", "outreachId", "confirmationId", "extractionSource"]))
+    XCTAssertEqual(object["extractionSource"] as? String, "manual")
     XCTAssertNil(object["image"])
     XCTAssertNil(object["screenshot"])
     XCTAssertNil(object["apparentSender"])
