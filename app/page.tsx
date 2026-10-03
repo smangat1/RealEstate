@@ -1206,66 +1206,14 @@ export default function HomeboardPage() {
               {/* Modal Body */}
               <p
                 style={{
-                  margin: "0 0 16px 0",
+                  margin: "0 0 20px 0",
                   fontSize: "13px",
                   color: "#3c4043",
                   lineHeight: 1.55,
                 }}
               >
-                Hey! You don&apos;t have edit access. You are viewing this document in read-only mode. You can request edit access from the team or download Homeboard to sync your search.
+                Hey! You don&apos;t have edit access. You are viewing this document in read-only mode. Download Homeboard to sync your rental search with your roommates.
               </p>
-
-              {/* Download Option Box (Google Docs Style) */}
-              <div
-                style={{
-                  backgroundColor: "#f8f9fa",
-                  border: "1px solid #dadce0",
-                  borderRadius: "6px",
-                  padding: "12px 14px",
-                  marginBottom: "20px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#202124" }}>
-                    Download Homeboard
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#5f6368" }}>
-                    Available for iOS and Safari on Mac
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditAccessPopup(false);
-                    setIsShareModalOpen(true);
-                  }}
-                  style={{
-                    backgroundColor: "#1a73e8",
-                    border: "none",
-                    borderRadius: "4px",
-                    padding: "7px 14px",
-                    fontSize: "12px",
-                    fontWeight: 500,
-                    color: "#ffffff",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    whiteSpace: "nowrap",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
-                    transition: "background-color 150ms ease",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1557b0")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#1a73e8")}
-                >
-                  <span>Download Homeboard ↓</span>
-                </button>
-              </div>
 
               {/* Footer Actions */}
               <div
@@ -1295,9 +1243,12 @@ export default function HomeboardPage() {
                   Cancel
                 </button>
 
-                <a
-                  href="mailto:early@homeboard.app?subject=Homeboard%20Edit%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AI%20am%20viewing%20the%20Homeboard%20apartment%20search%20brief%20and%20would%20love%20edit%20access%20%2F%20early%20beta%20access.%0A%0AGroup%20size%20(solo%2C%20couple%2C%20or%20number%20of%20roommates)%3A%0ACity%20%2F%20neighborhoods%3A%0ATarget%20move-in%20date%3A"
-                  onClick={() => setShowEditAccessPopup(false)}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditAccessPopup(false);
+                    setIsShareModalOpen(true);
+                  }}
                   style={{
                     backgroundColor: "#1a73e8",
                     color: "#ffffff",
@@ -1307,7 +1258,6 @@ export default function HomeboardPage() {
                     fontSize: "13px",
                     fontWeight: 500,
                     cursor: "pointer",
-                    textDecoration: "none",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -1317,8 +1267,8 @@ export default function HomeboardPage() {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1557b0")}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#1a73e8")}
                 >
-                  Request access
-                </a>
+                  Download Homeboard
+                </button>
               </div>
             </div>
           </div>
