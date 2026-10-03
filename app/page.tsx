@@ -96,7 +96,7 @@ export default function HomeboardPage() {
               gap: "12px",
             }}
           >
-            {/* Left: Document Icon & Document Metadata */}
+            {/* Left: Document Icon & Document Title */}
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               {/* Blue Document Page Icon */}
               <div
@@ -188,54 +188,8 @@ export default function HomeboardPage() {
               </div>
             </div>
 
-            {/* Right: Presence Avatars & Document Mode Badge */}
+            {/* Right: Document Viewing Mode Badge (Clean, no 2 ppl viewing) */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {/* Presence indicators */}
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <div
-                  title="Sam (Viewing)"
-                  style={{
-                    width: "26px",
-                    height: "26px",
-                    borderRadius: "50%",
-                    backgroundColor: "#1e8e3e",
-                    color: "#ffffff",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "2px solid #ffffff",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
-                    zIndex: 2,
-                  }}
-                >
-                  S
-                </div>
-                <div
-                  title="Jordan (Viewing)"
-                  style={{
-                    width: "26px",
-                    height: "26px",
-                    borderRadius: "50%",
-                    backgroundColor: "#9334e6",
-                    color: "#ffffff",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "2px solid #ffffff",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
-                    marginLeft: "-8px",
-                    zIndex: 1,
-                  }}
-                >
-                  J
-                </div>
-              </div>
-
-              {/* View Only Chip */}
               <div
                 style={{
                   display: "flex",
@@ -245,7 +199,7 @@ export default function HomeboardPage() {
                   color: "#1967d2",
                   border: "1px solid #d2e3fc",
                   borderRadius: "16px",
-                  padding: "4px 10px",
+                  padding: "4px 12px",
                   fontSize: "12px",
                   fontWeight: 500,
                 }}
@@ -270,7 +224,7 @@ export default function HomeboardPage() {
               color: "#444746",
             }}
           >
-            {/* Toolbar Buttons */}
+            {/* Toolbar Buttons (Clean: No link mode) */}
             <div style={{ display: "flex", alignItems: "center", gap: "6px", overflowX: "auto" }}>
               <span
                 style={{
@@ -354,20 +308,6 @@ export default function HomeboardPage() {
               >
                 A
               </span>
-              <span style={{ color: "#dadce0", margin: "0 2px" }}>|</span>
-              <span
-                style={{
-                  color: "#1a73e8",
-                  fontSize: "11px",
-                  fontWeight: 500,
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  backgroundColor: "#ffffff",
-                  border: "1px solid #d2e3fc",
-                }}
-              >
-                🔗 Link mode
-              </span>
             </div>
 
             {/* Document Status */}
@@ -445,7 +385,7 @@ export default function HomeboardPage() {
                   margin: "0 0 20px 0",
                 }}
               >
-                finding an apartment as a pair without losing your mind
+                notes on finding an apartment without losing your mind
               </h1>
 
               {/* Document Body: Candid, stream-of-consciousness, unpolished note */}
@@ -465,43 +405,110 @@ export default function HomeboardPage() {
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you find an apartment on StreetEasy at midnight. you drop the link into iMessage. your roommate hearts it four hours later while you&apos;re both at work. by lunch, forty other groups have emailed the listing agent, the open house slot is capped, and the link is buried under fifteen reels and a debate about commute times.
+                  you find an apartment on StreetEasy at midnight. you drop the link into iMessage—or bookmark it yourself. hours pass before everyone sees it. by the time you reach out the next day, forty other applicants have emailed the broker, the open house is full, and the listing is gone.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  apartment hunting as a pair is broken because rental apps treat you like a single person living alone. in reality, you have three group chats, a spreadsheet nobody updates, and zero coordination when a good unit drops. by the time you agree on who is emailing the broker, the apartment is gone.
+                  rental search in NYC is broken whether you&apos;re coordinating three roommates, moving with a partner, or searching solo. you have links scattered across chats, spreadsheets nobody maintains, and zero coordination when a good unit drops. by the time everyone agrees on who emails the broker and gathers their tax returns, someone else signs the lease.
                 </p>
 
                 <p style={{ margin: "6px 0 0 0", color: "#444746", fontWeight: 500 }}>
                   we built Homeboard around three things to fix this:
                 </p>
 
-                {/* Numbered List of Core Functions */}
-                <ol
+                {/* Tabbed Document Blocks (No <ol>/<li> lists — clean indented tabs) */}
+                <div
                   style={{
-                    margin: "2px 0 0 0",
-                    paddingLeft: "22px",
                     display: "flex",
                     flexDirection: "column",
-                    gap: "10px",
+                    gap: "12px",
+                    margin: "4px 0 6px 0",
                   }}
                 >
-                  <li style={{ paddingLeft: "4px" }}>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>AI broker pitch generator</strong> — drafts tailored agent inquiries in seconds with your combined income multiple, credit tiers, and target move-in date before the listing disappears.
-                  </li>
-                  <li style={{ paddingLeft: "4px" }}>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>Shared document locker checklist</strong> — keeps W-2s, paystubs, IDs, and guarantor letters verified in one encrypted vault so you aren&apos;t scrambling when an agent asks for docs by 5 PM.
-                  </li>
-                  <li style={{ paddingLeft: "4px" }}>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>50/50 Apple Pay deposit splits</strong> — instant, equal splits for good-faith holding deposits so neither roommate has to front $4,000 on a personal debit card.
-                  </li>
-                </ol>
+                  {/* Tabbed Item 1 */}
+                  <div
+                    style={{
+                      paddingLeft: "28px",
+                      position: "relative",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "6px",
+                        top: "0",
+                        color: "#9ca3af",
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        fontSize: "13px",
+                      }}
+                      aria-hidden="true"
+                    >
+                      &gt;
+                    </span>
+                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
+                      AI broker pitch generator
+                    </strong>{" "}
+                    — drafts tailored agent inquiries in seconds with your verified income multiple, credit tiers, and target move-in date before the listing disappears.
+                  </div>
+
+                  {/* Tabbed Item 2 */}
+                  <div
+                    style={{
+                      paddingLeft: "28px",
+                      position: "relative",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "6px",
+                        top: "0",
+                        color: "#9ca3af",
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        fontSize: "13px",
+                      }}
+                      aria-hidden="true"
+                    >
+                      &gt;
+                    </span>
+                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
+                      Shared document locker checklist
+                    </strong>{" "}
+                    — keeps W-2s, paystubs, IDs, and guarantor letters verified in one encrypted vault so nobody scrambles when an agent asks for a complete packet by 5 PM.
+                  </div>
+
+                  {/* Tabbed Item 3 */}
+                  <div
+                    style={{
+                      paddingLeft: "28px",
+                      position: "relative",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "6px",
+                        top: "0",
+                        color: "#9ca3af",
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        fontSize: "13px",
+                      }}
+                      aria-hidden="true"
+                    >
+                      &gt;
+                    </span>
+                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
+                      Apple Pay deposit splits
+                    </strong>{" "}
+                    — instant, equal holding deposit splits for roommate groups—or one-tap authorization for solo applicants—so nobody has to front $4,000 on a personal debit card.
+                  </div>
+                </div>
 
                 {/* Universal Blue Hyperlink */}
                 <p style={{ margin: "14px 0 0 0" }}>
-                  we are onboarding NYC roommate pairs in rolling batches.{" "}
+                  we are onboarding NYC renters, couples, and roommate groups in rolling batches.{" "}
                   <a
-                    href="mailto:early@homeboard.app?subject=Homeboard%20Early%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AMy%20roommate%20and%20I%20are%20looking%20for%20an%20apartment%20in%20NYC%20and%20would%20love%20early%20access.%0A%0ANames%3A%0ATarget%20move-in%20date%3A%0ABoroughs%2Fneighborhoods%3A"
+                    href="mailto:early@homeboard.app?subject=Homeboard%20Early%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AI%20am%20looking%20for%20an%20apartment%20in%20NYC%20and%20would%20love%20early%20access.%0A%0AGroup%20size%20(solo%20or%20number%20of%20roommates)%3A%0ATarget%20move-in%20date%3A%0ABoroughs%2Fneighborhoods%3A"
                     style={{
                       color: "#1a73e8",
                       textDecoration: "underline",
