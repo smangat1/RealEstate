@@ -786,157 +786,25 @@ export default function HomeboardPage() {
                 </p>
 
 
-                {/* Section Break / Notes on the Solution */}
-                <div
-                  style={{
-                    marginTop: "36px",
-                    paddingTop: "24px",
-                    borderTop: "1px solid #e8eaed",
-                  }}
-                >
-                  <p
+                <p style={{ margin: "4px 0 0 0" }}>
+                  <a
+                    href="#download"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowEditAccessPopup(true);
+                    }}
                     style={{
-                      margin: "0 0 16px 0",
+                      color: "#1a73e8",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      fontWeight: 500,
                       fontSize: `${fontSizeChoice}px`,
-                      fontWeight: 600,
-                      color: "#202124",
+                      fontStyle: "italic",
                     }}
                   >
-                    <span className="doc-typo">reminder</span>: check out <span className="doc-typo">homeboard</span>
-                  </p>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "10px",
-                      margin: "12px 0 20px 0",
-                      fontSize: `${fontSizeChoice}px`,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    <div style={{ paddingLeft: "16px", position: "relative" }}>
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          top: 0,
-                          color: "#5f6368",
-                          fontWeight: 600,
-                        }}
-                        aria-hidden="true"
-                      >
-                        -
-                      </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                        <span className="doc-typo">doomscroll</span> listings:
-                      </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        from any platform (<span className="doc-typo">seamless</span> <span className="doc-typo">mac</span> connection included)
-                      </span>
-                    </div>
-
-                    <div style={{ paddingLeft: "16px", position: "relative" }}>
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          top: 0,
-                          color: "#5f6368",
-                          fontWeight: 600,
-                        }}
-                        aria-hidden="true"
-                      >
-                        -
-                      </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                        <span className="doc-typo">commute</span> math:
-                      </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        door-to-door transit times for <span className="doc-typo">evryone</span>
-                      </span>
-                    </div>
-
-                    <div style={{ paddingLeft: "16px", position: "relative" }}>
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          top: 0,
-                          color: "#5f6368",
-                          fontWeight: 600,
-                        }}
-                        aria-hidden="true"
-                      >
-                        -
-                      </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                        <span className="doc-typo">group</span> shortlist:
-                      </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>vote and react on listings together</span>
-                    </div>
-
-                    <div style={{ paddingLeft: "16px", position: "relative" }}>
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          top: 0,
-                          color: "#5f6368",
-                          fontWeight: 600,
-                        }}
-                        aria-hidden="true"
-                      >
-                        -
-                      </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                        <span className="doc-typo">advisor</span>:
-                      </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>automated outreach and texting with agents</span>
-                    </div>
-
-                    <div style={{ paddingLeft: "16px", position: "relative" }}>
-                      <span
-                        style={{
-                          position: "absolute",
-                          left: "2px",
-                          top: 0,
-                          color: "#5f6368",
-                          fontWeight: 600,
-                        }}
-                        aria-hidden="true"
-                      >
-                        -
-                      </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                        <span className="doc-typo">stores</span> nothing:
-                      </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        no data captured outside of saved listings, none of the sensitive stuff is in our hands anyway
-                      </span>
-                    </div>
-                  </div>
-
-                  <p style={{ margin: "20px 0 0 0" }}>
-                    <a
-                      href="#download"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowEditAccessPopup(true);
-                      }}
-                      style={{
-                        color: "#1a73e8",
-                        textDecoration: "underline",
-                        cursor: "pointer",
-                        fontWeight: 500,
-                        fontSize: `${fontSizeChoice}px`,
-                        fontStyle: "italic",
-                      }}
-                    >
-                      <span className="doc-typo">[sync your search]</span>
-                    </a>
-                  </p>
-                </div>
+                    try homeboard
+                  </a>
+                </p>
               </div>
             </div>
 
@@ -1363,14 +1231,43 @@ export default function HomeboardPage() {
               {/* Modal Body */}
               <p
                 style={{
-                  margin: "0 0 20px 0",
+                  margin: "0 0 14px 0",
                   fontSize: "13px",
                   color: "#3c4043",
                   lineHeight: 1.55,
                 }}
               >
-                Hey! You don&apos;t have edit access. You are viewing this document in read-only mode. Download Homeboard to sync your rental search with your roommates.
+                You need to download Homeboard to access these features:
               </p>
+
+              {/* Feature List */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "7px",
+                  margin: "0 0 20px 0",
+                  fontSize: "13px",
+                  color: "#3c4043",
+                  lineHeight: 1.5,
+                }}
+              >
+                {[
+                  ["doomscroll listings", "save from any platform, seamless Mac connection included"],
+                  ["commute math", "door-to-door transit times for everyone"],
+                  ["group shortlist", "vote and react on listings together"],
+                  ["advisor", "automated outreach and texting with agents"],
+                  ["stores nothing", "no data captured outside of saved listings"],
+                ].map(([label, desc]) => (
+                  <div key={label} style={{ display: "flex", gap: "6px" }}>
+                    <span style={{ color: "#9aa0a6", flexShrink: 0 }}>–</span>
+                    <span>
+                      <strong style={{ fontWeight: 600, color: "#202124" }}>{label}:</strong>{" "}
+                      {desc}
+                    </span>
+                  </div>
+                ))}
+              </div>
 
               {/* Footer Actions */}
               <div
