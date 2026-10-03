@@ -802,7 +802,7 @@ export default function HomeboardPage() {
                       fontStyle: "italic",
                     }}
                   >
-                    try homeboard
+                    <span className="doc-typo">[try homeboard]</span>
                   </a>
                 </p>
               </div>
