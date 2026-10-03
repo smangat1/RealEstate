@@ -1093,10 +1093,10 @@ export default function HomeboardPage() {
                   Install App or Extension
                 </label>
                 <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
-                  <strong>iOS Safari:</strong> Tap the Share button <span style={{ fontFamily: "monospace" }}>[↑]</span> at the bottom of your browser, then tap <strong>&ldquo;Add to Home Screen&rdquo;</strong>.
+                  <strong>iOS:</strong> Tap the Share button <span style={{ fontFamily: "monospace" }}>[↑]</span> at the bottom of your browser, then tap <strong>&ldquo;Add to Home Screen&rdquo;</strong>.
                 </p>
                 <p style={{ margin: 0, fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
-                  <strong>Mac Safari:</strong> Visit <a href="/safari" style={{ color: "#1a73e8", textDecoration: "underline" }}>Homeboard for Safari</a> to install the extension.
+                  <strong>Mac:</strong> Visit <a href="/mac" style={{ color: "#1a73e8", textDecoration: "underline" }}>Homeboard for Mac</a> to install the companion.
                 </p>
               </div>
             </div>
