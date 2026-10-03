@@ -735,7 +735,7 @@ export default function HomeboardPage() {
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  it&apos;s always the same story in New York.
+                  imagine you and your friends are moving to nyc.
                 </p>
 
                 <p style={{ margin: 0 }}>
@@ -743,11 +743,19 @@ export default function HomeboardPage() {
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  searching for an apartment has turned into an unpaid, high-stress administrative job. whether you&apos;re coordinating three roommates, moving with a partner, or searching solo, the friction is everywhere: links scattered across fifteen browser tabs, dead spreadsheets nobody maintains, arguing about subway transfers, and scrambling to dig up last year&apos;s W-2s when an agent demands an application packet within two hours.
+                  or you argue about whose commute is ruined—someone has a 20-minute straight shot on the express train, while someone else has an hour-long double transfer. and when a good place actually opens up, you scramble to track down who has their W-2s, who needs a guarantor, and who is going to front a $4,000 holding deposit on a personal debit card.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  we built Homeboard as a single, real-time rental workspace to eliminate the chaos and give you an unfair speed advantage.
+                  moving to NYC with friends is the ultimate stress test for apartment hunting—but the friction is the exact same everywhere.
+                </p>
+
+                <p style={{ margin: 0 }}>
+                  whether you&apos;re coordinating three roommates, moving in with a partner in Chicago or SF, or searching solo for a studio where thirty other applicants are competing for the exact same door: rental search has turned into an unpaid, high-stress administrative job. links scattered across chats, dead spreadsheets nobody updates, and zero coordination when a good unit drops.
+                </p>
+
+                <p style={{ margin: 0 }}>
+                  we built Homeboard as a single, real-time rental workspace to eliminate that chaos and give you an unfair speed advantage—no matter where you&apos;re looking or how many people are on your lease.
                 </p>
 
                 <p style={{ margin: "8px 0 0 0", color: "#444746", fontWeight: 600 }}>
@@ -787,7 +795,7 @@ export default function HomeboardPage() {
                       one-tap listing capture from Safari &amp; rental apps
                     </strong>
                     <div style={{ marginTop: "4px", color: "#3c4043" }}>
-                      browse StreetEasy, Zillow, or any brokerage site like you normally do. instead of copying links or taking screenshots, tap the Homeboard Safari extension or iOS share sheet. it instantly reads the exact unit number, net vs. gross rent, broker fee status, pet policies, and floorplans, dropping a clean, structured card directly onto your shared board.
+                      browse StreetEasy, Zillow, Redfin, or local brokerage sites like you normally do. instead of copying links or taking screenshots into a messy chat, tap the Homeboard Safari extension or iOS share sheet. it instantly reads the exact unit number, net vs. gross rent, broker fee status, pet policies, and floorplans, dropping a clean, structured card directly onto your shared board.
                     </div>
                   </div>
 
@@ -815,7 +823,7 @@ export default function HomeboardPage() {
                       automatic door-to-door commute calculation for everyone
                     </strong>
                     <div style={{ marginTop: "4px", color: "#3c4043" }}>
-                      each person sets their daily anchor—office in Midtown, hospital in Upper East Side, studio in Bushwick, or university campus. the second a unit is added, Homeboard calculates real door-to-door transit times, exact subway lines, transfers, and walking distances for every single member. no more opening Google Maps six times per listing to see who gets stuck with an impossible commute.
+                      each person sets their daily anchor—office, hospital, campus, or studio. the second a unit is added, Homeboard calculates real door-to-door transit times, exact subway or train lines, transfers, and walking distances for every single member (or just your own route if you&apos;re searching solo). no more opening Google Maps six times per listing to see if someone&apos;s commute is impossible.
                     </div>
                   </div>
 
@@ -871,7 +879,7 @@ export default function HomeboardPage() {
                       AI broker pitch generator
                     </strong>
                     <div style={{ marginTop: "4px", color: "#3c4043" }}>
-                      NYC brokers receive 50+ inquiries within an hour of posting and ignore generic &ldquo;is this available?&rdquo; messages. Homeboard drafts tailored, professional agent inquiries the second a listing drops. it automatically highlights your verified combined income multiple (confirming the NYC 40x rent rule), credit score tiers, move-in readiness, and guarantor status—getting you to the top of the broker&apos;s inbox before the open house slots fill up.
+                      brokers in tight rental markets receive dozens of inquiries within an hour of posting and ignore generic &ldquo;is this available?&rdquo; messages. Homeboard drafts tailored, professional agent inquiries the second a listing drops. it automatically highlights your verified combined income multiple (confirming the 40x rent rule), credit score tiers, move-in readiness, and guarantor status—getting you to the top of the broker&apos;s inbox before open houses fill up.
                     </div>
                   </div>
 
@@ -899,7 +907,7 @@ export default function HomeboardPage() {
                       encrypted document locker checklist
                     </strong>
                     <div style={{ marginTop: "4px", color: "#3c4043" }}>
-                      in a competitive market, the first applicant to submit a 100% complete packet gets the lease. Homeboard provides an encrypted checklist vault for each searcher—keeping W-2s, recent paystubs, photo IDs, bank statements, and guarantor letters verified and ready. when you decide to apply, your entire group packet is organized and ready to submit in 60 seconds without emailing sensitive financial docs over an unencrypted group chat.
+                      in competitive rental markets, the first applicant to submit a 100% complete packet gets the lease. Homeboard provides an encrypted checklist vault for each searcher—keeping W-2s, recent paystubs, photo IDs, bank statements, and guarantor letters verified and ready. when you decide to apply, your entire packet is organized and ready to submit in 60 seconds without emailing sensitive financial docs over an unencrypted group chat.
                     </div>
                   </div>
 
@@ -924,7 +932,7 @@ export default function HomeboardPage() {
                       &gt;
                     </span>
                     <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      50/50 Apple Pay deposit splits
+                      Apple Pay deposit splits &amp; one-tap approval
                     </strong>
                     <div style={{ marginTop: "4px", color: "#3c4043" }}>
                       when an agent demands a good-faith holding deposit or application fee on the spot, nobody has to front $4,000 on a personal debit card and chase down roommates on Venmo for two weeks. roommates authorize their exact split instantly via Apple Pay—or solo searchers approve with a single tap.
@@ -933,14 +941,14 @@ export default function HomeboardPage() {
                 </div>
 
                 <p style={{ margin: "8px 0 0 0" }}>
-                  the difference is speed and clarity. instead of feeling like you&apos;re fighting your own group chat while twenty strangers take the apartment out from under you, you move as a synchronized unit from the moment a unit goes live to the moment you sign the lease.
+                  the difference is speed and clarity. whether you&apos;re a group of friends moving into the city, a couple trying to stop arguing about transit lines, or a solo renter who needs to move faster than forty competitors: you move as a synchronized unit from the moment an apartment goes live to the moment you sign the lease.
                 </p>
 
                 {/* Universal Blue Hyperlink */}
                 <p style={{ margin: "14px 0 0 0" }}>
-                  we are onboarding NYC renters, couples, and roommate groups in rolling batches.{" "}
+                  we are onboarding renters, couples, and roommate groups in rolling batches.{" "}
                   <a
-                    href="mailto:early@homeboard.app?subject=Homeboard%20Early%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AI%20am%20looking%20for%20an%20apartment%20in%20NYC%20and%20would%20love%20early%20access.%0A%0AGroup%20size%20(solo%20or%20number%20of%20roommates)%3A%0ATarget%20move-in%20date%3A%0ABoroughs%2Fneighborhoods%3A"
+                    href="mailto:early@homeboard.app?subject=Homeboard%20Early%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AI%20am%20looking%20for%20an%20apartment%20and%20would%20love%20early%20access.%0A%0AGroup%20size%20(solo%2C%20couple%2C%20or%20number%20of%20roommates)%3A%0ACity%20%2F%20neighborhoods%3A%0ATarget%20move-in%20date%3A"
                     style={{
                       color: "#1a73e8",
                       textDecoration: "underline",
