@@ -36,6 +36,7 @@ export const advisorFeedbackRequestSchema = z.discriminatedUnion("subjectType", 
     subjectType: z.literal("draft"),
     snapshot: z.object({
       tone: z.string().max(64),
+      templateId: z.string().max(64).optional(),
       generationSource: z.string().max(64).optional(),
       executionStatus: z.string().max(64).optional(),
     }).strict(),

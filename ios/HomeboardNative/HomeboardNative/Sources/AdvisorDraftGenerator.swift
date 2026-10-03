@@ -7,6 +7,7 @@ import FoundationModels
 struct AdvisorDraftGeneration {
   var text: String
   var source: String
+  var templateId: String = AdvisorOutcomeMemory.standardTemplate
 }
 
 private struct AdvisorPreferenceModelResponse: Codable {
@@ -334,7 +335,9 @@ enum AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
-    senderName: String
+    senderName: String,
+    templateId: String = AdvisorOutcomeMemory.standardTemplate,
+    memorySummary: String? = nil
   ) async -> AdvisorDraftGeneration {
     let includedFinancialSentence = financialToggleEnabled(toggles) ? financialSentence : nil
     let fallback = templateDraft(
@@ -342,7 +345,8 @@ enum AdvisorDraftGenerator {
       tone: tone,
       toggles: toggles,
       financialSentence: includedFinancialSentence,
-      senderName: senderName
+      senderName: senderName,
+      templateId: templateId
     )
 
     #if canImport(FoundationModels)
@@ -353,13 +357,14 @@ enum AdvisorDraftGenerator {
          tone: tone,
          toggles: toggles,
          financialSentence: includedFinancialSentence,
-         senderName: senderName
+         senderName: senderName,
+         memorySummary: memorySummary
        ) {
-      return AdvisorDraftGeneration(text: generated, source: "apple_intelligence")
+      return AdvisorDraftGeneration(text: generated, source: "apple_intelligence", templateId: templateId)
     }
     #endif
 
-    return AdvisorDraftGeneration(text: fallback, source: "device_template")
+    return AdvisorDraftGeneration(text: fallback, source: "device_template", templateId: templateId)
   }
 
   #if canImport(FoundationModels)
@@ -507,7 +512,8 @@ enum AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
-    senderName: String
+    senderName: String,
+    templateId: String
   ) -> String {
     let listing = targetListing(payload)
     let firstName = payload.contact?.agentName?
@@ -532,12 +538,13 @@ enum AdvisorDraftGenerator {
     let facts = [moveSentence, commuteSentence, finance].compactMap { $0 }.joined(separator: " ")
     let isFollowUp = payload.originalCommand?
       .range(of: #"follow[ -]?up"#, options: [.regularExpression, .caseInsensitive]) != nil
+    let concise = templateId == AdvisorOutcomeMemory.conciseTemplate
 
     switch tone {
     case "Casual":
       return [
         greeting,
-        isFollowUp ? "Checking back on my earlier message about \(listing)." : "Checking in about \(listing).",
+        isFollowUp ? "Checking back about \(listing)." : concise ? "Is \(listing) still available?" : "Checking in about \(listing).",
         facts,
         tour,
         "Thanks, \(senderName)",
@@ -574,7 +581,9 @@ enum AdvisorDraftGenerator {
         "",
         isFollowUp
           ? "I am following up on my earlier message regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces)
-          : "I am reaching out regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
+          : concise
+            ? "I am interested in \(listing). \(facts)".trimmingCharacters(in: .whitespaces)
+            : "I am reaching out regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
         "",
         tour,
         "",
@@ -642,7 +651,8 @@ private extension AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
-    senderName: String
+    senderName: String,
+    memorySummary: String?
   ) async -> String? {
     let session = LanguageModelSession(
       model: .default,
@@ -657,12 +667,11 @@ private extension AdvisorDraftGenerator {
       with the supplied sender name exactly; never use a bracketed name placeholder.
       """
     )
-    let contextData = try? JSONEncoder().encode(payload.context)
-    let context = contextData.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    let context = boundedAppleIntelligenceContext(payload: payload, memorySummary: memorySummary)
     let enabledLabels = toggles.filter(\.enabled).map(\.label).joined(separator: ", ")
     let prompt = """
     USER REQUEST START
-    \(payload.originalCommand ?? "Draft outreach for the selected rental.")
+    \(sanitizedAppleIntelligenceRequest(payload.originalCommand))
     USER REQUEST END
 
     Selected tone: \(tone)
@@ -706,3 +715,62 @@ private extension AdvisorDraftGenerator {
   }
 }
 #endif
+
+extension AdvisorDraftGenerator {
+  /// A deliberately non-financial context boundary for on-device wording.
+  static func boundedAppleIntelligenceContext(
+    payload: AdvisorMessagePayload,
+    memorySummary: String?
+  ) -> String {
+    struct SafeContext: Encodable {
+      var listing: String
+      var moveIn: String?
+      var locations: [String]
+      var mustHaves: [String]
+      var dealbreakers: [String]
+      var priorities: [String]
+      var commuteDestinations: [String]
+      var tensionFlags: [String]
+      var conversationStage: String
+      var listingHistory: [AdvisorListingHistory]
+      var reportedOutcomeSummary: String?
+    }
+    let requirements = payload.context?.requirements
+    let picker = payload.context?.picker
+    let safe = SafeContext(
+      listing: targetListing(payload),
+      moveIn: requirements?.moveIn,
+      locations: requirements?.locations ?? [],
+      mustHaves: requirements?.mustHaves ?? [],
+      dealbreakers: requirements?.dealbreakers ?? [],
+      priorities: requirements?.priorities ?? [],
+      commuteDestinations: requirements?.commuteDestinations ?? [],
+      tensionFlags: requirements?.tensionFlags ?? [],
+      conversationStage: picker?.conversationStage ?? "none",
+      listingHistory: Array((picker?.listingHistory ?? []).prefix(12)),
+      reportedOutcomeSummary: memorySummary.map { String($0.prefix(800)) }
+    )
+    let data = try? JSONEncoder().encode(safe)
+    return String((data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}").prefix(12_000))
+  }
+
+  static func sanitizedAppleIntelligenceRequest(_ command: String?) -> String {
+    guard var command = command, !command.isEmpty else {
+      return "Draft outreach for the selected rental."
+    }
+    let patterns = [
+      #"(?i)\b(?:income|salary|earnings?|earns?|makes?|fico|credit(?:\s+score)?|budget|rent ceiling)\b[^\n,.!?;]*"#,
+      #"(?i)\$\s?[0-9][0-9,]*(?:\.[0-9]{1,2})?"#,
+      #"(?i)\b[0-9]+(?:\.[0-9]+)?x\b"#,
+      #"(?i)\b[0-9]{3,}(?:k)?\b"#,
+    ]
+    for pattern in patterns {
+      command = command.replacingOccurrences(
+        of: pattern,
+        with: "private financial detail omitted",
+        options: .regularExpression
+      )
+    }
+    return String(command.prefix(2_000))
+  }
+}

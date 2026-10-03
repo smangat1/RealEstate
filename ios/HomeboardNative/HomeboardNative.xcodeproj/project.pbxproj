@@ -80,6 +80,7 @@
 		E9915A425D456A69BAC8FEBF /* AdvisorDraftGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */; };
 		F0E38EF838CE4A52F313FD07 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
 		F109A7AD071A6E5861A32430 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
+		F482E9E7887E8FE94C3015B2 /* AdvisorOutcomeMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */; };
 		F5EEA5FB9B27310924110C71 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 65FC9AAA1DE307DE8A4A3D50 /* content.js */; };
 		F7844558BD8DC715DB2DD24A /* HomeboardNativeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */; };
 /* End PBXBuildFile section */
@@ -184,6 +185,7 @@
 		672F37334EE5BCC5C9714B2A /* homeboard-mark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "homeboard-mark.png"; sourceTree = "<group>"; };
 		694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardExtensionSync.swift; sourceTree = "<group>"; };
 		6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardSharedImportStore.swift; sourceTree = "<group>"; };
+		6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorOutcomeMemory.swift; sourceTree = "<group>"; };
 		75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardModels.swift; sourceTree = "<group>"; };
 		7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthView.swift; sourceTree = "<group>"; };
 		81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactShareViewController.swift; sourceTree = "<group>"; };
@@ -324,6 +326,7 @@
 				40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */,
 				EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */,
 				4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */,
+				6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */,
 				ECCA1195B39BB81562240A6C /* AdvisorReplyIntake.swift */,
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
@@ -736,6 +739,7 @@
 				8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */,
 				1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */,
 				E9915A425D456A69BAC8FEBF /* AdvisorDraftGenerator.swift in Sources */,
+				F482E9E7887E8FE94C3015B2 /* AdvisorOutcomeMemory.swift in Sources */,
 				08F9E9B09B6AE59364F48037 /* AdvisorReplyIntake.swift in Sources */,
 				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,

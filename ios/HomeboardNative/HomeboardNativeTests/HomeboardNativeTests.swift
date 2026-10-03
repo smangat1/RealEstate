@@ -12,6 +12,137 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.pending-operations",
   ]
 
+  func testAdvisorMemoryFallsBackBelowThresholdAndRanksReportedRepliesAboveThreshold() {
+    let suite = "advisor-memory-tests-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    let base = AdvisorDraftOutcomeRecord(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-1",
+      templateId: AdvisorOutcomeMemory.conciseTemplate, tone: "Casual",
+      outcome: .accepted, reasonCode: nil, timestamp: Date()
+    )
+    memory.record(base)
+    memory.record(.init(
+      userId: base.userId, boardId: base.boardId, listingId: base.listingId, messageId: "message-2",
+      templateId: base.templateId, tone: base.tone, outcome: .sent,
+      reasonCode: nil, timestamp: Date().addingTimeInterval(1)
+    ))
+    XCTAssertEqual(memory.selection(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", fallbackTone: "Professional",
+      explicitTone: nil, boardFeedback: nil
+    ).tone, "Professional")
+
+    memory.record(.init(
+      userId: base.userId, boardId: base.boardId, listingId: base.listingId, messageId: "message-3",
+      templateId: base.templateId, tone: base.tone, outcome: .replied,
+      reasonCode: nil, timestamp: Date().addingTimeInterval(2)
+    ))
+    let ranked = memory.selection(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", fallbackTone: "Professional",
+      explicitTone: nil, boardFeedback: nil
+    )
+    XCTAssertEqual(ranked.tone, "Casual")
+    XCTAssertEqual(ranked.templateId, AdvisorOutcomeMemory.conciseTemplate)
+    XCTAssertNotNil(ranked.reason)
+    XCTAssertEqual(memory.selection(
+      userId: "user-a", boardId: "board-b", listingId: "listing-a", fallbackTone: "Professional",
+      explicitTone: nil, boardFeedback: nil
+    ).tone, "Professional")
+    XCTAssertEqual(memory.selection(
+      userId: "user-b", boardId: "board-a", listingId: "listing-a", fallbackTone: "Professional",
+      explicitTone: nil, boardFeedback: nil
+    ).tone, "Professional")
+  }
+
+  func testAdvisorMemoryNeverOverridesExplicitTone() {
+    let suite = "advisor-memory-explicit-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    for (index, outcome) in [AdvisorDraftOutcome.accepted, .sent, .replied].enumerated() {
+      memory.record(.init(
+        userId: "user-a", boardId: "board-a", listingId: nil, messageId: "message-\(index)",
+        templateId: AdvisorOutcomeMemory.standardTemplate, tone: "Casual",
+        outcome: outcome, reasonCode: nil, timestamp: Date().addingTimeInterval(Double(index))
+      ))
+    }
+    XCTAssertEqual(memory.selection(
+      userId: "user-a", boardId: "board-a", listingId: nil, fallbackTone: "Professional",
+      explicitTone: "Stern", boardFeedback: nil
+    ).tone, "Stern")
+  }
+
+  func testAdvisorMemoryCorruptionFailsSoftWithoutTouchingOtherState() {
+    let suite = "advisor-memory-corrupt-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(Data("not-json".utf8), forKey: "memory")
+    defaults.set("keep-me", forKey: "unrelated")
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    XCTAssertTrue(memory.records(userId: "user-a", boardId: "board-a").isEmpty)
+    XCTAssertEqual(defaults.string(forKey: "unrelated"), "keep-me")
+  }
+
+  func testAdvisorMemoryAndModelContextContainNoDraftOrFinancialValues() throws {
+    let suite = "advisor-memory-privacy-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    memory.record(.init(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-a",
+      templateId: AdvisorOutcomeMemory.standardTemplate, tone: "Professional",
+      outcome: .accepted, reasonCode: nil, timestamp: Date()
+    ))
+    let stored = String(data: defaults.data(forKey: "memory")!, encoding: .utf8)!
+    XCTAssertFalse(stored.contains("draftText"))
+    XCTAssertFalse(stored.contains("income"))
+    XCTAssertFalse(stored.contains("credit"))
+
+    let payload = AdvisorMessagePayload(
+      messageId: "message-a", originalCommand: "@advisor mention income $200000 and credit score 780",
+      draftText: "private draft", tone: "Professional",
+      context: AdvisorContext(
+        leverage: AdvisorLeverage(
+          memberCount: 2,
+          applicationReadiness: nil,
+          activeOffers: nil,
+          strongestListings: nil
+        ),
+        requirements: AdvisorRequirements(
+          budget: AdvisorBudgetRequirement(
+            minimum: 2_000,
+            maximum: 4_000,
+            stretchMaximum: nil,
+            summary: "$2k-$4k"
+          ),
+          moveIn: nil,
+          locations: nil,
+          bedrooms: nil,
+          mustHaves: ["Laundry"],
+          dealbreakers: nil,
+          priorities: nil,
+          commuteDestinations: nil,
+          tensionFlags: nil
+        ),
+        picker: AdvisorPickerContext(
+          conversationStage: "sent", listingHistory: [],
+          boardFeedback: AdvisorFeedbackMemorySummary(sampleSize: 0, signals: [])
+        )
+      )
+    )
+    let context = AdvisorDraftGenerator.boundedAppleIntelligenceContext(payload: payload, memorySummary: "accepted:professional")
+    XCTAssertFalse(context.lowercased().contains("income"))
+    XCTAssertFalse(context.lowercased().contains("credit"))
+    XCTAssertFalse(context.contains("200000"))
+    XCTAssertFalse(context.contains("4000"))
+    XCTAssertTrue(context.contains("Laundry"))
+    XCTAssertTrue(context.contains("sent"))
+    let request = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(payload.originalCommand)
+    XCTAssertFalse(request.contains("200000"))
+    XCTAssertFalse(request.contains("780"))
+  }
+
   func testAdvisorDraftBackendCompatibilityRejectsLegacyHealthPayload() {
     let health = MobileHealthResponse(
       apiVersion: "0.0.13",

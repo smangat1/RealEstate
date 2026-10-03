@@ -15,6 +15,12 @@ import type {
   RoommateRecord,
 } from "@/lib/types";
 import { listingContactInfo } from "@/lib/mobile-payloads";
+import {
+  buildAdvisorPickerContext,
+  type AdvisorFeedbackMemorySummary,
+  type AdvisorOutreachHistory,
+  type AdvisorPickerContext,
+} from "@/lib/advisor-memory";
 
 export const ADVISOR_TONES = [
   "Professional",
@@ -99,6 +105,7 @@ export type AdvisorGroupContext = {
     listing: string;
     analysis: GroupListingAnalysis;
   }>;
+  picker: AdvisorPickerContext;
 };
 
 export type AdvisorMessagePayloadData = {
@@ -116,6 +123,8 @@ export type AdvisorMessagePayloadData = {
   contact?: ListingContactInfo | null;
   /** boardListingId of the listing this draft specifically targets. */
   targetListingBoardId?: string | null;
+  templateId: "availability_standard";
+  toneWasExplicit: boolean;
   context: AdvisorGroupContext;
 };
 
@@ -129,7 +138,10 @@ type AdvisorEngineInput = {
   command: string;
   tone?: AdvisorTone | string | null;
   now?: Date;
+  outreachHistory?: AdvisorOutreachHistory[];
+  boardFeedback?: AdvisorFeedbackMemorySummary;
 };
+
 
 function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
@@ -184,6 +196,7 @@ export function parseAdvisorCommand(content: string) {
     originalCommand,
     command: command || "Draft broker outreach for the strongest saved listing.",
     tone: normalizeAdvisorTone(toneMatch?.[1]),
+    toneWasExplicit: Boolean(toneMatch),
     inclusionLabels,
   };
 }
@@ -199,6 +212,7 @@ export async function aggregateAdvisorGroupContext(input: {
   boardData: BoardPageData;
   financialQualifications: AdvisorFinancialQualifications;
   now?: Date;
+  picker?: AdvisorGroupContext["picker"];
 }): Promise<AdvisorGroupContext> {
   const { boardData } = input;
   const householdRoommates = boardData.roommates.filter((roommate) => roommate.roleLabel !== "commute point");
@@ -293,6 +307,11 @@ export async function aggregateAdvisorGroupContext(input: {
     },
     commutes,
     listingAnalysis,
+    picker: input.picker ?? {
+      conversationStage: "none",
+      listingHistory: [],
+      boardFeedback: { sampleSize: 0, signals: [] },
+    },
   };
 }
 
@@ -443,11 +462,25 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
   const parsed = parseAdvisorCommand(input.command);
   const tone = normalizeAdvisorTone(input.tone ?? parsed.tone);
   const financialQualifications = { incomeMultiple: null, creditScore: null };
-  const context = await aggregateAdvisorGroupContext({
+  const baseContext = await aggregateAdvisorGroupContext({
     boardData: input.boardData,
     financialQualifications,
     now: input.now,
   });
+  const targetListing = findRequestedListing(
+    input.boardData,
+    parsed.command,
+    baseContext.leverage.strongestListings,
+  );
+  const context: AdvisorGroupContext = {
+    ...baseContext,
+    picker: buildAdvisorPickerContext({
+      targetListingBoardId: targetListing?.id ?? null,
+      history: input.outreachHistory ?? [],
+      boardFeedback: input.boardFeedback,
+      now: input.now,
+    }),
+  };
   const prompt = compileAdvisorPrompt({
     command: parsed.command,
     tone,
@@ -462,11 +495,6 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     throw new Error("Advisor tone constraint was not compiled.");
   }
 
-  const targetListing = findRequestedListing(
-    input.boardData,
-    parsed.command,
-    context.leverage.strongestListings,
-  );
   const targetContact = targetListing ? listingContactInfo(targetListing.listing) : null;
 
   return {
@@ -488,6 +516,8 @@ export async function runAdvisorEngine(input: AdvisorEngineInput): Promise<Advis
     financialDisclosure: "available_on_request",
     contact: targetContact,
     targetListingBoardId: targetListing?.id ?? null,
+    templateId: "availability_standard",
+    toneWasExplicit: parsed.toneWasExplicit || Boolean(input.tone),
     context,
   };
 }
