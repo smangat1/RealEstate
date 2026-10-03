@@ -779,6 +779,171 @@ export default function HomeboardPage() {
                     [sync your search]
                   </a>
                 </p>
+
+                {/* Section Break / Notes on the Solution */}
+                <div
+                  style={{
+                    marginTop: "36px",
+                    paddingTop: "24px",
+                    borderTop: "1px solid #e8eaed",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: "0 0 16px 0",
+                      fontSize: `${fontSizeChoice}px`,
+                      fontWeight: 600,
+                      color: "#202124",
+                    }}
+                  >
+                    <span className="doc-typo">reminder</span>: google <span className="doc-typo">homeboard</span>
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "12px",
+                      margin: "12px 0 20px 0",
+                      fontSize: `${fontSizeChoice}px`,
+                      lineHeight: 1.65,
+                    }}
+                  >
+                    <div style={{ paddingLeft: "16px", position: "relative" }}>
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          top: 0,
+                          color: "#5f6368",
+                          fontWeight: 600,
+                        }}
+                        aria-hidden="true"
+                      >
+                        -
+                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>one-tap listing capture:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        save straight from StreetEasy, Zillow, or Redfin via the Safari extension. instantly pulls net rent, broker fees, pet policies, and floorplans onto one shared board without lost group chat links.
+                      </span>
+                    </div>
+
+                    <div style={{ paddingLeft: "16px", position: "relative" }}>
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          top: 0,
+                          color: "#5f6368",
+                          fontWeight: 600,
+                        }}
+                        aria-hidden="true"
+                      >
+                        -
+                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>door-to-door commute math:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        everyone pins their office, campus, or daily anchor. calculates real subway lines, transfers, and walking times side-by-side for every roommate the second a unit drops.
+                      </span>
+                    </div>
+
+                    <div style={{ paddingLeft: "16px", position: "relative" }}>
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          top: 0,
+                          color: "#5f6368",
+                          fontWeight: 600,
+                        }}
+                        aria-hidden="true"
+                      >
+                        -
+                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>group shortlist &amp; dealbreakers:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        react, vote, and filter on group dealbreakers (laundry in building, natural light, budget caps) so you never waste hours touring a place someone secretly resents.
+                      </span>
+                    </div>
+
+                    <div style={{ paddingLeft: "16px", position: "relative" }}>
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          top: 0,
+                          color: "#5f6368",
+                          fontWeight: 600,
+                        }}
+                        aria-hidden="true"
+                      >
+                        -
+                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>instant broker pitch:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        drafts tailored agent inquiries the second an apartment goes live, highlighting your combined income multiple (confirming 40x rent), credit score tiers, and move-in readiness to get to the top of the broker&apos;s inbox.
+                      </span>
+                    </div>
+
+                    <div style={{ paddingLeft: "16px", position: "relative" }}>
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          top: 0,
+                          color: "#5f6368",
+                          fontWeight: 600,
+                        }}
+                        aria-hidden="true"
+                      >
+                        -
+                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>60-second document locker:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        encrypted checklist that keeps paystubs, W-2s, photo IDs, and guarantor letters organized and ready to submit in 60 seconds when a good unit opens up.
+                      </span>
+                    </div>
+
+                    <div style={{ paddingLeft: "16px", position: "relative" }}>
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "2px",
+                          top: 0,
+                          color: "#5f6368",
+                          fontWeight: 600,
+                        }}
+                        aria-hidden="true"
+                      >
+                        -
+                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>Apple Pay deposit splits:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>
+                        roommates authorize their exact share via Apple Pay on the spot instead of one person fronting $4,000 on a personal debit card and chasing people on Venmo.
+                      </span>
+                    </div>
+                  </div>
+
+                  <p style={{ margin: "20px 0 0 0" }}>
+                    <a
+                      href="#download"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setShowEditAccessPopup(true);
+                      }}
+                      style={{
+                        color: "#1a73e8",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        fontWeight: 500,
+                        fontSize: `${fontSizeChoice}px`,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      [sync your search]
+                    </a>
+                  </p>
+                </div>
               </div>
             </div>
 
