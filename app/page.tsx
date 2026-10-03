@@ -762,181 +762,175 @@ export default function HomeboardPage() {
                   how it actually works:
                 </p>
 
-                {/* Tabbed Document Blocks (No <ol>/<li> lists — clean indented tabs) */}
+                {/* Tabbed Document Blocks (Clean '-' dash bullets with compact document spacing) */}
                 <div
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: "18px",
-                    margin: "6px 0 10px 0",
+                    gap: "10px",
+                    margin: "4px 0 8px 0",
                   }}
                 >
                   {/* Step 1: One-tap Capture */}
                   <div
                     style={{
-                      paddingLeft: "28px",
+                      paddingLeft: "16px",
                       position: "relative",
                     }}
                   >
                     <span
                       style={{
                         position: "absolute",
-                        left: "6px",
+                        left: "2px",
                         top: "0",
-                        color: "#9ca3af",
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: "13px",
+                        color: "#5f6368",
+                        fontWeight: 600,
                       }}
                       aria-hidden="true"
                     >
-                      &gt;
+                      -
                     </span>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      one-tap listing capture from Safari &amp; rental apps
-                    </strong>
-                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                      one-tap listing capture from Safari &amp; rental apps:
+                    </strong>{" "}
+                    <span style={{ color: "#3c4043" }}>
                       browse StreetEasy, Zillow, Redfin, or local brokerage sites like you normally do. instead of copying links or taking screenshots into a messy chat, tap the Homeboard Safari extension or iOS share sheet. it instantly reads the exact unit number, net vs. gross rent, broker fee status, pet policies, and floorplans, dropping a clean, structured card directly onto your shared board.
-                    </div>
+                    </span>
                   </div>
 
                   {/* Step 2: Commute calculations */}
                   <div
                     style={{
-                      paddingLeft: "28px",
+                      paddingLeft: "16px",
                       position: "relative",
                     }}
                   >
                     <span
                       style={{
                         position: "absolute",
-                        left: "6px",
+                        left: "2px",
                         top: "0",
-                        color: "#9ca3af",
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: "13px",
+                        color: "#5f6368",
+                        fontWeight: 600,
                       }}
                       aria-hidden="true"
                     >
-                      &gt;
+                      -
                     </span>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      automatic door-to-door commute calculation for everyone
-                    </strong>
-                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                      automatic door-to-door commute calculation for everyone:
+                    </strong>{" "}
+                    <span style={{ color: "#3c4043" }}>
                       each person sets their daily anchor—office, hospital, campus, or studio. the second a unit is added, Homeboard calculates real door-to-door transit times, exact subway or train lines, transfers, and walking distances for every single member (or just your own route if you&apos;re searching solo). no more opening Google Maps six times per listing to see if someone&apos;s commute is impossible.
-                    </div>
+                    </span>
                   </div>
 
                   {/* Step 3: Group shortlist & voting */}
                   <div
                     style={{
-                      paddingLeft: "28px",
+                      paddingLeft: "16px",
                       position: "relative",
                     }}
                   >
                     <span
                       style={{
                         position: "absolute",
-                        left: "6px",
+                        left: "2px",
                         top: "0",
-                        color: "#9ca3af",
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: "13px",
+                        color: "#5f6368",
+                        fontWeight: 600,
                       }}
                       aria-hidden="true"
                     >
-                      &gt;
+                      -
                     </span>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      unified shortlist, reactions, and dealbreaker filters
-                    </strong>
-                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                      unified shortlist, reactions, and dealbreaker filters:
+                    </strong>{" "}
+                    <span style={{ color: "#3c4043" }}>
                       react, vote, and comment directly on the listing card. Homeboard scores listings across a six-dimension group-fit model—balancing budget caps, transit equity, square footage, and must-haves (laundry in building, natural light, dishwasher). you immediately see where the group aligns and never waste time touring a place someone secretly hates.
-                    </div>
+                    </span>
                   </div>
 
                   {/* Step 4: AI broker pitch generator */}
                   <div
                     style={{
-                      paddingLeft: "28px",
+                      paddingLeft: "16px",
                       position: "relative",
                     }}
                   >
                     <span
                       style={{
                         position: "absolute",
-                        left: "6px",
+                        left: "2px",
                         top: "0",
-                        color: "#9ca3af",
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: "13px",
+                        color: "#5f6368",
+                        fontWeight: 600,
                       }}
                       aria-hidden="true"
                     >
-                      &gt;
+                      -
                     </span>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      AI broker pitch generator
-                    </strong>
-                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                      AI broker pitch generator:
+                    </strong>{" "}
+                    <span style={{ color: "#3c4043" }}>
                       brokers in tight rental markets receive dozens of inquiries within an hour of posting and ignore generic &ldquo;is this available?&rdquo; messages. Homeboard drafts tailored, professional agent inquiries the second a listing drops. it automatically highlights your verified combined income multiple (confirming the 40x rent rule), credit score tiers, move-in readiness, and guarantor status—getting you to the top of the broker&apos;s inbox before open houses fill up.
-                    </div>
+                    </span>
                   </div>
 
                   {/* Step 5: Shared document locker */}
                   <div
                     style={{
-                      paddingLeft: "28px",
+                      paddingLeft: "16px",
                       position: "relative",
                     }}
                   >
                     <span
                       style={{
                         position: "absolute",
-                        left: "6px",
+                        left: "2px",
                         top: "0",
-                        color: "#9ca3af",
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: "13px",
+                        color: "#5f6368",
+                        fontWeight: 600,
                       }}
                       aria-hidden="true"
                     >
-                      &gt;
+                      -
                     </span>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      encrypted document locker checklist
-                    </strong>
-                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                      encrypted document locker checklist:
+                    </strong>{" "}
+                    <span style={{ color: "#3c4043" }}>
                       in competitive rental markets, the first applicant to submit a 100% complete packet gets the lease. Homeboard provides an encrypted checklist vault for each searcher—keeping W-2s, recent paystubs, photo IDs, bank statements, and guarantor letters verified and ready. when you decide to apply, your entire packet is organized and ready to submit in 60 seconds without emailing sensitive financial docs over an unencrypted group chat.
-                    </div>
+                    </span>
                   </div>
 
                   {/* Step 6: Apple Pay deposit splits */}
                   <div
                     style={{
-                      paddingLeft: "28px",
+                      paddingLeft: "16px",
                       position: "relative",
                     }}
                   >
                     <span
                       style={{
                         position: "absolute",
-                        left: "6px",
+                        left: "2px",
                         top: "0",
-                        color: "#9ca3af",
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: "13px",
+                        color: "#5f6368",
+                        fontWeight: 600,
                       }}
                       aria-hidden="true"
                     >
-                      &gt;
+                      -
                     </span>
-                    <strong style={{ fontWeight: 700, color: "#1f1f1f" }}>
-                      Apple Pay deposit splits &amp; one-tap approval
-                    </strong>
-                    <div style={{ marginTop: "4px", color: "#3c4043" }}>
+                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
+                      Apple Pay deposit splits &amp; one-tap approval:
+                    </strong>{" "}
+                    <span style={{ color: "#3c4043" }}>
                       when an agent demands a good-faith holding deposit or application fee on the spot, nobody has to front $4,000 on a personal debit card and chase down roommates on Venmo for two weeks. roommates authorize their exact split instantly via Apple Pay—or solo searchers approve with a single tap.
-                    </div>
+                    </span>
                   </div>
                 </div>
 
