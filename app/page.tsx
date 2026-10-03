@@ -10,7 +10,6 @@ export default function HomeboardPage() {
   const [fontChoice, setFontChoice] = useState<"serif" | "sans" | "mono">("serif");
   const [fontSizeChoice, setFontSizeChoice] = useState(16);
   const [showEditAccessPopup, setShowEditAccessPopup] = useState(false);
-  const [popupTimeoutId, setPopupTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   // Close modals on Escape key
@@ -29,9 +28,6 @@ export default function HomeboardPage() {
 
   const handleNoEditAccess = () => {
     setShowEditAccessPopup(true);
-    if (popupTimeoutId) clearTimeout(popupTimeoutId);
-    const tid = setTimeout(() => setShowEditAccessPopup(false), 3500);
-    setPopupTimeoutId(tid);
   };
 
   const handleShareClick = async () => {
@@ -587,18 +583,15 @@ export default function HomeboardPage() {
 
               <span className="doc-desktop-only" style={{ color: "#dadce0", margin: "0 2px" }}>|</span>
 
-              {/* Formatting Controls Group (with Edit Access Alert Tooltip) */}
+              {/* Formatting Controls Group (Triggers Centered Request Access Modal) */}
               <div
                 className="doc-desktop-only"
-                style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "2px" }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}
               >
                 {/* Bold Button */}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleNoEditAccess();
-                  }}
+                  onClick={handleNoEditAccess}
                   title="Bold (Edit access required)"
                   style={{
                     padding: "3px 8px",
@@ -620,10 +613,7 @@ export default function HomeboardPage() {
                 {/* Italic Button */}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleNoEditAccess();
-                  }}
+                  onClick={handleNoEditAccess}
                   title="Italic (Edit access required)"
                   style={{
                     padding: "3px 8px",
@@ -645,10 +635,7 @@ export default function HomeboardPage() {
                 {/* Underline Button */}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleNoEditAccess();
-                  }}
+                  onClick={handleNoEditAccess}
                   title="Underline (Edit access required)"
                   style={{
                     padding: "3px 8px",
@@ -666,66 +653,6 @@ export default function HomeboardPage() {
                 >
                   U
                 </button>
-
-                {/* Edit Access Popup Tooltip */}
-                {showEditAccessPopup && (
-                  <div
-                    role="alert"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 8px)",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      backgroundColor: "#202124",
-                      color: "#ffffff",
-                      padding: "7px 12px",
-                      borderRadius: "6px",
-                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.28)",
-                      fontSize: "12px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      zIndex: 100,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {/* Upward pointing arrow */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "-4px",
-                        left: "50%",
-                        transform: "translateX(-50%) rotate(45deg)",
-                        width: "8px",
-                        height: "8px",
-                        backgroundColor: "#202124",
-                      }}
-                      aria-hidden="true"
-                    />
-                    <span style={{ fontWeight: 500, letterSpacing: "-0.01em" }}>
-                      Hey! You don&apos;t have edit access
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowEditAccessPopup(false)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "#9aa0a6",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        padding: "0 2px",
-                        lineHeight: 1,
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                      aria-label="Close message"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1366,6 +1293,220 @@ export default function HomeboardPage() {
                 <p style={{ margin: 0, fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
                   <strong>Mac Safari:</strong> Visit <a href="/safari" style={{ color: "#1a73e8", textDecoration: "underline" }}>Homeboard for Safari</a> to install the extension.
                 </p>
+              </div>
+            </div>
+          </div>
+        {/* ========================================================= */}
+        {/* REQUEST ACCESS MODAL (Google Docs Style with Download)    */}
+        {/* ========================================================= */}
+        {showEditAccessPopup && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(32, 33, 36, 0.4)",
+              backdropFilter: "blur(2px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 70,
+              padding: "16px",
+            }}
+            onClick={() => setShowEditAccessPopup(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="request-access-dialog-title"
+              style={{
+                backgroundColor: "#ffffff",
+                borderRadius: "8px",
+                boxShadow: "0 8px 28px rgba(0, 0, 0, 0.28)",
+                width: "100%",
+                maxWidth: "460px",
+                padding: "24px",
+                position: "relative",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  marginBottom: "12px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      backgroundColor: "#e8f0fe",
+                      color: "#1a73e8",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "18px",
+                      flexShrink: 0,
+                    }}
+                    aria-hidden="true"
+                  >
+                    🔒
+                  </div>
+                  <div>
+                    <h3
+                      id="request-access-dialog-title"
+                      style={{
+                        margin: 0,
+                        fontSize: "16px",
+                        fontWeight: 600,
+                        color: "#202124",
+                      }}
+                    >
+                      You need access
+                    </h3>
+                    <div style={{ fontSize: "12px", color: "#5f6368", marginTop: "2px" }}>
+                      apartment_search_brief · read-only
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowEditAccessPopup(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "18px",
+                    color: "#5f6368",
+                    cursor: "pointer",
+                    padding: "4px",
+                    lineHeight: 1,
+                  }}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <p
+                style={{
+                  margin: "0 0 16px 0",
+                  fontSize: "13px",
+                  color: "#3c4043",
+                  lineHeight: 1.55,
+                }}
+              >
+                Hey! You don&apos;t have edit access. You are viewing this document in read-only mode. You can request edit access from the team or download an offline copy for yourself.
+              </p>
+
+              {/* Download Option Box (Google Docs Style) */}
+              <div
+                style={{
+                  backgroundColor: "#f8f9fa",
+                  border: "1px solid #dadce0",
+                  borderRadius: "6px",
+                  padding: "12px 14px",
+                  marginBottom: "20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#202124" }}>
+                    Download offline copy
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#5f6368" }}>
+                    Save as PDF or print this brief
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.print();
+                    setShowEditAccessPopup(false);
+                  }}
+                  style={{
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #dadce0",
+                    borderRadius: "4px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    color: "#1a73e8",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                >
+                  <span>Download as PDF ↓</span>
+                </button>
+              </div>
+
+              {/* Footer Actions */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: "10px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowEditAccessPopup(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    color: "#5f6368",
+                    cursor: "pointer",
+                    borderRadius: "4px",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f1f3f4")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                >
+                  Cancel
+                </button>
+
+                <a
+                  href="mailto:early@homeboard.app?subject=Homeboard%20Edit%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AI%20am%20viewing%20the%20Homeboard%20apartment%20search%20brief%20and%20would%20love%20edit%20access%20%2F%20early%20beta%20access.%0A%0AGroup%20size%20(solo%2C%20couple%2C%20or%20number%20of%20roommates)%3A%0ACity%20%2F%20neighborhoods%3A%0ATarget%20move-in%20date%3A"
+                  onClick={() => setShowEditAccessPopup(false)}
+                  style={{
+                    backgroundColor: "#1a73e8",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "8px 18px",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.12)",
+                    transition: "background-color 150ms ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1557b0")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#1a73e8")}
+                >
+                  Request access
+                </a>
               </div>
             </div>
           </div>
