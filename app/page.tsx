@@ -108,26 +108,6 @@ export default function HomeboardPage() {
           box-sizing: border-box;
         }
 
-        .doc-typo {
-          text-decoration: underline wavy #ea4335 !important;
-          text-decoration-skip-ink: none !important;
-          text-underline-offset: 3px !important;
-          -webkit-text-decoration-line: underline !important;
-          -webkit-text-decoration-style: wavy !important;
-          -webkit-text-decoration-color: #ea4335 !important;
-          -webkit-text-decoration-skip-ink: none !important;
-        }
-
-        .doc-grammar {
-          text-decoration: underline wavy #ea4335 !important;
-          text-decoration-skip-ink: none !important;
-          text-underline-offset: 3px !important;
-          -webkit-text-decoration-line: underline !important;
-          -webkit-text-decoration-style: wavy !important;
-          -webkit-text-decoration-color: #ea4335 !important;
-          -webkit-text-decoration-skip-ink: none !important;
-        }
-
         @media (max-width: 640px) {
           .doc-desktop-only {
             display: none !important;
@@ -766,25 +746,24 @@ export default function HomeboardPage() {
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> want to move in with your best <span className="doc-typo">freinds</span>. <span className="doc-typo">you</span> guys <em>will</em> beat the <span className="doc-typo">hosuing</span> market.
+                  you want to move in with your best friends. you guys <em>will</em> beat the housing market.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> drop the link at <span className="doc-typo">midngiht</span>. <span className="doc-typo">somone</span> hearts it at 3 a.m. <span className="doc-typo">it’s</span> rented by 9 a.m.
+                  you drop the link at midnight. someone hearts it at 3 a.m. it’s rented by 9 a.m.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> send <span className="doc-typo">hundres</span> of texts and emails to agents but have to settle for a <span className="doc-typo">plaec</span> you hate <span className="doc-typo">anyway</span>.
+                  you send hundreds of texts and emails to agents but have to settle for a place you hate anyway.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">they</span> walk 4 minutes to work. <span className="doc-typo">you</span> take two trains and a bus.
+                  they walk 4 minutes to work. you take two trains and a bus.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  <span className="doc-typo">you</span> split the total down the middle, but your bedroom is a converted pantry. <span className="doc-typo">homeboard</span> is the shared workspace <span className="doc-typo">so</span> you don&apos;t sign a lease you quietly resent for 12 months.
+                  you split the total down the middle, but your bedroom is a converted pantry. homeboard is the shared workspace so you don&apos;t sign a lease you quietly resent for 12 months.
                 </p>
-
 
                 <p style={{ margin: "4px 0 0 0" }}>
                   <a
@@ -802,7 +781,7 @@ export default function HomeboardPage() {
                       fontStyle: "italic",
                     }}
                   >
-                    <span className="doc-typo">[try homeboard]</span>
+                    [try homeboard]
                   </a>
                 </p>
               </div>
@@ -825,9 +804,7 @@ export default function HomeboardPage() {
                 position: "relative",
               }}
             >
-              <span>
-                <span className="doc-typo">homeboard</span>
-              </span>
+              <span>Homeboard</span>
 
               {/* Universal Blue Hyperlink for Privacy Policy */}
               <div style={{ position: "relative" }}>
@@ -966,7 +943,7 @@ export default function HomeboardPage() {
                     fontWeight: 500,
                   }}
                 >
-                  <span className="doc-typo">privacy policy</span>
+                  privacy policy
                 </a>
               </div>
             </footer>
