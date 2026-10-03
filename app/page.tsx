@@ -132,18 +132,18 @@ export default function HomeboardPage() {
           .doc-desktop-only {
             display: none !important;
           }
-          /* Sheet fills viewport edge-to-edge like Google Docs mobile */
-          .doc-sheet {
-            margin: 0 !important;
-            border-radius: 0 !important;
-            border-left: none !important;
-            border-right: none !important;
-            box-shadow: none !important;
-            padding: 20px 16px 48px 16px !important;
-            min-height: unset !important;
-          }
+          /* Keep the gray "desk" background visible so the white sheet reads as a document */
           .doc-canvas {
-            padding: 0 !important;
+            padding: 12px 8px 48px !important;
+            background: #f0f2f5 !important;
+          }
+          /* Sheet floats on the gray desk with shadow — this is what makes it feel like a doc */
+          .doc-sheet {
+            border-radius: 2px !important;
+            border: 1px solid #dadce0 !important;
+            box-shadow: 0 1px 4px rgba(60,64,67,0.18) !important;
+            padding: 24px 20px 48px 20px !important;
+            min-height: unset !important;
           }
           /* Hide toolbar ribbon entirely on mobile — Google Docs mobile does this */
           .doc-toolbar-ribbon {
