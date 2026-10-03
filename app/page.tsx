@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
+import Link from "next/link";
 
 export default function HomeboardPage() {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -183,42 +185,31 @@ export default function HomeboardPage() {
           >
             {/* Left: Document Icon & Title */}
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              {/* Blue Document Page Icon */}
-              <div
+              {/* Homeboard Logo from Xcode */}
+              <Link
+                href="/"
                 style={{
-                  width: "28px",
-                  height: "36px",
-                  backgroundColor: "#ffffff",
-                  border: "1.5px solid #1a73e8",
-                  borderRadius: "3px",
-                  position: "relative",
                   display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  padding: "4px",
-                  gap: "3px",
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+                  alignItems: "center",
+                  textDecoration: "none",
                   flexShrink: 0,
                 }}
-                aria-hidden="true"
+                aria-label="Homeboard home"
               >
-                <div
+                <Image
+                  src="/brand/homeboard-mark.svg"
+                  alt="Homeboard logo"
+                  width={34}
+                  height={35}
                   style={{
-                    position: "absolute",
-                    top: "-1.5px",
-                    right: "-1.5px",
-                    width: "8px",
-                    height: "8px",
-                    backgroundColor: "#f0f2f5",
-                    borderBottom: "1.5px solid #1a73e8",
-                    borderLeft: "1.5px solid #1a73e8",
-                    borderTopRightRadius: "2px",
+                    width: "32px",
+                    height: "33px",
+                    objectFit: "contain",
+                    display: "block",
                   }}
+                  priority
                 />
-                <div style={{ width: "12px", height: "2px", backgroundColor: "#1a73e8", borderRadius: "1px" }} />
-                <div style={{ width: "16px", height: "2px", backgroundColor: "#1a73e8", borderRadius: "1px" }} />
-                <div style={{ width: "10px", height: "2px", backgroundColor: "#8ab4f8", borderRadius: "1px" }} />
-              </div>
+              </Link>
 
               {/* Title, Badge & Functional Menu Bar */}
               <div>
@@ -803,10 +794,10 @@ export default function HomeboardPage() {
                     style={{
                       display: "flex",
                       flexDirection: "column",
-                      gap: "12px",
+                      gap: "10px",
                       margin: "12px 0 20px 0",
                       fontSize: `${fontSizeChoice}px`,
-                      lineHeight: 1.65,
+                      lineHeight: 1.6,
                     }}
                   >
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -822,10 +813,8 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>one-tap listing capture:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        save straight from StreetEasy, Zillow, or Redfin via the Safari extension. instantly pulls net rent, broker fees, pet policies, and floorplans onto one shared board without lost group chat links.
-                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>one-tap capture:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>Save listings from Safari into your board.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -841,10 +830,8 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>door-to-door commute math:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        everyone pins their office, campus, or daily anchor. calculates real subway lines, transfers, and walking times side-by-side for every roommate the second a unit drops.
-                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>commute math:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>Door-to-door transit times for everyone.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -860,10 +847,8 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>group shortlist &amp; dealbreakers:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        react, vote, and filter on group dealbreakers (laundry in building, natural light, budget caps) so you never waste hours touring a place someone secretly resents.
-                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>group shortlist:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>Vote and react on listings together.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -879,10 +864,8 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>instant broker pitch:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        drafts tailored agent inquiries the second an apartment goes live, highlighting your combined income multiple (confirming 40x rent), credit score tiers, and move-in readiness to get to the top of the broker&apos;s inbox.
-                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>Homeboard Advisor:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>Automated outreach and texting with agents.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -898,10 +881,8 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>60-second document locker:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        encrypted checklist that keeps paystubs, W-2s, photo IDs, and guarantor letters organized and ready to submit in 60 seconds when a good unit opens up.
-                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>document locker:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>Submit paystubs, IDs, and W-2s instantly.</span>
                     </div>
 
                     <div style={{ paddingLeft: "16px", position: "relative" }}>
@@ -917,10 +898,8 @@ export default function HomeboardPage() {
                       >
                         -
                       </span>
-                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>Apple Pay deposit splits:</strong>{" "}
-                      <span style={{ color: "#3c4043" }}>
-                        roommates authorize their exact share via Apple Pay on the spot instead of one person fronting $4,000 on a personal debit card and chasing people on Venmo.
-                      </span>
+                      <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>deposit splits:</strong>{" "}
+                      <span style={{ color: "#3c4043" }}>Split holding deposits instantly via Apple Pay.</span>
                     </div>
                   </div>
 
