@@ -167,6 +167,113 @@ final class HomeboardNativeTests: XCTestCase {
     ).tone, "Professional")
   }
 
+  func testAdvisorDerivedOutcomeUsesExactOutreachInsteadOfNewestListingDraft() {
+    let suite = "advisor-memory-outreach-attribution-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    memory.record(.init(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-a",
+      templateId: AdvisorOutcomeMemory.standardTemplate, tone: "Professional", outcome: .sent,
+      outreachId: "outreach-a", reasonCode: nil, timestamp: Date().addingTimeInterval(-20)
+    ))
+    memory.record(.init(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-b",
+      templateId: AdvisorOutcomeMemory.conciseTemplate, tone: "Casual", outcome: .rejected,
+      reasonCode: "bad_tone", timestamp: Date()
+    ))
+
+    for _ in 0..<2 {
+      memory.recordDerivedOutcome(
+        userId: "user-a", boardId: "board-a", listingId: "listing-a",
+        outreachId: "outreach-a", advisorMessageId: "message-a", outcome: .replied
+      )
+    }
+
+    let replies = memory.records(userId: "user-a", boardId: "board-a").filter { $0.outcome == .replied }
+    XCTAssertEqual(replies.count, 1)
+    XCTAssertEqual(replies.first?.messageId, "message-a")
+    XCTAssertEqual(replies.first?.tone, "Professional")
+    XCTAssertEqual(replies.first?.templateId, AdvisorOutcomeMemory.standardTemplate)
+    XCTAssertEqual(replies.first?.outreachId, "outreach-a")
+    XCTAssertFalse(replies.contains(where: { $0.messageId == "message-b" }))
+
+    memory.recordDerivedOutcome(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a",
+      outreachId: "unknown-outreach", advisorMessageId: nil, outcome: .stale
+    )
+    XCTAssertTrue(
+      memory.records(userId: "user-a", boardId: "board-a").filter { $0.outcome == .stale }.isEmpty
+    )
+  }
+
+  func testAdvisorDerivedOutcomeCanUseVerifiedMessageMappingForLegacySentRecord() {
+    let suite = "advisor-memory-message-attribution-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    memory.record(.init(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-a",
+      templateId: AdvisorOutcomeMemory.conciseTemplate, tone: "Stern", outcome: .sent,
+      reasonCode: nil, timestamp: Date()
+    ))
+
+    memory.recordDerivedOutcome(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a",
+      outreachId: "outreach-a", advisorMessageId: "message-a", outcome: .stale
+    )
+
+    let stale = memory.records(userId: "user-a", boardId: "board-a").first { $0.outcome == .stale }
+    XCTAssertEqual(stale?.messageId, "message-a")
+    XCTAssertEqual(stale?.outreachId, "outreach-a")
+    XCTAssertEqual(stale?.tone, "Stern")
+  }
+
+  func testAdvisorReplyThreadRefreshCreditsExactOutreachOnce() async {
+    let suite = "advisor-memory-thread-refresh-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    memory.record(.init(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-a",
+      templateId: AdvisorOutcomeMemory.standardTemplate, tone: "Professional", outcome: .sent,
+      outreachId: "outreach-a", reasonCode: nil, timestamp: Date().addingTimeInterval(-20)
+    ))
+    memory.record(.init(
+      userId: "user-a", boardId: "board-a", listingId: "listing-a", messageId: "message-b",
+      templateId: AdvisorOutcomeMemory.conciseTemplate, tone: "Casual", outcome: .rejected,
+      reasonCode: "bad_tone", timestamp: Date()
+    ))
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
+    AdvisorWalletURLProtocol.response = { request in
+      XCTAssertEqual(request.httpMethod, "GET")
+      XCTAssertTrue(request.url?.path.hasSuffix("/api/mobile/boards/board-a/advisor/reply-threads") == true)
+      return .init(status: 200, body: #"{"threads":[{"id":"outreach-a","outreachId":"outreach-a","advisorMessageId":"message-a","listingId":"listing-a","listingName":"123 Main St","recipientName":"Agent","method":"email","status":"answered","contactedAt":"2026-10-01T12:00:00.000Z"}]}"#)
+    }
+    let model = AppModel(
+      api: HomeboardAPI(session: URLSession(configuration: configuration)),
+      advisorOutcomeMemory: memory
+    )
+    model.authSession = NativeAuthSession(
+      accessToken: "token-a", refreshToken: "refresh-a", userId: "user-a",
+      email: "user-a@example.com", displayName: "User A"
+    )
+    model.board = .empty
+    model.board.id = "board-a"
+
+    let firstRefresh = await model.loadAdvisorReplyThreads()
+    let secondRefresh = await model.loadAdvisorReplyThreads()
+    XCTAssertEqual(firstRefresh.count, 1)
+    XCTAssertEqual(secondRefresh.count, 1)
+
+    let replies = memory.records(userId: "user-a", boardId: "board-a").filter { $0.outcome == .replied }
+    XCTAssertEqual(replies.count, 1)
+    XCTAssertEqual(replies.first?.messageId, "message-a")
+    XCTAssertEqual(replies.first?.outreachId, "outreach-a")
+    XCTAssertFalse(replies.contains(where: { $0.messageId == "message-b" }))
+  }
+
   func testAdvisorMemoryNeverOverridesExplicitTone() {
     let suite = "advisor-memory-explicit-\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
@@ -274,7 +381,10 @@ final class HomeboardNativeTests: XCTestCase {
           memberCount: 2,
           applicationReadiness: nil,
           activeOffers: nil,
-          strongestListings: nil
+          strongestListings: [AdvisorStrongListing(
+            boardListingId: "listing-a",
+            listing: "123 Main St unit 204; rent is currently about $3,200 per month"
+          )]
         ),
         requirements: AdvisorRequirements(
           budget: AdvisorBudgetRequirement(
@@ -283,26 +393,37 @@ final class HomeboardNativeTests: XCTestCase {
             stretchMaximum: nil,
             summary: "$2k-$4k"
           ),
-          moveIn: nil,
-          locations: nil,
+          moveIn: "After my salary is roughly 90000",
+          locations: ["Near 456 Park Ave unit 12", "income is somewhere around 95k"],
           bedrooms: nil,
-          mustHaves: ["Laundry"],
-          dealbreakers: nil,
-          priorities: nil,
-          commuteDestinations: nil,
-          tensionFlags: nil
+          mustHaves: ["Laundry", "credit score is currently around 780"],
+          dealbreakers: ["budget should be no more than USD 3,500"],
+          priorities: ["salary range is between 85k and 105k"],
+          commuteDestinations: ["789 Broadway unit 5"],
+          tensionFlags: ["rent budget is roughly $3,100-$3,400 monthly"]
         ),
         picker: AdvisorPickerContext(
-          conversationStage: "sent", listingHistory: [],
+          conversationStage: "sent; budget is around 3300",
+          listingHistory: [AdvisorListingHistory(
+            boardListingId: "listing-a", status: "sent with income about 90k",
+            templateId: "standard", contactedAt: nil, answered: false, daysSinceContact: 2
+          )],
           boardFeedback: AdvisorFeedbackMemorySummary(sampleSize: 0, signals: [])
         )
       )
     )
-    let context = AdvisorDraftGenerator.boundedAppleIntelligenceContext(payload: payload, memorySummary: "accepted:professional")
-    XCTAssertFalse(context.lowercased().contains("income"))
-    XCTAssertFalse(context.lowercased().contains("credit"))
-    XCTAssertFalse(context.contains("200000"))
-    XCTAssertFalse(context.contains("4000"))
+    let context = AdvisorDraftGenerator.boundedAppleIntelligenceContext(
+      payload: payload,
+      memorySummary: "accepted professional; salary is now about 120000"
+    )
+    for privateValue in ["3200", "90000", "95k", "780", "3,500", "85k", "105k", "3300", "90k", "120000"] {
+      XCTAssertFalse(context.contains(privateValue), "Leaked \(privateValue) in \(context)")
+    }
+    XCTAssertFalse(context.contains("3,100"))
+    XCTAssertFalse(context.contains("3,400"))
+    XCTAssertTrue(context.contains("123 Main St unit 204"))
+    XCTAssertTrue(context.contains("456 Park Ave unit 12"))
+    XCTAssertTrue(context.contains("789 Broadway unit 5"))
     XCTAssertTrue(context.contains("Laundry"))
     XCTAssertTrue(context.contains("sent"))
     let request = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(payload.originalCommand)
@@ -321,6 +442,33 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertFalse(sanitized.contains("90k"))
     XCTAssertFalse(sanitized.contains("740"))
     XCTAssertTrue(sanitized.contains("private financial detail omitted"))
+  }
+
+  func testAdvisorRequestSanitizerRemovesNaturalFinancialWordingAndRanges() {
+    let cases: [(String, [String])] = [
+      ("My income is about 90000 and my credit score is around 780", ["90000", "780"]),
+      ("My salary is currently somewhere around USD 90,000 to $110,000 per year", ["90,000", "110,000"]),
+      ("Our income is roughly between 85k and 105k", ["85k", "105k"]),
+      ("FICO is approximately 740-780", ["740", "780"]),
+      ("Our budget for rent is currently about $3,200-$3,600 per month", ["3,200", "3,600"]),
+      ("Rent: 3,250 dollars", ["3,250"]),
+    ]
+
+    for (input, privateValues) in cases {
+      let sanitized = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(input)
+      for privateValue in privateValues {
+        XCTAssertFalse(sanitized.contains(privateValue), "Leaked \(privateValue) from \(input)")
+      }
+      XCTAssertTrue(sanitized.contains("private financial detail omitted"), input)
+    }
+
+    for address in [
+      "Ask about 123 Main St unit 204",
+      "Tour 456 Park Avenue, apartment 789",
+      "Is 900 Broadway unit 12 still available?",
+    ] {
+      XCTAssertEqual(AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(address), address)
+    }
   }
 
   func testAdvisorDraftBackendCompatibilityRejectsLegacyHealthPayload() {

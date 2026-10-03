@@ -36,6 +36,7 @@ export async function GET(
       take: 100,
       select: {
         id: true,
+        advisorMessageId: true,
         boardListingId: true,
         method: true,
         status: true,
@@ -62,6 +63,7 @@ export async function GET(
         return {
           id: record.id,
           outreachId: record.id,
+          advisorMessageId: record.advisorMessageId,
           listingId: record.boardListingId,
           listingName,
           recipientName: contact?.agentName || contact?.brokerage || null,

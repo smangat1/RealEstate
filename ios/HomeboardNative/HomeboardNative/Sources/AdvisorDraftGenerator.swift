@@ -738,39 +738,69 @@ extension AdvisorDraftGenerator {
     let requirements = payload.context?.requirements
     let picker = payload.context?.picker
     let safe = SafeContext(
-      listing: targetListing(payload),
-      moveIn: requirements?.moveIn,
-      locations: requirements?.locations ?? [],
-      mustHaves: requirements?.mustHaves ?? [],
-      dealbreakers: requirements?.dealbreakers ?? [],
-      priorities: requirements?.priorities ?? [],
-      commuteDestinations: requirements?.commuteDestinations ?? [],
-      tensionFlags: requirements?.tensionFlags ?? [],
-      conversationStage: picker?.conversationStage ?? "none",
-      listingHistory: Array((picker?.listingHistory ?? []).prefix(12)),
-      reportedOutcomeSummary: memorySummary.map { String($0.prefix(800)) }
+      listing: removingFinancialValues(from: targetListing(payload)),
+      moveIn: requirements?.moveIn.map(removingFinancialValues),
+      locations: (requirements?.locations ?? []).map(removingFinancialValues),
+      mustHaves: (requirements?.mustHaves ?? []).map(removingFinancialValues),
+      dealbreakers: (requirements?.dealbreakers ?? []).map(removingFinancialValues),
+      priorities: (requirements?.priorities ?? []).map(removingFinancialValues),
+      commuteDestinations: (requirements?.commuteDestinations ?? []).map(removingFinancialValues),
+      tensionFlags: (requirements?.tensionFlags ?? []).map(removingFinancialValues),
+      conversationStage: removingFinancialValues(from: picker?.conversationStage ?? "none"),
+      listingHistory: Array((picker?.listingHistory ?? []).prefix(12)).map {
+        AdvisorListingHistory(
+          boardListingId: $0.boardListingId,
+          status: removingFinancialValues(from: $0.status),
+          templateId: removingFinancialValues(from: $0.templateId),
+          contactedAt: $0.contactedAt,
+          answered: $0.answered,
+          daysSinceContact: $0.daysSinceContact
+        )
+      },
+      reportedOutcomeSummary: memorySummary.map {
+        String(removingFinancialValues(from: String($0.prefix(800))).prefix(800))
+      }
     )
     let data = try? JSONEncoder().encode(safe)
     return String((data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}").prefix(12_000))
   }
 
   static func sanitizedAppleIntelligenceRequest(_ command: String?) -> String {
-    guard var command = command, !command.isEmpty else {
+    guard let command, !command.isEmpty else {
       return "Draft outreach for the selected rental."
     }
+    return String(removingFinancialValues(from: command).prefix(2_000))
+  }
+
+  private static func removingFinancialValues(from input: String) -> String {
+    var sanitized = input
+    let bareNumber = #"[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?"#
+    let numberToken = #"(?:(?:USD|US\s+dollars?)\s*|\$\s*)?"# + bareNumber
+    let numberExpression = numberToken
+      + #"(?:\s*(?:-|–|—|to|through|and)\s*"# + numberToken + #")?"#
+      + #"(?:\s*(?:USD|dollars?|per\s+(?:month|year)|/\s*(?:mo(?:nth)?|yr|year)|monthly|annually|yearly))?"#
+    let financialTerm = #"(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent(?:al)?(?:\s+budget)?|makes?|earns?)"#
+    let filler = #"(?:is|was|would|should|could|can|now|currently|typically|about|around|approximately|roughly|somewhere|between|from|up|to|at|least|most|maximum|max|minimum|min|of|near|under|over|below|above|range|for|the|our|my|monthly|annual|yearly|rent)"#
     let patterns = [
-      #"(?i)\$\s?[0-9][0-9,]*(?:\.[0-9]+)?k?\b"#,
+      #"(?i)(?:(?:USD|US\s+dollars?)\s*|\$\s*)"# + bareNumber
+        + #"(?:\s*(?:-|–|—|to|through|and)\s*"# + numberToken + #")?"#,
+      #"(?i)\b"# + bareNumber
+        + #"(?:\s*(?:-|–|—|to|through|and)\s*"# + numberToken + #")?\s*(?:USD|dollars?)\b"#,
       #"(?i)\b[0-9]+(?:\.[0-9]+)?x\b"#,
-      #"(?i)\b(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent|makes?|earns?)\b\s*(?:(?:is|of|around|about|approximately)\s+|:\s*)?\$?[0-9][0-9,]*(?:\.[0-9]+)?k?\b"#,
-      #"(?i)\b\$?[0-9][0-9,]*(?:\.[0-9]+)?k?\s+(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent)\b"#,
+      #"(?i)\b"# + financialTerm + #"\b"#
+        + #"(?:(?:\s+|[,=:]\s*)"# + filler + #"\b){0,8}(?:\s+|[,=:]\s*)"#
+        + numberExpression,
+      #"(?i)\b"# + numberExpression
+        + #"(?:(?:\s+|[,=:]\s*)"# + filler + #"\b){0,5}(?:\s+|[,=:]\s*)"#
+        + financialTerm + #"\b"#,
     ]
     for pattern in patterns {
-      command = command.replacingOccurrences(
+      sanitized = sanitized.replacingOccurrences(
         of: pattern,
         with: "private financial detail omitted",
         options: .regularExpression
       )
     }
-    return String(command.prefix(2_000))
+    return sanitized
   }
 }

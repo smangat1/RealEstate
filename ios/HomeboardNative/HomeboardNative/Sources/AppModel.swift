@@ -1219,6 +1219,7 @@ final class AppModel {
   func recordAdvisorOutcome(
     _ payload: AdvisorMessagePayload,
     outcome: AdvisorDraftOutcome,
+    outreachId: String? = nil,
     reasonCode: String? = nil
   ) {
     guard let boardId = board.id, let messageId = payload.messageId else { return }
@@ -1230,6 +1231,7 @@ final class AppModel {
       templateId: payload.templateId ?? AdvisorOutcomeMemory.standardTemplate,
       tone: payload.tone,
       outcome: outcome,
+      outreachId: outreachId,
       reasonCode: reasonCode,
       timestamp: Date()
     ))
@@ -1478,7 +1480,11 @@ final class AppModel {
       guard authSession?.userId == session.userId, board.id == boardId,
             response.outreachEvidence?.recorded == true else { return false }
       applyRemoteMutation(response, clearing: [])
-      recordAdvisorOutcome(payload, outcome: .sent)
+      recordAdvisorOutcome(
+        payload,
+        outcome: .sent,
+        outreachId: response.outreachEvidence?.outreachId
+      )
       showAdvisorConfirmation("Marked sent.")
       return true
     } catch {
@@ -1520,6 +1526,8 @@ final class AppModel {
           userId: session.userId,
           boardId: boardId,
           listingId: thread.listingId,
+          outreachId: thread.outreachId,
+          advisorMessageId: thread.advisorMessageId,
           outcome: thread.status == "answered" ? .replied : .stale
         )
       }
@@ -1559,7 +1567,9 @@ final class AppModel {
       advisorOutcomeMemory.recordDerivedOutcome(
         userId: session.userId,
         boardId: boardId,
-        listingId: listingId,
+        listingId: log.listingId,
+        outreachId: log.outreachId,
+        advisorMessageId: log.advisorMessageId,
         outcome: .replied
       )
       showAdvisorConfirmation(

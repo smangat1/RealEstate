@@ -17,6 +17,7 @@ struct AdvisorDraftOutcomeRecord: Codable, Hashable {
   var templateId: String
   var tone: String
   var outcome: AdvisorDraftOutcome
+  var outreachId: String? = nil
   var reasonCode: String?
   var timestamp: Date
 }
@@ -92,10 +93,19 @@ final class AdvisorOutcomeMemory {
     userId: String,
     boardId: String,
     listingId: String,
+    outreachId: String,
+    advisorMessageId: String?,
     outcome: AdvisorDraftOutcome,
     at timestamp: Date = Date()
   ) {
-    guard let source = records(userId: userId, boardId: boardId).first(where: { $0.listingId == listingId }) else { return }
+    let sentRecords = records(userId: userId, boardId: boardId).filter {
+      $0.listingId == listingId && $0.outcome == .sent
+    }
+    let source = sentRecords.first(where: { $0.outreachId == outreachId })
+      ?? advisorMessageId.flatMap { messageId in
+        sentRecords.first(where: { $0.messageId == messageId })
+      }
+    guard let source else { return }
     record(AdvisorDraftOutcomeRecord(
       userId: userId,
       boardId: boardId,
@@ -104,6 +114,7 @@ final class AdvisorOutcomeMemory {
       templateId: source.templateId,
       tone: source.tone,
       outcome: outcome,
+      outreachId: outreachId,
       reasonCode: nil,
       timestamp: timestamp
     ))

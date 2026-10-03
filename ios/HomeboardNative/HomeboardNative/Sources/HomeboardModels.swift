@@ -917,6 +917,7 @@ struct AdvisorReplyAnalysis: Hashable, Codable {
 struct AdvisorReplyThreadOption: Identifiable, Hashable, Codable {
   var id: String
   var outreachId: String
+  var advisorMessageId: String? = nil
   var listingId: String
   var listingName: String
   var recipientName: String?
@@ -937,6 +938,7 @@ struct AdvisorReplyThreadsResponse: Decodable {
 struct AdvisorReplyLog: Hashable, Codable {
   var confirmationId: String?
   var outreachId: String
+  var advisorMessageId: String? = nil
   var listingId: String
   var answeredAt: String
   var duplicate: Bool
