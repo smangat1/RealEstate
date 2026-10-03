@@ -787,7 +787,7 @@ export default function HomeboardPage() {
                       color: "#202124",
                     }}
                   >
-                    <span className="doc-typo">reminder</span>: google <span className="doc-typo">homeboard</span>
+                    <span className="doc-typo">reminder</span>: check out <span className="doc-typo">homeboard</span>
                   </p>
 
                   <div
@@ -817,7 +817,7 @@ export default function HomeboardPage() {
                         <span className="doc-typo">doomscroll</span> listings:
                       </strong>{" "}
                       <span style={{ color: "#3c4043" }}>
-                        save listings from <span className="doc-typo">safari</span> into your <span className="doc-typo">baord</span>.
+                        from any platform (<span className="doc-typo">seamless</span> <span className="doc-typo">mac</span> connection included).
                       </span>
                     </div>
 
@@ -894,9 +894,11 @@ export default function HomeboardPage() {
                         -
                       </span>
                       <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                        <span className="doc-typo">we</span> store nothing:
+                        <span className="doc-typo">stores</span> nothing:
                       </strong>{" "}
-                      <span style={{ color: "#3c4043" }}>it&apos;s not in our hands anyway.</span>
+                      <span style={{ color: "#3c4043" }}>
+                        no data captured outside of saved listings. all the sensitive stuff <span className="doc-typo">isnt</span> in our hands anyway.
+                      </span>
                     </div>
                   </div>
 
