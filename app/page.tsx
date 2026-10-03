@@ -7,7 +7,7 @@ export default function HomeboardPage() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [fontChoice, setFontChoice] = useState<"serif" | "sans" | "mono">("serif");
+  const [fontChoice, setFontChoice] = useState<"serif" | "sans" | "mono">("sans");
   const [fontSizeChoice, setFontSizeChoice] = useState(16);
   const [showEditAccessPopup, setShowEditAccessPopup] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -214,6 +214,8 @@ export default function HomeboardPage() {
                     apartment_search_brief
                   </span>
                   <span
+                    onClick={handleNoEditAccess}
+                    title="Click for edit access options"
                     style={{
                       backgroundColor: "#f1f3f4",
                       color: "#3c4043",
@@ -223,6 +225,7 @@ export default function HomeboardPage() {
                       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                       padding: "1px 6px",
                       fontWeight: 500,
+                      cursor: "pointer",
                     }}
                   >
                     read-only
@@ -658,11 +661,14 @@ export default function HomeboardPage() {
 
             {/* Document Status */}
             <div
+              onClick={handleNoEditAccess}
+              title="Click for edit access options"
               style={{
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                 fontSize: "11px",
                 color: "#5f6368",
                 flexShrink: 0,
+                cursor: "pointer",
               }}
             >
               Homeboard · read-only
@@ -702,282 +708,56 @@ export default function HomeboardPage() {
             }}
           >
             <div>
-              {/* Document Header Metadata inside the paper */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderBottom: "1px solid #e8eaed",
-                  paddingBottom: "8px",
-                  marginBottom: "28px",
-                  fontSize: "11px",
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  color: "#70757a",
-                }}
-              >
-                <span>Homeboard · read-only</span>
-                <span>last edited 12m ago</span>
-              </div>
-
-              {/* Document Title */}
-              <h1
-                style={{
-                  fontFamily: getComputedFontFamily(),
-                  fontSize: `${fontSizeChoice + 10}px`,
-                  fontWeight: 700,
-                  lineHeight: 1.3,
-                  color: "#202124",
-                  letterSpacing: "-0.015em",
-                  margin: "0 0 20px 0",
-                }}
-              >
-                finding an apartment without losing your mind
-              </h1>
-
-              {/* Document Body: Candid, stream-of-consciousness, unpolished note */}
               <div
                 style={{
                   fontFamily: getComputedFontFamily(),
                   fontSize: `${fontSizeChoice}px`,
-                  lineHeight: 1.75,
+                  lineHeight: 1.7,
                   color: "#202124",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "14px",
+                  gap: "24px",
+                  paddingTop: "12px",
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  imagine you and your friends are moving to nyc.
+                  you want to move in with your best friends. you guys <em>will</em> beat the housing market.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you find an apartment on StreetEasy at midnight. you drop the link into iMessage or WhatsApp. hours pass. someone is at work, someone is asleep, someone doesn&apos;t check the chat until lunch. by the time everyone sees it and agrees to tour, forty other applicants have already emailed the broker, the open house is full, and the listing is gone.
+                  you drop the link at midnight. someone hearts it at 3 a.m. it’s rented by 9 a.m.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  or you argue about whose commute is ruined—someone has a 20-minute straight shot on the express train, while someone else has an hour-long double transfer. and when a good place actually opens up, you scramble to track down who has their W-2s, who needs a guarantor, and who is going to front a $4,000 holding deposit on a personal debit card.
+                  you send approximately 217 emails and 521 texts to agents but have to settle for a place that you hate anyway.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  moving to NYC with friends is the ultimate stress test for apartment hunting—but the friction is the exact same everywhere.
+                  they walk 4 minutes to work. you take two trains and a bus.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  whether you&apos;re coordinating three roommates, moving in with a partner in Chicago or SF, or searching solo for a studio where thirty other applicants are competing for the exact same door: rental search has turned into an unpaid, high-stress administrative job. links scattered across chats, dead spreadsheets nobody updates, and zero coordination when a good unit drops.
+                  you split the total down the middle, but your bedroom is a converted pantry. homeboard is the shared workspace so you don&apos;t sign a lease you quietly resent for 12 months.
                 </p>
 
-                <p style={{ margin: 0 }}>
-                  we built Homeboard as a single, real-time rental workspace to eliminate that chaos and give you an unfair speed advantage—no matter where you&apos;re looking or how many people are on your lease.
-                </p>
-
-                <p style={{ margin: "8px 0 0 0", color: "#444746", fontWeight: 600 }}>
-                  how it actually works:
-                </p>
-
-                {/* Tabbed Document Blocks (Clean '-' dash bullets with compact document spacing) */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "10px",
-                    margin: "4px 0 8px 0",
-                  }}
-                >
-                  {/* Step 1: One-tap Capture */}
-                  <div
-                    style={{
-                      paddingLeft: "16px",
-                      position: "relative",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: "2px",
-                        top: "0",
-                        color: "#5f6368",
-                        fontWeight: 600,
-                      }}
-                      aria-hidden="true"
-                    >
-                      -
-                    </span>
-                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                      one-tap listing capture from Safari &amp; rental apps:
-                    </strong>{" "}
-                    <span style={{ color: "#3c4043" }}>
-                      browse StreetEasy, Zillow, Redfin, or local brokerage sites like you normally do. instead of copying links or taking screenshots into a messy chat, tap the Homeboard Safari extension or iOS share sheet. it instantly reads the exact unit number, net vs. gross rent, broker fee status, pet policies, and floorplans, dropping a clean, structured card directly onto your shared board.
-                    </span>
-                  </div>
-
-                  {/* Step 2: Commute calculations */}
-                  <div
-                    style={{
-                      paddingLeft: "16px",
-                      position: "relative",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: "2px",
-                        top: "0",
-                        color: "#5f6368",
-                        fontWeight: 600,
-                      }}
-                      aria-hidden="true"
-                    >
-                      -
-                    </span>
-                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                      automatic door-to-door commute calculation for everyone:
-                    </strong>{" "}
-                    <span style={{ color: "#3c4043" }}>
-                      each person sets their daily anchor—office, hospital, campus, or studio. the second a unit is added, Homeboard calculates real door-to-door transit times, exact subway or train lines, transfers, and walking distances for every single member (or just your own route if you&apos;re searching solo). no more opening Google Maps six times per listing to see if someone&apos;s commute is impossible.
-                    </span>
-                  </div>
-
-                  {/* Step 3: Group shortlist & voting */}
-                  <div
-                    style={{
-                      paddingLeft: "16px",
-                      position: "relative",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: "2px",
-                        top: "0",
-                        color: "#5f6368",
-                        fontWeight: 600,
-                      }}
-                      aria-hidden="true"
-                    >
-                      -
-                    </span>
-                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                      unified shortlist, reactions, and dealbreaker filters:
-                    </strong>{" "}
-                    <span style={{ color: "#3c4043" }}>
-                      react, vote, and comment directly on the listing card. Homeboard scores listings across a six-dimension group-fit model—balancing budget caps, transit equity, square footage, and must-haves (laundry in building, natural light, dishwasher). you immediately see where the group aligns and never waste time touring a place someone secretly hates.
-                    </span>
-                  </div>
-
-                  {/* Step 4: AI broker pitch generator */}
-                  <div
-                    style={{
-                      paddingLeft: "16px",
-                      position: "relative",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: "2px",
-                        top: "0",
-                        color: "#5f6368",
-                        fontWeight: 600,
-                      }}
-                      aria-hidden="true"
-                    >
-                      -
-                    </span>
-                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                      AI broker pitch generator:
-                    </strong>{" "}
-                    <span style={{ color: "#3c4043" }}>
-                      brokers in tight rental markets receive dozens of inquiries within an hour of posting and ignore generic &ldquo;is this available?&rdquo; messages. Homeboard drafts tailored, professional agent inquiries the second a listing drops. it automatically highlights your verified combined income multiple (confirming the 40x rent rule), credit score tiers, move-in readiness, and guarantor status—getting you to the top of the broker&apos;s inbox before open houses fill up.
-                    </span>
-                  </div>
-
-                  {/* Step 5: Shared document locker */}
-                  <div
-                    style={{
-                      paddingLeft: "16px",
-                      position: "relative",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: "2px",
-                        top: "0",
-                        color: "#5f6368",
-                        fontWeight: 600,
-                      }}
-                      aria-hidden="true"
-                    >
-                      -
-                    </span>
-                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                      encrypted document locker checklist:
-                    </strong>{" "}
-                    <span style={{ color: "#3c4043" }}>
-                      in competitive rental markets, the first applicant to submit a 100% complete packet gets the lease. Homeboard provides an encrypted checklist vault for each searcher—keeping W-2s, recent paystubs, photo IDs, bank statements, and guarantor letters verified and ready. when you decide to apply, your entire packet is organized and ready to submit in 60 seconds without emailing sensitive financial docs over an unencrypted group chat.
-                    </span>
-                  </div>
-
-                  {/* Step 6: Apple Pay deposit splits */}
-                  <div
-                    style={{
-                      paddingLeft: "16px",
-                      position: "relative",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: "2px",
-                        top: "0",
-                        color: "#5f6368",
-                        fontWeight: 600,
-                      }}
-                      aria-hidden="true"
-                    >
-                      -
-                    </span>
-                    <strong style={{ fontWeight: 600, color: "#1f1f1f" }}>
-                      Apple Pay deposit splits &amp; one-tap approval:
-                    </strong>{" "}
-                    <span style={{ color: "#3c4043" }}>
-                      when an agent demands a good-faith holding deposit or application fee on the spot, nobody has to front $4,000 on a personal debit card and chase down roommates on Venmo for two weeks. roommates authorize their exact split instantly via Apple Pay—or solo searchers approve with a single tap.
-                    </span>
-                  </div>
-                </div>
-
-                <p style={{ margin: "8px 0 0 0" }}>
-                  the difference is speed and clarity. whether you&apos;re a group of friends moving into the city, a couple trying to stop arguing about transit lines, or a solo renter who needs to move faster than forty competitors: you move as a synchronized unit from the moment an apartment goes live to the moment you sign the lease.
-                </p>
-
-                {/* Universal Blue Hyperlink */}
-                <p style={{ margin: "14px 0 0 0" }}>
-                  we are onboarding renters, couples, and roommate groups in rolling batches.{" "}
+                <p style={{ margin: "4px 0 0 0" }}>
                   <a
-                    href="mailto:early@homeboard.app?subject=Homeboard%20Early%20Access%20Request&body=Hi%20Homeboard%20team%2C%0A%0AI%20am%20looking%20for%20an%20apartment%20and%20would%20love%20early%20access.%0A%0AGroup%20size%20(solo%2C%20couple%2C%20or%20number%20of%20roommates)%3A%0ACity%20%2F%20neighborhoods%3A%0ATarget%20move-in%20date%3A"
+                    href="#download"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowEditAccessPopup(true);
+                    }}
                     style={{
                       color: "#1a73e8",
                       textDecoration: "underline",
                       cursor: "pointer",
                       fontWeight: 500,
+                      fontSize: `${fontSizeChoice}px`,
+                      fontStyle: "italic",
                     }}
                   >
-                    request early access
-                  </a>{" "}
-                  to join the private beta.
-                </p>
-
-                <p
-                  style={{
-                    margin: "10px 0 0 0",
-                    fontSize: "12px",
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                    color: "#70757a",
-                    fontStyle: "italic",
-                  }}
-                >
-                  typed quickly between open houses. updates added as we ship.
+                    [sync your search]
+                  </a>
                 </p>
               </div>
             </div>
@@ -1296,6 +1076,8 @@ export default function HomeboardPage() {
               </div>
             </div>
           </div>
+        )}
+
         {/* ========================================================= */}
         {/* REQUEST ACCESS MODAL (Google Docs Style with Download)    */}
         {/* ========================================================= */}
