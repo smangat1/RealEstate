@@ -81,11 +81,30 @@ class FixtureUITestCase: XCTestCase {
     }
     field.typeText(text)
   }
-  func send(_ text: String) {
-    fill(app.textFields["homeboard.chat.field"], text)
+  func send(_ text: String, allowsImmediateFailureRestore: Bool = false) {
+    let field = app.textFields["homeboard.chat.field"]
+    fill(field, text)
     let button = app.buttons["homeboard.chat.send"]
     XCTAssertTrue(button.isEnabled)
-    button.tap()
+    let postCount = diagnostics()["postCount"] as? Int ?? 0
+    // After a long card is revealed, SwiftUI can still be settling the chat
+    // scroll position when the keyboard appears. An XCUI tap can then land on
+    // the old frame without activating the send action. Confirm that the
+    // composer actually consumed the message and retry the tap only while the
+    // exact unsent text is still present.
+    for _ in 0..<3 {
+      button.tap()
+      let consumed = XCTNSPredicateExpectation(
+        predicate: NSPredicate { _, _ in
+          (field.value as? String) != text
+            || (allowsImmediateFailureRestore
+              && (self.diagnostics()["postCount"] as? Int ?? 0) > postCount)
+        },
+        object: nil
+      )
+      if XCTWaiter.wait(for: [consumed], timeout: 2) == .completed { return }
+    }
+    XCTFail("Send action did not consume the composer text")
   }
   func assertClean(file: StaticString = #filePath, line: UInt = #line) {
     XCTAssertTrue((diagnostics()["unexpected"] as? [String] ?? ["diagnostics missing"]).isEmpty, "Unexpected fixture request: \(diagnostics())", file: file, line: line)
