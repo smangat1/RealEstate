@@ -124,9 +124,6 @@ export default function HomeboardPage() {
           -webkit-text-decoration-style: wavy !important;
           -webkit-text-decoration-color: #1a73e8 !important;
           -webkit-text-decoration-skip-ink: none !important;
-          background-color: rgba(26, 115, 232, 0.12) !important;
-          border-radius: 2px;
-          padding: 0 1px;
         }
 
         @media (max-width: 640px) {
