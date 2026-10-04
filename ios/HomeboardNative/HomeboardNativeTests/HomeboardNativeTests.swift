@@ -466,6 +466,13 @@ final class HomeboardNativeTests: XCTestCase {
       ("My credit score is a 780 and my annual income totals 90000", ["780", "90000"]),
       ("My credit score is sitting at 780", ["780"]),
       ("My income is about 90000 and 110000 and 120000", ["90000", "110000", "120000"]),
+      ("My annual income is:\n90000", ["90000"]),
+      ("My credit score:\n780", ["780"]),
+      ("My annual income totals 90000; 110000 including bonus", ["90000", "110000"]),
+      ("My income is 90000. Including bonus it is 110000.", ["90000", "110000"]),
+      ("Rent is 3500 and move in October 15, 2026", ["3500"]),
+      ("90000", ["90000"]),
+      ("ninety thousand", ["ninety thousand"]),
       ("My salary is currently somewhere around USD 90,000 to $110,000 per year", ["90,000", "110,000"]),
       ("Our income is roughly between 85k and 105k", ["85k", "105k"]),
       ("FICO is approximately 740-780", ["740", "780"]),
@@ -503,6 +510,109 @@ final class HomeboardNativeTests: XCTestCase {
       "Prefer a rent stabilized apartment with natural light",
     ] {
       XCTAssertEqual(AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(safeRequest), safeRequest)
+    }
+
+    let mixedDate = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(
+      "Rent is 3500 and move in October 15, 2026"
+    )
+    XCTAssertFalse(mixedDate.contains("3500"))
+    XCTAssertTrue(mixedDate.contains("October 15, 2026"))
+  }
+
+  func testAssembledPromptRejectsWhollyUnsafeFinancialContinuations() {
+    let unsafeCommands = [
+      "My annual income is:\n90000",
+      "My credit score:\n780",
+      "My annual income totals 90000; 110000 including bonus",
+      "My income is 90000. Including bonus it is 110000.",
+    ]
+    for command in unsafeCommands {
+      let payload = AdvisorMessagePayload(
+        messageId: "message-unsafe-continuation",
+        originalCommand: command,
+        draftText: "server draft",
+        tone: "Professional"
+      )
+      XCTAssertNil(
+        AdvisorDraftGenerator.appleIntelligencePrompt(
+          payload: payload,
+          tone: "Professional",
+          toggles: [],
+          senderName: "Sam",
+          memorySummary: nil
+        ),
+        "Unsafe command unexpectedly produced a model prompt: \(command)"
+      )
+    }
+  }
+
+  func testAssembledPromptCarriesFinancialTaintAcrossEveryFreeTextField() throws {
+    let payload = AdvisorMessagePayload(
+      messageId: "message-continuation-boundary",
+      originalCommand: "@advisor ask about 123 Main St unit 204\nMy annual income is:\n90000",
+      draftText: "server draft",
+      tone: "Professional",
+      context: AdvisorContext(
+        leverage: AdvisorLeverage(
+          memberCount: 2,
+          applicationReadiness: nil,
+          activeOffers: nil,
+          strongestListings: [AdvisorStrongListing(
+            boardListingId: "listing-a",
+            listing: "456 Park Avenue apartment 789; My annual income totals 90000; 110000 including bonus"
+          )]
+        ),
+        requirements: AdvisorRequirements(
+          budget: nil,
+          moveIn: "Rent is 3500 and move in October 15, 2026",
+          locations: ["900 Broadway unit 12\nMy credit score:\n780"],
+          bedrooms: nil,
+          mustHaves: ["In-unit laundry; My annual income is:\n91000"],
+          dealbreakers: ["Parking; My credit score:\n770"],
+          priorities: ["Natural light. My income is 92000. Including bonus it is 112000."],
+          commuteDestinations: ["123 Main St unit 204; My annual income totals 93000; 113000 including bonus"],
+          tensionFlags: ["Pets allowed\nMy credit score is:\n760"]
+        ),
+        picker: AdvisorPickerContext(
+          conversationStage: "sent\nMy annual income is:\n94000",
+          listingHistory: [AdvisorListingHistory(
+            boardListingId: "listing-a",
+            status: "answered; My credit score:\n750",
+            templateId: "standard. My income is 95000. Including bonus it is 115000.",
+            contactedAt: "2026-10-01T12:00:00Z",
+            answered: true,
+            daysSinceContact: 3
+          )],
+          boardFeedback: AdvisorFeedbackMemorySummary(sampleSize: 0, signals: [])
+        )
+      )
+    )
+    let prompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
+      payload: payload,
+      tone: "Professional",
+      toggles: [
+        AdvisorToggleOption(
+          id: "tour", label: "Parking; My annual income totals 96000; 116000 including bonus",
+          enabled: true, required: false
+        ),
+      ],
+      senderName: "Sam. My credit score:\n740",
+      memorySummary: "accepted Casual twice. My income is 97000. Including bonus it is 117000."
+    ))
+
+    for privateValue in [
+      "90000", "110000", "3500", "780", "91000", "770", "92000", "112000",
+      "93000", "113000", "760", "94000", "750", "95000", "115000", "96000",
+      "116000", "740", "97000", "117000",
+    ] {
+      XCTAssertFalse(prompt.contains(privateValue), "Leaked \(privateValue) in \(prompt)")
+    }
+    for safeValue in [
+      "123 Main St unit 204", "456 Park Avenue apartment 789", "900 Broadway unit 12",
+      "October 15, 2026", "In-unit laundry", "Parking", "Natural light", "Pets allowed",
+      "sent", "answered", "accepted Casual twice",
+    ] {
+      XCTAssertTrue(prompt.localizedCaseInsensitiveContains(safeValue), "Dropped \(safeValue) from \(prompt)")
     }
   }
 
@@ -565,7 +675,7 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertTrue(prompt.contains("In-unit laundry"))
     XCTAssertTrue(prompt.contains("Natural light"))
     XCTAssertTrue(prompt.contains("Selected tone: Professional"))
-    XCTAssertTrue(prompt.contains("Sender name: Sam"))
+    XCTAssertTrue(prompt.contains("Sender name: Homeboard member"))
     XCTAssertFalse(prompt.localizedCaseInsensitiveContains("credit"))
     XCTAssertFalse(prompt.localizedCaseInsensitiveContains("income"))
     XCTAssertFalse(prompt.localizedCaseInsensitiveContains("salary"))
@@ -584,7 +694,7 @@ final class HomeboardNativeTests: XCTestCase {
   func testUnsafeAppleIntelligenceInputUsesSanitizedDeterministicFallback() async {
     let payload = AdvisorMessagePayload(
       messageId: "message-fallback",
-      originalCommand: "My credit score is sitting at 780",
+      originalCommand: "My income is 90000. Including bonus it is 110000.",
       draftText: "server draft",
       tone: "Professional",
       context: AdvisorContext(
@@ -592,18 +702,18 @@ final class HomeboardNativeTests: XCTestCase {
           memberCount: 2, applicationReadiness: nil, activeOffers: nil,
           strongestListings: [AdvisorStrongListing(
             boardListingId: "listing-a",
-            listing: "123 Main St unit 204; income totals 90000"
+            listing: "123 Main St unit 204; annual income totals 90000; 110000 including bonus"
           )]
         ),
         requirements: AdvisorRequirements(
           budget: nil,
-          moveIn: "October 15, 2026; salary comes to ninety thousand",
+          moveIn: "Rent is 3500 and move in October 15, 2026",
           locations: [],
           bedrooms: nil,
           mustHaves: [],
           dealbreakers: [],
           priorities: [],
-          commuteDestinations: ["900 Broadway unit 12; FICO is seven hundred eighty"],
+          commuteDestinations: ["900 Broadway unit 12\nMy credit score:\n780"],
           tensionFlags: []
         )
       )
@@ -616,15 +726,15 @@ final class HomeboardNativeTests: XCTestCase {
         AdvisorToggleOption(id: "commute", label: "Commute fit", enabled: true, required: false),
       ],
       financialSentence: nil,
-      senderName: "Sam; annual compensation is 88000"
+      senderName: "Sam; My annual compensation is:\n88000"
     )
 
     XCTAssertEqual(output.source, "device_template")
     XCTAssertTrue(output.text.contains("123 Main St unit 204"))
     XCTAssertTrue(output.text.contains("October 15, 2026"))
     XCTAssertTrue(output.text.contains("900 Broadway unit 12"))
-    XCTAssertTrue(output.text.contains("Sam"))
-    for privateValue in ["780", "90000", "ninety thousand", "seven hundred eighty", "88000"] {
+    XCTAssertTrue(output.text.contains("Homeboard member"))
+    for privateValue in ["3500", "780", "90000", "110000", "88000"] {
       XCTAssertFalse(output.text.contains(privateValue), "Leaked \(privateValue) in \(output.text)")
     }
   }

@@ -818,54 +818,69 @@ extension AdvisorDraftGenerator {
     guard !trimmed.isEmpty else { return nil }
     guard containsFinancialRisk(trimmed) else { return input }
 
-    let safeClauses = financialClauses(in: trimmed)
-      .filter { !containsFinancialRisk($0) }
-      .map {
-        $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(
-          CharacterSet(charactersIn: ";.!?")
-        ))
-      }
-      .filter { !$0.isEmpty }
-    guard !safeClauses.isEmpty else { return nil }
-    let result = safeClauses.joined(separator: ". ")
+    // Financial taint belongs to the full value. Punctuation, newlines, and
+    // conjunctions are not declassification boundaries because a following
+    // fragment can still be a value or range continuation. Recover only spans
+    // whose non-financial meaning is established independently.
+    let result = positivelySafeSpans(in: trimmed).joined(separator: "; ")
+    guard !result.isEmpty else { return nil }
     return containsFinancialRisk(result) ? nil : result
   }
 
-  /// Splits only at confident clause boundaries. Commas and colons remain inside
-  /// the clause so currency lists, ranges, abbreviations, and unfamiliar connector
-  /// words cannot strand a later value in a supposedly safe fragment.
-  private static func financialClauses(in input: String) -> [String] {
-    var clauses: [String] = []
-    var start = input.startIndex
-    var index = input.startIndex
-
-    func nextNonWhitespace(after position: String.Index) -> Character? {
-      var next = input.index(after: position)
-      while next < input.endIndex, input[next].isWhitespace {
-        next = input.index(after: next)
+  private static func positivelySafeSpans(in input: String) -> [String] {
+    let patterns = [
+      // Street/unit references establish that their digits identify a listing.
+      #"(?i)\b[0-9]{1,6}\s+(?:[a-z0-9.'-]+\s+){0,6}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|parkway|pkwy|way|broadway)(?:\s*,?\s*(?:unit|apt|apartment|suite|#)\s*[a-z0-9-]+)?\b"#,
+      // Dates exempt only the recognized date span, never other numbers nearby.
+      #"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?(?:,\s*)?)?[0-9]{4}\b"#,
+      #"\b[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}\b"#,
+      #"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b"#,
+      // Explicit housing needs remain useful without admitting arbitrary numbers.
+      #"(?i)\b(?:studio|one|two|three|four|five|[0-9])[- ]?(?:bedroom|bedrooms|bed|beds|br)\b"#,
+      #"(?i)\b(?:in[- ]unit\s+)?laundry\b"#,
+      #"(?i)\bparking\b"#,
+      #"(?i)\bnatural\s+light\b"#,
+      #"(?i)\bpets?\s+(?:allowed|welcome|okay|ok)\b"#,
+      #"(?i)\b(?:no\s+)?walk[- ]?up(?:\s+above\s+the\s+(?:first|second|third|fourth|fifth|[0-9](?:st|nd|rd|th)?)\s+floor)?\b"#,
+      #"(?i)\b(?:elevator|doorman|dishwasher|outdoor\s+space|rent[- ]stabilized)\b"#,
+      // Picker state and bounded outcome summaries are non-financial metadata.
+      #"(?i)\b(?:none|drafted|reported_sent|sent|replied|stale|answered)\b"#,
+      #"(?i)\b(?:accepted|sent|replied|rejected|revised)\s+(?:professional|casual|stern|passive-aggressive)(?:\s+(?:once|twice))?\b"#,
+    ]
+    var ranges: [Range<String.Index>] = []
+    let fullRange = NSRange(input.startIndex..<input.endIndex, in: input)
+    for pattern in patterns {
+      guard let expression = try? NSRegularExpression(pattern: pattern) else { continue }
+      expression.enumerateMatches(in: input, range: fullRange) { match, _, _ in
+        guard let match, let range = Range(match.range, in: input) else { return }
+        ranges.append(range)
       }
-      return next < input.endIndex ? input[next] : nil
+    }
+    ranges.sort {
+      if $0.lowerBound == $1.lowerBound { return $0.upperBound > $1.upperBound }
+      return $0.lowerBound < $1.lowerBound
     }
 
-    while index < input.endIndex {
-      let character = input[index]
-      let isHardBoundary = character == ";" || character == "\n"
-      let isSentenceBoundary: Bool
-      if character == "." || character == "!" || character == "?" {
-        let next = nextNonWhitespace(after: index)
-        isSentenceBoundary = next == nil || next?.isUppercase == true
-      } else {
-        isSentenceBoundary = false
-      }
-      if isHardBoundary || isSentenceBoundary {
-        let end = input.index(after: index)
-        clauses.append(String(input[start..<end]))
-        start = end
-      }
-      index = input.index(after: index)
+    var result: [String] = []
+    var coveredThrough = input.startIndex
+    for range in ranges where range.lowerBound >= coveredThrough {
+      let value = input[range].trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !value.isEmpty else { continue }
+      result.append(value)
+      coveredThrough = range.upperBound
     }
-    if start < input.endIndex { clauses.append(String(input[start...])) }
-    return clauses.isEmpty ? [input] : clauses
+    return result
+  }
+
+  private static func removingPositivelySafeSpans(from input: String) -> String {
+    var result = input
+    let safeValues = positivelySafeSpans(in: input)
+    for value in safeValues.sorted(by: { $0.count > $1.count }) {
+      if let range = result.range(of: value, options: [.caseInsensitive, .literal]) {
+        result.replaceSubrange(range, with: " ")
+      }
+    }
+    return result
   }
 
   private static func containsFinancialRisk(_ input: String) -> Bool {
@@ -880,12 +895,22 @@ extension AdvisorDraftGenerator {
       return true
     }
 
+    // A bare large or written-out quantity is ambiguous in free text. Remove
+    // independently recognized addresses, dates, and housing needs first; only
+    // quantities left outside those spans fail closed.
+    let unclassified = removingPositivelySafeSpans(from: input)
+    let bareQuantity = #"(?i)\b(?:[0-9]{3,}(?:\.[0-9]+)?|[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?\s*k)\b"#
+    let writtenQuantity = #"(?i)\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ](?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety))*\s+(?:hundred|thousand|million)\b|\b(?:hundred|thousand|million)\b"#
+    if matches(bareQuantity, in: unclassified) || matches(writtenQuantity, in: unclassified) {
+      return true
+    }
+
     guard matches(#"(?i)\brent(?:al)?\b"#, in: input) else { return false }
     let amount = #"(?i)(?:\b[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?\b|\b(?:hundred|thousand|million)\b)"#
     let pricingLanguage = #"(?i)\b(?:costs?|price|priced|pay|under|over|below|above|max(?:imum)?|min(?:imum)?|per\s+(?:month|year)|monthly|annually|yearly)\b"#
-    let ordinaryDate = #"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b[0-9]{1,2}/[0-9]{1,2}(?:/[0-9]{2,4})?\b"#
-    return matches(amount, in: input)
-      && (matches(pricingLanguage, in: input) || !matches(ordinaryDate, in: input))
+    let unsafeRemainder = removingPositivelySafeSpans(from: input)
+    return matches(amount, in: unsafeRemainder)
+      && (matches(pricingLanguage, in: unsafeRemainder) || matches(#"(?i)\brent(?:al)?\b"#, in: unsafeRemainder))
   }
 
   private static func matches(_ pattern: String, in input: String) -> Bool {
