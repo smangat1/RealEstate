@@ -46,7 +46,7 @@ test("install, privacy, and legal paths remain usable on mobile", () => {
   assert.match(installExperience, /dialog\.showModal\(\)/);
   assert.match(styles, /installDialogBody[^}]*display: grid/);
   assert.match(page, /Add to Home Screen/);
-  assert.match(page, /href="\/safari"/);
+  assert.match(page, /href="\/mac"/);
   assert.match(page, /aria-label="Data Privacy Details"/);
   assert.match(page, /aria-expanded=\{isPrivacyOpen\}/);
   assert.match(page, /privacy policy/);

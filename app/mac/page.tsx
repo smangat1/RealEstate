@@ -104,7 +104,7 @@ export default function MacCompanionPage() {
             padding: 12px 8px 48px !important;
             background: #f0f2f5 !important;
           }
-          /* Sheet floats on the gray desk with shadow — this is what makes it feel like a doc */
+          /* Sheet floats on the gray desk with shadow; this is what makes it feel like a doc */
           .doc-sheet {
             border-radius: 2px !important;
             border: 1px solid #dadce0 !important;
@@ -112,7 +112,7 @@ export default function MacCompanionPage() {
             padding: 24px 20px 48px 20px !important;
             min-height: unset !important;
           }
-          /* Hide toolbar ribbon entirely on mobile — Google Docs mobile does this */
+          /* Hide toolbar ribbon entirely on mobile; Google Docs mobile does this */
           .doc-toolbar-ribbon {
             display: none !important;
           }
