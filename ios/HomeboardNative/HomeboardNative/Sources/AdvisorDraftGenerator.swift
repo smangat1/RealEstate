@@ -515,8 +515,8 @@ enum AdvisorDraftGenerator {
     senderName: String,
     templateId: String
   ) -> String {
-    let listing = safeFreeText(targetListing(payload)) ?? "the rental"
-    let firstName = safeFreeText(payload.contact?.agentName)?
+    let listing = safeStructuredText(targetListing(payload), allowsNumericFacts: true) ?? "the rental"
+    let firstName = safeUserFreeText(payload.contact?.agentName)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .split(separator: " ")
       .first
@@ -524,15 +524,16 @@ enum AdvisorDraftGenerator {
     let greeting = firstName.map { "Hi \($0)," } ?? "Hello,"
     let requirements = payload.context?.requirements
     let moveIn = enabled("Group requirements", toggles: toggles)
-      ? safeFreeText(requirements?.moveIn)?.trimmingCharacters(in: .whitespacesAndNewlines)
+      ? safeStructuredText(requirements?.moveIn, allowsNumericFacts: true)?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
       : nil
     let moveSentence = moveIn.flatMap { $0.isEmpty ? nil : "We are targeting \($0)." }
     let commute = enabled("Commute fit", toggles: toggles)
-      ? safeFreeText(requirements?.commuteDestinations?.first)
+      ? safeStructuredText(requirements?.commuteDestinations?.first, allowsNumericFacts: true)
       : nil
     let commuteSentence = commute.map { "The location also works well for our commute to \($0)." }
     let finance = financialToggleEnabled(toggles) ? financialSentence : nil
-    let safeSender = safeFreeText(senderName) ?? "Homeboard member"
+    let safeSender = safeUserFreeText(senderName) ?? "Homeboard member"
     let tour = enabled("Request a tour", toggles: toggles)
       ? "Could you confirm availability and the next opportunity to tour?"
       : "Could you confirm current availability?"
@@ -736,26 +737,44 @@ extension AdvisorDraftGenerator {
     let requirements = payload.context?.requirements
     let picker = payload.context?.picker
     let safe = SafeContext(
-      listing: safeFreeText(targetListing(payload)) ?? "the selected rental",
-      moveIn: safeFreeText(requirements?.moveIn),
-      locations: (requirements?.locations ?? []).compactMap(safeFreeText),
-      mustHaves: (requirements?.mustHaves ?? []).compactMap(safeFreeText),
-      dealbreakers: (requirements?.dealbreakers ?? []).compactMap(safeFreeText),
-      priorities: (requirements?.priorities ?? []).compactMap(safeFreeText),
-      commuteDestinations: (requirements?.commuteDestinations ?? []).compactMap(safeFreeText),
-      tensionFlags: (requirements?.tensionFlags ?? []).compactMap(safeFreeText),
-      conversationStage: safeFreeText(picker?.conversationStage) ?? "none",
+      listing: safeStructuredText(targetListing(payload), allowsNumericFacts: true)
+        ?? "the selected rental",
+      moveIn: safeStructuredText(requirements?.moveIn, allowsNumericFacts: true),
+      locations: (requirements?.locations ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: true)
+      },
+      mustHaves: (requirements?.mustHaves ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      dealbreakers: (requirements?.dealbreakers ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      priorities: (requirements?.priorities ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      commuteDestinations: (requirements?.commuteDestinations ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: true)
+      },
+      tensionFlags: (requirements?.tensionFlags ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      conversationStage: safeStructuredText(picker?.conversationStage, allowsNumericFacts: false)
+        ?? "none",
       listingHistory: Array((picker?.listingHistory ?? []).prefix(12)).map {
         AdvisorListingHistory(
           boardListingId: $0.boardListingId,
-          status: safeFreeText($0.status) ?? "unknown",
-          templateId: safeFreeText($0.templateId) ?? AdvisorOutcomeMemory.standardTemplate,
+          status: safeStructuredText($0.status, allowsNumericFacts: false) ?? "unknown",
+          templateId: safeStructuredText($0.templateId, allowsNumericFacts: false)
+            ?? AdvisorOutcomeMemory.standardTemplate,
           contactedAt: $0.contactedAt,
           answered: $0.answered,
           daysSinceContact: $0.daysSinceContact
         )
       },
-      reportedOutcomeSummary: safeFreeText(memorySummary.map { String($0.prefix(800)) })
+      reportedOutcomeSummary: safeStructuredText(
+        memorySummary.map { String($0.prefix(800)) },
+        allowsNumericFacts: true
+      )
         .map { String($0.prefix(800)) }
     )
     let data = try? JSONEncoder().encode(safe)
@@ -766,7 +785,7 @@ extension AdvisorDraftGenerator {
     guard let command, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return "Draft outreach for the selected rental."
     }
-    return safeFreeText(String(command.prefix(2_000)))
+    return safeUserFreeText(String(command.prefix(2_000)))
       ?? "Draft outreach for the selected rental."
   }
 
@@ -786,15 +805,17 @@ extension AdvisorDraftGenerator {
     if rawRequest.isEmpty {
       request = "Draft outreach for the selected rental."
     } else {
-      guard let safeRequest = safeFreeText(String(rawRequest.prefix(2_000))) else { return nil }
+      guard let safeRequest = safeUserFreeText(String(rawRequest.prefix(2_000))) else { return nil }
       request = safeRequest
     }
 
     let allowedTones = ["Professional", "Casual", "Stern", "Passive-Aggressive"]
     let selectedTone = allowedTones.contains(tone) ? tone : "Professional"
-    let enabledLabels = toggles.filter(\.enabled).compactMap { safeFreeText($0.label) }
+    let enabledLabels = toggles.filter(\.enabled).compactMap {
+      safeStructuredText($0.label, allowsNumericFacts: false)
+    }
       .joined(separator: ", ")
-    let safeSender = safeFreeText(senderName) ?? "Homeboard member"
+    let safeSender = safeUserFreeText(senderName) ?? "Homeboard member"
     let context = boundedAppleIntelligenceContext(payload: payload, memorySummary: memorySummary)
 
     return """
@@ -812,155 +833,148 @@ extension AdvisorDraftGenerator {
     """
   }
 
-  private static func safeFreeText(_ input: String?) -> String? {
-    guard let input else { return nil }
-    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
-    guard containsFinancialRisk(trimmed) else { return input }
-
-    // Financial taint belongs to the full value. Punctuation, newlines, and
-    // conjunctions are not declassification boundaries because a following
-    // fragment can still be a value or range continuation. Recover only spans
-    // whose non-financial meaning is established independently.
-    let result = positivelySafeSpans(in: trimmed).joined(separator: "; ")
-    guard !result.isEmpty else { return nil }
-    return containsFinancialRisk(result) ? nil : result
+  private struct FreeTextUnit {
+    var text: String
+    var separatorBefore: Character?
   }
 
-  private static func positivelySafeSpans(in input: String) -> [String] {
-    let patterns: [(pattern: String, subjectToNegation: Bool, address: Bool)] = [
-      // Street/unit references establish that their digits identify a listing.
-      (#"\b[0-9]{1,6}[ \t]+(?:[NSEW]\.?[ \t]+)?(?:[A-Z][A-Za-z.'-]*[ \t]+){0,4}(?i:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|parkway|pkwy|way|broadway)(?:[ \t]*,?[ \t]+(?i:unit|apt|apartment|suite|#)[ \t]*[A-Za-z0-9-]+)?\b"#, false, true),
-      // Dates exempt only the recognized date span, never other numbers nearby.
-      (#"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?(?:,\s*)?)?[0-9]{4}\b"#, false, false),
-      (#"\b[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}\b"#, false, false),
-      (#"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b"#, false, false),
-      // Explicit housing needs remain useful without admitting arbitrary numbers.
-      // Negated amenities are omitted unless the matched span itself preserves
-      // that negation, as in the explicit "No walk-up" form.
-      (#"(?i)\b(?:studio|one|two|three|four|five|[0-9])[- ]?(?:bedroom|bedrooms|bed|beds|br)\b"#, true, false),
-      (#"(?i)\b(?:in[- ]unit\s+)?laundry\b"#, true, false),
-      (#"(?i)\bparking\b"#, true, false),
-      (#"(?i)\bnatural\s+light\b"#, true, false),
-      (#"(?i)\bpets?\s+(?:allowed|welcome|okay|ok)\b"#, true, false),
-      (#"(?i)\bno\s+walk[- ]?up(?:\s+above\s+the\s+(?:first|second|third|fourth|fifth|[0-9](?:st|nd|rd|th)?)\s+floor)?\b"#, false, false),
-      (#"(?i)\bwalk[- ]?up(?:\s+above\s+the\s+(?:first|second|third|fourth|fifth|[0-9](?:st|nd|rd|th)?)\s+floor)?\b"#, true, false),
-      (#"(?i)\b(?:elevator|doorman|dishwasher|outdoor\s+space|rent[- ]stabilized)\b"#, true, false),
-      // Picker state and bounded outcome summaries are non-financial metadata.
-      (#"(?i)\b(?:none|drafted|reported_sent|sent|replied|stale|answered)\b"#, false, false),
-      (#"(?i)\b(?:accepted|sent|replied|rejected|revised)\s+(?:professional|casual|stern|passive-aggressive)(?:\s+(?:once|twice))?\b"#, false, false),
-    ]
-    var ranges: [(range: Range<String.Index>, subjectToNegation: Bool, address: Bool)] = []
-    let fullRange = NSRange(input.startIndex..<input.endIndex, in: input)
-    for entry in patterns {
-      guard let expression = try? NSRegularExpression(pattern: entry.pattern) else { continue }
-      expression.enumerateMatches(in: input, range: fullRange) { match, _, _ in
-        guard let match, let range = Range(match.range, in: input) else { return }
-        ranges.append((range, entry.subjectToNegation, entry.address))
+  /// User-authored request text is handled only as whole sentence/continuation
+  /// units. A unit is passed through verbatim or removed in full; no substring
+  /// is ever recovered from a rejected unit.
+  private static func safeUserFreeText(_ input: String?) -> String? {
+    guard let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          let splitUnits = splitUserFreeText(input) else { return nil }
+
+    var joinedUnits: [FreeTextUnit] = []
+    for unit in splitUnits {
+      if let previous = joinedUnits.last,
+         shouldJoinContinuation(unit, to: previous) {
+        joinedUnits[joinedUnits.count - 1].text += unit.text
+      } else {
+        joinedUnits.append(unit)
       }
-    }
-    ranges.sort {
-      if $0.range.lowerBound == $1.range.lowerBound {
-        return $0.range.upperBound > $1.range.upperBound
-      }
-      return $0.range.lowerBound < $1.range.lowerBound
     }
 
-    var result: [String] = []
-    var coveredThrough = input.startIndex
-    for span in ranges where span.range.lowerBound >= coveredThrough {
-      if span.address && addressStartsWithFinancialValue(span.range, in: input) { continue }
-      if span.subjectToNegation && hasNegationBeforeSafeSpan(span.range, in: input) { continue }
-      let value = input[span.range].trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !value.isEmpty else { continue }
-      result.append(value)
-      coveredThrough = span.range.upperBound
+    var kept = ""
+    for unit in joinedUnits {
+      guard let unsafe = userUnitContainsPrivateQuantity(unit.text) else { return nil }
+      if !unsafe { kept += unit.text }
     }
-    return result
+    return kept.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : kept
   }
 
-  private static func addressStartsWithFinancialValue(
-    _ range: Range<String.Index>,
-    in input: String
+  private static func splitUserFreeText(_ input: String) -> [FreeTextUnit]? {
+    let unsupportedControls = input.unicodeScalars.contains {
+      CharacterSet.controlCharacters.contains($0)
+        && $0.value != 10 && $0.value != 9 && $0.value != 13
+    }
+    guard !unsupportedControls else { return nil }
+
+    var units: [FreeTextUnit] = []
+    var start = input.startIndex
+    var separatorBefore: Character?
+    var index = input.startIndex
+
+    while index < input.endIndex {
+      let character = input[index]
+      let next = input.index(after: index)
+      let periodBoundary = character == "."
+        && (next == input.endIndex || input[next].isWhitespace)
+      let boundary = periodBoundary
+        || character == "!" || character == "?"
+        || character == ":" || character == ";" || character == "\n"
+      if boundary {
+        let raw = String(input[start..<next])
+        if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          if !units.isEmpty { units[units.count - 1].text += raw }
+        } else {
+          units.append(FreeTextUnit(text: raw, separatorBefore: separatorBefore))
+        }
+        separatorBefore = character
+        start = next
+      }
+      index = next
+    }
+
+    if start < input.endIndex {
+      let raw = String(input[start...])
+      if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !units.isEmpty { units[units.count - 1].text += raw }
+      } else {
+        units.append(FreeTextUnit(text: raw, separatorBefore: separatorBefore))
+      }
+    }
+    return units
+  }
+
+  private static func shouldJoinContinuation(
+    _ current: FreeTextUnit,
+    to previous: FreeTextUnit
   ) -> Bool {
-    var clauseStart = range.lowerBound
-    let boundaries = CharacterSet(charactersIn: ".!?;\n")
-    while clauseStart > input.startIndex {
-      let previous = input.index(before: clauseStart)
-      guard input[previous].unicodeScalars.allSatisfy({ !boundaries.contains($0) }) else { break }
-      clauseStart = previous
-    }
-    let prefix = String(input[clauseStart..<range.lowerBound])
-    guard matches(strongFinancialLanguagePattern, in: prefix) else { return false }
-
-    // A prior quantity shows that the financial value has already been closed
-    // before this independently structured address begins. Without one, the
-    // address-leading digits may themselves be that financial value.
-    let priorQuantity = #"(?i)\b(?:[0-9]+(?:[,.][0-9]+)*\s*k?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:hundred|thousand|million))\b"#
-    return !matches(priorQuantity, in: prefix)
-  }
-
-  private static func hasNegationBeforeSafeSpan(
-    _ range: Range<String.Index>,
-    in input: String
-  ) -> Bool {
-    var clauseStart = range.lowerBound
-    let boundaries = CharacterSet(charactersIn: ".!?;\n")
-    while clauseStart > input.startIndex {
-      let previous = input.index(before: clauseStart)
-      guard input[previous].unicodeScalars.allSatisfy({ !boundaries.contains($0) }) else { break }
-      clauseStart = previous
-    }
-    let prefix = String(input[clauseStart..<range.lowerBound])
-    let negation = #"(?i)(?:\b(?:no|not|never|without|cannot)\b|\b(?:don['’]t|can['’]t|won['’]t|wouldn['’]t|shouldn['’]t|couldn['’]t)\b|\b(?:do|can|will|would|should|could)\s+not\b|\bavoid(?:ing)?\b)"#
-    return matches(negation, in: prefix)
-  }
-
-  private static func removingPositivelySafeSpans(from input: String) -> String {
-    var result = input
-    let safeValues = positivelySafeSpans(in: input)
-    for value in safeValues.sorted(by: { $0.count > $1.count }) {
-      if let range = result.range(of: value, options: [.caseInsensitive, .literal]) {
-        result.replaceSubrange(range, with: " ")
-      }
-    }
-    return result
-  }
-
-  private static func containsFinancialRisk(_ input: String) -> Bool {
-    let currency = #"(?i)(?:[$€£¥]|\b(?:usd|us\s+dollars?|dollars?|bucks?)\b)"#
-    let incomeMultiple = #"(?i)\b(?:[0-9]+(?:\.[0-9]+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*[x×]\b"#
-    let periodicAmount = #"(?i)(?:\b[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?|\b(?:hundred|thousand|million)\b)\s*(?:/\s*(?:mo(?:nth)?|yr|year)|per\s+(?:month|year)|a\s+year|monthly|annually|yearly)\b"#
-    if matches(strongFinancialLanguagePattern, in: input)
-      || matches(currency, in: input)
-      || matches(incomeMultiple, in: input)
-      || matches(periodicAmount, in: input) {
+    if let separator = current.separatorBefore,
+       separator == ":" || separator == ";" || separator == "\n" {
       return true
     }
 
-    // A bare large or written-out quantity is ambiguous in free text. Remove
-    // independently recognized addresses, dates, and housing needs first; only
-    // quantities left outside those spans fail closed.
-    let unclassified = removingPositivelySafeSpans(from: input)
-    let bareQuantity = #"(?i)\b(?:[0-9]{3,}(?:\.[0-9]+)?|[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?\s*k)\b"#
-    let writtenQuantity = #"(?i)\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[- ](?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety))*\s+(?:hundred|thousand|million)\b|\b(?:hundred|thousand|million)\b"#
-    if matches(bareQuantity, in: unclassified) || matches(writtenQuantity, in: unclassified) {
+    let currentText = current.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let previousText = previous.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !currentText.isEmpty, !previousText.isEmpty else { return true }
+    if currentText.first?.isNumber == true || "$€£¥".contains(currentText.first ?? " ") {
       return true
     }
 
-    guard matches(#"(?i)\brent(?:al)?\b"#, in: input) else { return false }
-    let amount = #"(?i)(?:\b[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?\b|\b(?:hundred|thousand|million)\b)"#
-    let pricingLanguage = #"(?i)\b(?:costs?|price|priced|pay|under|over|below|above|max(?:imum)?|min(?:imum)?|per\s+(?:month|year)|monthly|annually|yearly)\b"#
-    let unsafeRemainder = removingPositivelySafeSpans(from: input)
-    return matches(amount, in: unsafeRemainder)
-      && (matches(pricingLanguage, in: unsafeRemainder) || matches(#"(?i)\brent(?:al)?\b"#, in: unsafeRemainder))
+    let continuation = #"(?i)^(?:it|that|this|which|these|those|about|around|approximately|approx|roughly|nearly|almost|including|plus|and|or|to|through|between|from|respectively|total|altogether|combined|another|over|under|up\s+to|at\s+(?:least|most)|more|less|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)\b"#
+    guard let startsAsContinuation = containsPattern(continuation, in: currentText) else {
+      return true
+    }
+    if startsAsContinuation { return true }
+
+    let normalizedPrevious = previousText.trimmingCharacters(
+      in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?,:;"))
+    )
+    let dangling = #"(?i)\b(?:is|are|was|were|of|to|from|between|about|around|approximately|including|equals?|totals?)$"#
+    return containsPattern(dangling, in: normalizedPrevious) ?? true
   }
 
-  private static func matches(_ pattern: String, in input: String) -> Bool {
-    input.range(of: pattern, options: .regularExpression) != nil
+  private static func userUnitContainsPrivateQuantity(_ input: String) -> Bool? {
+    if input.unicodeScalars.contains(where: { CharacterSet.decimalDigits.contains($0) }) {
+      return true
+    }
+
+    let financialTerms = #"(?i)\b(?:income|salary|salaries|wages?|pay|paid|paycheck|paychecks|payment|payments|compensation|earn|earned|earning|earnings|bonus|bonuses|commission|commissions|gross|take[- ]home|hourly\s+rate|credit(?:\s+score)?|fico|budget|rent(?:al)?\s+budget|rent|deposit|savings?|debt|loan|mortgage|bank|banking|bank\s+balance|tax|taxes|agi|hhi|dti|assets?|net\s+worth|cash|cash\s+flow|funds?|financial|finances?|qualification|guarantor)\b"#
+    let moneyTerms = #"(?i)(?:[$€£¥]|\b(?:usd|eur|gbp|dollars?|bucks?|grand)\b|\b[0-9]+(?:\.[0-9]+)?\s*[kK]\b)"#
+    let numberWords = #"(?i)\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|couple|dozen|once|twice)\b"#
+    guard let hasFinancialTerm = containsPattern(financialTerms, in: input),
+          let hasMoneyTerm = containsPattern(moneyTerms, in: input),
+          let hasNumberWord = containsPattern(numberWords, in: input) else { return nil }
+    return hasFinancialTerm || hasMoneyTerm || hasNumberWord
   }
 
-  private static var strongFinancialLanguagePattern: String {
-    #"(?i)\b(?:inc(?:ome)?|sal(?:ary)?|earn(?:ed|ing|ings|s)?|wages?|pay(?:check)?|compensation|annual\s+comp|total\s+comp|credit|cred(?:it)?|cr\.?\s*score|fico|budget|budg(?:et)?|financial|finances?|debt(?:-to-income)?|dti|agi|hhi|assets?|savings?|net\s+worth|bank\s+balance|makes?|making|gross(?:es|ed|ing)?|bring(?:s|ing)?\s+in|pull(?:s|ing)?\s+in|take[- ]home)\b"#
+  /// Structured listing and preference values are never reconstructed from raw
+  /// user text. Each structured value is accepted or removed as a whole.
+  private static func safeStructuredText(
+    _ input: String?,
+    allowsNumericFacts: Bool
+  ) -> String? {
+    guard let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return nil
+    }
+    let financialTerms = #"(?i)\b(?:income|salary|salaries|wages?|pay|paid|paycheck|paychecks|payment|payments|compensation|earn|earned|earning|earnings|bonus|bonuses|commission|commissions|gross|take[- ]home|hourly\s+rate|credit(?:\s+score)?|fico|budget|rent|deposit|savings?|debt|loan|mortgage|bank|banking|bank\s+balance|tax|taxes|agi|hhi|dti|assets?|net\s+worth|cash|cash\s+flow|funds?|financial|finances?|qualification|guarantor)\b"#
+    let moneyTerms = #"(?i)(?:[$€£¥]|\b(?:usd|eur|gbp|dollars?|bucks?|grand)\b|\b[0-9]+(?:\.[0-9]+)?\s*[kK]\b)"#
+    let ambiguousLargeQuantity = #"(?i)\b(?:[0-9]{3,}(?:[,.][0-9]+)*|hundred|thousand|million|billion)\b"#
+    guard let hasFinancialTerm = containsPattern(financialTerms, in: input),
+          let hasMoneyTerm = containsPattern(moneyTerms, in: input),
+          let hasLargeQuantity = containsPattern(ambiguousLargeQuantity, in: input) else {
+      return nil
+    }
+    guard !hasFinancialTerm, !hasMoneyTerm,
+          allowsNumericFacts || !hasLargeQuantity else { return nil }
+    return input
+  }
+
+  private static func containsPattern(_ pattern: String, in input: String) -> Bool? {
+    guard let expression = try? NSRegularExpression(pattern: pattern) else { return nil }
+    let range = NSRange(input.startIndex..<input.endIndex, in: input)
+    return expression.firstMatch(in: input, range: range) != nil
   }
 }

@@ -375,45 +375,31 @@ final class HomeboardNativeTests: XCTestCase {
 
     let payload = AdvisorMessagePayload(
       messageId: "message-a",
-      originalCommand: "@advisor ask about 123 Main St unit 204; My credit score is a 780 and my annual income totals 90000",
+      originalCommand: "My credit score is 780 and I live at 999 Private Road",
       draftText: "private draft", tone: "Professional",
       context: AdvisorContext(
         leverage: AdvisorLeverage(
-          memberCount: 2,
-          applicationReadiness: nil,
-          activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a",
-            listing: "123 Main St unit 204; My credit score is sitting at 780"
-          )]
+          memberCount: 2, applicationReadiness: nil, activeOffers: nil,
+          strongestListings: [
+            AdvisorStrongListing(boardListingId: "listing-a", listing: "123 Main St unit 204"),
+          ]
         ),
         requirements: AdvisorRequirements(
-          budget: AdvisorBudgetRequirement(
-            minimum: 2_000,
-            maximum: 4_000,
-            stretchMaximum: nil,
-            summary: "$2k-$4k"
-          ),
-          moveIn: "Move in October 15, 2026; my annual income mysteriously lands near ninety thousand",
-          locations: [
-            "456 Park Avenue apartment 789; My credit score is sitting at 780",
-            "Near Prospect Park",
-          ],
+          budget: nil,
+          moveIn: "October 15, 2026",
+          locations: ["456 Park Avenue apartment 789", "Income is 90000 near Secret Place"],
           bedrooms: nil,
-          mustHaves: [
-            "In-unit laundry; My income is about 90000 and 110000 and 120000",
-          ],
-          dealbreakers: ["No walk-up above the fourth floor; sal. equals USD 95,000"],
-          priorities: ["Natural light; FICO: seven hundred eighty"],
-          commuteDestinations: ["900 Broadway unit 12; budget clocks in around 3,600"],
-          tensionFlags: ["Pets allowed; rent somehow lands at three thousand dollars monthly"]
+          mustHaves: ["Something quiet", "In-unit laundry; income is 91000"],
+          dealbreakers: ["No walk-up"],
+          priorities: ["Natural light"],
+          commuteDestinations: ["900 Broadway unit 12"],
+          tensionFlags: ["No pets allowed"]
         ),
         picker: AdvisorPickerContext(
-          conversationStage: "sent; income via an unfamiliar connector equals 99000",
+          conversationStage: "sent",
           listingHistory: [AdvisorListingHistory(
-            boardListingId: "listing-a", status: "answered; salary ultimately totals 88000",
-            templateId: "standard; credit score: 760", contactedAt: "2026-10-01T12:00:00Z",
-            answered: false, daysSinceContact: 2
+            boardListingId: "listing-a", status: "answered", templateId: "standard",
+            contactedAt: "2026-10-01T12:00:00Z", answered: true, daysSinceContact: 2
           )],
           boardFeedback: AdvisorFeedbackMemorySummary(sampleSize: 0, signals: [])
         )
@@ -421,550 +407,235 @@ final class HomeboardNativeTests: XCTestCase {
     )
     let context = AdvisorDraftGenerator.boundedAppleIntelligenceContext(
       payload: payload,
-      memorySummary: "accepted Casual twice; credit score is a 750"
+      memorySummary: "income 92000"
     )
-    for privateValue in [
-      "90000", "110000", "120000", "780", "95,000", "99000", "88000", "760", "750",
-      "3,600", "three thousand", "seven hundred eighty", "ninety thousand",
-    ] {
+    for privateValue in ["90000", "91000", "92000", "Secret Place"] {
       XCTAssertFalse(context.contains(privateValue), "Leaked \(privateValue) in \(context)")
     }
-    XCTAssertTrue(context.contains("123 Main St unit 204"))
-    XCTAssertTrue(context.contains("456 Park Avenue apartment 789"))
-    XCTAssertTrue(context.contains("900 Broadway unit 12"))
-    XCTAssertTrue(context.contains("October 15, 2026"))
-    XCTAssertTrue(context.contains("In-unit laundry"))
-    XCTAssertTrue(context.contains("No walk-up above the fourth floor"))
-    XCTAssertTrue(context.contains("Natural light"))
-    XCTAssertTrue(context.contains("Near Prospect Park"))
-    XCTAssertTrue(context.contains("Pets allowed"))
-    XCTAssertTrue(context.contains("sent"))
-    XCTAssertTrue(context.contains("answered"))
-    XCTAssertTrue(context.contains("accepted Casual twice"))
-    let request = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(payload.originalCommand)
-    XCTAssertTrue(request.contains("123 Main St unit 204"))
-    XCTAssertFalse(request.contains("90000"))
-    XCTAssertFalse(request.contains("780"))
+    for structuredValue in [
+      "123 Main St unit 204", "456 Park Avenue apartment 789", "900 Broadway unit 12",
+      "October 15, 2026", "Something quiet", "No walk-up", "Natural light",
+      "No pets allowed", "sent", "answered",
+    ] {
+      XCTAssertTrue(context.contains(structuredValue), "Dropped \(structuredValue) from \(context)")
+    }
   }
 
-  func testAdvisorRequestSanitizerPreservesListingNumbersAndRemovesFinancialNumbers() {
+  func testAdvisorRequestSanitizerUsesWholeSentenceKeepOrDrop() {
+    let fallback = "Draft outreach for the selected rental."
     XCTAssertEqual(
-      AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest("Ask about 123 Main St unit 204"),
-      "Ask about 123 Main St unit 204"
+      AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(
+        "I prefer something quiet and close to the train"
+      ),
+      "I prefer something quiet and close to the train"
     )
-    let sanitized = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(
-      "I make 90k, credit 740"
-    )
-    XCTAssertFalse(sanitized.contains("90k"))
-    XCTAssertFalse(sanitized.contains("740"))
-    XCTAssertEqual(sanitized, "Draft outreach for the selected rental.")
+
+    for unsafe in [
+      "My income is:\n90000 Broadway unit 12",
+      "My 2025 income is 90000 Broadway unit 12",
+      "My credit score is:\n780 Broadway",
+      "My credit score is 780 and I live at 123 Main St",
+      "my income is about 90000 and my credit score is around 780",
+      "Ask about 123 Main St unit 204",
+      "Move in October 15, 2026",
+      "Need two bedrooms and one elevator",
+      "Rent is 3500 and move in October 15, 2026",
+    ] {
+      XCTAssertEqual(
+        AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(unsafe), fallback,
+        "Unsafe user sentence was partially recovered: \(unsafe)"
+      )
+    }
+
+    let safeThenFinancial: [(String, String)] = [
+      ("Parking is not required. My income is 90000", "Parking is not required."),
+      ("An elevator is not needed. My credit score is 780", "An elevator is not needed."),
+      ("A walk-up is not acceptable. My income is 90000", "A walk-up is not acceptable."),
+      ("No\npets allowed. My income is 90000", "No\npets allowed."),
+      ("no pets allowed. my income is 90000", "no pets allowed."),
+    ]
+    for (input, expected) in safeThenFinancial {
+      XCTAssertEqual(
+        AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(input), expected,
+        "Whole-sentence filtering changed meaning for: \(input)"
+      )
+    }
   }
 
-  func testAdvisorRequestSanitizerFailsClosedForFinancialClausesAndLists() {
+  func testAdvisorRequestSanitizerDropsFinancialContinuationChains() {
     let cases: [(String, [String])] = [
-      ("My income is about 90000 and my credit score is around 780", ["90000", "780"]),
-      ("My credit score is a 780 and my annual income totals 90000", ["780", "90000"]),
-      ("My credit score is sitting at 780", ["780"]),
       ("My income is about 90000 and 110000 and 120000", ["90000", "110000", "120000"]),
       ("My annual income is:\n90000", ["90000"]),
       ("My credit score:\n780", ["780"]),
       ("My annual income totals 90000; 110000 including bonus", ["90000", "110000"]),
       ("My income is 90000. Including bonus it is 110000.", ["90000", "110000"]),
-      ("Rent is 3500 and move in October 15, 2026", ["3500"]),
-      ("90000", ["90000"]),
-      ("ninety thousand", ["ninety thousand"]),
       ("My salary is currently somewhere around USD 90,000 to $110,000 per year", ["90,000", "110,000"]),
       ("Our income is roughly between 85k and 105k", ["85k", "105k"]),
       ("FICO is approximately 740-780", ["740", "780"]),
-      ("Our budget for rent is currently about $3,200-$3,600 per month", ["3,200", "3,600"]),
-      ("Rent: 3,250 dollars", ["3,250"]),
-      ("My annual compensation unexpectedly clocks in near 95k", ["95k"]),
       ("My salary comes out to ninety thousand", ["ninety thousand"]),
-      ("I bring in ninety thousand a year", ["ninety thousand"]),
-      ("The amount is 90k/yr", ["90k"]),
       ("cred. score: seven hundred eighty; sal. = ninety-five thousand", ["seven hundred eighty", "ninety-five thousand"]),
     ]
-
     for (input, privateValues) in cases {
       let sanitized = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(input)
-      for privateValue in privateValues {
-        XCTAssertFalse(sanitized.contains(privateValue), "Leaked \(privateValue) from \(input)")
+      for value in privateValues {
+        XCTAssertFalse(sanitized.contains(value), "Leaked \(value) from \(input)")
       }
     }
-
-    let mixed = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(
-      "Ask about 123 Main St unit 204; my income somehow totals 90000 and 110000 and 120000"
-    )
-    XCTAssertTrue(mixed.contains("123 Main St unit 204"))
-    for privateValue in ["90000", "110000", "120000"] {
-      XCTAssertFalse(mixed.contains(privateValue))
-    }
-
-    for safeRequest in [
-      "Ask about 123 Main St unit 204",
-      "Tour 456 Park Avenue, apartment 789",
-      "Is 900 Broadway unit 12 still available?",
-      "Move in October 15, 2026",
-      "Move in 10/15/2026",
-      "Need two bedrooms, parking, and in-unit laundry",
-      "Prefer a rent stabilized apartment with natural light",
-    ] {
-      XCTAssertEqual(AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(safeRequest), safeRequest)
-    }
-
-    let mixedDate = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(
-      "Rent is 3500 and move in October 15, 2026"
-    )
-    XCTAssertFalse(mixedDate.contains("3500"))
-    XCTAssertTrue(mixedDate.contains("October 15, 2026"))
   }
 
-  func testAdvisorAddressRecoveryNeverStartsAtPrecedingFinancialValue() {
-    let cases: [(String, String, [String])] = [
-      (
-        "My credit score is 780 and I live at 123 Main St",
-        "123 Main St",
-        ["780"]
-      ),
-      (
-        "My income is 90000 and address 123 Main St unit 204",
-        "123 Main St unit 204",
-        ["90000"]
-      ),
-      (
-        "My income is 90000\n123 Main St unit 204",
-        "123 Main St unit 204",
-        ["90000"]
-      ),
+  func testFinancialPhrasingsAcrossSeparatorsNeverReachAssembledPrompt() {
+    let phrasings = [
+      "my income is 90000",
+      "my credit score is 780",
+      "my salary is ninety thousand",
+      "my budget is $3500",
     ]
-
-    for (input, address, privateValues) in cases {
-      let sanitized = AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(input)
-      XCTAssertEqual(sanitized, address)
-      for privateValue in privateValues {
-        XCTAssertFalse(sanitized.contains(privateValue), "Leaked \(privateValue) from \(input)")
+    let separators = [" ", "\n", ":\n", "; ", ". Including 2025, "]
+    for phrase in phrasings {
+      for separator in separators {
+        let command = "\(phrase)\(separator)110000"
+        let payload = AdvisorMessagePayload(
+          messageId: "message-property", originalCommand: command,
+          draftText: "server draft", tone: "Professional"
+        )
+        XCTAssertNil(
+          AdvisorDraftGenerator.appleIntelligencePrompt(
+            payload: payload, tone: "Professional", toggles: [],
+            senderName: "Sam", memorySummary: nil
+          ),
+          "Financial phrase unexpectedly produced a prompt: \(command)"
+        )
       }
     }
-
-    for address in [
-      "123 Main St unit 204",
-      "456 Park Avenue apartment 789",
-      "900 Broadway unit 12",
-    ] {
-      XCTAssertEqual(AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(address), address)
-    }
-
-    XCTAssertEqual(
-      AdvisorDraftGenerator.sanitizedAppleIntelligenceRequest(
-        "My income is 90000 Broadway unit 12"
-      ),
-      "Draft outreach for the selected rental."
-    )
   }
 
-  func testAssembledPromptAddressRecoveryExcludesPrecedingFinancialValues() throws {
-    let payload = AdvisorMessagePayload(
-      messageId: "message-address-boundary",
-      originalCommand: "My credit score is 780 and I live at 123 Main St unit 204",
-      draftText: "server draft",
-      tone: "Professional",
-      context: AdvisorContext(
-        leverage: AdvisorLeverage(
-          memberCount: 2,
-          applicationReadiness: nil,
-          activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a",
-            listing: "My income is 90000 and address 456 Park Avenue apartment 789"
-          )]
-        ),
-        requirements: AdvisorRequirements(
-          budget: nil,
-          moveIn: "My credit score is 780 and I live at 123 Main St unit 204",
-          locations: ["My income is 90000\n900 Broadway unit 12"],
-          bedrooms: nil,
-          mustHaves: [],
-          dealbreakers: [],
-          priorities: [],
-          commuteDestinations: ["My credit score is 780 and I live at 456 Park Avenue apartment 789"],
-          tensionFlags: []
-        )
-      )
-    )
-    let prompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
-      payload: payload,
-      tone: "Professional",
-      toggles: [],
-      senderName: "My income is 90000 and address 123 Main St",
-      memorySummary: nil
-    ))
-
-    XCTAssertFalse(prompt.contains("780"), "Leaked credit value in \(prompt)")
-    XCTAssertFalse(prompt.contains("90000"), "Leaked income value in \(prompt)")
-    for address in [
-      "123 Main St unit 204",
-      "456 Park Avenue apartment 789",
-      "900 Broadway unit 12",
-    ] {
-      XCTAssertTrue(prompt.contains(address), "Dropped \(address) from \(prompt)")
-    }
-    XCTAssertTrue(prompt.contains("Sender name: 123 Main St"))
-  }
-
-  func testDeterministicFallbackAddressRecoveryExcludesPrecedingFinancialValues() async {
-    let payload = AdvisorMessagePayload(
-      messageId: "message-address-fallback",
-      originalCommand: "My annual income is:\n90000",
-      draftText: "server draft",
-      tone: "Professional",
-      context: AdvisorContext(
-        leverage: AdvisorLeverage(
-          memberCount: 2,
-          applicationReadiness: nil,
-          activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a",
-            listing: "My income is 90000 and address 123 Main St unit 204"
-          )]
-        ),
-        requirements: AdvisorRequirements(
-          budget: nil,
-          moveIn: "My credit score is 780 and I live at 456 Park Avenue apartment 789",
-          locations: [],
-          bedrooms: nil,
-          mustHaves: [],
-          dealbreakers: [],
-          priorities: [],
-          commuteDestinations: ["My income is 90000\n900 Broadway unit 12"],
-          tensionFlags: []
-        )
-      )
-    )
-    let output = await AdvisorDraftGenerator.generate(
-      payload: payload,
-      tone: "Professional",
-      toggles: [
-        AdvisorToggleOption(id: "requirements", label: "Group requirements", enabled: true, required: false),
-        AdvisorToggleOption(id: "commute", label: "Commute fit", enabled: true, required: false),
-      ],
-      financialSentence: nil,
-      senderName: "My credit score is 780"
-    )
-
-    XCTAssertEqual(output.source, "device_template")
-    XCTAssertFalse(output.text.contains("780"), "Leaked credit value in \(output.text)")
-    XCTAssertFalse(output.text.contains("90000"), "Leaked income value in \(output.text)")
-    XCTAssertTrue(output.text.contains("123 Main St unit 204"))
-    XCTAssertTrue(output.text.contains("456 Park Avenue apartment 789"))
-    XCTAssertTrue(output.text.contains("900 Broadway unit 12"))
-    XCTAssertTrue(output.text.contains("Homeboard member"))
-  }
-
-  func testAssembledPromptNeverFlipsNegatedHousingSpansPositive() throws {
-    let negativePayload = AdvisorMessagePayload(
-      messageId: "message-negated-housing",
-      originalCommand: "@advisor ask about 123 Main St unit 204. Do not ask about parking. My income is 90000",
-      draftText: "server draft",
-      tone: "Professional",
-      context: AdvisorContext(
-        leverage: AdvisorLeverage(
-          memberCount: 2,
-          applicationReadiness: nil,
-          activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a", listing: "123 Main St unit 204"
-          )]
-        ),
-        requirements: AdvisorRequirements(
-          budget: nil,
-          moveIn: nil,
-          locations: [],
-          bedrooms: nil,
-          mustHaves: [
-            "No pets allowed. My income is 91000",
-            "No elevator. My credit score is 780",
-            "Don't need in-unit laundry. My income is 92000",
-            "I don't need two bedrooms. My credit score is 770",
-          ],
-          dealbreakers: [],
-          priorities: [],
-          commuteDestinations: [],
-          tensionFlags: []
-        )
-      )
-    )
-    let negativePrompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
-      payload: negativePayload,
-      tone: "Professional",
-      toggles: [],
-      senderName: "Sam",
-      memorySummary: nil
-    ))
-
-    XCTAssertTrue(negativePrompt.contains("123 Main St unit 204"))
-    for privateValue in ["90000", "91000", "92000", "780", "770"] {
-      XCTAssertFalse(negativePrompt.contains(privateValue), "Leaked \(privateValue) in \(negativePrompt)")
-    }
-    for invertedMeaning in ["pets allowed", "elevator", "parking", "in-unit laundry", "two bedrooms"] {
-      XCTAssertFalse(
-        negativePrompt.localizedCaseInsensitiveContains(invertedMeaning),
-        "Recovered negated housing text as positive: \(negativePrompt)"
-      )
-    }
-
-    let positivePayload = AdvisorMessagePayload(
-      messageId: "message-positive-housing",
-      originalCommand: "@advisor ask about parking at 123 Main St unit 204. My income is 90000",
-      draftText: "server draft",
-      tone: "Professional",
-      context: AdvisorContext(
-        leverage: AdvisorLeverage(
-          memberCount: 2,
-          applicationReadiness: nil,
-          activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a", listing: "123 Main St unit 204"
-          )]
-        ),
-        requirements: AdvisorRequirements(
-          budget: nil,
-          moveIn: nil,
-          locations: [],
-          bedrooms: nil,
-          mustHaves: [
-            "Pets allowed. My income is 91000",
-            "Elevator required. My credit score is 780",
-            "In-unit laundry. My income is 92000",
-            "Two bedrooms. My credit score is 770",
-          ],
-          dealbreakers: [],
-          priorities: [],
-          commuteDestinations: [],
-          tensionFlags: []
-        )
-      )
-    )
-    let positivePrompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
-      payload: positivePayload,
-      tone: "Professional",
-      toggles: [],
-      senderName: "Sam",
-      memorySummary: nil
-    ))
-
-    for positiveMeaning in ["pets allowed", "elevator", "parking", "in-unit laundry", "two bedrooms"] {
-      XCTAssertTrue(
-        positivePrompt.localizedCaseInsensitiveContains(positiveMeaning),
-        "Dropped positive housing text: \(positivePrompt)"
-      )
-    }
-    for privateValue in ["90000", "91000", "92000", "780", "770"] {
-      XCTAssertFalse(positivePrompt.contains(privateValue), "Leaked \(privateValue) in \(positivePrompt)")
-    }
-  }
-
-  func testAssembledPromptRejectsWhollyUnsafeFinancialContinuations() {
+  func testAssembledPromptDropsUnsafeUserSentencesWithoutRecoveringSpans() throws {
     let unsafeCommands = [
-      "My annual income is:\n90000",
-      "My credit score:\n780",
-      "My annual income totals 90000; 110000 including bonus",
-      "My income is 90000. Including bonus it is 110000.",
+      "My income is:\n90000 Broadway unit 12",
+      "My 2025 income is 90000 Broadway unit 12",
+      "My credit score is:\n780 Broadway",
+      "My credit score is 780 and I live at 123 Main St",
+      "my income is about 90000 and my credit score is around 780",
     ]
     for command in unsafeCommands {
       let payload = AdvisorMessagePayload(
-        messageId: "message-unsafe-continuation",
-        originalCommand: command,
-        draftText: "server draft",
-        tone: "Professional"
+        messageId: "message-unsafe", originalCommand: command,
+        draftText: "server draft", tone: "Professional",
+        context: sanitizerStructuredContext()
       )
       XCTAssertNil(
         AdvisorDraftGenerator.appleIntelligencePrompt(
-          payload: payload,
-          tone: "Professional",
-          toggles: [],
-          senderName: "Sam",
-          memorySummary: nil
+          payload: payload, tone: "Professional", toggles: [],
+          senderName: "Sam", memorySummary: nil
         ),
         "Unsafe command unexpectedly produced a model prompt: \(command)"
       )
     }
-  }
 
-  func testAssembledPromptCarriesFinancialTaintAcrossEveryFreeTextField() throws {
     let payload = AdvisorMessagePayload(
-      messageId: "message-continuation-boundary",
-      originalCommand: "@advisor ask about 123 Main St unit 204\nMy annual income is:\n90000",
-      draftText: "server draft",
-      tone: "Professional",
-      context: AdvisorContext(
-        leverage: AdvisorLeverage(
-          memberCount: 2,
-          applicationReadiness: nil,
-          activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a",
-            listing: "456 Park Avenue apartment 789; My annual income totals 90000; 110000 including bonus"
-          )]
-        ),
-        requirements: AdvisorRequirements(
-          budget: nil,
-          moveIn: "Rent is 3500 and move in October 15, 2026",
-          locations: ["900 Broadway unit 12\nMy credit score:\n780"],
-          bedrooms: nil,
-          mustHaves: ["In-unit laundry; My annual income is:\n91000"],
-          dealbreakers: ["Parking; My credit score:\n770"],
-          priorities: ["Natural light. My income is 92000. Including bonus it is 112000."],
-          commuteDestinations: ["123 Main St unit 204; My annual income totals 93000; 113000 including bonus"],
-          tensionFlags: ["Pets allowed\nMy credit score is:\n760"]
-        ),
-        picker: AdvisorPickerContext(
-          conversationStage: "sent\nMy annual income is:\n94000",
-          listingHistory: [AdvisorListingHistory(
-            boardListingId: "listing-a",
-            status: "answered; My credit score:\n750",
-            templateId: "standard. My income is 95000. Including bonus it is 115000.",
-            contactedAt: "2026-10-01T12:00:00Z",
-            answered: true,
-            daysSinceContact: 3
-          )],
-          boardFeedback: AdvisorFeedbackMemorySummary(sampleSize: 0, signals: [])
-        )
-      )
+      messageId: "message-mixed",
+      originalCommand: "Parking is not required. My income is 90000",
+      draftText: "server draft", tone: "Professional",
+      context: sanitizerStructuredContext()
     )
     let prompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
-      payload: payload,
-      tone: "Professional",
-      toggles: [
-        AdvisorToggleOption(
-          id: "tour", label: "Parking; My annual income totals 96000; 116000 including bonus",
-          enabled: true, required: false
-        ),
-      ],
-      senderName: "Sam. My credit score:\n740",
-      memorySummary: "accepted Casual twice. My income is 97000. Including bonus it is 117000."
+      payload: payload, tone: "Professional", toggles: [],
+      senderName: "Sam", memorySummary: nil
     ))
+    XCTAssertTrue(prompt.contains("Parking is not required."))
+    XCTAssertFalse(prompt.contains("90000"))
+    XCTAssertTrue(prompt.contains("123 Main St unit 204"))
+    XCTAssertTrue(prompt.contains("October 15, 2026"))
+    XCTAssertTrue(prompt.contains("No pets allowed"))
+    XCTAssertFalse(prompt.contains("999 Private Road"))
+  }
 
-    for privateValue in [
-      "90000", "110000", "3500", "780", "91000", "770", "92000", "112000",
-      "93000", "113000", "760", "94000", "750", "95000", "115000", "96000",
-      "116000", "740", "97000", "117000",
-    ] {
-      XCTAssertFalse(prompt.contains(privateValue), "Leaked \(privateValue) in \(prompt)")
-    }
-    for safeValue in [
-      "123 Main St unit 204", "456 Park Avenue apartment 789", "900 Broadway unit 12",
-      "October 15, 2026", "In-unit laundry", "Parking", "Natural light", "Pets allowed",
-      "sent", "answered", "accepted Casual twice",
-    ] {
-      XCTAssertTrue(prompt.localizedCaseInsensitiveContains(safeValue), "Dropped \(safeValue) from \(prompt)")
+  func testAssembledPromptPreservesNegationOnlyAsWholeUserSentenceOrStructuredPreference() throws {
+    let cases = [
+      ("Parking is not required. My income is 90000", "Parking is not required."),
+      ("An elevator is not needed. My credit score is 780", "An elevator is not needed."),
+      ("A walk-up is not acceptable. My income is 90000", "A walk-up is not acceptable."),
+      ("No\npets allowed. My income is 90000", "No\npets allowed."),
+      ("no pets allowed. my income is 90000", "no pets allowed."),
+    ]
+    for (command, intactMeaning) in cases {
+      let payload = AdvisorMessagePayload(
+        messageId: "message-negation", originalCommand: command,
+        draftText: "server draft", tone: "Professional",
+        context: sanitizerStructuredContext()
+      )
+      let prompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
+        payload: payload, tone: "Professional", toggles: [],
+        senderName: "Sam", memorySummary: nil
+      ))
+      XCTAssertTrue(prompt.contains(intactMeaning), "Lost negation in \(prompt)")
+      XCTAssertFalse(prompt.contains("90000"))
+      XCTAssertFalse(prompt.contains("780"))
     }
   }
 
-  func testAssembledAppleIntelligencePromptContainsOnlySanitizedFreeText() throws {
+  func testEveryPromptFreeTextBoundaryDropsWholeUnsafeStructuredValues() throws {
     let payload = AdvisorMessagePayload(
-      messageId: "message-prompt",
-      originalCommand: "@advisor ask about 123 Main St unit 204; My credit score is a 780 and my annual income totals 90000",
-      draftText: "server draft",
-      tone: "Professional",
+      messageId: "message-all-fields",
+      originalCommand: "I prefer something quiet and close to the train",
+      draftText: "server draft", tone: "Professional",
       context: AdvisorContext(
         leverage: AdvisorLeverage(
           memberCount: 2, applicationReadiness: nil, activeOffers: nil,
           strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a",
-            listing: "456 Park Avenue apartment 789; my income is about 90000 and 110000 and 120000"
+            boardListingId: "listing-a", listing: "Income 90000 at 999 Private Road"
           )]
         ),
         requirements: AdvisorRequirements(
           budget: nil,
-          moveIn: "Move in October 15, 2026; FICO is seven hundred eighty",
-          locations: ["Near 900 Broadway unit 12; salary somehow totals 95000"],
+          moveIn: "Rent 3500 on October 15, 2026",
+          locations: ["Credit 780 near Secret Place"],
           bedrooms: nil,
-          mustHaves: ["In-unit laundry", "credit score is sitting at 780"],
-          dealbreakers: ["No broker fee; budget is USD 3,500"],
-          priorities: ["Natural light; annual compensation comes to ninety thousand"],
-          commuteDestinations: ["Union Square"],
-          tensionFlags: ["Pets allowed; rent is three thousand dollars"]
+          mustHaves: ["No pets allowed", "Laundry; income 91000"],
+          dealbreakers: ["No walk-up"], priorities: ["Natural light"],
+          commuteDestinations: ["Salary 92000 near Hidden Station"],
+          tensionFlags: ["No elevator", "Budget $4000 near Hidden Park"]
         ),
         picker: AdvisorPickerContext(
-          conversationStage: "drafted; income totals 90000",
+          conversationStage: "sent; income 93000",
           listingHistory: [AdvisorListingHistory(
-            boardListingId: "listing-a", status: "sent; credit 740", templateId: "standard",
-            contactedAt: "2026-10-01T12:00:00Z", answered: false, daysSinceContact: 2
+            boardListingId: "listing-a", status: "answered; credit 740",
+            templateId: "standard; salary 94000", contactedAt: nil,
+            answered: true, daysSinceContact: 2
           )],
           boardFeedback: AdvisorFeedbackMemorySummary(sampleSize: 0, signals: [])
         )
       )
     )
     let prompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
-      payload: payload,
-      tone: "Casual; income 99000",
-      toggles: [
-        AdvisorToggleOption(id: "requirements", label: "Group requirements", enabled: true, required: false),
-        AdvisorToggleOption(id: "financial", label: "Credit score 780", enabled: true, required: false),
-      ],
-      senderName: "Sam; salary is 88000",
-      memorySummary: "accepted Casual twice; income is ninety thousand"
+      payload: payload, tone: "Professional",
+      toggles: [AdvisorToggleOption(
+        id: "unsafe", label: "Include credit 750", enabled: true, required: false
+      )],
+      senderName: "Sam income 95000", memorySummary: "accepted twice; income 96000"
     ))
-
     for privateValue in [
-      "90000", "110000", "120000", "780", "95000", "3,500", "99000", "740", "88000",
-      "seven hundred eighty", "ninety thousand", "three thousand",
+      "90000", "3500", "780", "91000", "92000", "4000", "93000", "740",
+      "94000", "750", "95000", "96000", "999 Private Road", "Secret Place",
+      "Hidden Station", "Hidden Park",
     ] {
       XCTAssertFalse(prompt.contains(privateValue), "Leaked \(privateValue) in \(prompt)")
     }
-    XCTAssertTrue(prompt.contains("123 Main St unit 204"))
-    XCTAssertTrue(prompt.contains("456 Park Avenue apartment 789"))
-    XCTAssertTrue(prompt.contains("900 Broadway unit 12"))
-    XCTAssertTrue(prompt.contains("October 15, 2026"))
-    XCTAssertTrue(prompt.contains("In-unit laundry"))
-    XCTAssertTrue(prompt.contains("Natural light"))
-    XCTAssertTrue(prompt.contains("Selected tone: Professional"))
+    for safeValue in ["No pets allowed", "No walk-up", "Natural light", "No elevator"] {
+      XCTAssertTrue(prompt.contains(safeValue), "Dropped safe structured value \(safeValue)")
+    }
     XCTAssertTrue(prompt.contains("Sender name: Homeboard member"))
-    XCTAssertFalse(prompt.localizedCaseInsensitiveContains("credit"))
-    XCTAssertFalse(prompt.localizedCaseInsensitiveContains("income"))
-    XCTAssertFalse(prompt.localizedCaseInsensitiveContains("salary"))
-
-    var unsafeOnly = payload
-    unsafeOnly.originalCommand = "My credit score is sitting at 780"
-    XCTAssertNil(AdvisorDraftGenerator.appleIntelligencePrompt(
-      payload: unsafeOnly,
-      tone: "Professional",
-      toggles: [],
-      senderName: "Sam",
-      memorySummary: nil
-    ))
   }
 
-  func testUnsafeAppleIntelligenceInputUsesSanitizedDeterministicFallback() async {
+  func testUnsafeAppleIntelligenceInputUsesOnlyStructuredDeterministicFallback() async {
     let payload = AdvisorMessagePayload(
       messageId: "message-fallback",
       originalCommand: "My income is 90000. Including bonus it is 110000.",
-      draftText: "server draft",
-      tone: "Professional",
-      context: AdvisorContext(
-        leverage: AdvisorLeverage(
-          memberCount: 2, applicationReadiness: nil, activeOffers: nil,
-          strongestListings: [AdvisorStrongListing(
-            boardListingId: "listing-a",
-            listing: "123 Main St unit 204; annual income totals 90000; 110000 including bonus"
-          )]
-        ),
-        requirements: AdvisorRequirements(
-          budget: nil,
-          moveIn: "Rent is 3500 and move in October 15, 2026",
-          locations: [],
-          bedrooms: nil,
-          mustHaves: [],
-          dealbreakers: [],
-          priorities: [],
-          commuteDestinations: ["900 Broadway unit 12\nMy credit score:\n780"],
-          tensionFlags: []
-        )
-      )
+      draftText: "server draft", tone: "Professional",
+      context: sanitizerStructuredContext()
     )
     let output = await AdvisorDraftGenerator.generate(
-      payload: payload,
-      tone: "Professional",
+      payload: payload, tone: "Professional",
       toggles: [
         AdvisorToggleOption(id: "requirements", label: "Group requirements", enabled: true, required: false),
         AdvisorToggleOption(id: "commute", label: "Commute fit", enabled: true, required: false),
@@ -972,15 +643,34 @@ final class HomeboardNativeTests: XCTestCase {
       financialSentence: nil,
       senderName: "Sam; My annual compensation is:\n88000"
     )
-
     XCTAssertEqual(output.source, "device_template")
     XCTAssertTrue(output.text.contains("123 Main St unit 204"))
     XCTAssertTrue(output.text.contains("October 15, 2026"))
     XCTAssertTrue(output.text.contains("900 Broadway unit 12"))
     XCTAssertTrue(output.text.contains("Homeboard member"))
-    for privateValue in ["3500", "780", "90000", "110000", "88000"] {
+    for privateValue in ["90000", "110000", "88000"] {
       XCTAssertFalse(output.text.contains(privateValue), "Leaked \(privateValue) in \(output.text)")
     }
+  }
+
+  private func sanitizerStructuredContext() -> AdvisorContext {
+    AdvisorContext(
+      leverage: AdvisorLeverage(
+        memberCount: 2, applicationReadiness: nil, activeOffers: nil,
+        strongestListings: [AdvisorStrongListing(
+          boardListingId: "listing-a", listing: "123 Main St unit 204"
+        )]
+      ),
+      requirements: AdvisorRequirements(
+        budget: nil, moveIn: "October 15, 2026",
+        locations: ["456 Park Avenue apartment 789"], bedrooms: nil,
+        mustHaves: ["No pets allowed", "Something quiet"],
+        dealbreakers: ["A walk-up is not acceptable"],
+        priorities: ["Natural light"],
+        commuteDestinations: ["900 Broadway unit 12"],
+        tensionFlags: ["An elevator is not needed"]
+      )
+    )
   }
 
   func testAdvisorDraftBackendCompatibilityRejectsLegacyHealthPayload() {
