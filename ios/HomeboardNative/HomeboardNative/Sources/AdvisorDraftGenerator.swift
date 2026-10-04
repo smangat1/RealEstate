@@ -515,8 +515,8 @@ enum AdvisorDraftGenerator {
     senderName: String,
     templateId: String
   ) -> String {
-    let listing = targetListing(payload)
-    let firstName = payload.contact?.agentName?
+    let listing = safeFreeText(targetListing(payload)) ?? "the rental"
+    let firstName = safeFreeText(payload.contact?.agentName)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .split(separator: " ")
       .first
@@ -524,14 +524,15 @@ enum AdvisorDraftGenerator {
     let greeting = firstName.map { "Hi \($0)," } ?? "Hello,"
     let requirements = payload.context?.requirements
     let moveIn = enabled("Group requirements", toggles: toggles)
-      ? requirements?.moveIn?.trimmingCharacters(in: .whitespacesAndNewlines)
+      ? safeFreeText(requirements?.moveIn)?.trimmingCharacters(in: .whitespacesAndNewlines)
       : nil
     let moveSentence = moveIn.flatMap { $0.isEmpty ? nil : "We are targeting \($0)." }
     let commute = enabled("Commute fit", toggles: toggles)
-      ? requirements?.commuteDestinations?.first
+      ? safeFreeText(requirements?.commuteDestinations?.first)
       : nil
     let commuteSentence = commute.map { "The location also works well for our commute to \($0)." }
     let finance = financialToggleEnabled(toggles) ? financialSentence : nil
+    let safeSender = safeFreeText(senderName) ?? "Homeboard member"
     let tour = enabled("Request a tour", toggles: toggles)
       ? "Could you confirm availability and the next opportunity to tour?"
       : "Could you confirm current availability?"
@@ -547,7 +548,7 @@ enum AdvisorDraftGenerator {
         isFollowUp ? "Checking back about \(listing)." : concise ? "Is \(listing) still available?" : "Checking in about \(listing).",
         facts,
         tour,
-        "Thanks, \(senderName)",
+        "Thanks, \(safeSender)",
       ]
         .filter { !$0.isEmpty }
         .joined(separator: " ")
@@ -561,7 +562,7 @@ enum AdvisorDraftGenerator {
         "",
         tour,
         "",
-        senderName,
+        safeSender,
       ].joined(separator: "\n")
     case "Passive-Aggressive":
       return [
@@ -573,7 +574,7 @@ enum AdvisorDraftGenerator {
         "",
         "Please let us know whether it remains available so we can plan accordingly.",
         "",
-        "Thank you,\n\(senderName)",
+        "Thank you,\n\(safeSender)",
       ].joined(separator: "\n")
     default:
       return [
@@ -587,7 +588,7 @@ enum AdvisorDraftGenerator {
         "",
         tour,
         "",
-        "Best regards,\n\(senderName)",
+        "Best regards,\n\(safeSender)",
       ].joined(separator: "\n")
     }
   }
@@ -667,21 +668,18 @@ private extension AdvisorDraftGenerator {
       with the supplied sender name exactly; never use a bracketed name placeholder.
       """
     )
-    let context = boundedAppleIntelligenceContext(payload: payload, memorySummary: memorySummary)
-    let enabledLabels = toggles.filter(\.enabled).map(\.label).joined(separator: ", ")
-    let prompt = """
-    USER REQUEST START
-    \(sanitizedAppleIntelligenceRequest(payload.originalCommand))
-    USER REQUEST END
-
-    Selected tone: \(tone)
-    Included details: \(enabledLabels.isEmpty ? "none" : enabledLabels)
-    Sender name: \(senderName)
-
-    HOMEBOARD CONTEXT START
-    \(String(context.prefix(12_000)))
-    HOMEBOARD CONTEXT END
-    """
+    guard let prompt = appleIntelligencePrompt(
+      payload: payload,
+      tone: tone,
+      toggles: toggles,
+      senderName: senderName,
+      memorySummary: memorySummary
+    ) else {
+      await recordDraftModelDiagnostic(
+        payload: payload, tone: tone, stage: "input_boundary", reason: "no_safe_request"
+      )
+      return nil
+    }
     do {
       let response = try await session.respond(to: prompt)
       let validation = validateAndComposeAppleIntelligenceDraft(
@@ -738,69 +736,159 @@ extension AdvisorDraftGenerator {
     let requirements = payload.context?.requirements
     let picker = payload.context?.picker
     let safe = SafeContext(
-      listing: removingFinancialValues(from: targetListing(payload)),
-      moveIn: requirements?.moveIn.map(removingFinancialValues),
-      locations: (requirements?.locations ?? []).map(removingFinancialValues),
-      mustHaves: (requirements?.mustHaves ?? []).map(removingFinancialValues),
-      dealbreakers: (requirements?.dealbreakers ?? []).map(removingFinancialValues),
-      priorities: (requirements?.priorities ?? []).map(removingFinancialValues),
-      commuteDestinations: (requirements?.commuteDestinations ?? []).map(removingFinancialValues),
-      tensionFlags: (requirements?.tensionFlags ?? []).map(removingFinancialValues),
-      conversationStage: removingFinancialValues(from: picker?.conversationStage ?? "none"),
+      listing: safeFreeText(targetListing(payload)) ?? "the selected rental",
+      moveIn: safeFreeText(requirements?.moveIn),
+      locations: (requirements?.locations ?? []).compactMap(safeFreeText),
+      mustHaves: (requirements?.mustHaves ?? []).compactMap(safeFreeText),
+      dealbreakers: (requirements?.dealbreakers ?? []).compactMap(safeFreeText),
+      priorities: (requirements?.priorities ?? []).compactMap(safeFreeText),
+      commuteDestinations: (requirements?.commuteDestinations ?? []).compactMap(safeFreeText),
+      tensionFlags: (requirements?.tensionFlags ?? []).compactMap(safeFreeText),
+      conversationStage: safeFreeText(picker?.conversationStage) ?? "none",
       listingHistory: Array((picker?.listingHistory ?? []).prefix(12)).map {
         AdvisorListingHistory(
           boardListingId: $0.boardListingId,
-          status: removingFinancialValues(from: $0.status),
-          templateId: removingFinancialValues(from: $0.templateId),
+          status: safeFreeText($0.status) ?? "unknown",
+          templateId: safeFreeText($0.templateId) ?? AdvisorOutcomeMemory.standardTemplate,
           contactedAt: $0.contactedAt,
           answered: $0.answered,
           daysSinceContact: $0.daysSinceContact
         )
       },
-      reportedOutcomeSummary: memorySummary.map {
-        String(removingFinancialValues(from: String($0.prefix(800))).prefix(800))
-      }
+      reportedOutcomeSummary: safeFreeText(memorySummary.map { String($0.prefix(800)) })
+        .map { String($0.prefix(800)) }
     )
     let data = try? JSONEncoder().encode(safe)
     return String((data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}").prefix(12_000))
   }
 
   static func sanitizedAppleIntelligenceRequest(_ command: String?) -> String {
-    guard let command, !command.isEmpty else {
+    guard let command, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return "Draft outreach for the selected rental."
     }
-    return String(removingFinancialValues(from: command).prefix(2_000))
+    return safeFreeText(String(command.prefix(2_000)))
+      ?? "Draft outreach for the selected rental."
   }
 
-  private static func removingFinancialValues(from input: String) -> String {
-    var sanitized = input
-    let bareNumber = #"[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?"#
-    let numberToken = #"(?:(?:USD|US\s+dollars?)\s*|\$\s*)?"# + bareNumber
-    let numberExpression = numberToken
-      + #"(?:\s*(?:-|\u2013|\u2014|to|through|and)\s*"# + numberToken + #")?"#
-      + #"(?:\s*(?:USD|dollars?|per\s+(?:month|year)|/\s*(?:mo(?:nth)?|yr|year)|monthly|annually|yearly))?"#
-    let financialTerm = #"(?:income|salary|earnings?|credit(?:\s+score)?|fico|budget|rent(?:al)?(?:\s+budget)?|makes?|earns?)"#
-    let filler = #"(?:is|was|would|should|could|can|now|currently|typically|about|around|approximately|roughly|somewhere|between|from|up|to|at|least|most|maximum|max|minimum|min|of|near|under|over|below|above|range|for|the|our|my|monthly|annual|yearly|rent)"#
-    let patterns = [
-      #"(?i)(?:(?:USD|US\s+dollars?)\s*|\$\s*)"# + bareNumber
-        + #"(?:\s*(?:-|\u2013|\u2014|to|through|and)\s*"# + numberToken + #")?"#,
-      #"(?i)\b"# + bareNumber
-        + #"(?:\s*(?:-|\u2013|\u2014|to|through|and)\s*"# + numberToken + #")?\s*(?:USD|dollars?)\b"#,
-      #"(?i)\b[0-9]+(?:\.[0-9]+)?x\b"#,
-      #"(?i)\b"# + financialTerm + #"\b"#
-        + #"(?:(?:\s+|[,=:]\s*)"# + filler + #"\b){0,8}(?:\s+|[,=:]\s*)"#
-        + numberExpression,
-      #"(?i)\b"# + numberExpression
-        + #"(?:(?:\s+|[,=:]\s*)"# + filler + #"\b){0,5}(?:\s+|[,=:]\s*)"#
-        + financialTerm + #"\b"#,
-    ]
-    for pattern in patterns {
-      sanitized = sanitized.replacingOccurrences(
-        of: pattern,
-        with: "private financial detail omitted",
-        options: .regularExpression
-      )
+  /// Builds the exact text handed to Foundation Models. Returning nil deliberately
+  /// selects the existing deterministic template when a request cannot be separated
+  /// safely from private financial facts.
+  static func appleIntelligencePrompt(
+    payload: AdvisorMessagePayload,
+    tone: String,
+    toggles: [AdvisorToggleOption],
+    senderName: String,
+    memorySummary: String?
+  ) -> String? {
+    let rawRequest = payload.originalCommand?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let request: String
+    if rawRequest.isEmpty {
+      request = "Draft outreach for the selected rental."
+    } else {
+      guard let safeRequest = safeFreeText(String(rawRequest.prefix(2_000))) else { return nil }
+      request = safeRequest
     }
-    return sanitized
+
+    let allowedTones = ["Professional", "Casual", "Stern", "Passive-Aggressive"]
+    let selectedTone = allowedTones.contains(tone) ? tone : "Professional"
+    let enabledLabels = toggles.filter(\.enabled).compactMap { safeFreeText($0.label) }
+      .joined(separator: ", ")
+    let safeSender = safeFreeText(senderName) ?? "Homeboard member"
+    let context = boundedAppleIntelligenceContext(payload: payload, memorySummary: memorySummary)
+
+    return """
+    USER REQUEST START
+    \(request)
+    USER REQUEST END
+
+    Selected tone: \(selectedTone)
+    Included details: \(enabledLabels.isEmpty ? "none" : enabledLabels)
+    Sender name: \(safeSender)
+
+    HOMEBOARD CONTEXT START
+    \(String(context.prefix(12_000)))
+    HOMEBOARD CONTEXT END
+    """
+  }
+
+  private static func safeFreeText(_ input: String?) -> String? {
+    guard let input else { return nil }
+    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    guard containsFinancialRisk(trimmed) else { return input }
+
+    let safeClauses = financialClauses(in: trimmed)
+      .filter { !containsFinancialRisk($0) }
+      .map {
+        $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(
+          CharacterSet(charactersIn: ";.!?")
+        ))
+      }
+      .filter { !$0.isEmpty }
+    guard !safeClauses.isEmpty else { return nil }
+    let result = safeClauses.joined(separator: ". ")
+    return containsFinancialRisk(result) ? nil : result
+  }
+
+  /// Splits only at confident clause boundaries. Commas and colons remain inside
+  /// the clause so currency lists, ranges, abbreviations, and unfamiliar connector
+  /// words cannot strand a later value in a supposedly safe fragment.
+  private static func financialClauses(in input: String) -> [String] {
+    var clauses: [String] = []
+    var start = input.startIndex
+    var index = input.startIndex
+
+    func nextNonWhitespace(after position: String.Index) -> Character? {
+      var next = input.index(after: position)
+      while next < input.endIndex, input[next].isWhitespace {
+        next = input.index(after: next)
+      }
+      return next < input.endIndex ? input[next] : nil
+    }
+
+    while index < input.endIndex {
+      let character = input[index]
+      let isHardBoundary = character == ";" || character == "\n"
+      let isSentenceBoundary: Bool
+      if character == "." || character == "!" || character == "?" {
+        let next = nextNonWhitespace(after: index)
+        isSentenceBoundary = next == nil || next?.isUppercase == true
+      } else {
+        isSentenceBoundary = false
+      }
+      if isHardBoundary || isSentenceBoundary {
+        let end = input.index(after: index)
+        clauses.append(String(input[start..<end]))
+        start = end
+      }
+      index = input.index(after: index)
+    }
+    if start < input.endIndex { clauses.append(String(input[start...])) }
+    return clauses.isEmpty ? [input] : clauses
+  }
+
+  private static func containsFinancialRisk(_ input: String) -> Bool {
+    let strongFinancialLanguage = #"(?i)\b(?:inc(?:ome)?|sal(?:ary)?|earn(?:ed|ing|ings|s)?|wages?|pay(?:check)?|compensation|annual\s+comp|total\s+comp|credit|cred(?:it)?|cr\.?\s*score|fico|budget|budg(?:et)?|financial|finances?|debt(?:-to-income)?|dti|agi|hhi|assets?|savings?|net\s+worth|bank\s+balance|makes?|making|gross(?:es|ed|ing)?|bring(?:s|ing)?\s+in|pull(?:s|ing)?\s+in|take[- ]home)\b"#
+    let currency = #"(?i)(?:[$€£¥]|\b(?:usd|us\s+dollars?|dollars?|bucks?)\b)"#
+    let incomeMultiple = #"(?i)\b(?:[0-9]+(?:\.[0-9]+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*[x×]\b"#
+    let periodicAmount = #"(?i)(?:\b[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?|\b(?:hundred|thousand|million)\b)\s*(?:/\s*(?:mo(?:nth)?|yr|year)|per\s+(?:month|year)|a\s+year|monthly|annually|yearly)\b"#
+    if matches(strongFinancialLanguage, in: input)
+      || matches(currency, in: input)
+      || matches(incomeMultiple, in: input)
+      || matches(periodicAmount, in: input) {
+      return true
+    }
+
+    guard matches(#"(?i)\brent(?:al)?\b"#, in: input) else { return false }
+    let amount = #"(?i)(?:\b[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?\b|\b(?:hundred|thousand|million)\b)"#
+    let pricingLanguage = #"(?i)\b(?:costs?|price|priced|pay|under|over|below|above|max(?:imum)?|min(?:imum)?|per\s+(?:month|year)|monthly|annually|yearly)\b"#
+    let ordinaryDate = #"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b[0-9]{1,2}/[0-9]{1,2}(?:/[0-9]{2,4})?\b"#
+    return matches(amount, in: input)
+      && (matches(pricingLanguage, in: input) || !matches(ordinaryDate, in: input))
+  }
+
+  private static func matches(_ pattern: String, in input: String) -> Bool {
+    input.range(of: pattern, options: .regularExpression) != nil
   }
 }
