@@ -828,48 +828,92 @@ extension AdvisorDraftGenerator {
   }
 
   private static func positivelySafeSpans(in input: String) -> [String] {
-    let patterns = [
+    let patterns: [(pattern: String, subjectToNegation: Bool, address: Bool)] = [
       // Street/unit references establish that their digits identify a listing.
-      #"(?i)\b[0-9]{1,6}\s+(?:[a-z0-9.'-]+\s+){0,6}(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|parkway|pkwy|way|broadway)(?:\s*,?\s*(?:unit|apt|apartment|suite|#)\s*[a-z0-9-]+)?\b"#,
+      (#"\b[0-9]{1,6}[ \t]+(?:[NSEW]\.?[ \t]+)?(?:[A-Z][A-Za-z.'-]*[ \t]+){0,4}(?i:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|parkway|pkwy|way|broadway)(?:[ \t]*,?[ \t]+(?i:unit|apt|apartment|suite|#)[ \t]*[A-Za-z0-9-]+)?\b"#, false, true),
       // Dates exempt only the recognized date span, never other numbers nearby.
-      #"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?(?:,\s*)?)?[0-9]{4}\b"#,
-      #"\b[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}\b"#,
-      #"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b"#,
+      (#"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(?:[0-9]{1,2}(?:st|nd|rd|th)?(?:,\s*)?)?[0-9]{4}\b"#, false, false),
+      (#"\b[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}\b"#, false, false),
+      (#"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b"#, false, false),
       // Explicit housing needs remain useful without admitting arbitrary numbers.
-      #"(?i)\b(?:studio|one|two|three|four|five|[0-9])[- ]?(?:bedroom|bedrooms|bed|beds|br)\b"#,
-      #"(?i)\b(?:in[- ]unit\s+)?laundry\b"#,
-      #"(?i)\bparking\b"#,
-      #"(?i)\bnatural\s+light\b"#,
-      #"(?i)\bpets?\s+(?:allowed|welcome|okay|ok)\b"#,
-      #"(?i)\b(?:no\s+)?walk[- ]?up(?:\s+above\s+the\s+(?:first|second|third|fourth|fifth|[0-9](?:st|nd|rd|th)?)\s+floor)?\b"#,
-      #"(?i)\b(?:elevator|doorman|dishwasher|outdoor\s+space|rent[- ]stabilized)\b"#,
+      // Negated amenities are omitted unless the matched span itself preserves
+      // that negation, as in the explicit "No walk-up" form.
+      (#"(?i)\b(?:studio|one|two|three|four|five|[0-9])[- ]?(?:bedroom|bedrooms|bed|beds|br)\b"#, true, false),
+      (#"(?i)\b(?:in[- ]unit\s+)?laundry\b"#, true, false),
+      (#"(?i)\bparking\b"#, true, false),
+      (#"(?i)\bnatural\s+light\b"#, true, false),
+      (#"(?i)\bpets?\s+(?:allowed|welcome|okay|ok)\b"#, true, false),
+      (#"(?i)\bno\s+walk[- ]?up(?:\s+above\s+the\s+(?:first|second|third|fourth|fifth|[0-9](?:st|nd|rd|th)?)\s+floor)?\b"#, false, false),
+      (#"(?i)\bwalk[- ]?up(?:\s+above\s+the\s+(?:first|second|third|fourth|fifth|[0-9](?:st|nd|rd|th)?)\s+floor)?\b"#, true, false),
+      (#"(?i)\b(?:elevator|doorman|dishwasher|outdoor\s+space|rent[- ]stabilized)\b"#, true, false),
       // Picker state and bounded outcome summaries are non-financial metadata.
-      #"(?i)\b(?:none|drafted|reported_sent|sent|replied|stale|answered)\b"#,
-      #"(?i)\b(?:accepted|sent|replied|rejected|revised)\s+(?:professional|casual|stern|passive-aggressive)(?:\s+(?:once|twice))?\b"#,
+      (#"(?i)\b(?:none|drafted|reported_sent|sent|replied|stale|answered)\b"#, false, false),
+      (#"(?i)\b(?:accepted|sent|replied|rejected|revised)\s+(?:professional|casual|stern|passive-aggressive)(?:\s+(?:once|twice))?\b"#, false, false),
     ]
-    var ranges: [Range<String.Index>] = []
+    var ranges: [(range: Range<String.Index>, subjectToNegation: Bool, address: Bool)] = []
     let fullRange = NSRange(input.startIndex..<input.endIndex, in: input)
-    for pattern in patterns {
-      guard let expression = try? NSRegularExpression(pattern: pattern) else { continue }
+    for entry in patterns {
+      guard let expression = try? NSRegularExpression(pattern: entry.pattern) else { continue }
       expression.enumerateMatches(in: input, range: fullRange) { match, _, _ in
         guard let match, let range = Range(match.range, in: input) else { return }
-        ranges.append(range)
+        ranges.append((range, entry.subjectToNegation, entry.address))
       }
     }
     ranges.sort {
-      if $0.lowerBound == $1.lowerBound { return $0.upperBound > $1.upperBound }
-      return $0.lowerBound < $1.lowerBound
+      if $0.range.lowerBound == $1.range.lowerBound {
+        return $0.range.upperBound > $1.range.upperBound
+      }
+      return $0.range.lowerBound < $1.range.lowerBound
     }
 
     var result: [String] = []
     var coveredThrough = input.startIndex
-    for range in ranges where range.lowerBound >= coveredThrough {
-      let value = input[range].trimmingCharacters(in: .whitespacesAndNewlines)
+    for span in ranges where span.range.lowerBound >= coveredThrough {
+      if span.address && addressStartsWithFinancialValue(span.range, in: input) { continue }
+      if span.subjectToNegation && hasNegationBeforeSafeSpan(span.range, in: input) { continue }
+      let value = input[span.range].trimmingCharacters(in: .whitespacesAndNewlines)
       guard !value.isEmpty else { continue }
       result.append(value)
-      coveredThrough = range.upperBound
+      coveredThrough = span.range.upperBound
     }
     return result
+  }
+
+  private static func addressStartsWithFinancialValue(
+    _ range: Range<String.Index>,
+    in input: String
+  ) -> Bool {
+    var clauseStart = range.lowerBound
+    let boundaries = CharacterSet(charactersIn: ".!?;\n")
+    while clauseStart > input.startIndex {
+      let previous = input.index(before: clauseStart)
+      guard input[previous].unicodeScalars.allSatisfy({ !boundaries.contains($0) }) else { break }
+      clauseStart = previous
+    }
+    let prefix = String(input[clauseStart..<range.lowerBound])
+    guard matches(strongFinancialLanguagePattern, in: prefix) else { return false }
+
+    // A prior quantity shows that the financial value has already been closed
+    // before this independently structured address begins. Without one, the
+    // address-leading digits may themselves be that financial value.
+    let priorQuantity = #"(?i)\b(?:[0-9]+(?:[,.][0-9]+)*\s*k?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:hundred|thousand|million))\b"#
+    return !matches(priorQuantity, in: prefix)
+  }
+
+  private static func hasNegationBeforeSafeSpan(
+    _ range: Range<String.Index>,
+    in input: String
+  ) -> Bool {
+    var clauseStart = range.lowerBound
+    let boundaries = CharacterSet(charactersIn: ".!?;\n")
+    while clauseStart > input.startIndex {
+      let previous = input.index(before: clauseStart)
+      guard input[previous].unicodeScalars.allSatisfy({ !boundaries.contains($0) }) else { break }
+      clauseStart = previous
+    }
+    let prefix = String(input[clauseStart..<range.lowerBound])
+    let negation = #"(?i)(?:\b(?:no|not|never|without|cannot)\b|\b(?:don['’]t|can['’]t|won['’]t|wouldn['’]t|shouldn['’]t|couldn['’]t)\b|\b(?:do|can|will|would|should|could)\s+not\b|\bavoid(?:ing)?\b)"#
+    return matches(negation, in: prefix)
   }
 
   private static func removingPositivelySafeSpans(from input: String) -> String {
@@ -884,11 +928,10 @@ extension AdvisorDraftGenerator {
   }
 
   private static func containsFinancialRisk(_ input: String) -> Bool {
-    let strongFinancialLanguage = #"(?i)\b(?:inc(?:ome)?|sal(?:ary)?|earn(?:ed|ing|ings|s)?|wages?|pay(?:check)?|compensation|annual\s+comp|total\s+comp|credit|cred(?:it)?|cr\.?\s*score|fico|budget|budg(?:et)?|financial|finances?|debt(?:-to-income)?|dti|agi|hhi|assets?|savings?|net\s+worth|bank\s+balance|makes?|making|gross(?:es|ed|ing)?|bring(?:s|ing)?\s+in|pull(?:s|ing)?\s+in|take[- ]home)\b"#
     let currency = #"(?i)(?:[$€£¥]|\b(?:usd|us\s+dollars?|dollars?|bucks?)\b)"#
     let incomeMultiple = #"(?i)\b(?:[0-9]+(?:\.[0-9]+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s*[x×]\b"#
     let periodicAmount = #"(?i)(?:\b[0-9][0-9,]*(?:\.[0-9]+)?\s*[kK]?|\b(?:hundred|thousand|million)\b)\s*(?:/\s*(?:mo(?:nth)?|yr|year)|per\s+(?:month|year)|a\s+year|monthly|annually|yearly)\b"#
-    if matches(strongFinancialLanguage, in: input)
+    if matches(strongFinancialLanguagePattern, in: input)
       || matches(currency, in: input)
       || matches(incomeMultiple, in: input)
       || matches(periodicAmount, in: input) {
@@ -915,5 +958,9 @@ extension AdvisorDraftGenerator {
 
   private static func matches(_ pattern: String, in input: String) -> Bool {
     input.range(of: pattern, options: .regularExpression) != nil
+  }
+
+  private static var strongFinancialLanguagePattern: String {
+    #"(?i)\b(?:inc(?:ome)?|sal(?:ary)?|earn(?:ed|ing|ings|s)?|wages?|pay(?:check)?|compensation|annual\s+comp|total\s+comp|credit|cred(?:it)?|cr\.?\s*score|fico|budget|budg(?:et)?|financial|finances?|debt(?:-to-income)?|dti|agi|hhi|assets?|savings?|net\s+worth|bank\s+balance|makes?|making|gross(?:es|ed|ing)?|bring(?:s|ing)?\s+in|pull(?:s|ing)?\s+in|take[- ]home)\b"#
   }
 }
