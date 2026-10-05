@@ -232,6 +232,7 @@ export async function POST(
       replyLog: {
         confirmationId: parsed.data.confirmationId ?? null,
         outreachId: outreach.id,
+        advisorMessageId: outreach.advisorMessageId,
         listingId,
         answeredAt: persistedOutreach.answeredAt.toISOString(),
         duplicate,

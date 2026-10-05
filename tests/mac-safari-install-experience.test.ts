@@ -5,7 +5,9 @@ import test from "node:test";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
-const setupPage = read("app/safari/page.tsx");
+const setupPage = read("app/mac/page.tsx");
+const setupLayout = read("app/mac/layout.tsx");
+const nextConfig = read("next.config.ts");
 const shareButton = read("components/share-to-mac-button.tsx");
 const installExperience = read("app/install-experience.tsx");
 const marketingHeader = read("app/marketing-header.tsx");
@@ -15,14 +17,15 @@ const phonePairing = read(
 const macApp = read("ios/HomeboardNative/HomeboardMac/HomeboardMacApp.swift");
 const environmentExample = read(".env.example");
 
-test("the website gives the Safari companion a dedicated shareable setup page", () => {
-  assert.match(setupPage, /Homeboard for Safari: Save rentals from your Mac/);
-  assert.match(setupPage, /Open the companion/);
-  assert.match(setupPage, /Scan the QR/);
-  assert.match(setupPage, /Enable in Safari/);
-  assert.match(setupPage, /Save a rental/);
-  assert.match(setupPage, /api\/og\?slide=product/);
-  assert.match(setupPage, /NEXT_PUBLIC_MAC_INSTALL_URL/);
+test("the website gives the Mac companion a dedicated shareable setup page", () => {
+  assert.match(setupPage, /Homeboard for Mac: Save rentals from your laptop/);
+  assert.match(setupPage, /const handleShareClick = async \(\) =>/);
+  assert.match(setupPage, /navigator\.share/);
+  assert.match(setupPage, /navigator\.clipboard\.writeText\(window\.location\.href\)/);
+  assert.match(setupPage, /Share \/ Install/);
+  assert.match(setupPage, /Download Homeboard/);
+  assert.match(setupLayout, /title: "Homeboard for Mac/);
+  assert.match(nextConfig, /source: "\/safari"[\s\S]*destination: "\/mac"[\s\S]*permanent: true/);
   assert.match(environmentExample, /NEXT_PUBLIC_MAC_INSTALL_URL=/);
 });
 

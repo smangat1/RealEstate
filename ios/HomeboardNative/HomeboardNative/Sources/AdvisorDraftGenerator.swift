@@ -7,6 +7,7 @@ import FoundationModels
 struct AdvisorDraftGeneration {
   var text: String
   var source: String
+  var templateId: String = AdvisorOutcomeMemory.standardTemplate
 }
 
 private struct AdvisorPreferenceModelResponse: Codable {
@@ -334,7 +335,9 @@ enum AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
-    senderName: String
+    senderName: String,
+    templateId: String = AdvisorOutcomeMemory.standardTemplate,
+    memorySummary: String? = nil
   ) async -> AdvisorDraftGeneration {
     let includedFinancialSentence = financialToggleEnabled(toggles) ? financialSentence : nil
     let fallback = templateDraft(
@@ -342,7 +345,8 @@ enum AdvisorDraftGenerator {
       tone: tone,
       toggles: toggles,
       financialSentence: includedFinancialSentence,
-      senderName: senderName
+      senderName: senderName,
+      templateId: templateId
     )
 
     #if canImport(FoundationModels)
@@ -353,13 +357,14 @@ enum AdvisorDraftGenerator {
          tone: tone,
          toggles: toggles,
          financialSentence: includedFinancialSentence,
-         senderName: senderName
+         senderName: senderName,
+         memorySummary: memorySummary
        ) {
-      return AdvisorDraftGeneration(text: generated, source: "apple_intelligence")
+      return AdvisorDraftGeneration(text: generated, source: "apple_intelligence", templateId: templateId)
     }
     #endif
 
-    return AdvisorDraftGeneration(text: fallback, source: "device_template")
+    return AdvisorDraftGeneration(text: fallback, source: "device_template", templateId: templateId)
   }
 
   #if canImport(FoundationModels)
@@ -507,10 +512,11 @@ enum AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
-    senderName: String
+    senderName: String,
+    templateId: String
   ) -> String {
-    let listing = targetListing(payload)
-    let firstName = payload.contact?.agentName?
+    let listing = safeStructuredText(targetListing(payload), allowsNumericFacts: true) ?? "the rental"
+    let firstName = safeUserFreeText(payload.contact?.agentName)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .split(separator: " ")
       .first
@@ -518,29 +524,32 @@ enum AdvisorDraftGenerator {
     let greeting = firstName.map { "Hi \($0)," } ?? "Hello,"
     let requirements = payload.context?.requirements
     let moveIn = enabled("Group requirements", toggles: toggles)
-      ? requirements?.moveIn?.trimmingCharacters(in: .whitespacesAndNewlines)
+      ? safeStructuredText(requirements?.moveIn, allowsNumericFacts: true)?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
       : nil
     let moveSentence = moveIn.flatMap { $0.isEmpty ? nil : "We are targeting \($0)." }
     let commute = enabled("Commute fit", toggles: toggles)
-      ? requirements?.commuteDestinations?.first
+      ? safeStructuredText(requirements?.commuteDestinations?.first, allowsNumericFacts: true)
       : nil
     let commuteSentence = commute.map { "The location also works well for our commute to \($0)." }
     let finance = financialToggleEnabled(toggles) ? financialSentence : nil
+    let safeSender = safeUserFreeText(senderName) ?? "Homeboard member"
     let tour = enabled("Request a tour", toggles: toggles)
       ? "Could you confirm availability and the next opportunity to tour?"
       : "Could you confirm current availability?"
     let facts = [moveSentence, commuteSentence, finance].compactMap { $0 }.joined(separator: " ")
     let isFollowUp = payload.originalCommand?
       .range(of: #"follow[ -]?up"#, options: [.regularExpression, .caseInsensitive]) != nil
+    let concise = templateId == AdvisorOutcomeMemory.conciseTemplate
 
     switch tone {
     case "Casual":
       return [
         greeting,
-        isFollowUp ? "Checking back on my earlier message about \(listing)." : "Checking in about \(listing).",
+        isFollowUp ? "Checking back about \(listing)." : concise ? "Is \(listing) still available?" : "Checking in about \(listing).",
         facts,
         tour,
-        "Thanks, \(senderName)",
+        "Thanks, \(safeSender)",
       ]
         .filter { !$0.isEmpty }
         .joined(separator: " ")
@@ -554,7 +563,7 @@ enum AdvisorDraftGenerator {
         "",
         tour,
         "",
-        senderName,
+        safeSender,
       ].joined(separator: "\n")
     case "Passive-Aggressive":
       return [
@@ -566,7 +575,7 @@ enum AdvisorDraftGenerator {
         "",
         "Please let us know whether it remains available so we can plan accordingly.",
         "",
-        "Thank you,\n\(senderName)",
+        "Thank you,\n\(safeSender)",
       ].joined(separator: "\n")
     default:
       return [
@@ -574,11 +583,13 @@ enum AdvisorDraftGenerator {
         "",
         isFollowUp
           ? "I am following up on my earlier message regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces)
-          : "I am reaching out regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
+          : concise
+            ? "I am interested in \(listing). \(facts)".trimmingCharacters(in: .whitespaces)
+            : "I am reaching out regarding \(listing). \(facts)".trimmingCharacters(in: .whitespaces),
         "",
         tour,
         "",
-        "Best regards,\n\(senderName)",
+        "Best regards,\n\(safeSender)",
       ].joined(separator: "\n")
     }
   }
@@ -642,7 +653,8 @@ private extension AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
-    senderName: String
+    senderName: String,
+    memorySummary: String?
   ) async -> String? {
     let session = LanguageModelSession(
       model: .default,
@@ -657,22 +669,18 @@ private extension AdvisorDraftGenerator {
       with the supplied sender name exactly; never use a bracketed name placeholder.
       """
     )
-    let contextData = try? JSONEncoder().encode(payload.context)
-    let context = contextData.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-    let enabledLabels = toggles.filter(\.enabled).map(\.label).joined(separator: ", ")
-    let prompt = """
-    USER REQUEST START
-    \(payload.originalCommand ?? "Draft outreach for the selected rental.")
-    USER REQUEST END
-
-    Selected tone: \(tone)
-    Included details: \(enabledLabels.isEmpty ? "none" : enabledLabels)
-    Sender name: \(senderName)
-
-    HOMEBOARD CONTEXT START
-    \(String(context.prefix(12_000)))
-    HOMEBOARD CONTEXT END
-    """
+    guard let prompt = appleIntelligencePrompt(
+      payload: payload,
+      tone: tone,
+      toggles: toggles,
+      senderName: senderName,
+      memorySummary: memorySummary
+    ) else {
+      await recordDraftModelDiagnostic(
+        payload: payload, tone: tone, stage: "input_boundary", reason: "no_safe_request"
+      )
+      return nil
+    }
     do {
       let response = try await session.respond(to: prompt)
       let validation = validateAndComposeAppleIntelligenceDraft(
@@ -706,3 +714,267 @@ private extension AdvisorDraftGenerator {
   }
 }
 #endif
+
+extension AdvisorDraftGenerator {
+  /// A deliberately non-financial context boundary for on-device wording.
+  static func boundedAppleIntelligenceContext(
+    payload: AdvisorMessagePayload,
+    memorySummary: String?
+  ) -> String {
+    struct SafeContext: Encodable {
+      var listing: String
+      var moveIn: String?
+      var locations: [String]
+      var mustHaves: [String]
+      var dealbreakers: [String]
+      var priorities: [String]
+      var commuteDestinations: [String]
+      var tensionFlags: [String]
+      var conversationStage: String
+      var listingHistory: [AdvisorListingHistory]
+      var reportedOutcomeSummary: String?
+    }
+    let requirements = payload.context?.requirements
+    let picker = payload.context?.picker
+    let safe = SafeContext(
+      listing: safeStructuredText(targetListing(payload), allowsNumericFacts: true)
+        ?? "the selected rental",
+      moveIn: safeStructuredText(requirements?.moveIn, allowsNumericFacts: true),
+      locations: (requirements?.locations ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: true)
+      },
+      mustHaves: (requirements?.mustHaves ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      dealbreakers: (requirements?.dealbreakers ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      priorities: (requirements?.priorities ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      commuteDestinations: (requirements?.commuteDestinations ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: true)
+      },
+      tensionFlags: (requirements?.tensionFlags ?? []).compactMap {
+        safeStructuredText($0, allowsNumericFacts: false)
+      },
+      conversationStage: safeStructuredText(picker?.conversationStage, allowsNumericFacts: false)
+        ?? "none",
+      listingHistory: Array((picker?.listingHistory ?? []).prefix(12)).map {
+        AdvisorListingHistory(
+          boardListingId: $0.boardListingId,
+          status: safeStructuredText($0.status, allowsNumericFacts: false) ?? "unknown",
+          templateId: safeStructuredText($0.templateId, allowsNumericFacts: false)
+            ?? AdvisorOutcomeMemory.standardTemplate,
+          contactedAt: $0.contactedAt,
+          answered: $0.answered,
+          daysSinceContact: $0.daysSinceContact
+        )
+      },
+      reportedOutcomeSummary: safeStructuredText(
+        memorySummary.map { String($0.prefix(800)) },
+        allowsNumericFacts: true
+      )
+        .map { String($0.prefix(800)) }
+    )
+    let data = try? JSONEncoder().encode(safe)
+    return String((data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}").prefix(12_000))
+  }
+
+  static func sanitizedAppleIntelligenceRequest(_ command: String?) -> String {
+    guard let command, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return "Draft outreach for the selected rental."
+    }
+    return safeUserFreeText(String(command.prefix(2_000)))
+      ?? "Draft outreach for the selected rental."
+  }
+
+  /// Builds the exact text handed to Foundation Models. Returning nil deliberately
+  /// selects the existing deterministic template when a request cannot be separated
+  /// safely from private financial facts.
+  static func appleIntelligencePrompt(
+    payload: AdvisorMessagePayload,
+    tone: String,
+    toggles: [AdvisorToggleOption],
+    senderName: String,
+    memorySummary: String?
+  ) -> String? {
+    let rawRequest = payload.originalCommand?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let request: String
+    if rawRequest.isEmpty {
+      request = "Draft outreach for the selected rental."
+    } else {
+      guard let safeRequest = safeUserFreeText(String(rawRequest.prefix(2_000))) else { return nil }
+      request = safeRequest
+    }
+
+    let allowedTones = ["Professional", "Casual", "Stern", "Passive-Aggressive"]
+    let selectedTone = allowedTones.contains(tone) ? tone : "Professional"
+    let enabledLabels = toggles.filter(\.enabled).compactMap {
+      safeStructuredText($0.label, allowsNumericFacts: false)
+    }
+      .joined(separator: ", ")
+    let safeSender = safeUserFreeText(senderName) ?? "Homeboard member"
+    let context = boundedAppleIntelligenceContext(payload: payload, memorySummary: memorySummary)
+
+    return """
+    USER REQUEST START
+    \(request)
+    USER REQUEST END
+
+    Selected tone: \(selectedTone)
+    Included details: \(enabledLabels.isEmpty ? "none" : enabledLabels)
+    Sender name: \(safeSender)
+
+    HOMEBOARD CONTEXT START
+    \(String(context.prefix(12_000)))
+    HOMEBOARD CONTEXT END
+    """
+  }
+
+  private struct FreeTextUnit {
+    var text: String
+    var separatorBefore: Character?
+  }
+
+  /// User-authored request text is handled only as whole sentence/continuation
+  /// units. A unit is passed through verbatim or removed in full; no substring
+  /// is ever recovered from a rejected unit.
+  private static func safeUserFreeText(_ input: String?) -> String? {
+    guard let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+          let splitUnits = splitUserFreeText(input) else { return nil }
+
+    var joinedUnits: [FreeTextUnit] = []
+    for unit in splitUnits {
+      if let previous = joinedUnits.last,
+         shouldJoinContinuation(unit, to: previous) {
+        joinedUnits[joinedUnits.count - 1].text += unit.text
+      } else {
+        joinedUnits.append(unit)
+      }
+    }
+
+    var kept = ""
+    for unit in joinedUnits {
+      guard let unsafe = userUnitContainsPrivateQuantity(unit.text) else { return nil }
+      if !unsafe { kept += unit.text }
+    }
+    return kept.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : kept
+  }
+
+  private static func splitUserFreeText(_ input: String) -> [FreeTextUnit]? {
+    let unsupportedControls = input.unicodeScalars.contains {
+      CharacterSet.controlCharacters.contains($0)
+        && $0.value != 10 && $0.value != 9 && $0.value != 13
+    }
+    guard !unsupportedControls else { return nil }
+
+    var units: [FreeTextUnit] = []
+    var start = input.startIndex
+    var separatorBefore: Character?
+    var index = input.startIndex
+
+    while index < input.endIndex {
+      let character = input[index]
+      let next = input.index(after: index)
+      let periodBoundary = character == "."
+        && (next == input.endIndex || input[next].isWhitespace)
+      let boundary = periodBoundary
+        || character == "!" || character == "?"
+        || character == ":" || character == ";" || character == "\n"
+      if boundary {
+        let raw = String(input[start..<next])
+        if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          if !units.isEmpty { units[units.count - 1].text += raw }
+        } else {
+          units.append(FreeTextUnit(text: raw, separatorBefore: separatorBefore))
+        }
+        separatorBefore = character
+        start = next
+      }
+      index = next
+    }
+
+    if start < input.endIndex {
+      let raw = String(input[start...])
+      if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !units.isEmpty { units[units.count - 1].text += raw }
+      } else {
+        units.append(FreeTextUnit(text: raw, separatorBefore: separatorBefore))
+      }
+    }
+    return units
+  }
+
+  private static func shouldJoinContinuation(
+    _ current: FreeTextUnit,
+    to previous: FreeTextUnit
+  ) -> Bool {
+    if let separator = current.separatorBefore,
+       separator == ":" || separator == ";" || separator == "\n" {
+      return true
+    }
+
+    let currentText = current.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let previousText = previous.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !currentText.isEmpty, !previousText.isEmpty else { return true }
+    if currentText.first?.isNumber == true || "$€£¥".contains(currentText.first ?? " ") {
+      return true
+    }
+
+    let continuation = #"(?i)^(?:it|that|this|which|these|those|about|around|approximately|approx|roughly|nearly|almost|including|plus|and|or|to|through|between|from|respectively|total|altogether|combined|another|over|under|up\s+to|at\s+(?:least|most)|more|less|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)\b"#
+    guard let startsAsContinuation = containsPattern(continuation, in: currentText) else {
+      return true
+    }
+    if startsAsContinuation { return true }
+
+    let normalizedPrevious = previousText.trimmingCharacters(
+      in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?,:;"))
+    )
+    let dangling = #"(?i)\b(?:is|are|was|were|of|to|from|between|about|around|approximately|including|equals?|totals?)$"#
+    return containsPattern(dangling, in: normalizedPrevious) ?? true
+  }
+
+  private static func userUnitContainsPrivateQuantity(_ input: String) -> Bool? {
+    if input.unicodeScalars.contains(where: { CharacterSet.decimalDigits.contains($0) }) {
+      return true
+    }
+
+    let financialTerms = #"(?i)\b(?:income|salary|salaries|wages?|pay|paid|paycheck|paychecks|payment|payments|compensation|earn|earned|earning|earnings|bonus|bonuses|commission|commissions|gross|take[- ]home|hourly\s+rate|credit(?:\s+score)?|fico|budget|rent(?:al)?\s+budget|rent|deposit|savings?|debt|loan|mortgage|bank|banking|bank\s+balance|tax|taxes|agi|hhi|dti|assets?|net\s+worth|cash|cash\s+flow|funds?|financial|finances?|qualification|guarantor)\b"#
+    let moneyTerms = #"(?i)(?:[$€£¥]|\b(?:usd|eur|gbp|dollars?|bucks?|grand)\b|\b[0-9]+(?:\.[0-9]+)?\s*[kK]\b)"#
+    let numberWords = #"(?i)\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|couple|dozen|once|twice)\b"#
+    guard let hasFinancialTerm = containsPattern(financialTerms, in: input),
+          let hasMoneyTerm = containsPattern(moneyTerms, in: input),
+          let hasNumberWord = containsPattern(numberWords, in: input) else { return nil }
+    return hasFinancialTerm || hasMoneyTerm || hasNumberWord
+  }
+
+  /// Structured listing and preference values are never reconstructed from raw
+  /// user text. Each structured value is accepted or removed as a whole.
+  private static func safeStructuredText(
+    _ input: String?,
+    allowsNumericFacts: Bool
+  ) -> String? {
+    guard let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return nil
+    }
+    let financialTerms = #"(?i)\b(?:income|salary|salaries|wages?|pay|paid|paycheck|paychecks|payment|payments|compensation|earn|earned|earning|earnings|bonus|bonuses|commission|commissions|gross|take[- ]home|hourly\s+rate|credit(?:\s+score)?|fico|budget|rent|deposit|savings?|debt|loan|mortgage|bank|banking|bank\s+balance|tax|taxes|agi|hhi|dti|assets?|net\s+worth|cash|cash\s+flow|funds?|financial|finances?|qualification|guarantor)\b"#
+    let moneyTerms = #"(?i)(?:[$€£¥]|\b(?:usd|eur|gbp|dollars?|bucks?|grand)\b|\b[0-9]+(?:\.[0-9]+)?\s*[kK]\b)"#
+    let ambiguousLargeQuantity = #"(?i)\b(?:[0-9]{3,}(?:[,.][0-9]+)*|hundred|thousand|million|billion)\b"#
+    guard let hasFinancialTerm = containsPattern(financialTerms, in: input),
+          let hasMoneyTerm = containsPattern(moneyTerms, in: input),
+          let hasLargeQuantity = containsPattern(ambiguousLargeQuantity, in: input) else {
+      return nil
+    }
+    guard !hasFinancialTerm, !hasMoneyTerm,
+          allowsNumericFacts || !hasLargeQuantity else { return nil }
+    return input
+  }
+
+  private static func containsPattern(_ pattern: String, in input: String) -> Bool? {
+    guard let expression = try? NSRegularExpression(pattern: pattern) else { return nil }
+    let range = NSRange(input.startIndex..<input.endIndex, in: input)
+    return expression.firstMatch(in: input, range: range) != nil
+  }
+}

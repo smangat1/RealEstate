@@ -35,7 +35,7 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
   func testPostFailureRestoresExactPromptWithoutGenerationOrSave() {
     launchFixture(["UITEST_ADVISOR_MODE": "fail"])
     let prompt = advisorPrompts[0]
-    send(prompt)
+    send(prompt, allowsImmediateFailureRestore: true)
     XCTAssertTrue(app.staticTexts["homeboard.chat.boardError"].waitForExistence(timeout: 15))
     wait("Failed prompt was not restored to the composer") { self.app.textFields["homeboard.chat.field"].value as? String == prompt }
     XCTAssertEqual(records("generations").count, 0)

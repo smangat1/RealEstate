@@ -99,6 +99,8 @@ struct AdvisorOutreachEvidence: Decodable {
   var deliveryVerified: Bool
   var followUpEligible: Bool
   var followUpScheduledFor: String?
+  var outreachId: String? = nil
+  var advisorMessageId: String? = nil
 }
 
 struct AdvisorPreferenceProposalResponse: Decodable {
@@ -116,6 +118,7 @@ struct AdvisorFeedbackSnapshot: Encodable {
   var source: String? = nil
   var changeFields: [String]? = nil
   var tone: String? = nil
+  var templateId: String? = nil
   var generationSource: String? = nil
   var executionStatus: String? = nil
 }

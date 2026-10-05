@@ -84,7 +84,7 @@ test("the heaviest visible marketing assets use compressed delivery files", () =
   const webBackground = resolve(root, "public/images/homeboard-auth-bg.jpg");
   const nativeBackground = resolve(root, "ios/HomeboardNative/HomeboardNative/Resources/Assets.xcassets/HomeboardAuthBackground.imageset/background.jpg");
 
-  assert.match(page, /homeboard-comparison-map-clean\.webp/);
+  assert.doesNotMatch(page, /homeboard-comparison-map-(?:clean|cropped)/);
   assert.match(install, /homeboard-comparison-map-clean\.webp/);
   assert.ok(statSync(compressedMap).size < 400_000);
   assert.ok(statSync(webBackground).size < 800_000);

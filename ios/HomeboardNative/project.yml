@@ -40,6 +40,7 @@ targets:
       - path: HomeboardNative/Sources/UITestFixture.swift
       - path: HomeboardNative/Sources/AdvisorCardView.swift
       - path: HomeboardNative/Sources/AdvisorDraftGenerator.swift
+      - path: HomeboardNative/Sources/AdvisorOutcomeMemory.swift
       - path: HomeboardNative/Sources/AdvisorReplyIntake.swift
       - path: HomeboardNative/Resources/Assets.xcassets
         buildPhase: resources

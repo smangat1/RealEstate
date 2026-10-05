@@ -117,7 +117,7 @@ export default function HomeboardPage() {
             padding: 12px 8px 48px !important;
             background: #f0f2f5 !important;
           }
-          /* Sheet floats on the gray desk with shadow — this is what makes it feel like a doc */
+          /* Sheet floats on the gray desk with shadow; this is what makes it feel like a doc */
           .doc-sheet {
             border-radius: 2px !important;
             border: 1px solid #dadce0 !important;
@@ -125,7 +125,7 @@ export default function HomeboardPage() {
             padding: 24px 20px 48px 20px !important;
             min-height: unset !important;
           }
-          /* Hide toolbar ribbon entirely on mobile — Google Docs mobile does this */
+          /* Hide the toolbar ribbon entirely on mobile, as Google Docs mobile does */
           .doc-toolbar-ribbon {
             display: none !important;
           }
@@ -906,7 +906,7 @@ export default function HomeboardPage() {
                         <strong style={{ color: "#202124", fontWeight: 600 }}>2. Encrypted doc vault:</strong> W-2s, paystubs, and IDs are AES-256 encrypted at rest and only decrypted when you submit an application.
                       </p>
                       <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>3. Apple Pay token isolation:</strong> Deposit splits use device-level Apple Pay payment tokens—we never store or see bank numbers.
+                        <strong style={{ color: "#202124", fontWeight: 600 }}>3. Apple Pay token isolation:</strong> Deposit splits use device-level Apple Pay payment tokens; we never store or see bank numbers.
                       </p>
                     </div>
 

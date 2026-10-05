@@ -110,6 +110,12 @@ export async function POST(
       }
     }
 
+    const persistedOutreach = existing ?? await prisma.brokerOutreachRecord.findUnique({
+      where: { advisorMessageId: parsed.data.advisorMessageId },
+      select: { id: true },
+    });
+    if (!persistedOutreach) throw new Error("ADVISOR_OUTREACH_NOT_PERSISTED");
+
     const next = await getBoardPageData(id, user.id);
     if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
     return NextResponse.json({
@@ -122,6 +128,8 @@ export async function POST(
         deliveryVerified: false,
         followUpEligible: false,
         followUpScheduledFor: null,
+        outreachId: persistedOutreach.id,
+        advisorMessageId: parsed.data.advisorMessageId,
       },
     });
   } catch (error) {

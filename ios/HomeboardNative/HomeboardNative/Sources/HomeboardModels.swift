@@ -662,6 +662,8 @@ struct AdvisorMessagePayload: Hashable, Codable {
   var context: AdvisorContext? = nil
   /// The boardListingId of the listing this draft specifically targets.
   var targetListingBoardId: String? = nil
+  var templateId: String? = nil
+  var toneWasExplicit: Bool? = nil
 }
 
 extension AdvisorMessagePayload {
@@ -682,6 +684,8 @@ extension AdvisorMessagePayload {
     case contact
     case context
     case targetListingBoardId
+    case templateId
+    case toneWasExplicit
   }
 
   init(from decoder: Decoder) throws {
@@ -704,6 +708,8 @@ extension AdvisorMessagePayload {
     contact = try? container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
     targetListingBoardId = try? container.decodeIfPresent(String.self, forKey: .targetListingBoardId)
+    templateId = try? container.decodeIfPresent(String.self, forKey: .templateId)
+    toneWasExplicit = try? container.decodeIfPresent(Bool.self, forKey: .toneWasExplicit)
   }
 }
 
@@ -717,6 +723,35 @@ struct AdvisorToggleOption: Identifiable, Hashable, Codable {
 struct AdvisorContext: Hashable, Codable {
   var leverage: AdvisorLeverage?
   var requirements: AdvisorRequirements?
+  var picker: AdvisorPickerContext? = nil
+}
+
+struct AdvisorPickerContext: Hashable, Codable {
+  var conversationStage: String
+  var listingHistory: [AdvisorListingHistory]
+  var boardFeedback: AdvisorFeedbackMemorySummary
+}
+
+struct AdvisorListingHistory: Hashable, Codable {
+  var boardListingId: String
+  var status: String
+  var templateId: String
+  var contactedAt: String?
+  var answered: Bool
+  var daysSinceContact: Int?
+}
+
+struct AdvisorFeedbackMemorySummary: Hashable, Codable {
+  var sampleSize: Int
+  var signals: [AdvisorFeedbackMemorySignal]
+}
+
+struct AdvisorFeedbackMemorySignal: Hashable, Codable {
+  var tone: String?
+  var templateId: String?
+  var signal: String
+  var reasonCode: String?
+  var count: Int
 }
 
 struct AdvisorLeverage: Hashable, Codable {
@@ -882,6 +917,7 @@ struct AdvisorReplyAnalysis: Hashable, Codable {
 struct AdvisorReplyThreadOption: Identifiable, Hashable, Codable {
   var id: String
   var outreachId: String
+  var advisorMessageId: String? = nil
   var listingId: String
   var listingName: String
   var recipientName: String?
@@ -902,6 +938,7 @@ struct AdvisorReplyThreadsResponse: Decodable {
 struct AdvisorReplyLog: Hashable, Codable {
   var confirmationId: String?
   var outreachId: String
+  var advisorMessageId: String? = nil
   var listingId: String
   var answeredAt: String
   var duplicate: Bool
