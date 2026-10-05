@@ -58,6 +58,27 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertTrue(memory.records(userId: "user-a", boardId: "board-a").isEmpty)
   }
 
+  @MainActor
+  func testAdvisorCardCopyNeverRecordsMemory() throws {
+    let suite = "advisor-card-copy-signal-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let memory = AdvisorOutcomeMemory(defaults: defaults, key: "memory")
+    let model = advisorMemoryModel(memory: memory)
+    let payload = advisorMemoryPayload(tone: "Professional")
+    for outcome in AdvisorCardMemorySignalPolicy.draftCopied() {
+      memory.record(memoryRecord(outcome: outcome))
+    }
+    XCTAssertNotNil(model.applyAdvisorRegenerationResponse(
+      try advisorMemoryResponse(payload: payload),
+      payload: payload,
+      expectedBoardId: "board-a",
+      expectedMessageId: "message-a",
+      recordAcceptance: false
+    ))
+    XCTAssertTrue(memory.records(userId: "user-a", boardId: "board-a").isEmpty)
+  }
+
   func testAdvisorCardRejectionWithoutToneChangeKeepsRejectedSignalOnly() {
     XCTAssertEqual(
       AdvisorCardMemorySignalPolicy.draftRejected(afterPersistedToneChange: false),
@@ -844,6 +865,47 @@ final class HomeboardNativeTests: XCTestCase {
     )
     XCTAssertEqual(current.advisorSetupVersion, 3)
     XCTAssertEqual(current.advisorSetupCompletedAt, "2026-09-27T05:00:00Z")
+  }
+
+  func testCompletedAdvisorSetupStaysDismissedAfterStaleProfileRefresh() {
+    var completed = RentalProfile()
+    completed.advisorSetupCompletedAt = "2026-10-04T20:00:00Z"
+    completed.advisorSetupVersion = 2
+
+    XCTAssertFalse(
+      AdvisorSetupPresentationPolicy.shouldPresent(
+        isUnlocked: true,
+        setupVersion: completed.advisorSetupVersion
+      )
+    )
+
+    let missingVersionRefresh = AppModel.profilePreservingAdvisorSetup(
+      remote: remoteProfile(),
+      fallback: completed
+    )
+    XCTAssertEqual(missingVersionRefresh.advisorSetupVersion, 2)
+    XCTAssertFalse(
+      AdvisorSetupPresentationPolicy.shouldPresent(
+        isUnlocked: true,
+        setupVersion: missingVersionRefresh.advisorSetupVersion
+      )
+    )
+
+    let staleVersionRefresh = AppModel.profilePreservingAdvisorSetup(
+      remote: remoteProfile(
+        advisorSetupVersion: 1,
+        advisorSetupCompletedAt: nil
+      ),
+      fallback: completed
+    )
+    XCTAssertEqual(staleVersionRefresh.advisorSetupVersion, 2)
+    XCTAssertEqual(staleVersionRefresh.advisorSetupCompletedAt, "2026-10-04T20:00:00Z")
+    XCTAssertFalse(
+      AdvisorSetupPresentationPolicy.shouldPresent(
+        isUnlocked: true,
+        setupVersion: staleVersionRefresh.advisorSetupVersion
+      )
+    )
   }
 
   func testHTMLServerErrorsAreSafeForTheChatFeed() {

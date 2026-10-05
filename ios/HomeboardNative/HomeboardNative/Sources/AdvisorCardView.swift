@@ -49,6 +49,7 @@ enum AdvisorDraftSafety {
 enum AdvisorCardMemorySignalPolicy {
   static func toneSwitched() -> [AdvisorDraftOutcome] { [] }
   static func includeToggled() -> [AdvisorDraftOutcome] { [] }
+  static func draftCopied() -> [AdvisorDraftOutcome] { [] }
   static func draftRejected(afterPersistedToneChange: Bool) -> [AdvisorDraftOutcome] {
     afterPersistedToneChange ? [.revised, .rejected] : [.rejected]
   }
@@ -366,6 +367,18 @@ struct AdvisorCardView: View {
       }
 
       HStack(spacing: 10) {
+        Button {
+          UIPasteboard.general.string = currentPayload.draftText
+          recordMemorySignals(AdvisorCardMemorySignalPolicy.draftCopied(), for: currentPayload)
+          appModel.showAdvisorConfirmation("Copied")
+        } label: {
+          Label("Copy", systemImage: "doc.on.doc")
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(AdvisorCTAButtonStyle(isPrimary: false))
+        .disabled(!isDraftReady(currentPayload))
+        .accessibilityIdentifier("homeboard.advisor.copy.\(message.id)")
+
         Button {
           prepareDispatch(.message)
         } label: {
@@ -880,6 +893,11 @@ private struct AdvisorFinancialPromptView: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
               .fixedSize(horizontal: false, vertical: true)
 
+            Text("Stored only on this phone. If you get a new phone or reinstall the app, you’ll need to enter this again.")
+              .font(.caption)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .fixedSize(horizontal: false, vertical: true)
+
             Button("Save mine and use available on request") {
               onComplete("available_on_request", ownIncomeMin, ownIncomeMax, ownCreditMin, ownCreditMax)
             }
@@ -1203,8 +1221,10 @@ struct AdvisorWalletPanel: View {
   }
 
   private func presentAdvisorSetupIfNeeded() {
-    guard appModel.advisorWalletStatus?.isUnlocked == true,
-          (appModel.profile.advisorSetupVersion ?? 0) < 2 else { return }
+    guard AdvisorSetupPresentationPolicy.shouldPresent(
+      isUnlocked: appModel.advisorWalletStatus?.isUnlocked == true,
+      setupVersion: appModel.profile.advisorSetupVersion
+    ) else { return }
     showsAdvisorSetup = true
   }
 
@@ -1248,6 +1268,12 @@ struct AdvisorWalletPanel: View {
       return topViewController(base: presented)
     }
     return baseController
+  }
+}
+
+enum AdvisorSetupPresentationPolicy {
+  static func shouldPresent(isUnlocked: Bool, setupVersion: Int?) -> Bool {
+    isUnlocked && (setupVersion ?? 0) < 2
   }
 }
 

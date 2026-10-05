@@ -563,6 +563,8 @@ struct RemoteRentalProfilePayload: Decodable {
   var groupSize: Int?
   var notes: String?
   var rentalReadiness: RentalReadiness?
+  // Decode-only legacy fields. New iOS requests never encode these; AppModel
+  // migrates any existing local values into the device-only Keychain store.
   var advisorFinancialMode: String?
   var advisorIncomeMultiple: String?
   var advisorCreditScore: String?
@@ -716,9 +718,6 @@ private struct RemoteRentalProfileRequest: Encodable {
   var rentalReadiness: RentalReadinessRequest
   var completionStatus: String
   var notes: String?
-  var advisorFinancialMode: String?
-  var advisorIncomeMultiple: String?
-  var advisorCreditScore: String?
   var advisorSetupCompletedAt: String?
   var advisorSetupVersion: Int?
   var createdAt: String
@@ -2095,9 +2094,6 @@ extension RemoteRentalProfileRequest {
     )
     self.completionStatus = profile.isBoardReady ? "complete" : "incomplete"
     self.notes = profile.readiness.notes.isEmpty ? nil : profile.readiness.notes
-    self.advisorFinancialMode = profile.advisorFinancialMode
-    self.advisorIncomeMultiple = profile.advisorIncomeMultiple
-    self.advisorCreditScore = profile.advisorCreditScore
     self.advisorSetupCompletedAt = profile.advisorSetupCompletedAt
     self.advisorSetupVersion = profile.advisorSetupVersion
     self.createdAt = now

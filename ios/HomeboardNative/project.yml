@@ -41,6 +41,7 @@ targets:
       - path: HomeboardNative/Sources/AdvisorCardView.swift
       - path: HomeboardNative/Sources/AdvisorDraftGenerator.swift
       - path: HomeboardNative/Sources/AdvisorOutcomeMemory.swift
+      - path: HomeboardNative/Sources/AdvisorSensitiveStore.swift
       - path: HomeboardNative/Sources/AdvisorReplyIntake.swift
       - path: HomeboardNative/Resources/Assets.xcassets
         buildPhase: resources

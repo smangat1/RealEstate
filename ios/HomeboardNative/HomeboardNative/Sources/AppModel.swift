@@ -47,11 +47,15 @@ final class AppModel {
     fallback: RentalProfile?
   ) -> RentalProfile {
     var resolved = RentalProfile(remote: remote)
-    guard resolved.advisorSetupVersion == nil,
-          let fallback,
-          fallback.advisorSetupVersion != nil else { return resolved }
-    // Older servers safely ignore the newer optional Advisor keys. Preserve
-    // the board-scoped local copy until a matching server can echo them back.
+    guard let fallback,
+          let localVersion = fallback.advisorSetupVersion,
+          localVersion >= 2,
+          ((resolved.advisorSetupVersion ?? 0) < localVersion
+            || resolved.advisorSetupCompletedAt == nil) else { return resolved }
+    // Setup completion is monotonic. An older or partially deployed server can
+    // return a stale version (or omit its timestamp) after the save succeeds.
+    // Preserve the confirmed local completion so the setup sheet cannot be
+    // immediately presented again by a later wallet/profile refresh.
     resolved.advisorFinancialMode = "available_on_request"
     resolved.advisorIncomeMultiple = nil
     resolved.advisorCreditScore = nil
@@ -140,6 +144,7 @@ final class AppModel {
 
   @ObservationIgnored private let api: HomeboardAPI
   @ObservationIgnored private let advisorOutcomeMemory: AdvisorOutcomeMemory
+  @ObservationIgnored private let advisorSensitiveStore: AdvisorSensitiveStore
   @ObservationIgnored private var didBootstrap = false
   @ObservationIgnored private var didFinishBootstrap = false
   @ObservationIgnored private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
@@ -283,12 +288,17 @@ final class AppModel {
   #endif
 
   convenience init(api: HomeboardAPI = HomeboardAPI()) {
-    self.init(api: api, advisorOutcomeMemory: .shared)
+    self.init(api: api, advisorOutcomeMemory: .shared, advisorSensitiveStore: .shared)
   }
 
-  init(api: HomeboardAPI, advisorOutcomeMemory: AdvisorOutcomeMemory) {
+  init(
+    api: HomeboardAPI,
+    advisorOutcomeMemory: AdvisorOutcomeMemory,
+    advisorSensitiveStore: AdvisorSensitiveStore = .shared
+  ) {
     self.api = api
     self.advisorOutcomeMemory = advisorOutcomeMemory
+    self.advisorSensitiveStore = advisorSensitiveStore
     #if DEBUG
     let resetsForUITesting = ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") || UITestFixtureState.enabled
     #else
@@ -301,11 +311,20 @@ final class AppModel {
       UserDefaults.standard.set(0, forKey: "homeboard.debug.welcomePage")
       NativeAuthSessionStore.delete()
       advisorOutcomeMemory.clear()
+      #if DEBUG
+      if UITestFixtureState.enabled {
+        advisorSensitiveStore.delete(userId: UITestFixture.session.userId)
+      }
+      #endif
     }
     restore()
     removePersistedStressTestListings()
     purgeExpiredLocalRecentlyDeletedListings()
     authSession = NativeAuthSessionStore.load()
+    if let authenticatedUserId = authSession?.userId,
+       authenticatedUserId == restoredAuthUserID {
+      migrateLegacyAdvisorSensitiveProfileIfNeeded(for: authenticatedUserId)
+    }
     // Cached membership is not proof of identity or authorization. Preserve it
     // until a successful session response identifies the current app user.
     if authSession == nil {
@@ -1299,11 +1318,73 @@ final class AppModel {
   @discardableResult
   func refreshAdvisorFinancialStatus() async -> AdvisorFinancialStatus? {
     guard let session = authSession, let boardId = board.id else { return nil }
+    if var local = advisorSensitiveStore.load(userId: session.userId, boardId: boardId) {
+      if local.serverCleanupPending {
+        do {
+          _ = try await api.updateAdvisorFinancialStatus(
+            accessToken: session.accessToken,
+            boardId: boardId,
+            disclosureMode: "available_on_request",
+            annualIncomeMin: nil,
+            annualIncomeMax: nil,
+            creditScoreMin: nil,
+            creditScoreMax: nil,
+            promptCompleted: false
+          )
+          local.serverCleanupPending = false
+          _ = advisorSensitiveStore.save(local, userId: session.userId, boardId: boardId)
+        } catch {
+          #if DEBUG
+          print("[Homeboard][AdvisorFinance] legacy_server_cleanup_pending")
+          #endif
+        }
+      }
+      let status = localAdvisorFinancialStatus(local)
+      advisorFinancialStatus = status
+      return status
+    }
     do {
-      let status = try await api.fetchAdvisorFinancialStatus(
+      let remote = try await api.fetchAdvisorFinancialStatus(
         accessToken: session.accessToken,
         boardId: boardId
       )
+      var local = AdvisorSensitiveFinance(
+        disclosureMode: remote.mine.disclosureMode,
+        annualIncomeMin: remote.mine.annualIncomeMin,
+        annualIncomeMax: remote.mine.annualIncomeMax,
+        creditScoreMin: remote.mine.creditScoreMin,
+        creditScoreMax: remote.mine.creditScoreMax,
+        promptCompletedAt: remote.mine.promptCompletedAt,
+        serverCleanupPending: remote.mine.annualIncomeMin != nil
+          || remote.mine.annualIncomeMax != nil
+          || remote.mine.creditScoreMin != nil
+          || remote.mine.creditScoreMax != nil
+      )
+      guard advisorSensitiveStore.save(local, userId: session.userId, boardId: boardId) else {
+        boardError = "Unable to access private Advisor details on this phone. Nothing was changed."
+        return nil
+      }
+      if local.serverCleanupPending {
+        do {
+          _ = try await api.updateAdvisorFinancialStatus(
+            accessToken: session.accessToken,
+            boardId: boardId,
+            disclosureMode: "available_on_request",
+            annualIncomeMin: nil,
+            annualIncomeMax: nil,
+            creditScoreMin: nil,
+            creditScoreMax: nil,
+            promptCompleted: false
+          )
+          local.serverCleanupPending = false
+          _ = advisorSensitiveStore.save(local, userId: session.userId, boardId: boardId)
+        } catch {
+          #if DEBUG
+          print("[Homeboard][AdvisorFinance] legacy_server_cleanup_pending")
+          #endif
+        }
+      }
+      let status = localAdvisorFinancialStatus(local)
       advisorFinancialStatus = status
       return status
     } catch {
@@ -1375,23 +1456,45 @@ final class AppModel {
     creditScoreMax: Int?
   ) async -> AdvisorFinancialStatus? {
     guard let session = authSession, let boardId = board.id else { return nil }
-    do {
-      let status = try await api.updateAdvisorFinancialStatus(
-        accessToken: session.accessToken,
-        boardId: boardId,
-        disclosureMode: disclosureMode,
-        annualIncomeMin: annualIncomeMin,
-        annualIncomeMax: annualIncomeMax,
-        creditScoreMin: creditScoreMin,
-        creditScoreMax: creditScoreMax,
-        promptCompleted: true
-      )
-      advisorFinancialStatus = status
-      return status
-    } catch {
-      boardError = readable(error)
+    let previous = advisorSensitiveStore.load(userId: session.userId, boardId: boardId)
+    let local = AdvisorSensitiveFinance(
+      disclosureMode: disclosureMode,
+      annualIncomeMin: annualIncomeMin,
+      annualIncomeMax: annualIncomeMax,
+      creditScoreMin: creditScoreMin,
+      creditScoreMax: creditScoreMax,
+      legacyIncomeMultiple: previous?.legacyIncomeMultiple,
+      promptCompletedAt: ISO8601DateFormatter().string(from: Date()),
+      serverCleanupPending: previous?.serverCleanupPending ?? false
+    )
+    guard advisorSensitiveStore.save(local, userId: session.userId, boardId: boardId) else {
+      boardError = "Unable to save private Advisor details on this phone. Nothing was changed."
       return nil
     }
+    let status = localAdvisorFinancialStatus(local)
+    advisorFinancialStatus = status
+    return status
+  }
+
+  private func localAdvisorFinancialStatus(_ local: AdvisorSensitiveFinance) -> AdvisorFinancialStatus {
+    AdvisorFinancialStatus(
+      mine: AdvisorMemberFinancialStatus(
+        annualIncomeMin: local.annualIncomeMin,
+        annualIncomeMax: local.annualIncomeMax,
+        creditScoreMin: local.creditScoreMin,
+        creditScoreMax: local.creditScoreMax,
+        disclosureMode: local.disclosureMode,
+        promptCompletedAt: local.promptCompletedAt
+      ),
+      group: AdvisorGroupFinancialStatus(
+        combinedAnnualIncomeMin: nil,
+        combinedAnnualIncomeMax: nil,
+        creditScoreMin: nil,
+        creditScoreMax: nil,
+        contributorCount: 0,
+        memberCount: max(1, board.members.count)
+      )
+    )
   }
 
   func createAdvisorFunding(amountCents: Int) async -> MobileAdvisorFundResponse? {
@@ -1714,6 +1817,7 @@ final class AppModel {
     let apiClient = api
     if let memoryUserId {
       advisorOutcomeMemory.clear(userId: memoryUserId)
+      advisorSensitiveStore.delete(userId: memoryUserId)
     }
     NativeAuthSessionStore.delete()
     clearSessionState()
@@ -1779,6 +1883,7 @@ final class AppModel {
       do {
         try await api.deleteAccount(accessToken: session.accessToken)
         advisorOutcomeMemory.clear(userId: session.userId)
+        advisorSensitiveStore.delete(userId: session.userId)
         HomeboardShareDiagnosticStore.clear()
         HomeboardShareBootDiagnosticStore.clear()
         NativeAuthSessionStore.delete()
@@ -2274,6 +2379,8 @@ final class AppModel {
     // and application user have been confirmed by a successful API response.
     if authenticatedAccountChanged {
       clearWorkspaceStateForAccountTransition()
+    } else {
+      migrateLegacyAdvisorSensitiveProfileIfNeeded(for: session.userId)
     }
 
     authSession = session
@@ -2338,6 +2445,7 @@ final class AppModel {
     listingInventoryError = nil
     pendingSharedListingImport = nil
     clearAdvisorWalletState()
+    advisorFinancialStatus = nil
     HomeboardSharedImportStore.clearAccountData()
     UserDefaults.standard.set(false, forKey: "homeboard.guide.first-listing.pending")
     authError = nil
@@ -4983,8 +5091,8 @@ final class AppModel {
       pendingConfirmationEmail: pendingConfirmationEmail
     )
     let profileRecord = ProfilePersistence(
-      profile: profile,
-      localProfilesByBoard: localProfilesByBoard
+      profile: Self.profileForLocalPersistence(profile),
+      localProfilesByBoard: localProfilesByBoard.mapValues(Self.profileForLocalPersistence)
     )
     let boardsListings = BoardsListingsPersistence(
       board: board,
@@ -5138,6 +5246,12 @@ final class AppModel {
     // Invite links are bearer credentials and intentionally never migrate out
     // of the old blob into UserDefaults.
     pendingInviteCode = ""
+    if hasLegacyAdvisorSensitiveValues(profile)
+        || localProfilesByBoard.values.contains(where: hasLegacyAdvisorSensitiveValues) {
+      // Keep the original bytes until the post-session Keychain migration has
+      // succeeded. `persist()` deliberately skips unreadable/blocked records.
+      unreadablePersistenceKeys.insert(profilePersistenceKey)
+    }
     if restoredBoardData {
       applyLocalBoardContributions()
     }
@@ -5151,6 +5265,73 @@ final class AppModel {
         defaults.removeObject(forKey: legacyPersistenceKey)
       }
     }
+  }
+
+  func migrateLegacyAdvisorSensitiveProfileIfNeeded(for userId: String) {
+    var profiles = localProfilesByBoard
+    let currentBoardId = boardStorageKey()
+    profiles[currentBoardId] = profile
+    let candidates = profiles.filter { hasLegacyAdvisorSensitiveValues($0.value) }
+    guard !candidates.isEmpty else { return }
+
+    for (boardId, legacyProfile) in candidates {
+      var local = advisorSensitiveStore.load(userId: userId, boardId: boardId)
+        ?? AdvisorSensitiveFinance()
+      if let mode = legacyProfile.advisorFinancialMode?.trimmingCharacters(in: .whitespacesAndNewlines),
+         !mode.isEmpty {
+        local.disclosureMode = mode
+      }
+      if let multiple = legacyProfile.advisorIncomeMultiple?.trimmingCharacters(in: .whitespacesAndNewlines),
+         !multiple.isEmpty {
+        local.legacyIncomeMultiple = multiple
+      }
+      if let rawScore = legacyProfile.advisorCreditScore,
+         let score = Int(rawScore.filter(\.isNumber)) {
+        local.creditScoreMin = local.creditScoreMin ?? score
+        local.creditScoreMax = local.creditScoreMax ?? score
+      }
+
+      guard advisorSensitiveStore.save(local, userId: userId, boardId: boardId) else {
+        // Do not replace the old profile bytes with a scrubbed copy unless the
+        // Keychain write has definitely succeeded.
+        unreadablePersistenceKeys.insert(profilePersistenceKey)
+        return
+      }
+
+      var scrubbed = legacyProfile
+      scrubbed.advisorFinancialMode = nil
+      scrubbed.advisorIncomeMultiple = nil
+      scrubbed.advisorCreditScore = nil
+      profiles[boardId] = scrubbed
+      if boardId == currentBoardId {
+        profile = scrubbed
+      }
+    }
+
+    localProfilesByBoard = profiles.filter { $0.key != currentBoardId || localProfilesByBoard[$0.key] != nil }
+    unreadablePersistenceKeys.remove(profilePersistenceKey)
+    persist()
+    let defaults = UserDefaults.standard
+    let migrationCompleted = persistenceKeys.allSatisfy {
+      defaults.data(forKey: $0) != nil && !unreadablePersistenceKeys.contains($0)
+    }
+    if migrationCompleted {
+      defaults.removeObject(forKey: legacyPersistenceKey)
+    }
+  }
+
+  private func hasLegacyAdvisorSensitiveValues(_ profile: RentalProfile) -> Bool {
+    profile.advisorFinancialMode != nil
+      || profile.advisorIncomeMultiple != nil
+      || profile.advisorCreditScore != nil
+  }
+
+  static func profileForLocalPersistence(_ source: RentalProfile) -> RentalProfile {
+    var scrubbed = source
+    scrubbed.advisorFinancialMode = nil
+    scrubbed.advisorIncomeMultiple = nil
+    scrubbed.advisorCreditScore = nil
+    return scrubbed
   }
 
   private func readPersistenceRecord<Payload: Codable>(
