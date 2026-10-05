@@ -78,6 +78,7 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
     XCTAssertFalse(app.staticTexts["homeboard.advisor.ready.fixture-advisor-1"].exists)
     XCTAssertFalse(app.buttons["homeboard.advisor.email.fixture-advisor-1"].isEnabled)
     XCTAssertFalse(app.buttons["homeboard.advisor.message.fixture-advisor-1"].isEnabled)
+    XCTAssertFalse(app.buttons["homeboard.advisor.copy.fixture-advisor-1"].isEnabled)
     XCTAssertEqual(records("acceptances").first?["saved"] as? Bool, false)
     let retry = app.buttons["advisor-card-recover"]
     reveal(retry, upwards: false)
@@ -85,6 +86,19 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
     assertSaved("fixture-advisor-1", command: advisorPrompts[0])
     XCTAssertEqual(diagnostics()["postCount"] as? Int, 1)
     XCTAssertEqual(records("storedMessages").filter { $0["authorName"] as? String == "Advisor" }.count, 1)
+    assertClean()
+  }
+  func testCopyUsesReadyDraftWithoutCreatingAnotherAcceptance() {
+    launchFixture()
+    send(advisorPrompts[0])
+    _ = assertSaved("fixture-advisor-1", command: advisorPrompts[0])
+    let acceptanceCount = records("acceptances").count
+    let copy = app.buttons["homeboard.advisor.copy.fixture-advisor-1"]
+    reveal(copy)
+    XCTAssertTrue(copy.isEnabled)
+    copy.tap()
+    XCTAssertTrue(app.staticTexts["Copied"].waitForExistence(timeout: 5))
+    XCTAssertEqual(records("acceptances").count, acceptanceCount)
     assertClean()
   }
   func testInactiveWalletBlocksPostGenerationAndAcceptance() {

@@ -44,6 +44,7 @@
 		790524246BBBD9B8761420CE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		792161098507BD52B60029E8 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
 		795DCA772BF2755776F130EE /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */; };
+		79C9371EF8DC63B339AFE592 /* KeychainSensitiveStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB08524664C9C447B1ADA12 /* KeychainSensitiveStoreTests.swift */; };
 		7D8FF96A80E3C4413CACBDDC /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		8346273ABDE9177129F67321 /* HomeboardShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		88ABA6BF0ED57B8296B4D99B /* HomeboardMacSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00182302381C6788EBBE3764 /* HomeboardMacSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -73,6 +74,7 @@
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
 		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */; };
+		D976E3309AD682890ABFA21B /* AdvisorSensitiveStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF80F81549A29E98A895992 /* AdvisorSensitiveStore.swift */; };
 		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
 		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		E5216B5B1E0A8ED493C21B8F /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = C61EED1E57E992C638024AA8 /* StripePaymentSheet */; };
@@ -166,6 +168,7 @@
 		2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeTests.swift; sourceTree = "<group>"; };
 		3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDevicePairingView.swift; sourceTree = "<group>"; };
 		3C193B56530767CD0B8E7D7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3CF80F81549A29E98A895992 /* AdvisorSensitiveStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorSensitiveStore.swift; sourceTree = "<group>"; };
 		40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountOnboardingView.swift; sourceTree = "<group>"; };
 		470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ShareBootProbe.m; sourceTree = "<group>"; };
 		498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardPalette.swift; sourceTree = "<group>"; };
@@ -210,6 +213,7 @@
 		D6BC158033945502CA476990 /* FixtureUITestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureUITestCase.swift; sourceTree = "<group>"; };
 		EA1F1A64964C190A30B424C5 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorCardView.swift; sourceTree = "<group>"; };
+		ECB08524664C9C447B1ADA12 /* KeychainSensitiveStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSensitiveStoreTests.swift; sourceTree = "<group>"; };
 		ECCA1195B39BB81562240A6C /* AdvisorReplyIntake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorReplyIntake.swift; sourceTree = "<group>"; };
 		F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -328,6 +332,7 @@
 				4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */,
 				6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */,
 				ECCA1195B39BB81562240A6C /* AdvisorReplyIntake.swift */,
+				3CF80F81549A29E98A895992 /* AdvisorSensitiveStore.swift */,
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
 				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
@@ -373,6 +378,7 @@
 			isa = PBXGroup;
 			children = (
 				2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */,
+				ECB08524664C9C447B1ADA12 /* KeychainSensitiveStoreTests.swift */,
 				D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */,
 			);
 			path = HomeboardNativeTests;
@@ -682,6 +688,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */,
+				79C9371EF8DC63B339AFE592 /* KeychainSensitiveStoreTests.swift in Sources */,
 				BDD9844EDC35CAD4368FC2AE /* UITestFixtureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -741,6 +748,7 @@
 				E9915A425D456A69BAC8FEBF /* AdvisorDraftGenerator.swift in Sources */,
 				F482E9E7887E8FE94C3015B2 /* AdvisorOutcomeMemory.swift in Sources */,
 				08F9E9B09B6AE59364F48037 /* AdvisorReplyIntake.swift in Sources */,
+				D976E3309AD682890ABFA21B /* AdvisorSensitiveStore.swift in Sources */,
 				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
 				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,
