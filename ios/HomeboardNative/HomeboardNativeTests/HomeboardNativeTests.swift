@@ -12,6 +12,129 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.pending-operations",
   ]
 
+  func testOldBoardMessageJSONDecodesWithoutReplyField() throws {
+    let data = Data(#"{"id":"message-old","role":"user","authorName":"Sam","content":"Still available?","createdAt":"2026-10-05T12:00:00Z"}"#.utf8)
+    let message = try JSONDecoder().decode(BoardMessage.self, from: data)
+
+    XCTAssertEqual(message.id, "message-old")
+    XCTAssertNil(message.replyToMessageId)
+  }
+
+  func testChatReplySendPolicyRoutesOnlyExplicitOrAdvisorCardRepliesToAdvisor() {
+    let roommate = BoardMessage(
+      id: "roommate-message", role: "user", authorName: "Alex",
+      content: "This looks good", createdAt: "2026-10-05T12:00:00Z"
+    )
+    var payload = AdvisorMessagePayload()
+    payload.messageId = "advisor-message"
+    payload.draftText = "Hello, is this apartment available?"
+    let advisor = BoardMessage(
+      id: "advisor-message", role: "assistant", authorName: "Advisor",
+      content: payload.draftText, createdAt: "2026-10-05T12:01:00Z",
+      advisorPayload: payload
+    )
+
+    XCTAssertFalse(ChatReplySendPolicy.isAdvisorRequest(content: "Looks good", replyTarget: roommate))
+    XCTAssertTrue(ChatReplySendPolicy.isAdvisorRequest(content: "Make it shorter", replyTarget: advisor))
+    XCTAssertTrue(ChatReplySendPolicy.isAdvisorRequest(content: "@advisor draft an email", replyTarget: nil))
+  }
+
+  func testBoardMessageRequestEncodesReplyTargetWithoutCopyingQuotedText() async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
+    AdvisorWalletURLProtocol.response = { request in
+      let body = AdvisorWalletURLProtocol.bodyData(for: request)
+      let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+      XCTAssertEqual(json?["content"] as? String, "Make it shorter")
+      XCTAssertEqual(json?["replyToMessageId"] as? String, "advisor-message")
+      XCTAssertNil(json?["quotedText"])
+      XCTAssertFalse(String(data: body, encoding: .utf8)?.contains("income 90000") == true)
+      return .init(status: 500, body: #"{"error":"Expected test failure"}"#)
+    }
+    let api = HomeboardAPI(session: URLSession(configuration: configuration))
+
+    do {
+      _ = try await api.sendBoardMessage(
+        accessToken: "token", boardId: "board-a", content: "Make it shorter",
+        messageId: "new-message", replyToMessageId: "advisor-message"
+      )
+      XCTFail("Expected the test transport failure")
+    } catch {
+      XCTAssertTrue(true)
+    }
+  }
+
+  @MainActor
+  func testFailedImplicitAdvisorReplyRestoresDraftAndReplyTarget() async {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
+    AdvisorWalletURLProtocol.response = { request in
+      XCTAssertEqual(request.httpMethod, "POST")
+      return .init(status: 500, body: #"{"error":"Reply failed"}"#)
+    }
+    let model = AppModel(api: HomeboardAPI(session: URLSession(configuration: configuration)))
+    model.authSession = NativeAuthSession(
+      accessToken: "token-a", refreshToken: "refresh-a", userId: "user-a",
+      email: "user-a@example.com", displayName: "User A"
+    )
+    model.board = .empty
+    model.board.id = "board-a"
+    var payload = AdvisorMessagePayload()
+    payload.messageId = "advisor-message"
+    payload.originalCommand = "@advisor ask about availability"
+    payload.draftText = "Hello, is this apartment available?"
+    payload.executionStatus = "draft_ready"
+    model.board.chatMessages = [BoardMessage(
+      id: "advisor-message", role: "assistant", authorName: "Advisor",
+      content: payload.draftText, createdAt: "2026-10-05T12:00:00Z",
+      advisorPayload: payload
+    )]
+    model.advisorWalletStatus = AdvisorWalletStatus(
+      rolling7DayTotalCents: 400, thresholdCents: 400, remainingCents: 0,
+      windowStartedAt: "2026-10-01T00:00:00Z",
+      subscription: AdvisorSubscriptionStatus(active: true, validUntil: "2026-10-12T00:00:00Z")
+    )
+    model.boardMessageDraft = "Make it shorter"
+    model.replyToBoardMessageId = "advisor-message"
+
+    await model.sendBoardMessage()
+
+    XCTAssertEqual(model.boardMessageDraft, "Make it shorter")
+    XCTAssertEqual(model.replyToBoardMessageId, "advisor-message")
+    XCTAssertEqual(model.board.chatMessages.map(\.id), ["advisor-message"])
+    XCTAssertNotNil(model.boardError)
+  }
+
+  func testReplyDraftUsesExistingSanitizerBoundaryAndFallsBackWhenUnsafe() async throws {
+    var payload = AdvisorMessagePayload()
+    payload.messageId = "advisor-reply"
+    payload.originalCommand = "@advisor Make it shorter"
+    payload.draftText = "Server draft"
+    payload.tone = "Professional"
+
+    let safeDraft = "Hello, is this apartment still available?"
+    let safePrompt = try XCTUnwrap(AdvisorDraftGenerator.appleIntelligencePrompt(
+      payload: payload, tone: "Professional", toggles: [], senderName: "Sam",
+      memorySummary: nil, repliedDraftText: safeDraft
+    ))
+    XCTAssertTrue(safePrompt.contains(safeDraft))
+
+    XCTAssertNil(AdvisorDraftGenerator.appleIntelligencePrompt(
+      payload: payload, tone: "Professional", toggles: [], senderName: "Sam",
+      memorySummary: nil,
+      repliedDraftText: "Hello. My income is 90000 and my credit score is 780."
+    ))
+
+    payload.originalCommand = "@advisor My income is 90000"
+    let generated = await AdvisorDraftGenerator.generate(
+      payload: payload, tone: "Professional", toggles: [], financialSentence: nil,
+      senderName: "Sam", repliedDraftText: safeDraft
+    )
+    XCTAssertEqual(generated.source, "device_template")
+    XCTAssertFalse(generated.text.contains("90000"))
+    XCTAssertFalse(generated.text.contains(safeDraft))
+  }
+
   @MainActor
   func testAdvisorCardToneSwitchDoesNotRecordMemoryUntilDraftIsRejectedOrEdited() throws {
     let suite = "advisor-card-tone-signal-\(UUID().uuidString)"
@@ -2519,6 +2642,21 @@ private final class AdvisorWalletURLProtocol: URLProtocol {
 
   static var response: (URLRequest) -> Stub = { _ in
     Stub(status: 500, body: #"{"error":"Missing test stub"}"#)
+  }
+
+  static func bodyData(for request: URLRequest) -> Data {
+    if let body = request.httpBody { return body }
+    guard let stream = request.httpBodyStream else { return Data() }
+    stream.open()
+    defer { stream.close() }
+    var result = Data()
+    var buffer = [UInt8](repeating: 0, count: 4_096)
+    while true {
+      let count = stream.read(&buffer, maxLength: buffer.count)
+      guard count > 0 else { break }
+      result.append(buffer, count: count)
+    }
+    return result
   }
 
   override class func canInit(with request: URLRequest) -> Bool { true }

@@ -49,6 +49,7 @@ import { summarizeMemberAffordability } from "@/lib/group-affordability";
 import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
 import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
+import { loadChatReplyLinks } from "@/lib/chat-replies";
 
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
@@ -1444,7 +1445,14 @@ export async function getBoardPageData(
     commuteTarget: groupSynthesis.commuteDestinations[0] ?? undefined,
   };
 
-  const messages = [...board.chatMessages].reverse().map((message) => ({
+  const orderedMessages = [...board.chatMessages].reverse();
+  const replyLinks = await loadChatReplyLinks({
+    boardId: board.id,
+    messageIds: orderedMessages.map((message) => message.id),
+    query: (args) => prisma.chatMessageReply.findMany(args),
+    diagnostic: (event) => console.info(`[Homeboard][ChatReply] ${event}`),
+  });
+  const messages = orderedMessages.map((message) => ({
     id: message.id,
     boardId: message.boardId,
     role: message.role,
@@ -1452,6 +1460,7 @@ export async function getBoardPageData(
     authorName: message.authorName,
     content: message.content,
     createdAt: message.createdAt.toISOString(),
+    replyToMessageId: replyLinks.get(message.id) ?? null,
     advisorPayload: message.advisorPayload?.payload ?? null,
   }));
 

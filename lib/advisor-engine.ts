@@ -123,6 +123,8 @@ export type AdvisorMessagePayloadData = {
   contact?: ListingContactInfo | null;
   /** boardListingId of the listing this draft specifically targets. */
   targetListingBoardId?: string | null;
+  /** Advisor-card message being replied to; the quoted draft itself is not duplicated. */
+  replyToMessageId?: string | null;
   templateId: "availability_standard";
   toneWasExplicit: boolean;
   context: AdvisorGroupContext;

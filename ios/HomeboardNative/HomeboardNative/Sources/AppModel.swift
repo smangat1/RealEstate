@@ -18,6 +18,22 @@ private func normalizedInviteToken(from rawValue: String) -> String {
   return String(normalized.prefix(128))
 }
 
+enum ChatReplySendPolicy {
+  static func isAdvisorCard(_ message: BoardMessage?) -> Bool {
+    message?.role == "assistant"
+      && message?.advisorPayload != nil
+  }
+
+  static func isAdvisorRequest(content: String, replyTarget: BoardMessage?) -> Bool {
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    let explicitlyAddressesAdvisor = trimmed.range(
+      of: #"^@advisor\b"#,
+      options: [.regularExpression, .caseInsensitive]
+    ) != nil
+    return explicitlyAddressesAdvisor || isAdvisorCard(replyTarget)
+  }
+}
+
 @Observable
 @MainActor
 final class AppModel {
@@ -224,6 +240,7 @@ final class AppModel {
   var boardFeedback: String?
   var advisorConfirmation: AdvisorConfirmation?
   var boardMessageDraft = ""
+  var replyToBoardMessageId: String?
   var advisorWalletStatus: AdvisorWalletStatus?
   var advisorWalletError: String?
   var advisorFinancialStatus: AdvisorFinancialStatus?
@@ -1000,9 +1017,14 @@ final class AppModel {
       boardError = "Open a real board before sending messages."
       return
     }
-    let isAdvisor = message.lowercased().hasPrefix("@advisor")
+    let replyToMessageId = replyToBoardMessageId
+    let replyTarget = replyToMessageId.flatMap { id in
+      board.chatMessages.first(where: { $0.id == id })
+    }
+    let isAdvisor = ChatReplySendPolicy.isAdvisorRequest(content: message, replyTarget: replyTarget)
     guard !isAdvisor || isAdvisorAccessActive else {
-      boardError = nil
+      boardError = advisorWalletError
+        ?? "Unlock Advisor for this board before sending an Advisor request."
       return
     }
     let requestEpoch = sessionEpoch
@@ -1010,6 +1032,7 @@ final class AppModel {
     boardError = nil
     boardFeedback = nil
     boardMessageDraft = ""
+    replyToBoardMessageId = nil
 
     let temporaryID = UUID().uuidString
     board.chatMessages.append(
@@ -1018,7 +1041,8 @@ final class AppModel {
         role: "user",
         authorName: account?.name ?? authSession?.displayName ?? "You",
         content: message,
-        createdAt: ISO8601DateFormatter().string(from: Date())
+        createdAt: ISO8601DateFormatter().string(from: Date()),
+        replyToMessageId: replyToMessageId
       )
     )
     storeCurrentBoardSnapshot()
@@ -1052,7 +1076,8 @@ final class AppModel {
         accessToken: session.accessToken,
         boardId: boardId,
         content: message,
-        messageId: isAdvisor ? nil : temporaryID,
+        messageId: isAdvisor && replyToMessageId == nil ? nil : temporaryID,
+        replyToMessageId: replyToMessageId,
         preferenceCandidate: preferenceCandidate
       )
       guard requestEpoch == sessionEpoch,
@@ -1071,8 +1096,22 @@ final class AppModel {
       board.chatMessages.removeAll { $0.id == temporaryID }
       storeCurrentBoardSnapshot()
       boardError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-      boardMessageDraft = message
+      if boardMessageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        boardMessageDraft = message
+      }
+      if replyToBoardMessageId == nil {
+        replyToBoardMessageId = replyToMessageId
+      }
     }
+  }
+
+  func beginChatReply(to message: BoardMessage) {
+    replyToBoardMessageId = message.id
+    boardError = nil
+  }
+
+  func cancelChatReply() {
+    replyToBoardMessageId = nil
   }
 
   func regenerateAdvisorDraft(
@@ -1097,6 +1136,13 @@ final class AppModel {
       throw HomeboardAPIError.server("Advisor regeneration requires the original @advisor request.")
     }
     let disclosure = financialDisclosure ?? payload.financialDisclosure ?? "available_on_request"
+    let repliedDraftText = payload.replyToMessageId.flatMap { repliedToMessageId in
+      board.chatMessages.first(where: {
+        $0.id == repliedToMessageId
+          && $0.role == "assistant"
+          && $0.advisorPayload != nil
+      })?.advisorPayload?.draftText
+    }
     let sentence = AdvisorDraftGenerator.financialSentence(
       mode: disclosure,
       group: groupFinances
@@ -1110,7 +1156,8 @@ final class AppModel {
         payload: payload, tone: tone, toggles: toggles, financialSentence: sentence,
         senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants",
         templateId: templateId ?? payload.templateId ?? AdvisorOutcomeMemory.standardTemplate,
-        memorySummary: memorySummary
+        memorySummary: memorySummary,
+        repliedDraftText: repliedDraftText
       )
       if UITestFixtureState.enabled {
         UITestFixtureState.shared.recordRealGeneration(payload: payload, tone: tone, toggles: toggles, output: generated)
@@ -1124,7 +1171,8 @@ final class AppModel {
       financialSentence: sentence,
       senderName: account?.name ?? authSession?.displayName ?? "The prospective tenants",
       templateId: templateId ?? payload.templateId ?? AdvisorOutcomeMemory.standardTemplate,
-      memorySummary: memorySummary
+      memorySummary: memorySummary,
+      repliedDraftText: repliedDraftText
     )
     #endif
     var accepted = payload
@@ -2336,6 +2384,9 @@ final class AppModel {
 
   private func applyBoardLoadResponse(_ response: MobileBoardLoadResponse, id: String) {
     let previousBoardID = board.id
+    if previousBoardID != id {
+      replyToBoardMessageId = nil
+    }
     board = boardByApplyingRemovalTombstones(response.board, storageKey: id)
     HomeboardSharedImportStore.setActiveBoard(response.board.id ?? id)
     if previousBoardID != id {
@@ -2423,6 +2474,7 @@ final class AppModel {
     pendingConfirmationEmail = ""
     onboardingCreationRequestId = nil
     board = .empty
+    replyToBoardMessageId = nil
     profile = RentalProfile()
     onboardingMessages = []
     localShortlistsByBoard = [:]
@@ -2474,6 +2526,7 @@ final class AppModel {
     authenticatedMembershipState = nil
     onboardingCreationRequestId = nil
     board = .empty
+    replyToBoardMessageId = nil
     profile = RentalProfile()
     onboardingMessages = []
     localShortlistsByBoard = [:]

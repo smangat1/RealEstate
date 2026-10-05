@@ -3782,21 +3782,8 @@ struct SharedUpdatesView: View {
               )
             } else {
               ForEach(appModel.board.chatMessages) { msg in
-                if msg.authorName == "Advisor" {
-                  AdvisorCardView(message: msg)
-                    .id("message-\(msg.id)")
-                } else {
-                  SharedTimelineRow(
-                    item: SharedTimelineItem(
-                      id: "message-\(msg.id)",
-                      author: msg.authorName?.isEmpty == false ? msg.authorName! : "Member",
-                      content: msg.content
-                    )
-                  )
-                  .accessibilityElement(children: .contain)
-                  .accessibilityIdentifier("homeboard.chat.user.\(msg.id)")
+                chatMessage(msg, scrollProxy: scrollProxy)
                   .id("message-\(msg.id)")
-                }
               }
             }
 
@@ -3852,6 +3839,10 @@ struct SharedUpdatesView: View {
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(alignment: .leading, spacing: 7) {
+        if let replyID = appModel.replyToBoardMessageId {
+          replyComposerChip(replyID: replyID)
+        }
+
         if isAdvisorCommandBlocked {
           HStack(alignment: .top, spacing: 10) {
             Image(systemName: advisorAccessIcon)
@@ -4006,7 +3997,7 @@ struct SharedUpdatesView: View {
     let message = updateDraft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
 
-    let advisorCommand = isCompleteAdvisorCommand(message)
+    let advisorCommand = isCompleteAdvisorCommand(message) || isReplyingToAdvisor
     if advisorCommand, !appModel.isAdvisorAccessActive {
       appModel.boardError = nil
       updateFieldFocused = true
@@ -4016,7 +4007,7 @@ struct SharedUpdatesView: View {
     updateDraft = ""
     updateFieldFocused = false
 
-    if advisorCommand {
+    if advisorCommand || appModel.replyToBoardMessageId != nil {
       appModel.boardMessageDraft = message
       Task {
         await appModel.sendBoardMessage()
@@ -4055,7 +4046,152 @@ struct SharedUpdatesView: View {
   }
 
   private var isAdvisorCommandBlocked: Bool {
-    isCompleteAdvisorCommand(updateDraft) && !appModel.isAdvisorAccessActive
+    if isCompleteAdvisorCommand(updateDraft) && !appModel.isAdvisorAccessActive {
+      return true
+    }
+    return isReplyingToAdvisor && !appModel.isAdvisorAccessActive
+  }
+
+  private var isReplyingToAdvisor: Bool {
+    guard let replyID = appModel.replyToBoardMessageId,
+          let target = appModel.board.chatMessages.first(where: { $0.id == replyID }) else {
+      return false
+    }
+    return ChatReplySendPolicy.isAdvisorCard(target)
+  }
+
+  @ViewBuilder
+  private func chatMessage(_ message: BoardMessage, scrollProxy: ScrollViewProxy) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+      if let replyID = message.replyToMessageId {
+        chatReplyQuote(replyID: replyID, replyingMessageID: message.id, scrollProxy: scrollProxy)
+      }
+
+      if message.authorName == "Advisor" {
+        AdvisorCardView(message: message)
+      } else {
+        SharedTimelineRow(
+          item: SharedTimelineItem(
+            id: "message-\(message.id)",
+            author: message.authorName?.isEmpty == false ? message.authorName! : "Member",
+            content: message.content
+          )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("homeboard.chat.user.\(message.id)")
+      }
+    }
+    .contextMenu {
+      Button {
+        appModel.beginChatReply(to: message)
+        updateFieldFocused = true
+      } label: {
+        Label("Reply", systemImage: "arrowshape.turn.up.left")
+      }
+    }
+  }
+
+  private func chatReplyQuote(
+    replyID: String,
+    replyingMessageID: String,
+    scrollProxy: ScrollViewProxy
+  ) -> some View {
+    let original = appModel.board.chatMessages.first(where: { $0.id == replyID })
+    return Button {
+      guard original != nil else { return }
+      withAnimation(.easeOut(duration: 0.25)) {
+        scrollProxy.scrollTo("message-\(replyID)", anchor: .center)
+      }
+    } label: {
+      HStack(alignment: .top, spacing: 9) {
+        RoundedRectangle(cornerRadius: 2)
+          .fill(HomeboardPalette.accent)
+          .frame(width: 3)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text(original.map(replyAuthorName) ?? "Original message unavailable")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(HomeboardPalette.accent)
+
+          if let original {
+            Text(replyPreviewText(original))
+              .font(.caption)
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .lineLimit(2)
+          }
+        }
+
+        Spacer(minLength: 4)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 9)
+      .background(Color.white.opacity(0.05))
+      .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .buttonStyle(HomeboardAreaButtonStyle())
+    .disabled(original == nil)
+    .accessibilityIdentifier("homeboard.chat.quote.\(replyingMessageID)")
+    .accessibilityHint(original == nil ? "The original message is no longer available" : "Scrolls to the original message")
+  }
+
+  private func replyComposerChip(replyID: String) -> some View {
+    let target = appModel.board.chatMessages.first(where: { $0.id == replyID })
+    return HStack(spacing: 9) {
+      Image(systemName: "arrowshape.turn.up.left.fill")
+        .font(.caption.weight(.bold))
+        .foregroundStyle(HomeboardPalette.accent)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(target.map { "Replying to \(replyAuthorName($0))" } ?? "Original message unavailable")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        if let target {
+          Text(replyPreviewText(target))
+            .font(.caption2)
+            .foregroundStyle(HomeboardPalette.secondaryText)
+            .lineLimit(1)
+        }
+      }
+
+      Spacer(minLength: 4)
+
+      Button {
+        appModel.cancelChatReply()
+      } label: {
+        Image(systemName: "xmark")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .frame(width: 28, height: 28)
+      }
+      .buttonStyle(HomeboardAreaButtonStyle())
+      .accessibilityLabel("Cancel reply")
+      .accessibilityIdentifier("homeboard.chat.reply-cancel")
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 9)
+    .background(Color.white.opacity(0.07))
+    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("homeboard.chat.reply-chip")
+  }
+
+  private func replyAuthorName(_ message: BoardMessage) -> String {
+    if ChatReplySendPolicy.isAdvisorCard(message) { return "Advisor" }
+    return message.authorName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+      ? message.authorName!
+      : "Member"
+  }
+
+  private func replyPreviewText(_ message: BoardMessage) -> String {
+    let source = message.advisorPayload?.draftText.isEmpty == false
+      ? message.advisorPayload!.draftText
+      : message.content
+    return source
+      .split(whereSeparator: { $0.isNewline })
+      .first
+      .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+      .flatMap { $0.isEmpty ? nil : $0 }
+      ?? "Message"
   }
 
   private var advisorAccessIcon: String {

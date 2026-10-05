@@ -306,6 +306,7 @@ model SearchBoard {
   notificationPreferences    BoardNotificationPreference[]
   advisorNotificationEvents  AdvisorNotificationEvent[]
   advisorFeedback            AdvisorFeedback[]
+  chatMessageReplies         ChatMessageReply[]
 
   @@index([userId])
 }
@@ -582,8 +583,23 @@ model ChatMessage {
   createdAt      DateTime               @default(now())
   board          SearchBoard            @relation(fields: [boardId], references: [id], onDelete: Cascade)
   advisorPayload AdvisorMessagePayload?
+  replyLink      ChatMessageReply?      @relation("ChatMessageReplySource")
+  replyChildren  ChatMessageReply[]     @relation("ChatMessageReplyTarget")
 
   @@index([boardId, createdAt])
+}
+
+model ChatMessageReply {
+  messageId        String      @id
+  replyToMessageId String
+  boardId          String
+  createdAt        DateTime    @default(now())
+  message          ChatMessage @relation("ChatMessageReplySource", fields: [messageId], references: [id], onDelete: Cascade)
+  replyToMessage   ChatMessage @relation("ChatMessageReplyTarget", fields: [replyToMessageId], references: [id], onDelete: Cascade)
+  board            SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+  @@index([replyToMessageId])
 }
 
 model RoommateProfile {

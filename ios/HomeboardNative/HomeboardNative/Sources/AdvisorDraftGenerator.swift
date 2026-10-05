@@ -337,7 +337,8 @@ enum AdvisorDraftGenerator {
     financialSentence: String?,
     senderName: String,
     templateId: String = AdvisorOutcomeMemory.standardTemplate,
-    memorySummary: String? = nil
+    memorySummary: String? = nil,
+    repliedDraftText: String? = nil
   ) async -> AdvisorDraftGeneration {
     let includedFinancialSentence = financialToggleEnabled(toggles) ? financialSentence : nil
     let fallback = templateDraft(
@@ -358,7 +359,8 @@ enum AdvisorDraftGenerator {
          toggles: toggles,
          financialSentence: includedFinancialSentence,
          senderName: senderName,
-         memorySummary: memorySummary
+         memorySummary: memorySummary,
+         repliedDraftText: repliedDraftText
        ) {
       return AdvisorDraftGeneration(text: generated, source: "apple_intelligence", templateId: templateId)
     }
@@ -654,7 +656,8 @@ private extension AdvisorDraftGenerator {
     toggles: [AdvisorToggleOption],
     financialSentence: String?,
     senderName: String,
-    memorySummary: String?
+    memorySummary: String?,
+    repliedDraftText: String?
   ) async -> String? {
     let session = LanguageModelSession(
       model: .default,
@@ -674,7 +677,8 @@ private extension AdvisorDraftGenerator {
       tone: tone,
       toggles: toggles,
       senderName: senderName,
-      memorySummary: memorySummary
+      memorySummary: memorySummary,
+      repliedDraftText: repliedDraftText
     ) else {
       await recordDraftModelDiagnostic(
         payload: payload, tone: tone, stage: "input_boundary", reason: "no_safe_request"
@@ -797,7 +801,8 @@ extension AdvisorDraftGenerator {
     tone: String,
     toggles: [AdvisorToggleOption],
     senderName: String,
-    memorySummary: String?
+    memorySummary: String?,
+    repliedDraftText: String? = nil
   ) -> String? {
     let rawRequest = payload.originalCommand?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -817,11 +822,29 @@ extension AdvisorDraftGenerator {
       .joined(separator: ", ")
     let safeSender = safeUserFreeText(senderName) ?? "Homeboard member"
     let context = boundedAppleIntelligenceContext(payload: payload, memorySummary: memorySummary)
+    let repliedDraftSection: String
+    if let rawDraft = repliedDraftText?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !rawDraft.isEmpty {
+      // A reply may use the prior card only when the existing whole-sentence
+      // privacy boundary preserves it exactly. Partial recovery would both
+      // change meaning and create a second path for financial text.
+      guard let safeDraft = safeUserFreeText(String(rawDraft.prefix(4_000))),
+            safeDraft == String(rawDraft.prefix(4_000)) else { return nil }
+      repliedDraftSection = """
+
+      REPLIED ADVISOR DRAFT START
+      \(safeDraft)
+      REPLIED ADVISOR DRAFT END
+      """
+    } else {
+      repliedDraftSection = ""
+    }
 
     return """
     USER REQUEST START
     \(request)
     USER REQUEST END
+    \(repliedDraftSection)
 
     Selected tone: \(selectedTone)
     Included details: \(enabledLabels.isEmpty ? "none" : enabledLabels)
