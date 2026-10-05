@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
-export default function HomeboardPage() {
+export default function MacCompanionPage() {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -36,8 +36,8 @@ export default function HomeboardPage() {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: "Homeboard · apartment_search_brief",
-          text: "Homeboard: Finding an apartment without losing your mind",
+          title: "Homeboard for Mac · mac_companion_brief",
+          text: "Homeboard for Mac: Save rentals from your laptop to your shared board",
           url: window.location.href,
         });
         return;
@@ -56,23 +56,10 @@ export default function HomeboardPage() {
     }
   };
 
-  const cycleZoom = () => {
-    if (zoomLevel === 100) setZoomLevel(115);
-    else if (zoomLevel === 115) setZoomLevel(125);
-    else if (zoomLevel === 125) setZoomLevel(90);
-    else setZoomLevel(100);
-  };
-
   const cycleFont = () => {
     if (fontChoice === "serif") setFontChoice("sans");
     else if (fontChoice === "sans") setFontChoice("mono");
     else setFontChoice("serif");
-  };
-
-  const cycleFontSize = () => {
-    if (fontSizeChoice === 16) setFontSizeChoice(18);
-    else if (fontSizeChoice === 18) setFontSizeChoice(14);
-    else setFontSizeChoice(16);
   };
 
   const getComputedFontFamily = () => {
@@ -230,10 +217,10 @@ export default function HomeboardPage() {
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
-                      maxWidth: "180px",
+                      maxWidth: "220px",
                     }}
                   >
-                    apartment_search_brief
+                    mac_companion_brief
                   </span>
                   <span
                     onClick={handleNoEditAccess}
@@ -746,23 +733,23 @@ export default function HomeboardPage() {
                 }}
               >
                 <p style={{ margin: 0 }}>
-                  you want to move in with your best friends. you guys <em>will</em> beat the housing market.
+                  we really meant it.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you drop the link at midnight. someone hearts it at 3 a.m. it’s rented by 9 a.m.
+                  you can doomscroll almost any real estate listing platform, even between your laptop and phone.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you send hundreds of texts and emails to agents but have to settle for a place you hate anyway.
+                  find a place on your mac during work hours. tap save once, and the rent, layout, and pet policy jump straight onto your group&apos;s board.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  they walk 4 minutes to work. you take two trains and a bus.
+                  no more pasting links into group chats, emailing yourself street addresses, or asking who found what.
                 </p>
 
                 <p style={{ margin: 0 }}>
-                  you split the total down the middle, but your bedroom is a converted pantry. homeboard is the shared workspace so you don&apos;t sign a lease you quietly resent for 12 months.
+                  everything stays in sync across your devices in real time so your crew can make moves before good units disappear.
                 </p>
 
                 <p style={{ margin: "4px 0 0 0" }}>
@@ -889,28 +876,33 @@ export default function HomeboardPage() {
                     </div>
 
                     {/* 3 Privacy Bullets */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "8px",
-                        fontSize: "12px",
-                        lineHeight: 1.55,
-                        color: "#3c4043",
-                      }}
-                    >
-                      <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>1. No selling data:</strong> We never sell search history, preferences, or contact info to brokerages or data brokers.
-                      </p>
-                      <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>2. Encrypted doc vault:</strong> W-2s, paystubs, and IDs are AES-256 encrypted at rest and only decrypted when you submit an application.
-                      </p>
-                      <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>3. Apple Pay token isolation:</strong> Deposit splits use device-level Apple Pay payment tokens. We never store or see bank numbers.
-                      </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px", color: "#3c4043", lineHeight: 1.45 }}>
+                      <div>
+                        <strong style={{ color: "#202124" }}>1. zero tracking:</strong> we do not sell or monetize personal browsing history.
+                      </div>
+                      <div>
+                        <strong style={{ color: "#202124" }}>2. secure sync:</strong> saved listings sync over encrypted channels between your devices.
+                      </div>
+                      <div>
+                        <strong style={{ color: "#202124" }}>3. full control:</strong> delete your listings or group data anytime with one tap.
+                      </div>
                     </div>
 
-                    {/* Pointer Triangle Caret */}
+                    <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #f1f3f4", textAlign: "right" }}>
+                      <Link
+                        href="/privacy"
+                        style={{
+                          fontSize: "11px",
+                          color: "#1a73e8",
+                          textDecoration: "underline",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Read Full Privacy Policy →
+                      </Link>
+                    </div>
+
+                    {/* Small speech-bubble triangle anchor */}
                     <div
                       style={{
                         position: "absolute",
@@ -969,29 +961,30 @@ export default function HomeboardPage() {
             onClick={() => setIsShareModalOpen(false)}
           >
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="share-dialog-title"
               style={{
                 backgroundColor: "#ffffff",
                 borderRadius: "8px",
                 boxShadow: "0 8px 28px rgba(0, 0, 0, 0.28)",
                 width: "100%",
                 maxWidth: "460px",
-                padding: "20px 24px",
+                padding: "24px",
                 position: "relative",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Modal Header */}
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   marginBottom: "16px",
-                  borderBottom: "1px solid #e8eaed",
-                  paddingBottom: "12px",
                 }}
               >
                 <h3
+                  id="share-dialog-title"
                   style={{
                     margin: 0,
                     fontSize: "16px",
@@ -999,7 +992,7 @@ export default function HomeboardPage() {
                     color: "#202124",
                   }}
                 >
-                  Share / Install Homeboard
+                  Install Homeboard or Share Link
                 </h3>
                 <button
                   type="button"
@@ -1007,10 +1000,11 @@ export default function HomeboardPage() {
                   style={{
                     background: "none",
                     border: "none",
-                    fontSize: "16px",
+                    fontSize: "18px",
                     color: "#5f6368",
                     cursor: "pointer",
                     padding: "4px",
+                    lineHeight: 1,
                   }}
                   aria-label="Close"
                 >
@@ -1018,7 +1012,7 @@ export default function HomeboardPage() {
                 </button>
               </div>
 
-              {/* Share Section */}
+              {/* Copy Link Section */}
               <div style={{ marginBottom: "20px" }}>
                 <label
                   style={{
@@ -1037,7 +1031,7 @@ export default function HomeboardPage() {
                   <input
                     type="text"
                     readOnly
-                    value={typeof window !== "undefined" ? window.location.href : "https://real-estate-samyanmangat-6662s-projects.vercel.app"}
+                    value={typeof window !== "undefined" ? window.location.href : "https://real-estate-samyanmangat-6662s-projects.vercel.app/mac"}
                     style={{
                       flex: 1,
                       padding: "8px 12px",
@@ -1076,7 +1070,7 @@ export default function HomeboardPage() {
                   backgroundColor: "#f8f9fa",
                   border: "1px solid #e8eaed",
                   borderRadius: "6px",
-                  padding: "14px 16px",
+                  padding: "12px 14px",
                 }}
               >
                 <label
@@ -1090,13 +1084,13 @@ export default function HomeboardPage() {
                     marginBottom: "6px",
                   }}
                 >
-                  Install App or Extension
+                  Install App or Companion
                 </label>
                 <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
-                  <strong>iOS:</strong> Tap the Share button <span style={{ fontFamily: "monospace" }}>[↑]</span> at the bottom of your browser, then tap <strong>&ldquo;Add to Home Screen&rdquo;</strong>.
+                  <strong>Mac:</strong> Open Homeboard for Mac to capture listings directly from your laptop.
                 </p>
                 <p style={{ margin: 0, fontSize: "13px", color: "#3c4043", lineHeight: 1.5 }}>
-                  <strong>Mac:</strong> Visit <a href="/mac" style={{ color: "#1a73e8", textDecoration: "underline" }}>Homeboard for Mac</a> to install the companion.
+                  <strong>iOS:</strong> Tap the Share button <span style={{ fontFamily: "monospace" }}>[↑]</span> at the bottom of your browser, then tap <strong>&ldquo;Add to Home Screen&rdquo;</strong>.
                 </p>
               </div>
             </div>
@@ -1182,7 +1176,7 @@ export default function HomeboardPage() {
                       You need access
                     </h3>
                     <div style={{ fontSize: "12px", color: "#5f6368", marginTop: "2px" }}>
-                      apartment_search_brief · read-only
+                      mac_companion_brief · read-only
                     </div>
                   </div>
                 </div>

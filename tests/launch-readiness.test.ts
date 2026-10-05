@@ -79,13 +79,17 @@ test("mobile pages prevent sideways overflow and retain final-page legal links",
 
 test("the heaviest visible marketing assets use compressed delivery files", () => {
   const page = read("app/page.tsx");
+  const macPage = read("app/mac/page.tsx");
   const install = read("app/install-experience.tsx");
+  const brandMark = resolve(root, "public/brand/homeboard-mark.svg");
   const compressedMap = resolve(root, "public/images/homeboard-comparison-map-clean.webp");
   const webBackground = resolve(root, "public/images/homeboard-auth-bg.jpg");
   const nativeBackground = resolve(root, "ios/HomeboardNative/HomeboardNative/Resources/Assets.xcassets/HomeboardAuthBackground.imageset/background.jpg");
 
-  assert.match(page, /homeboard-comparison-map-clean\.webp/);
+  assert.match(page, /\/brand\/homeboard-mark\.svg/);
+  assert.match(macPage, /\/brand\/homeboard-mark\.svg/);
   assert.match(install, /homeboard-comparison-map-clean\.webp/);
+  assert.ok(statSync(brandMark).size < 50_000);
   assert.ok(statSync(compressedMap).size < 400_000);
   assert.ok(statSync(webBackground).size < 800_000);
   assert.ok(statSync(nativeBackground).size < 800_000);
