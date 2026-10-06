@@ -18,6 +18,7 @@ targets:
     sources:
       - path: HomeboardNative/Sources/HomeboardNativeApp.swift
       - path: HomeboardNative/Sources/AppModel.swift
+      - path: HomeboardNative/Sources/HomeboardCommuteService.swift
       - path: HomeboardNative/Sources/HomeboardModels.swift
       - path: HomeboardNative/Sources/HomeboardConfig.swift
       - path: HomeboardNative/Sources/HomeboardAPI.swift

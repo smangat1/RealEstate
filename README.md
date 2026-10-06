@@ -11,7 +11,7 @@ The current beta path is deliberately non-AI. Onboarding is a deterministic set 
 - Structured onboarding for budget, timing, group size, commute, neighborhoods, priorities, must-haves, dealbreakers, and rental readiness
 - A three-tab iPhone workspace: map/card search, shortlist, and group updates
 - Manual price, bedroom, and neighborhood filters plus a draw-on-map search area
-- Per-member MapKit commute routes, travel times, and distances for a selected listing
+- One per-member Apple MapKit commute system for selected-listing routes, map comparison, shortlist scores, commute risks, and best-commute picks
 - Six-dimension group-fit ratings with overlapping member radar charts
 - Member preference cards and shared search-brief editing
 - Source-first listing collection with exact-unit links, trust state, confirmations, reports, notes, price history, reactions, and comments
@@ -19,7 +19,6 @@ The current beta path is deliberately non-AI. Onboarding is a deterministic set 
 - Compact iOS Share Extension for capturing listings shared from native rental apps
 - Private RentCast candidate catalog; candidates stay out of discovery until an exact source is community-supported or verified
 - Open decisions, board activity, multiple boards, board renaming, leave/delete board, and account deletion
-- OpenRouteService-ready commute architecture
 - APNs device-token registration plumbing for a future notification sender
 - Controlled RentCast catalog refreshes protected by an application and database hard limit of 50 requests per 32-day safety window
 - Cached, no-retry Brave source resolution protected by a 500-request monthly ceiling
@@ -30,8 +29,8 @@ The current beta path is deliberately non-AI. Onboarding is a deterministic set 
 - Backend: Next.js App Router and TypeScript
 - Data: Prisma and Supabase Postgres
 - Identity: Supabase Auth
-- Native routing: Apple MapKit directions for each member commute anchor
-- Backend routing: OpenRouteService when configured for server-side summaries
+- Native routing: Apple MapKit directions for each permitted member commute mode, with bounded account/board-scoped local caching
+- Backend routing: mobile board hydration returns unknown commute summaries and never invokes OpenRouteService; non-iOS web and Advisor paths can still use OpenRouteService when configured
 
 ## Local backend
 
@@ -63,6 +62,8 @@ For a physical iPhone or external beta, configure these Xcode build settings:
 - `HOMEBOARD_PUBLIC_WEB_URL`: the HTTPS origin used for shareable invite links
 
 Then select your Apple development team, choose the phone, and run. The Supabase publishable key is safe to ship in a client; service-role/database credentials must remain backend-only.
+
+Commute routes require Apple Maps network service. The app sends listing and saved destination locations to Apple when it asks for directions; route calculation is not fully offline or wholly on-device. Homeboard does not upload native route evidence, destination coordinates, or route-cache contents to its backend. The bounded native route cache uses iOS file protection in the caches directory and is excluded from backup, is scoped by account and board, and is purged for an account on sign-out or account deletion. Clearly labeled cached, stale, or manual fallback data can keep the board usable when routing is unavailable. Existing commute destinations, access modes, and preferred time bands remain part of the synchronized account/board profile.
 
 Both extension targets use the `group.com.homeboard.native` app group. Keep that app group enabled for the app, `HomeboardShareExtension`, and `HomeboardSafariExtension` targets when changing signing teams. The Safari extension scans supported pages in Safari; the compact Share Extension accepts listing links from native rental apps.
 
@@ -101,7 +102,7 @@ xcodebuild -quiet \
 - Set `HOMEBOARD_ADMIN_EMAILS` for server-only source verification.
 - Set `BRAVE_SEARCH_API_KEY` only when source resolution is ready to use. Resolution is permanently cached and never retries automatically.
 - Add Apple push credentials and a notification sender if live push notifications are desired.
-- Configure OpenRouteService in the backend for live commute routes.
+- Optionally configure OpenRouteService only for remaining non-iOS web and Advisor analysis. It is not required or used by the iOS beta board hydration or native commute UI.
 
 Unlinked provider candidates are intentionally private. The user-facing catalog contains only community-supported or verified exact listing sources.
 

@@ -145,6 +145,7 @@ final class AppModel {
   @ObservationIgnored private let api: HomeboardAPI
   @ObservationIgnored private let advisorOutcomeMemory: AdvisorOutcomeMemory
   @ObservationIgnored private let advisorSensitiveStore: AdvisorSensitiveStore
+  let commuteService: HomeboardCommuteService
   @ObservationIgnored private var didBootstrap = false
   @ObservationIgnored private var didFinishBootstrap = false
   @ObservationIgnored private var bootstrapWaiters: [CheckedContinuation<Void, Never>] = []
@@ -288,17 +289,37 @@ final class AppModel {
   #endif
 
   convenience init(api: HomeboardAPI = HomeboardAPI()) {
-    self.init(api: api, advisorOutcomeMemory: .shared, advisorSensitiveStore: .shared)
+    self.init(
+      api: api,
+      advisorOutcomeMemory: .shared,
+      advisorSensitiveStore: .shared,
+      commuteService: .shared
+    )
+  }
+
+  convenience init(
+    api: HomeboardAPI,
+    advisorOutcomeMemory: AdvisorOutcomeMemory,
+    advisorSensitiveStore: AdvisorSensitiveStore = .shared
+  ) {
+    self.init(
+      api: api,
+      advisorOutcomeMemory: advisorOutcomeMemory,
+      advisorSensitiveStore: advisorSensitiveStore,
+      commuteService: .shared
+    )
   }
 
   init(
     api: HomeboardAPI,
     advisorOutcomeMemory: AdvisorOutcomeMemory,
-    advisorSensitiveStore: AdvisorSensitiveStore = .shared
+    advisorSensitiveStore: AdvisorSensitiveStore,
+    commuteService: HomeboardCommuteService
   ) {
     self.api = api
     self.advisorOutcomeMemory = advisorOutcomeMemory
     self.advisorSensitiveStore = advisorSensitiveStore
+    self.commuteService = commuteService
     #if DEBUG
     let resetsForUITesting = ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") || UITestFixtureState.enabled
     #else
@@ -1818,6 +1839,7 @@ final class AppModel {
     if let memoryUserId {
       advisorOutcomeMemory.clear(userId: memoryUserId)
       advisorSensitiveStore.delete(userId: memoryUserId)
+      commuteService.purgeAccount(memoryUserId)
     }
     NativeAuthSessionStore.delete()
     clearSessionState()
@@ -1884,6 +1906,7 @@ final class AppModel {
         try await api.deleteAccount(accessToken: session.accessToken)
         advisorOutcomeMemory.clear(userId: session.userId)
         advisorSensitiveStore.delete(userId: session.userId)
+        commuteService.purgeAccount(session.userId)
         HomeboardShareDiagnosticStore.clear()
         HomeboardShareBootDiagnosticStore.clear()
         NativeAuthSessionStore.delete()
@@ -2377,6 +2400,10 @@ final class AppModel {
 
     // This is the only automatic workspace-clear path: both the auth session
     // and application user have been confirmed by a successful API response.
+    if authenticatedAccountChanged,
+       let previousAccountID = restoredAuthUserID ?? account?.id {
+      commuteService.purgeAccount(previousAccountID)
+    }
     if authenticatedAccountChanged {
       clearWorkspaceStateForAccountTransition()
     } else {
