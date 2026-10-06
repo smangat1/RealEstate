@@ -38,6 +38,17 @@ enum HomeboardConfig {
   static let supabaseURL = URL(string: "https://zlhniurrhhstivtmixuh.supabase.co")!
   static let supabasePublishableKey = "sb_publishable_eNgMkBhv8l___GC0IjgIBQ_4jqCepCK"
 
+  /// TestFlight beta switch for every native Advisor surface and invocation.
+  /// Change this production default to `true` to restore Advisor in a future release.
+  static var advisorEnabled: Bool {
+    #if DEBUG
+    if ProcessInfo.processInfo.environment["HOMEBOARD_ADVISOR_ENABLED"] == "1" {
+      return true
+    }
+    #endif
+    return false
+  }
+
   static var stripePublishableKey: String {
     let value = (Bundle.main.object(forInfoDictionaryKey: "HomeboardStripePublishableKey") as? String)?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

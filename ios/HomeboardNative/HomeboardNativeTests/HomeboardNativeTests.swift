@@ -39,6 +39,83 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertTrue(ChatReplySendPolicy.isAdvisorRequest(content: "@advisor draft an email", replyTarget: nil))
   }
 
+  func testAdvisorBetaVisibilityFiltersCardsCommandsAndTheirRepliesOnlyWhenDisabled() {
+    var payload = AdvisorMessagePayload()
+    payload.messageId = "advisor-card"
+    let messages = [
+      BoardMessage(id: "roommate", role: "user", authorName: "Alex", content: "Tour Saturday?", createdAt: "2026-10-06T12:00:00Z"),
+      BoardMessage(id: "roommate-reply", role: "user", authorName: "Sam", content: "Yes", createdAt: "2026-10-06T12:01:00Z", replyToMessageId: "roommate"),
+      BoardMessage(id: "advisor-command", role: "user", authorName: "Sam", content: "@advisor draft outreach", createdAt: "2026-10-06T12:02:00Z"),
+      BoardMessage(id: "advisor-card", role: "assistant", authorName: "Advisor", content: "Draft", createdAt: "2026-10-06T12:03:00Z", advisorPayload: payload),
+      BoardMessage(id: "advisor-reply", role: "user", authorName: "Sam", content: "Shorter", createdAt: "2026-10-06T12:04:00Z", replyToMessageId: "advisor-card"),
+    ]
+
+    XCTAssertEqual(
+      ChatReplySendPolicy.visibleMessages(messages, advisorEnabled: false).map(\.id),
+      ["roommate", "roommate-reply"]
+    )
+    XCTAssertEqual(
+      ChatReplySendPolicy.visibleMessages(messages, advisorEnabled: true).map(\.id),
+      messages.map(\.id)
+    )
+  }
+
+  func testAdvisorNotificationsAreHiddenWithoutBlockingOrdinaryBoardNotifications() {
+    XCTAssertFalse(NativeNotificationPresentationPolicy.shouldPresent(type: "advisor_digest", advisorEnabled: false))
+    XCTAssertFalse(NativeNotificationPresentationPolicy.shouldRouteToBoard(type: "advisor_follow_up", advisorEnabled: false))
+    XCTAssertTrue(NativeNotificationPresentationPolicy.shouldPresent(type: "board_chat", advisorEnabled: false))
+    XCTAssertTrue(NativeNotificationPresentationPolicy.shouldRouteToBoard(type: "listing_change", advisorEnabled: false))
+    XCTAssertTrue(NativeNotificationPresentationPolicy.shouldRouteToBoard(type: "advisor_follow_up", advisorEnabled: true))
+  }
+
+  func testDisabledAdvisorRequestPreservesDraftAndMakesNoRequest() async {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
+    var requestCount = 0
+    AdvisorWalletURLProtocol.response = { _ in
+      requestCount += 1
+      return .init(status: 500, body: #"{"error":"unexpected"}"#)
+    }
+    let model = AppModel(
+      api: HomeboardAPI(session: URLSession(configuration: configuration)),
+      advisorEnabled: false
+    )
+    model.authSession = NativeAuthSession(
+      accessToken: "token-a", refreshToken: "refresh-a", userId: "user-a",
+      email: "user-a@example.com", displayName: "User A"
+    )
+    model.board = .empty
+    model.board.id = "board-a"
+    model.boardMessageDraft = "@advisor draft outreach"
+
+    await model.sendBoardMessage()
+    await model.refreshAdvisorWalletStatus()
+    await model.refreshAdvisorPreferenceProposal()
+
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(model.boardMessageDraft, "@advisor draft outreach")
+    XCTAssertTrue(model.board.chatMessages.isEmpty)
+    XCTAssertEqual(model.boardError, "Advisor isn't available in this beta. Your message is still in the composer.")
+
+    var payload = AdvisorMessagePayload()
+    payload.messageId = "advisor-card"
+    model.board.chatMessages = [
+      BoardMessage(
+        id: "advisor-card", role: "assistant", authorName: "Advisor",
+        content: "Draft", createdAt: "2026-10-06T12:00:00Z", advisorPayload: payload
+      ),
+    ]
+    model.replyToBoardMessageId = "advisor-card"
+    model.boardMessageDraft = "Make it shorter"
+
+    await model.sendBoardMessage()
+
+    XCTAssertEqual(requestCount, 0)
+    XCTAssertEqual(model.boardMessageDraft, "Make it shorter")
+    XCTAssertEqual(model.board.chatMessages.map(\.id), ["advisor-card"])
+    XCTAssertEqual(model.boardError, "Advisor isn't available in this beta. Your message is still in the composer.")
+  }
+
   func testBoardMessageRequestEncodesReplyTargetWithoutCopyingQuotedText() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
@@ -72,7 +149,10 @@ final class HomeboardNativeTests: XCTestCase {
       XCTAssertEqual(request.httpMethod, "POST")
       return .init(status: 500, body: #"{"error":"Reply failed"}"#)
     }
-    let model = AppModel(api: HomeboardAPI(session: URLSession(configuration: configuration)))
+    let model = AppModel(
+      api: HomeboardAPI(session: URLSession(configuration: configuration)),
+      advisorEnabled: true
+    )
     model.authSession = NativeAuthSession(
       accessToken: "token-a", refreshToken: "refresh-a", userId: "user-a",
       email: "user-a@example.com", displayName: "User A"
@@ -397,7 +477,8 @@ final class HomeboardNativeTests: XCTestCase {
     }
     let model = AppModel(
       api: HomeboardAPI(session: URLSession(configuration: configuration)),
-      advisorOutcomeMemory: memory
+      advisorOutcomeMemory: memory,
+      advisorEnabled: true
     )
     model.authSession = NativeAuthSession(
       accessToken: "token-a", refreshToken: "refresh-a", userId: "user-a",
@@ -2605,7 +2686,10 @@ final class HomeboardNativeTests: XCTestCase {
   ) -> AppModel {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
-    let model = AppModel(api: HomeboardAPI(session: URLSession(configuration: configuration)))
+    let model = AppModel(
+      api: HomeboardAPI(session: URLSession(configuration: configuration)),
+      advisorEnabled: true
+    )
     model.authSession = NativeAuthSession(
       accessToken: token,
       refreshToken: "wallet-refresh",

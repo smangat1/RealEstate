@@ -19,9 +19,15 @@ private func normalizedInviteToken(from rawValue: String) -> String {
 }
 
 enum ChatReplySendPolicy {
+  static func isAdvisorMessage(_ message: BoardMessage) -> Bool {
+    message.advisorPayload != nil
+      || (message.role == "assistant"
+        && message.authorName?.caseInsensitiveCompare("Advisor") == .orderedSame)
+  }
+
   static func isAdvisorCard(_ message: BoardMessage?) -> Bool {
-    message?.role == "assistant"
-      && message?.advisorPayload != nil
+    guard let message else { return false }
+    return message.role == "assistant" && isAdvisorMessage(message)
   }
 
   static func isAdvisorRequest(content: String, replyTarget: BoardMessage?) -> Bool {
@@ -31,6 +37,27 @@ enum ChatReplySendPolicy {
       options: [.regularExpression, .caseInsensitive]
     ) != nil
     return explicitlyAddressesAdvisor || isAdvisorCard(replyTarget)
+  }
+
+  static func visibleMessages(_ messages: [BoardMessage], advisorEnabled: Bool) -> [BoardMessage] {
+    guard !advisorEnabled else { return messages }
+    var hiddenIDs = Set(messages.compactMap { message -> String? in
+      let explicitlyAddressesAdvisor = message.content
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .range(of: #"^@advisor\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+      return isAdvisorMessage(message) || explicitlyAddressesAdvisor ? message.id : nil
+    })
+    var changed = true
+    while changed {
+      changed = false
+      for message in messages where !hiddenIDs.contains(message.id) {
+        if let replyID = message.replyToMessageId, hiddenIDs.contains(replyID) {
+          hiddenIDs.insert(message.id)
+          changed = true
+        }
+      }
+    }
+    return messages.filter { !hiddenIDs.contains($0.id) }
   }
 }
 
@@ -161,6 +188,7 @@ final class AppModel {
   @ObservationIgnored private let api: HomeboardAPI
   @ObservationIgnored private let advisorOutcomeMemory: AdvisorOutcomeMemory
   @ObservationIgnored private let advisorSensitiveStore: AdvisorSensitiveStore
+  @ObservationIgnored let isAdvisorFeatureEnabled: Bool
   let commuteService: HomeboardCommuteService
   @ObservationIgnored private var didBootstrap = false
   @ObservationIgnored private var didFinishBootstrap = false
@@ -250,13 +278,19 @@ final class AppModel {
   var isAdvisorProcessing = false
   var advisorFundingAmountCents = 100
   var isAdvisorAccessActive: Bool {
-    advisorWalletLoadState == .active
+    isAdvisorFeatureEnabled && advisorWalletLoadState == .active
   }
   var advisorWalletLoadState: AdvisorWalletLoadState {
     if isAdvisorWalletLoading { return .loading }
     if advisorWalletError != nil { return .failed }
     guard let advisorWalletStatus else { return .idle }
     return advisorWalletStatus.subscription.active ? .active : .inactive
+  }
+  var visibleBoardMessages: [BoardMessage] {
+    ChatReplySendPolicy.visibleMessages(
+      board.chatMessages,
+      advisorEnabled: isAdvisorFeatureEnabled
+    )
   }
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
@@ -310,20 +344,33 @@ final class AppModel {
       api: api,
       advisorOutcomeMemory: .shared,
       advisorSensitiveStore: .shared,
-      commuteService: .shared
+      commuteService: .shared,
+      advisorEnabled: HomeboardConfig.advisorEnabled
+    )
+  }
+
+  convenience init(api: HomeboardAPI, advisorEnabled: Bool) {
+    self.init(
+      api: api,
+      advisorOutcomeMemory: .shared,
+      advisorSensitiveStore: .shared,
+      commuteService: .shared,
+      advisorEnabled: advisorEnabled
     )
   }
 
   convenience init(
     api: HomeboardAPI,
     advisorOutcomeMemory: AdvisorOutcomeMemory,
-    advisorSensitiveStore: AdvisorSensitiveStore = .shared
+    advisorSensitiveStore: AdvisorSensitiveStore = .shared,
+    advisorEnabled: Bool = HomeboardConfig.advisorEnabled
   ) {
     self.init(
       api: api,
       advisorOutcomeMemory: advisorOutcomeMemory,
       advisorSensitiveStore: advisorSensitiveStore,
-      commuteService: .shared
+      commuteService: .shared,
+      advisorEnabled: advisorEnabled
     )
   }
 
@@ -331,12 +378,14 @@ final class AppModel {
     api: HomeboardAPI,
     advisorOutcomeMemory: AdvisorOutcomeMemory,
     advisorSensitiveStore: AdvisorSensitiveStore,
-    commuteService: HomeboardCommuteService
+    commuteService: HomeboardCommuteService,
+    advisorEnabled: Bool = HomeboardConfig.advisorEnabled
   ) {
     self.api = api
     self.advisorOutcomeMemory = advisorOutcomeMemory
     self.advisorSensitiveStore = advisorSensitiveStore
     self.commuteService = commuteService
+    self.isAdvisorFeatureEnabled = advisorEnabled
     #if DEBUG
     let resetsForUITesting = ProcessInfo.processInfo.arguments.contains("-homeboard.resetForUITesting") || UITestFixtureState.enabled
     #else
@@ -384,7 +433,9 @@ final class AppModel {
       board = fixture.board
       availableBoards = [.init(id: UITestFixture.boardID, title: board.title, city: board.city, createdAt: "", updatedAt: "")]
       authenticatedMembershipState = .member
-      advisorWalletStatus = fixture.inactive ? UITestFixture.walletInactive : UITestFixture.walletActive
+      advisorWalletStatus = isAdvisorFeatureEnabled
+        ? (fixture.inactive ? UITestFixture.walletInactive : UITestFixture.walletActive)
+        : nil
       currentScreen = fixture.onboarding ? .onboarding : .board
       boardTab = .updates
       if fixture.provider == "deterministic" {
@@ -1043,6 +1094,10 @@ final class AppModel {
       board.chatMessages.first(where: { $0.id == id })
     }
     let isAdvisor = ChatReplySendPolicy.isAdvisorRequest(content: message, replyTarget: replyTarget)
+    guard !isAdvisor || isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta. Your message is still in the composer."
+      return
+    }
     guard !isAdvisor || isAdvisorAccessActive else {
       boardError = advisorWalletError
         ?? "Unlock Advisor for this board before sending an Advisor request."
@@ -1083,7 +1138,7 @@ final class AppModel {
 
     do {
       let preferenceCandidate: AdvisorPreferenceCandidate?
-      if !isAdvisor, let revision = board.revision {
+      if isAdvisorFeatureEnabled, !isAdvisor, let revision = board.revision {
         preferenceCandidate = await AdvisorPreferenceExtractor.extract(
           content: message,
           boardId: boardId,
@@ -1105,10 +1160,10 @@ final class AppModel {
             authSession?.userId == session.userId,
             board.id == boardId else { return }
       board = response.board
-      if let advisorPayload = response.advisorPayload {
+      if isAdvisorFeatureEnabled, let advisorPayload = response.advisorPayload {
         applyAdvisorPayload(advisorPayload)
       }
-      if let preferenceProposal = response.preferenceProposal {
+      if isAdvisorFeatureEnabled, let preferenceProposal = response.preferenceProposal {
         pendingPreferenceProposal = preferenceProposal
       }
       profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)
@@ -1127,6 +1182,10 @@ final class AppModel {
   }
 
   func beginChatReply(to message: BoardMessage) {
+    guard isAdvisorFeatureEnabled || !ChatReplySendPolicy.isAdvisorMessage(message) else {
+      boardError = "Advisor isn't available in this beta."
+      return
+    }
     replyToBoardMessageId = message.id
     boardError = nil
   }
@@ -1145,6 +1204,9 @@ final class AppModel {
     memorySummary: String? = nil,
     toneWasExplicit: Bool? = nil
   ) async throws -> MobileBoardLoadResponse {
+    guard isAdvisorFeatureEnabled else {
+      throw HomeboardAPIError.server("Advisor isn't available in this beta.")
+    }
     guard let session = authSession, let boardId = board.id else {
       throw HomeboardAPIError.missingSession
     }
@@ -1266,6 +1328,7 @@ final class AppModel {
     expectedMessageId: String?,
     recordAcceptance: Bool = true
   ) -> AdvisorMessagePayload? {
+    guard isAdvisorFeatureEnabled else { return nil }
     guard board.id == expectedBoardId,
           response.board.id == expectedBoardId,
           payload.messageId == expectedMessageId else { return nil }
@@ -1326,6 +1389,11 @@ final class AppModel {
   }
 
   func refreshAdvisorWalletStatus() async {
+    guard isAdvisorFeatureEnabled else {
+      clearAdvisorWalletState()
+      advisorFinancialStatus = nil
+      return
+    }
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
       clearAdvisorWalletState()
       advisorFinancialStatus = nil
@@ -1386,6 +1454,7 @@ final class AppModel {
 
   @discardableResult
   func refreshAdvisorFinancialStatus() async -> AdvisorFinancialStatus? {
+    guard isAdvisorFeatureEnabled else { return nil }
     guard let session = authSession, let boardId = board.id else { return nil }
     if var local = advisorSensitiveStore.load(userId: session.userId, boardId: boardId) {
       if local.serverCleanupPending {
@@ -1463,6 +1532,10 @@ final class AppModel {
   }
 
   func refreshAdvisorPreferenceProposal() async {
+    guard isAdvisorFeatureEnabled else {
+      pendingPreferenceProposal = nil
+      return
+    }
     guard let session = authSession, let boardId = board.id, !boardId.hasPrefix("local-") else {
       pendingPreferenceProposal = nil
       return
@@ -1486,6 +1559,10 @@ final class AppModel {
   }
 
   func resolveAdvisorPreferenceProposal(_ proposal: AdvisorPreferenceProposal, accept: Bool) async {
+    guard isAdvisorFeatureEnabled else {
+      pendingPreferenceProposal = nil
+      return
+    }
     guard let session = authSession, let boardId = board.id else { return }
     let previousProfile = profile
     let scoredListings = board.shortlist
@@ -1524,6 +1601,7 @@ final class AppModel {
     creditScoreMin: Int?,
     creditScoreMax: Int?
   ) async -> AdvisorFinancialStatus? {
+    guard isAdvisorFeatureEnabled else { return nil }
     guard let session = authSession, let boardId = board.id else { return nil }
     let previous = advisorSensitiveStore.load(userId: session.userId, boardId: boardId)
     let local = AdvisorSensitiveFinance(
@@ -1567,6 +1645,10 @@ final class AppModel {
   }
 
   func createAdvisorFunding(amountCents: Int) async -> MobileAdvisorFundResponse? {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return nil
+    }
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before funding Advisor."
       return nil
@@ -1599,6 +1681,10 @@ final class AppModel {
     dealbreakers: [String],
     priorities: [String]
   ) async -> Bool {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return false
+    }
     let previousProfile = profile
     profile.advisorFinancialMode = "available_on_request"
     profile.advisorIncomeMultiple = nil
@@ -1632,6 +1718,10 @@ final class AppModel {
 
   @discardableResult
   func markAdvisorOutreachSent(for payload: AdvisorMessagePayload, method: String) async -> Bool {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return false
+    }
     // Prefer the specific target carried in the payload; fall back to the strongest
     // listing for legacy cards that predate targetListingBoardId.
     let listingId = payload.targetListingBoardId
@@ -1667,6 +1757,10 @@ final class AppModel {
   }
 
   func loadAdvisorApplicationPacket(listingId: String) async -> AdvisorApplicationPacket? {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return nil
+    }
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before preparing an application packet."
       return nil
@@ -1684,6 +1778,10 @@ final class AppModel {
   }
 
   func loadAdvisorReplyThreads() async -> [AdvisorReplyThreadOption] {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return []
+    }
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before adding a broker reply."
       return []
@@ -1717,6 +1815,10 @@ final class AppModel {
     confirmationId: UUID,
     extractionSource: String
   ) async -> AdvisorReplySubmissionResult? {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return nil
+    }
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before adding a broker reply."
       return nil
@@ -1757,6 +1859,7 @@ final class AppModel {
   }
 
   func showAdvisorConfirmation(_ message: String) {
+    guard isAdvisorFeatureEnabled else { return }
     let confirmation = AdvisorConfirmation(message: message)
     advisorConfirmation = confirmation
     Task { @MainActor [weak self] in
@@ -1776,6 +1879,7 @@ final class AppModel {
     boardListingId: String?,
     snapshot: AdvisorFeedbackSnapshot
   ) async -> Bool {
+    guard isAdvisorFeatureEnabled else { return false }
     guard let session = authSession, let boardId = board.id else { return false }
     do {
       _ = try await api.submitAdvisorFeedback(
@@ -1834,6 +1938,10 @@ final class AppModel {
   }
 
   func optimizeRoomAssignment(listingId: String, rooms: [AdvisorRoomInput]) async -> AdvisorRoomAssignmentResult? {
+    guard isAdvisorFeatureEnabled else {
+      boardError = "Advisor isn't available in this beta."
+      return nil
+    }
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before optimizing rooms."
       return nil
@@ -2425,7 +2533,10 @@ final class AppModel {
     applyLocalBoardContributions()
     storeCurrentBoardSnapshot()
     currentScreen = .board
-    if let boardId = response.board.id, !boardId.hasPrefix("local-"), !boardId.hasPrefix("preview-") {
+    if isAdvisorFeatureEnabled,
+       let boardId = response.board.id,
+       !boardId.hasPrefix("local-"),
+       !boardId.hasPrefix("preview-") {
       Task { await refreshAdvisorWalletStatus() }
       Task { await refreshAdvisorPreferenceProposal() }
     } else {
@@ -2848,6 +2959,11 @@ final class AppModel {
   func addBoardUpdate(_ rawMessage: String) async -> Bool {
     let message = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !message.isEmpty, !isPostingBoardUpdate else { return false }
+    guard isAdvisorFeatureEnabled
+      || !ChatReplySendPolicy.isAdvisorRequest(content: message, replyTarget: nil) else {
+      boardError = "Advisor isn't available in this beta. Your message is still in the composer."
+      return false
+    }
 
     let requestEpoch = sessionEpoch
     isPostingBoardUpdate = true
@@ -2881,7 +2997,7 @@ final class AppModel {
 
     do {
       let preferenceCandidate: AdvisorPreferenceCandidate?
-      if let revision = board.revision {
+      if isAdvisorFeatureEnabled, let revision = board.revision {
         preferenceCandidate = await AdvisorPreferenceExtractor.extract(
           content: message,
           boardId: boardId,
@@ -4354,10 +4470,10 @@ final class AppModel {
     guard authSession != nil, response.board.id == board.id else { return }
     let key = boardStorageKey()
     board = boardByApplyingRemovalTombstones(response.board, storageKey: key)
-    if let advisorPayload = response.advisorPayload {
+    if isAdvisorFeatureEnabled, let advisorPayload = response.advisorPayload {
       applyAdvisorPayload(advisorPayload)
     }
-    if let preferenceProposal = response.preferenceProposal {
+    if isAdvisorFeatureEnabled, let preferenceProposal = response.preferenceProposal {
       pendingPreferenceProposal = preferenceProposal
     }
     profile = Self.profilePreservingAdvisorSetup(remote: response.profile, fallback: profile)

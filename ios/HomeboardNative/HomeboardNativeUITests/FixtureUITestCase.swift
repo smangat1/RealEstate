@@ -8,6 +8,7 @@ class FixtureUITestCase: XCTestCase {
   func launchFixture(_ settings: [String: String] = [:]) {
     app = XCUIApplication()
     app.launchArguments = ["-homeboard.resetForUITesting", "-homeboard.uiTestFixture"]
+    app.launchEnvironment["HOMEBOARD_ADVISOR_ENABLED"] = "1"
     app.launchEnvironment.merge(settings) { _, new in new }
     app.launch()
     XCTAssertTrue(app.descendants(matching: .any)["homeboard.fixture.diagnostics"].waitForExistence(timeout: 20))

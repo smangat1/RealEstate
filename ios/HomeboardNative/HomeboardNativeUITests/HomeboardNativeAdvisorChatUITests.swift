@@ -11,7 +11,7 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
   ]
 
   func testReplyToRoommateRendersQuoteAndNavigatesToOriginal() {
-    launchFixture()
+    launchFixture(["HOMEBOARD_ADVISOR_ENABLED": "0"])
     let original = app.descendants(matching: .any)["homeboard.chat.user.fixture-msg-001"]
     reveal(original, upwards: false)
     XCTAssertTrue(original.isHittable)

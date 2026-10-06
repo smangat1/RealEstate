@@ -50,6 +50,30 @@ enum PendingBoardNotification {
   }
 }
 
+enum NativeNotificationPresentationPolicy {
+  static let advisorTypes: Set<String> = [
+    "advisor_follow_up",
+    "advisor_group_nag",
+    "advisor_digest",
+  ]
+
+  static let boardNotificationTypes: Set<String> = [
+    "board_chat",
+    "listing_change",
+    "negotiation_comp",
+    "scam_warning",
+  ]
+
+  static func shouldPresent(type: String?, advisorEnabled: Bool) -> Bool {
+    guard let type else { return true }
+    return advisorEnabled || !advisorTypes.contains(type)
+  }
+
+  static func shouldRouteToBoard(type: String, advisorEnabled: Bool) -> Bool {
+    boardNotificationTypes.contains(type) || (advisorEnabled && advisorTypes.contains(type))
+  }
+}
+
 enum NativePushService {
   static func shouldOfferAuthorization() async -> Bool {
     let settings = await UNUserNotificationCenter.current().notificationSettings()
@@ -86,6 +110,14 @@ final class HomeboardAppDelegate: NSObject, UIApplicationDelegate, UNUserNotific
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
+    let type = notification.request.content.userInfo["type"] as? String
+    guard NativeNotificationPresentationPolicy.shouldPresent(
+      type: type,
+      advisorEnabled: HomeboardConfig.advisorEnabled
+    ) else {
+      completionHandler([])
+      return
+    }
     completionHandler([.banner, .list, .sound])
   }
 
@@ -95,17 +127,11 @@ final class HomeboardAppDelegate: NSObject, UIApplicationDelegate, UNUserNotific
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let info = response.notification.request.content.userInfo
-    let boardNotificationTypes: Set<String> = [
-      "board_chat",
-      "advisor_follow_up",
-      "listing_change",
-      "negotiation_comp",
-      "scam_warning",
-      "advisor_group_nag",
-      "advisor_digest",
-    ]
     if let type = info["type"] as? String,
-       boardNotificationTypes.contains(type),
+       NativeNotificationPresentationPolicy.shouldRouteToBoard(
+         type: type,
+         advisorEnabled: HomeboardConfig.advisorEnabled
+       ),
        let boardId = info["boardId"] as? String {
       PendingBoardNotification.store(boardId)
       DispatchQueue.main.async {
