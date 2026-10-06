@@ -1003,7 +1003,11 @@ enum AdvisorListingRanker {
     var rank: Int
   }
 
-  static func score(_ listing: ListingPreview, profile: RentalProfile) -> Int {
+  static func score(
+    _ listing: ListingPreview,
+    profile: RentalProfile,
+    commuteScore: Double? = nil
+  ) -> Int {
     var score = 0
     if let listingValue = firstCurrencyValue(in: listing.priceLine),
        let boardMax = Int(profile.budgetMax.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -1013,8 +1017,16 @@ enum AdvisorListingRanker {
 
     if let minMinutes = Int(profile.minCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)),
        let maxMinutes = Int(profile.maxCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)) {
-      let listingMinutes = commuteMinutes(from: listing.commuteLine)
-      if listingMinutes != Int.max, (minMinutes...maxMinutes).contains(listingMinutes) { score += 1 }
+      if let commuteScore {
+        // A full-score group result means every included member landed inside
+        // the existing equal-score preferred band after access-aware routing.
+        if commuteScore >= 99.5 { score += 1 }
+      } else if let manualMinutes = HomeboardManualCommuteParser.minutes(from: listing.commuteLine),
+                (minMinutes...maxMinutes).contains(manualMinutes) {
+        // Manual input remains a listing-level fallback. It does not claim
+        // that every roommate or travel mode was verified.
+        score += 1
+      }
     }
 
     let neighborhoodText = "\(listing.location) \(listing.summary) \(listing.groupNote)".lowercased()
@@ -1077,9 +1089,6 @@ enum AdvisorListingRanker {
     return digits.isEmpty ? nil : Int(digits)
   }
 
-  private static func commuteMinutes(from line: String) -> Int {
-    line.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }.first ?? Int.max
-  }
 }
 
 struct BoardExpense: Identifiable, Hashable, Codable {

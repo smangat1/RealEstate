@@ -13,6 +13,7 @@
 		0DE567EDBBAAFE1B0B3651F9 /* HomeboardAppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */; };
 		0E16066A124A1CAAB52624D2 /* ShareBootProbe.m in Sources */ = {isa = PBXBuildFile; fileRef = 470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */; };
 		13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */; };
+		14BC67A32612600D65C9F280 /* HomeboardCommuteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6C34ACBEE63921623602E5 /* HomeboardCommuteService.swift */; };
 		161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */; };
 		185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */; };
 		1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */; };
@@ -39,6 +40,7 @@
 		6A91FA585D28736B4E8E78AE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		6B21AEE54289EB5CFB66912F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1F1A64964C190A30B424C5 /* RootView.swift */; };
 		6D62F6F14B1B1CC20F987A43 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
+		72117B31EB6E6A12F4FCDFE6 /* CommuteEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25971423FD6D046F19556CD /* CommuteEvidenceTests.swift */; };
 		72AC6E1E462E68DB7EC54788 /* MacDevicePairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */; };
 		74B4031207603405891BB068 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */; };
 		790524246BBBD9B8761420CE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
@@ -205,12 +207,14 @@
 		AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAppleSignIn.swift; sourceTree = "<group>"; };
 		B6F83B2EE14FB70C9556F3E2 /* InAppSafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppSafariView.swift; sourceTree = "<group>"; };
 		BB7DEBE2189FA9D33A9FCF6A /* HomeboardNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeUITests.swift; sourceTree = "<group>"; };
+		C25971423FD6D046F19556CD /* CommuteEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommuteEvidenceTests.swift; sourceTree = "<group>"; };
 		C90FDA3407D91D48F3D10DF5 /* SharePreprocessor.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = SharePreprocessor.js; sourceTree = "<group>"; };
 		C9F52927D18A60DB80024121 /* HomeboardAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardAPI.swift; sourceTree = "<group>"; };
 		CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedWorkspaceView.swift; sourceTree = "<group>"; };
 		D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestFixtureTests.swift; sourceTree = "<group>"; };
 		D2CF740AFC2099E6B35681BD /* HomeboardNative.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HomeboardNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D6BC158033945502CA476990 /* FixtureUITestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureUITestCase.swift; sourceTree = "<group>"; };
+		DE6C34ACBEE63921623602E5 /* HomeboardCommuteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardCommuteService.swift; sourceTree = "<group>"; };
 		EA1F1A64964C190A30B424C5 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorCardView.swift; sourceTree = "<group>"; };
 		ECB08524664C9C447B1ADA12 /* KeychainSensitiveStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSensitiveStoreTests.swift; sourceTree = "<group>"; };
@@ -339,6 +343,7 @@
 				9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */,
 				C9F52927D18A60DB80024121 /* HomeboardAPI.swift */,
 				033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */,
+				DE6C34ACBEE63921623602E5 /* HomeboardCommuteService.swift */,
 				6496F9883003DCBA86048476 /* HomeboardConfig.swift */,
 				75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */,
 				091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */,
@@ -377,6 +382,7 @@
 		FCF367056B942BD65F5E86B9 /* HomeboardNativeTests */ = {
 			isa = PBXGroup;
 			children = (
+				C25971423FD6D046F19556CD /* CommuteEvidenceTests.swift */,
 				2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */,
 				ECB08524664C9C447B1ADA12 /* KeychainSensitiveStoreTests.swift */,
 				D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */,
@@ -687,6 +693,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				72117B31EB6E6A12F4FCDFE6 /* CommuteEvidenceTests.swift in Sources */,
 				161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */,
 				79C9371EF8DC63B339AFE592 /* KeychainSensitiveStoreTests.swift in Sources */,
 				BDD9844EDC35CAD4368FC2AE /* UITestFixtureTests.swift in Sources */,
@@ -756,6 +763,7 @@
 				B1CCB61DBE1E92895581CC41 /* HomeboardActiveOffer.swift in Sources */,
 				AC93FEA3832938FE343A2469 /* HomeboardAppleSignIn.swift in Sources */,
 				B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */,
+				14BC67A32612600D65C9F280 /* HomeboardCommuteService.swift in Sources */,
 				5B5E5368709897AAC0E90940 /* HomeboardConfig.swift in Sources */,
 				7D8FF96A80E3C4413CACBDDC /* HomeboardExtensionSync.swift in Sources */,
 				B127D29D704A6A6E994982E9 /* HomeboardListingIntelligence.swift in Sources */,

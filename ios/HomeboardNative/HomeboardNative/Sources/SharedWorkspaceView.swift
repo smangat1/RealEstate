@@ -5,6 +5,79 @@ import SafariServices
 import SwiftUI
 import UIKit
 
+@MainActor
+private func sharedCommuteScope(_ appModel: AppModel) -> HomeboardCommuteService.Scope {
+  HomeboardCommuteService.Scope(
+    accountID: appModel.authSession?.userId ?? appModel.account?.id ?? "guest",
+    boardID: appModel.board.id ?? "local"
+  )
+}
+
+@MainActor
+private func sharedCommuteMembers(_ appModel: AppModel) -> [HomeboardCommuteService.MemberInput] {
+  appModel.board.members.map { member in
+    HomeboardCommuteService.MemberInput(
+      id: member.id,
+      name: member.name,
+      destination: (member.commuteDestination ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+      commuteAccess: member.commuteAccess,
+      preferredMinutes: member.preferredCommuteMinutes,
+      maximumMinutes: member.maxCommuteMinutes
+    )
+  }
+}
+
+@MainActor
+private func sharedCommuteListings(_ appModel: AppModel) -> [HomeboardCommuteService.ListingInput] {
+  appModel.board.shortlist.map { listing in
+    HomeboardCommuteService.ListingInput(
+      id: listing.id,
+      latitude: listing.latitude,
+      longitude: listing.longitude,
+      locationQuery: [listing.address, listing.location]
+        .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        ?? listing.location,
+      manualLine: listing.commuteLine
+    )
+  }
+}
+
+@MainActor
+private func sharedCommuteRefreshSignature(_ appModel: AppModel) -> String {
+  let listings = appModel.board.shortlist.map {
+    "\($0.id):\($0.latitude ?? 0):\($0.longitude ?? 0):\($0.address):\($0.location):\($0.commuteLine)"
+  }.joined(separator: "|")
+  let members = appModel.board.members.map {
+    "\($0.id):\($0.commuteDestination ?? ""):\($0.commuteAccess ?? ""):\($0.preferredCommuteMinutes ?? 0):\($0.maxCommuteMinutes ?? 0)"
+  }.joined(separator: "|")
+  return "\(sharedCommuteScope(appModel).key)|\(listings)|\(members)"
+}
+
+@MainActor
+private func refreshSharedCommutes(_ appModel: AppModel, forceRefresh: Bool = false) async {
+  await appModel.commuteService.evaluateListings(
+    scope: sharedCommuteScope(appModel),
+    city: appModel.board.city,
+    listings: sharedCommuteListings(appModel),
+    members: sharedCommuteMembers(appModel),
+    forceRefresh: forceRefresh
+  )
+}
+
+@MainActor
+private func sharedCommuteSummary(_ listing: ListingPreview, appModel: AppModel) -> String {
+  if let evidence = appModel.commuteService.evaluation(
+    for: listing.id,
+    scope: sharedCommuteScope(appModel)
+  ) {
+    return evidence.displaySummary
+  }
+  if let minutes = HomeboardManualCommuteParser.minutes(from: listing.commuteLine) {
+    return "Manual fallback · \(minutes) min · not per-member verified"
+  }
+  return "Commute not evaluated"
+}
+
 private enum SharedSearchPresentation: String, CaseIterable {
   case map
   case list
@@ -89,284 +162,6 @@ enum SharedComparisonMath {
   }
 }
 
-private enum SharedCommuteMode: String, CaseIterable, Hashable, Codable, Sendable {
-  case transit
-  case walking
-  case automobile
-
-  var label: String {
-    switch self {
-    case .transit: "Transit"
-    case .walking: "Walk"
-    case .automobile: "Drive"
-    }
-  }
-
-  var icon: String {
-    switch self {
-    case .transit: "tram.fill"
-    case .walking: "figure.walk"
-    case .automobile: "car.fill"
-    }
-  }
-
-  var cardOrder: Int {
-    switch self {
-    case .automobile: 0
-    case .transit: 1
-    case .walking: 2
-    }
-  }
-}
-
-private enum SharedTransitKind: String, Codable, Sendable {
-  case bus
-  case train
-  case ferry
-  case transit
-
-  var label: String {
-    switch self {
-    case .bus: "Bus"
-    case .train: "Train"
-    case .ferry: "Ferry"
-    case .transit: "Transit"
-    }
-  }
-
-  var icon: String {
-    switch self {
-    case .bus: "bus.fill"
-    case .train: "tram.fill"
-    case .ferry: "ferry.fill"
-    case .transit: "tram.fill"
-    }
-  }
-}
-
-private enum SharedCommuteRouteLogic {
-  static func permits(_ mode: SharedCommuteMode, access: String?) -> Bool {
-    guard access != "remote", access != "skip" else { return false }
-    if mode == .automobile {
-      return access == nil || access == "car" || access == "flexible"
-    }
-    return true
-  }
-
-  static func easeAdjustedMinutes(
-    mode: SharedCommuteMode,
-    minutes: Int,
-    stepCount: Int,
-    access: String?
-  ) -> Int {
-    guard permits(mode, access: access) else { return 999 }
-    let base = Double(max(minutes, 1))
-    let adjustment: Double
-    switch mode {
-    case .automobile:
-      adjustment = access == "flexible" ? 2 : 0
-    case .transit:
-      let preferencePenalty = access == "car" ? 6.0 : access == "flexible" ? 2.0 : 1.0
-      let complexityPenalty = min(Double(max(stepCount - 2, 0)) * 1.5, 9)
-      adjustment = preferencePenalty + complexityPenalty
-    case .walking:
-      let longWalkPenalty = Double(max(minutes - 10, 0)) * 0.75
-      let preferencePenalty = access == "car" ? 4.0 : 0
-      adjustment = longWalkPenalty + preferencePenalty
-    }
-    return min(Int((base + adjustment).rounded()), 999)
-  }
-}
-
-private struct SharedComparisonCommuteEvidence: Sendable {
-  let score: Double?
-  let averageMinutes: Int
-  let averageEaseMinutes: Int
-  let resolvedDestinations: Int
-  let requestedDestinations: Int
-  let suppressedLongRouteDestinations: Int
-  let usedWalkingFallback: Bool
-  let displayedRouteIDs: Set<String>
-  let scoredRouteIDs: Set<String>
-  let routeSnapshots: [SharedComparisonRouteSnapshot]
-}
-
-private struct SharedComparisonCommuteTarget: Sendable {
-  let id: String
-  let memberName: String
-  let destination: String
-  let latitude: Double
-  let longitude: Double
-  let commuteAccess: String?
-  let preferredMinutes: Int?
-  let maximumMinutes: Int?
-}
-
-private struct SharedRouteCoordinate: Codable, Sendable {
-  let latitude: Double
-  let longitude: Double
-}
-
-private struct SharedRouteLegResult: Codable, Sendable {
-  let mode: SharedCommuteMode
-  let transitKind: SharedTransitKind?
-  let minutes: Int
-  let coordinates: [SharedRouteCoordinate]
-}
-
-private struct SharedRouteResult: Codable, Sendable {
-  let minutes: Int
-  let stepCount: Int
-  let transitKind: SharedTransitKind?
-  let coordinates: [SharedRouteCoordinate]
-  let legs: [SharedRouteLegResult]
-}
-
-private struct SharedComparisonRouteCacheEntry: Codable, Sendable {
-  let result: SharedRouteResult
-  let savedAt: Date
-}
-
-private struct SharedComparisonRouteCachePayload: Codable, Sendable {
-  let version: Int
-  let entries: [String: SharedComparisonRouteCacheEntry]
-}
-
-private actor SharedComparisonRouteCache {
-  static let shared = SharedComparisonRouteCache()
-
-  private static let cacheVersion = 1
-  private static let maximumEntryCount = 1_200
-
-  private let cacheURL: URL
-  private var values: [String: SharedComparisonRouteCacheEntry]
-  private var inFlight: [String: Task<SharedRouteResult?, Never>] = [:]
-  private var persistenceTask: Task<Void, Never>?
-
-  init(fileManager: FileManager = .default) {
-    let baseURL = fileManager.urls(
-      for: .cachesDirectory,
-      in: .userDomainMask
-    ).first ?? fileManager.temporaryDirectory
-    let directoryURL = baseURL.appendingPathComponent(
-      "HomeboardRouteCache",
-      isDirectory: true
-    )
-    try? fileManager.createDirectory(
-      at: directoryURL,
-      withIntermediateDirectories: true
-    )
-    let cacheURL = directoryURL.appendingPathComponent(
-      "comparison-routes-v1.json",
-      isDirectory: false
-    )
-    self.cacheURL = cacheURL
-
-    if let data = try? Data(contentsOf: cacheURL),
-       let payload = try? JSONDecoder().decode(
-         SharedComparisonRouteCachePayload.self,
-         from: data
-       ),
-       payload.version == Self.cacheVersion {
-      values = payload.entries
-    } else {
-      values = [:]
-    }
-  }
-
-  func value(
-    for key: String,
-    operation: @escaping @Sendable () async -> SharedRouteResult?
-  ) async -> SharedRouteResult? {
-    if let cached = values[key] {
-      return cached.result
-    }
-    if let existing = inFlight[key] {
-      return await existing.value
-    }
-
-    let task = Task { await operation() }
-    inFlight[key] = task
-    let result = await task.value
-    inFlight[key] = nil
-    if let result {
-      values[key] = SharedComparisonRouteCacheEntry(
-        result: result,
-        savedAt: Date()
-      )
-      trimIfNeeded()
-      schedulePersistence()
-    }
-    return result
-  }
-
-  private func trimIfNeeded() {
-    let overflow = values.count - Self.maximumEntryCount
-    guard overflow > 0 else { return }
-    let oldestKeys = values
-      .sorted { $0.value.savedAt < $1.value.savedAt }
-      .prefix(overflow)
-      .map(\.key)
-    for key in oldestKeys {
-      values[key] = nil
-    }
-  }
-
-  private func schedulePersistence() {
-    persistenceTask?.cancel()
-    persistenceTask = Task { [weak self] in
-      try? await Task.sleep(nanoseconds: 400_000_000)
-      guard !Task.isCancelled else { return }
-      await self?.persist()
-    }
-  }
-
-  private func persist() {
-    let payload = SharedComparisonRouteCachePayload(
-      version: Self.cacheVersion,
-      entries: values
-    )
-    guard let data = try? JSONEncoder().encode(payload) else { return }
-    try? data.write(to: cacheURL, options: .atomic)
-  }
-}
-
-private enum SharedRouteAttemptResult: Sendable {
-  case success(SharedRouteResult)
-  case retryableFailure
-  case terminalFailure
-}
-
-private struct SharedLoadedComparisonRoute: Sendable {
-  let targetID: String
-  let destination: String
-  let memberNames: [String]
-  let commuteAccesses: [String]
-  let mode: SharedCommuteMode
-  let transitKind: SharedTransitKind?
-  let minutes: Int
-  let easeMinutes: Int
-  let preferredMinutes: Int
-  let maximumMinutes: Int
-  let coordinates: [SharedRouteCoordinate]
-  let legs: [SharedRouteLegResult]
-}
-
-private struct SharedComparisonRouteSnapshot: Sendable {
-  let targetID: String
-  let memberName: String
-  let destination: String
-  let commuteAccess: String?
-  let mode: SharedCommuteMode
-  let transitKind: SharedTransitKind?
-  let minutes: Int
-  let easeMinutes: Int
-  let preferredMinutes: Int
-  let maximumMinutes: Int
-  let coordinates: [SharedRouteCoordinate]
-  let legs: [SharedRouteLegResult]
-}
-
 private enum SharedComparisonRegionTier: CaseIterable, Identifiable {
   case best
   case strong
@@ -427,6 +222,7 @@ private struct SharedComparisonCommuteCorridor: Identifiable {
   let mode: SharedCommuteMode
   let transitKind: SharedTransitKind?
   let minutes: Int
+  let distanceMeters: Double?
   let easeMinutes: Int
   let preferredMinutes: Int
   let maximumMinutes: Int
@@ -447,6 +243,12 @@ private struct SharedComparisonCommuteCorridor: Identifiable {
     case .walking: "figure.walk"
     case .transit: transitKind?.icon ?? "tram.fill"
     }
+  }
+
+  var distanceLabel: String {
+    guard let distanceMeters else { return "distance unavailable" }
+    let miles = distanceMeters / 1609.344
+    return miles < 10 ? String(format: "%.1f mi", miles) : String(format: "%.0f mi", miles)
   }
 
   var tier: SharedCommuteCorridorTier {
@@ -480,13 +282,6 @@ private struct SharedComparisonRouteLeg: Identifiable {
     case .transit: transitKind?.icon ?? "tram.fill"
     }
   }
-}
-
-private struct SharedRouteLegDraft {
-  let mode: SharedCommuteMode
-  let transitKind: SharedTransitKind?
-  var distance: CLLocationDistance
-  var coordinates: [SharedRouteCoordinate]
 }
 
 private struct SharedWorkNode: Identifiable {
@@ -632,19 +427,23 @@ private struct SharedCoordinateBounds: Equatable {
 }
 
 private struct SharedCommuteRoute: Identifiable {
-  let id = UUID()
+  let id: String
   let memberName: String
   let destination: String
-  let route: MKRoute
+  let polyline: MKPolyline
   let color: Color
   let mode: SharedCommuteMode
+  let minutes: Int
+  let distanceMeters: Double?
+  let source: HomeboardCommuteEvidenceSource
 
   var duration: String {
-    "\(max(Int((route.expectedTravelTime / 60).rounded()), 1)) min"
+    "\(minutes) min"
   }
 
   var distance: String {
-    let miles = route.distance / 1609.344
+    guard let distanceMeters else { return "distance unavailable" }
+    let miles = distanceMeters / 1609.344
     return miles < 10 ? String(format: "%.1f mi", miles) : String(format: "%.0f mi", miles)
   }
 }
@@ -688,7 +487,6 @@ struct SharedSearchMapView: View {
   @State private var comparisonCityCenter: CLLocationCoordinate2D?
   @State private var commuteDestinationCoordinates: [String: CLLocationCoordinate2D] = [:]
   @State private var comparisonCommuteEvidence: [String: SharedComparisonCommuteEvidence] = [:]
-  @State private var comparisonEvidenceSignatures: [String: String] = [:]
   @State private var comparisonCommuteCorridors: [SharedComparisonCommuteCorridor] = []
   @State private var selectedComparisonRouteListingID: String?
   @State private var expandedComparisonListing: ListingPreview?
@@ -761,8 +559,34 @@ struct SharedSearchMapView: View {
     appModel.board.members.filter {
       $0.commuteAccess != "remote"
         && $0.commuteAccess != "skip"
-        && !SharedListingText.commuteDestination($0.commuteLine).isEmpty
+        && !($0.commuteDestination ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }.count
+  }
+
+  private var commuteScope: HomeboardCommuteService.Scope {
+    HomeboardCommuteService.Scope(
+      accountID: appModel.authSession?.userId ?? appModel.account?.id ?? "guest",
+      boardID: appModel.board.id ?? "local"
+    )
+  }
+
+  private var commuteMemberInputs: [HomeboardCommuteService.MemberInput] {
+    appModel.board.members.map { member in
+      HomeboardCommuteService.MemberInput(
+        id: member.id,
+        name: member.name,
+        destination: (member.commuteDestination ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+        commuteAccess: member.commuteAccess,
+        preferredMinutes: member.preferredCommuteMinutes,
+        maximumMinutes: member.maxCommuteMinutes
+      )
+    }
+  }
+
+  private var commuteEvidenceSignature: String {
+    appModel.board.members.map {
+      "\($0.id):\($0.commuteDestination ?? ""):\($0.commuteAccess ?? ""):\($0.preferredCommuteMinutes ?? 0):\($0.maxCommuteMinutes ?? 0)"
+    }.joined(separator: "|")
   }
 
   private var currentListing: ListingPreview? {
@@ -789,7 +613,7 @@ struct SharedSearchMapView: View {
       guard member.commuteAccess != "remote", member.commuteAccess != "skip" else {
         continue
       }
-      let destination = SharedListingText.commuteDestination(member.commuteLine)
+      let destination = (member.commuteDestination ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       guard !destination.isEmpty,
             let coordinate = commuteDestinationCoordinates[destination]
       else { continue }
@@ -922,7 +746,7 @@ struct SharedSearchMapView: View {
       return comparisonRoutingCompletedCount
     }
     return cardClusterListingIDs.reduce(into: 0) { count, listingID in
-      if comparisonEvidenceSignatures[listingID] != nil {
+      if comparisonCommuteEvidence[listingID]?.state != .loading {
         count += 1
       }
     }
@@ -987,7 +811,7 @@ struct SharedSearchMapView: View {
     appModel.board.members.contains {
       $0.commuteAccess != "remote"
         && $0.commuteAccess != "skip"
-        && !SharedListingText.commuteDestination($0.commuteLine).isEmpty
+        && !($0.commuteDestination ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
   }
 
@@ -1081,7 +905,7 @@ struct SharedSearchMapView: View {
 
               if !isComparisonActive {
                 ForEach(commuteRoutes) { commute in
-                  MapPolyline(commute.route.polyline)
+                  MapPolyline(commute.polyline)
                     .stroke(
                       commute.color.opacity(0.82),
                       style: comparisonRouteStrokeStyle
@@ -1469,7 +1293,7 @@ struct SharedSearchMapView: View {
       focusMap()
     }
     .task(
-      id: "\(isComparisonActive)|\(storedComparisonCity)|\(appModel.board.members.map { "\($0.id):\($0.commuteLine):\($0.commuteAccess ?? "unknown"):\($0.preferredCommuteMinutes ?? 0):\($0.maxCommuteMinutes ?? 0)" }.joined(separator: "|"))|\(comparisonRoutingSignature)"
+      id: "\(isComparisonActive)|\(storedComparisonCity)|\(commuteEvidenceSignature)|\(comparisonRoutingSignature)"
     ) {
       guard isComparisonActive else { return }
       await resolveComparisonCommuteDestinations()
@@ -1484,7 +1308,7 @@ struct SharedSearchMapView: View {
       prepareMapItems()
       await resolveListingCoordinates()
     }
-    .task(id: "\(currentListing?.id ?? "none")|\(resolvedCoordinates.count)") {
+    .task(id: "\(currentListing?.id ?? "none")|\(resolvedCoordinates.count)|\(commuteEvidenceSignature)") {
       if !isComparisonActive {
         await resolveCommuteRoutes()
       }
@@ -1925,27 +1749,25 @@ struct SharedSearchMapView: View {
         .features: "Amenities, finishes, light, layout, and risk evidence found in the listing"
       ]
       if let commuteEvidence,
-         commuteEvidence.suppressedLongRouteDestinations > 0,
-         commuteEvidence.resolvedDestinations == commuteEvidence.requestedDestinations {
-        let count = commuteEvidence.suppressedLongRouteDestinations
-        let noun = count == 1 ? "destination is" : "destinations are"
-        let routedNote = commuteEvidence.averageMinutes > 0
-          ? " Other live routes average \(commuteEvidence.averageMinutes) min."
-          : ""
-        details[.commute] = "\(count) work \(noun) certainly outside the saved commute range and scored 0. Extreme route lines are omitted.\(routedNote)"
-      } else if let commuteEvidence,
+         commuteEvidence.score != nil,
          commuteEvidence.resolvedDestinations == commuteEvidence.requestedDestinations {
         let walkingNote = commuteEvidence.usedWalkingFallback ? " · walking was the easiest usable route" : ""
         let easeNote = commuteEvidence.averageEaseMinutes == commuteEvidence.averageMinutes
           ? ""
           : " · \(commuteEvidence.averageEaseMinutes) min ease-adjusted"
-        details[.commute] = "Best usable live routes · \(commuteEvidence.averageMinutes) min average\(easeNote) · \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations\(walkingNote)"
+        details[.commute] = "Best usable Apple routes · \(commuteEvidence.averageMinutes) min average\(easeNote) · \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations · \(commuteEvidence.source?.label ?? "Apple Maps")\(walkingNote)"
       } else if let commuteEvidence {
-        details[.commute] = "Live Apple routes found for \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations. Commute stays unscored until every destination resolves."
+        if let manualMinutes = commuteEvidence.manualMinutes {
+          details[.commute] = "Manual fallback · \(manualMinutes) min · not per-member verified. Commute stays unscored until every destination resolves."
+        } else if commuteEvidence.suppressedLongRouteDestinations > 0 {
+          details[.commute] = "A clearly impractical endpoint was skipped to keep routing bounded. No actual Apple route was returned for it, so commute remains unknown and unscored."
+        } else {
+          details[.commute] = "Apple routes found for \(commuteEvidence.resolvedDestinations)/\(commuteEvidence.requestedDestinations) work destinations. Commute stays unscored until every destination resolves."
+        }
       } else {
         details[.commute] = comparisonWorkNodes.isEmpty
           ? "Commute excluded because no routable office area is saved"
-          : "No usable live route was returned, so commute remains unscored"
+          : "No usable Apple route was returned, so commute remains unknown and unscored"
       }
       result[listing.id] = SharedListingComparisonScore(
         total: Int((weightedTotal / knownWeight).rounded()),
@@ -2155,522 +1977,92 @@ struct SharedSearchMapView: View {
   }
 
   private func resolveComparisonCommuteDestinations() async {
-    let destinations = Set(
-      appModel.board.members.compactMap { member -> String? in
-        guard member.commuteAccess != "remote", member.commuteAccess != "skip" else {
-          return nil
-        }
-        let target = SharedListingText.commuteDestination(member.commuteLine)
-        return target.isEmpty ? nil : target
+    let targets = await appModel.commuteService.resolvedTargets(
+      scope: commuteScope,
+      city: appModel.board.city,
+      members: commuteMemberInputs
+    )
+    commuteDestinationCoordinates = Dictionary(
+      uniqueKeysWithValues: targets.map {
+        ($0.destination, CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude))
       }
     )
-    var next = commuteDestinationCoordinates.filter {
-      destinations.contains($0.key)
-    }
-    for destination in destinations.sorted() where next[destination] == nil {
-      if let coordinate = await resolveCoordinate(for: destination) {
-        next[destination] = coordinate
-      }
-    }
-    commuteDestinationCoordinates = next
   }
 
-  private func resolveComparisonCommuteEvidence() async {
-    let targets = appModel.board.members.compactMap {
-      member -> SharedComparisonCommuteTarget? in
-      guard member.commuteAccess != "remote", member.commuteAccess != "skip" else {
-        return nil
-      }
-      let destination = SharedListingText.commuteDestination(member.commuteLine)
-      guard let coordinate = commuteDestinationCoordinates[destination] else {
-        return nil
-      }
-      return SharedComparisonCommuteTarget(
-        id: destination.lowercased(),
-        memberName: member.name,
-        destination: destination,
-        latitude: coordinate.latitude,
-        longitude: coordinate.longitude,
-        commuteAccess: member.commuteAccess,
-        preferredMinutes: member.preferredCommuteMinutes,
-        maximumMinutes: member.maxCommuteMinutes
-      )
-    }
-    guard !targets.isEmpty else {
+  private func resolveComparisonCommuteEvidence(forceRefresh: Bool = false) async {
+    let candidates = preparedMapItems.filter(\.hasReliableCoordinate)
+    guard !candidates.isEmpty, hasCommuteDestinations else {
       comparisonCommuteEvidence = [:]
-      comparisonEvidenceSignatures = [:]
       comparisonCommuteCorridors = []
       isLoadingComparisonTransit = false
       comparisonRoutingCompletedCount = 0
-      comparisonRoutingTotalCount = 0
+      comparisonRoutingTotalCount = candidates.count
       comparisonRoutingFailedCount = 0
-      return
-    }
-
-    let candidates = preparedMapItems.filter(\.hasReliableCoordinate)
-    guard !candidates.isEmpty else {
-      isLoadingComparisonTransit = false
-      comparisonRoutingCompletedCount = 0
-      comparisonRoutingTotalCount = 0
-      comparisonRoutingFailedCount = 0
-      return
-    }
-
-    let candidateIDs = Set(candidates.map { $0.listing.id })
-    var next = comparisonCommuteEvidence.filter {
-      candidateIDs.contains($0.key)
-    }
-    var nextSignatures = comparisonEvidenceSignatures.filter {
-      candidateIDs.contains($0.key)
-    }
-    let signatures = Dictionary(uniqueKeysWithValues: candidates.map { item in
-      (
-        item.listing.id,
-        Self.comparisonEvidenceSignature(
-          originLatitude: item.coordinate.latitude,
-          originLongitude: item.coordinate.longitude,
-          targets: targets
-        )
-      )
-    })
-    let pendingCandidates = candidates.filter { item in
-      next[item.listing.id] == nil
-        || nextSignatures[item.listing.id] != signatures[item.listing.id]
-    }
-
-    comparisonCommuteEvidence = next
-    comparisonEvidenceSignatures = nextSignatures
-    rebuildComparisonCommuteCorridors(from: next)
-    comparisonRoutingTotalCount = candidates.count
-    comparisonRoutingCompletedCount = candidates.count - pendingCandidates.count
-    comparisonRoutingFailedCount = next.values.filter {
-      $0.resolvedDestinations < $0.requestedDestinations
-    }.count
-    rebuildMapPresentation()
-
-    guard !pendingCandidates.isEmpty else {
-      isLoadingComparisonTransit = false
       return
     }
 
     isLoadingComparisonTransit = true
-    defer { isLoadingComparisonTransit = false }
-    let batchSize = 3
-
-    for start in stride(from: 0, to: pendingCandidates.count, by: batchSize) {
-      guard !Task.isCancelled else { return }
-      let end = min(start + batchSize, pendingCandidates.count)
-      let batch = Array(pendingCandidates[start..<end])
-      let results = await withTaskGroup(
-        of: (String, SharedComparisonCommuteEvidence?).self,
-        returning: [(String, SharedComparisonCommuteEvidence?)].self
-      ) { group in
-        for item in batch {
-          let listingID = item.listing.id
-          let latitude = item.coordinate.latitude
-          let longitude = item.coordinate.longitude
-          group.addTask {
-            let evidence = await Self.comparisonCommuteEvidence(
-              originLatitude: latitude,
-              originLongitude: longitude,
-              targets: targets
-            )
-            return (listingID, evidence)
-          }
-        }
-
-        var values: [(String, SharedComparisonCommuteEvidence?)] = []
-        for await result in group {
-          values.append(result)
-        }
-        return values
-      }
-
-      for (listingID, evidence) in results {
-        if let evidence {
-          next[listingID] = evidence
-          nextSignatures[listingID] = signatures[listingID]
-          if evidence.resolvedDestinations < evidence.requestedDestinations {
-            comparisonRoutingFailedCount += 1
-          }
-        } else {
-          comparisonRoutingFailedCount += 1
-          if nextSignatures[listingID] != signatures[listingID] {
-            next[listingID] = nil
-            nextSignatures[listingID] = nil
-          }
-        }
-      }
-      comparisonRoutingCompletedCount += results.count
-      comparisonCommuteEvidence = next
-      comparisonEvidenceSignatures = nextSignatures
-      rebuildComparisonCommuteCorridors(from: next)
-      rebuildMapPresentation()
-    }
-  }
-
-  private static func comparisonEvidenceSignature(
-    originLatitude: Double,
-    originLongitude: Double,
-    targets: [SharedComparisonCommuteTarget]
-  ) -> String {
-    let origin = String(
-      format: "%.5f,%.5f",
-      originLatitude,
-      originLongitude
+    comparisonRoutingTotalCount = candidates.count
+    comparisonRoutingCompletedCount = 0
+    comparisonRoutingFailedCount = 0
+    await appModel.commuteService.evaluateListings(
+      scope: commuteScope,
+      city: appModel.board.city,
+      listings: candidates.map { item in
+        HomeboardCommuteService.ListingInput(
+          id: item.listing.id,
+          latitude: item.coordinate.latitude,
+          longitude: item.coordinate.longitude,
+          locationQuery: SharedListingLocation.geocodingQuery(for: item.listing) ?? item.listing.location,
+          manualLine: item.listing.commuteLine
+        )
+      },
+      members: commuteMemberInputs,
+      forceRefresh: forceRefresh
     )
-    let destinations = targets.map { target in
-      [
-        target.id,
-        target.memberName,
-        String(format: "%.5f,%.5f", target.latitude, target.longitude),
-        target.commuteAccess ?? "unknown",
-        String(target.preferredMinutes ?? 0),
-        String(target.maximumMinutes ?? 45),
-      ].joined(separator: "|")
-    }
-    .sorted()
-    .joined(separator: ";")
-    return "\(origin)>\(destinations)"
+    guard !Task.isCancelled else { return }
+    let candidateIDs = Set(candidates.map { $0.listing.id })
+    comparisonCommuteEvidence = appModel.commuteService.evaluations(for: commuteScope)
+      .filter { candidateIDs.contains($0.key) }
+    comparisonRoutingCompletedCount = comparisonCommuteEvidence.values.filter {
+      $0.state != .loading
+    }.count
+    comparisonRoutingFailedCount = comparisonCommuteEvidence.values.filter {
+      $0.state == .failed || ($0.requestedDestinations > 0 && $0.score == nil)
+    }.count
+    rebuildComparisonCommuteCorridors(from: comparisonCommuteEvidence)
+    rebuildMapPresentation()
+    isLoadingComparisonTransit = false
   }
 
   private func loadComparisonRouteOptions(
     for item: SharedListingMapItem
   ) async {
-    let workNodes = comparisonWorkNodes
-    guard isComparisonActive, item.hasReliableCoordinate, !workNodes.isEmpty else {
-      return
-    }
-
-    let listingID = item.listing.id
-    let origin = item.coordinate
-    let routableWorkNodes = workNodes.filter { workNode in
-      !Self.commuteIsCertainlyZero(
-        from: origin,
-        to: workNode.coordinate,
-        preferredMinutes: workNode.preferredMinutes,
-        maximumMinutes: workNode.maximumMinutes
-      )
-    }
-    guard !routableWorkNodes.isEmpty else { return }
-    let existingRouteIDs = Set(
-      comparisonCommuteCorridors
-        .filter { $0.listingID == listingID }
-        .map { "\($0.targetID)|\($0.mode.rawValue)" }
-    )
-    let pendingCount = routableWorkNodes.reduce(0) { count, workNode in
-      count + SharedCommuteMode.allCases.filter {
-        !existingRouteIDs.contains("\(workNode.id)|\($0.rawValue)")
-      }.count
-    }
-    guard pendingCount > 0 else { return }
-
-    loadingComparisonRouteListingID = listingID
+    guard isComparisonActive, item.hasReliableCoordinate, hasCommuteDestinations else { return }
+    loadingComparisonRouteListingID = item.listing.id
     defer {
-      if loadingComparisonRouteListingID == listingID {
+      if loadingComparisonRouteListingID == item.listing.id {
         loadingComparisonRouteListingID = nil
       }
     }
-
-    let originLatitude = origin.latitude
-    let originLongitude = origin.longitude
-    var loaded: [SharedLoadedComparisonRoute] = []
-    for workNode in routableWorkNodes {
-      for mode in SharedCommuteMode.allCases
-        where !existingRouteIDs.contains("\(workNode.id)|\(mode.rawValue)") {
-        guard !Task.isCancelled else { return }
-        let transportType: MKDirectionsTransportType = switch mode {
-        case .transit: .transit
-        case .walking: .walking
-        case .automobile: .automobile
-        }
-        guard let route = await Self.routeResult(
-          from: CLLocationCoordinate2D(
-            latitude: originLatitude,
-            longitude: originLongitude
-          ),
-          to: workNode.coordinate,
-          transportType: transportType
-        ) else { continue }
-        let accessValues: [String?] = workNode.commuteAccesses.isEmpty
-          ? [nil]
-          : workNode.commuteAccesses.map(Optional.some)
-        let easeMinutes = accessValues.map {
-          SharedCommuteRouteLogic.easeAdjustedMinutes(
-            mode: mode,
-            minutes: route.minutes,
-            stepCount: route.stepCount,
-            access: $0
-          )
-        }.max() ?? route.minutes
-        loaded.append(
-          SharedLoadedComparisonRoute(
-            targetID: workNode.id,
-            destination: workNode.destination,
-            memberNames: workNode.memberNames,
-            commuteAccesses: workNode.commuteAccesses,
-            mode: mode,
-            transitKind: route.transitKind,
-            minutes: route.minutes,
-            easeMinutes: easeMinutes,
-            preferredMinutes: workNode.preferredMinutes,
-            maximumMinutes: workNode.maximumMinutes,
-            coordinates: route.coordinates,
-            legs: route.legs
-          )
-        )
-      }
-    }
-
-    var next = comparisonCommuteCorridors
-    for route in loaded {
-      let id = "\(listingID)|\(route.targetID)|\(route.mode.rawValue)"
-      let routeCoordinates = route.coordinates.map {
-        CLLocationCoordinate2D(
-          latitude: $0.latitude,
-          longitude: $0.longitude
-        )
-      }
-      guard routeCoordinates.count >= 2 else { continue }
-      let routeLegs = Self.comparisonRouteLegs(
-        routeID: id,
-        from: route.legs
-      )
-      next.removeAll { $0.id == id }
-      next.append(
-        SharedComparisonCommuteCorridor(
-          id: id,
-          listingID: listingID,
-          targetID: route.targetID,
-          memberNames: route.memberNames,
-          destination: route.destination,
-          commuteAccesses: route.commuteAccesses,
-          mode: route.mode,
-          transitKind: route.transitKind,
-          minutes: route.minutes,
-          easeMinutes: route.easeMinutes,
-          preferredMinutes: route.preferredMinutes,
-          maximumMinutes: route.maximumMinutes,
-          polyline: MKPolyline(
-            coordinates: routeCoordinates,
-            count: routeCoordinates.count
-          ),
-          legs: routeLegs
-        )
-      )
-    }
-    comparisonCommuteCorridors = next
-  }
-
-  private static func comparisonCommuteEvidence(
-    originLatitude: Double,
-    originLongitude: Double,
-    targets: [SharedComparisonCommuteTarget]
-  ) async -> SharedComparisonCommuteEvidence? {
-    let origin = CLLocationCoordinate2D(
-      latitude: originLatitude,
-      longitude: originLongitude
+    let targets = await appModel.commuteService.resolvedTargets(
+      scope: commuteScope,
+      city: appModel.board.city,
+      members: commuteMemberInputs
     )
-    var durations: [Int] = []
-    var easeDurations: [Int] = []
-    var memberScores: [Double] = []
-    var evaluatedDestinationCount = 0
-    var suppressedLongRouteDestinations = 0
-    var usedWalkingFallback = false
-    var displayedRouteIDs = Set<String>()
-    var scoredRouteIDs = Set<String>()
-    var routeSnapshots: [SharedComparisonRouteSnapshot] = []
-
-    for target in targets {
-      guard !Task.isCancelled else { return nil }
-      let destination = CLLocationCoordinate2D(
-        latitude: target.latitude,
-        longitude: target.longitude
-      )
-      let preferred = max(target.preferredMinutes ?? 0, 0)
-      let maximum = max(
-        target.maximumMinutes ?? 45,
-        preferred + 5
-      )
-      if commuteIsCertainlyZero(
-        from: origin,
-        to: destination,
-        preferredMinutes: target.preferredMinutes,
-        maximumMinutes: target.maximumMinutes
-      ) {
-        evaluatedDestinationCount += 1
-        suppressedLongRouteDestinations += 1
-        memberScores.append(0)
-        continue
-      }
-      let requestedModes = backgroundRouteModes(for: target.commuteAccess)
-
-      var visibleRoutes: [(SharedCommuteMode, SharedRouteResult)] = []
-      for mode in requestedModes {
-        guard !Task.isCancelled else { return nil }
-        let transportType: MKDirectionsTransportType = switch mode {
-        case .transit: .transit
-        case .walking: .walking
-        case .automobile: .automobile
-        }
-        guard let route = await routeResult(
-          from: origin,
-          to: destination,
-          transportType: transportType
-        ) else { continue }
-        visibleRoutes.append((mode, route))
-        if SharedCommuteRouteLogic.permits(mode, access: target.commuteAccess) {
-          break
-        }
-      }
-      routeSnapshots.append(
-        contentsOf: visibleRoutes.map { mode, route in
-          SharedComparisonRouteSnapshot(
-            targetID: target.id,
-            memberName: target.memberName,
-            destination: target.destination,
-            commuteAccess: target.commuteAccess,
-            mode: mode,
-            transitKind: route.transitKind,
-            minutes: route.minutes,
-            easeMinutes: SharedCommuteRouteLogic.easeAdjustedMinutes(
-              mode: mode,
-              minutes: route.minutes,
-              stepCount: route.stepCount,
-              access: target.commuteAccess
-            ),
-            preferredMinutes: preferred,
-            maximumMinutes: maximum,
-            coordinates: route.coordinates,
-            legs: route.legs
-          )
-        }
-      )
-
-      let eligibleRoutes = visibleRoutes.filter {
-        SharedCommuteRouteLogic.permits($0.0, access: target.commuteAccess)
-      }
-      let primaryRoute = eligibleRoutes.min(by: {
-        SharedCommuteRouteLogic.easeAdjustedMinutes(
-          mode: $0.0,
-          minutes: $0.1.minutes,
-          stepCount: $0.1.stepCount,
-          access: target.commuteAccess
-        ) < SharedCommuteRouteLogic.easeAdjustedMinutes(
-          mode: $1.0,
-          minutes: $1.1.minutes,
-          stepCount: $1.1.stepCount,
-          access: target.commuteAccess
-        )
-      })
-      if let routeToDisplay = primaryRoute ?? visibleRoutes.first {
-        let displayEaseMinutes = SharedCommuteRouteLogic.easeAdjustedMinutes(
-          mode: routeToDisplay.0,
-          minutes: routeToDisplay.1.minutes,
-          stepCount: routeToDisplay.1.stepCount,
-          access: target.commuteAccess
-        )
-        let displayScore = SharedComparisonMath.commuteScore(
-          minutes: displayEaseMinutes,
-          preferredMinutes: target.preferredMinutes,
-          maximumMinutes: target.maximumMinutes
-        )
-        if displayScore > 0 {
-          displayedRouteIDs.insert("\(target.id)|\(routeToDisplay.0.rawValue)")
-        }
-      }
-      guard let primaryRoute else {
-        continue
-      }
-      evaluatedDestinationCount += 1
-      if primaryRoute.0 == .walking {
-        usedWalkingFallback = true
-      }
-      scoredRouteIDs.insert("\(target.id)|\(primaryRoute.0.rawValue)")
-      durations.append(primaryRoute.1.minutes)
-      let easeMinutes = SharedCommuteRouteLogic.easeAdjustedMinutes(
-        mode: primaryRoute.0,
-        minutes: primaryRoute.1.minutes,
-        stepCount: primaryRoute.1.stepCount,
-        access: target.commuteAccess
-      )
-      easeDurations.append(easeMinutes)
-      memberScores.append(SharedComparisonMath.commuteScore(
-        minutes: easeMinutes,
-        preferredMinutes: target.preferredMinutes,
-        maximumMinutes: target.maximumMinutes
-      ))
-    }
-
-    guard !memberScores.isEmpty || !routeSnapshots.isEmpty else { return nil }
-    let resolvedEveryDestination = evaluatedDestinationCount == targets.count
-    let score: Double?
-    if resolvedEveryDestination,
-       let worstScore = memberScores.min() {
-      let averageScore = memberScores.reduce(0, +) / Double(memberScores.count)
-      score = averageScore * 0.72 + worstScore * 0.28
-    } else {
-      score = nil
-    }
-    let averageMinutes = durations.isEmpty
-      ? 0
-      : Int((Double(durations.reduce(0, +)) / Double(durations.count)).rounded())
-    let averageEaseMinutes = easeDurations.isEmpty
-      ? 0
-      : Int((Double(easeDurations.reduce(0, +)) / Double(easeDurations.count)).rounded())
-    return SharedComparisonCommuteEvidence(
-      score: score,
-      averageMinutes: averageMinutes,
-      averageEaseMinutes: averageEaseMinutes,
-      resolvedDestinations: evaluatedDestinationCount,
-      requestedDestinations: targets.count,
-      suppressedLongRouteDestinations: suppressedLongRouteDestinations,
-      usedWalkingFallback: usedWalkingFallback,
-      displayedRouteIDs: displayedRouteIDs,
-      scoredRouteIDs: scoredRouteIDs,
-      routeSnapshots: routeSnapshots
+    let evidence = await appModel.commuteService.evidence(
+      scope: commuteScope,
+      listingID: item.listing.id,
+      manualLine: item.listing.commuteLine,
+      origin: item.coordinate,
+      targets: targets,
+      expectedDestinationCount: routableWorkMemberCount,
+      includeAlternatives: true
     )
-  }
-
-  private static func commuteIsCertainlyZero(
-    from origin: CLLocationCoordinate2D,
-    to destination: CLLocationCoordinate2D,
-    preferredMinutes: Int?,
-    maximumMinutes: Int?
-  ) -> Bool {
-    let directDistance = CLLocation(
-      latitude: origin.latitude,
-      longitude: origin.longitude
-    ).distance(from: CLLocation(
-      latitude: destination.latitude,
-      longitude: destination.longitude
-    ))
-    // Use an intentionally generous 120 mph lower bound. If even that
-    // impossible best case scores zero, a real ground route can safely score
-    // zero without asking MapKit to draw a cross-country polyline.
-    let optimisticMetersPerMinute = 120.0 * 1_609.344 / 60.0
-    let optimisticMinutes = max(
-      Int(ceil(directDistance / optimisticMetersPerMinute)),
-      1
-    )
-    return SharedComparisonMath.commuteScore(
-      minutes: optimisticMinutes,
-      preferredMinutes: preferredMinutes,
-      maximumMinutes: maximumMinutes
-    ) == 0
-  }
-
-  private static func backgroundRouteModes(
-    for commuteAccess: String?
-  ) -> [SharedCommuteMode] {
-    switch commuteAccess {
-    case "car":
-      return [.automobile, .transit, .walking]
-    case "transit":
-      return [.transit, .walking, .automobile]
-    default:
-      return [.transit, .automobile, .walking]
-    }
+    guard !Task.isCancelled else { return }
+    comparisonCommuteEvidence[item.listing.id] = evidence
+    rebuildComparisonCommuteCorridors(from: comparisonCommuteEvidence)
+    rebuildMapPresentation()
   }
 
   private func rebuildComparisonCommuteCorridors(
@@ -2717,6 +2109,7 @@ struct SharedSearchMapView: View {
         mode: snapshot.mode,
         transitKind: routes.compactMap { $0.snapshot.transitKind }.first,
         minutes: minutes,
+        distanceMeters: routes.compactMap { $0.snapshot.distanceMeters }.max(),
         easeMinutes: easeMinutes,
         preferredMinutes: preferred,
         maximumMinutes: max(maximum, preferred + 5),
@@ -2753,295 +2146,6 @@ struct SharedSearchMapView: View {
         calloutCoordinate: coordinates[coordinates.count / 2]
       )
     }
-  }
-
-  private static func routeResult(
-    from origin: CLLocationCoordinate2D,
-    to destination: CLLocationCoordinate2D,
-    transportType: MKDirectionsTransportType
-  ) async -> SharedRouteResult? {
-    let cacheKey = String(
-      format: "%.5f,%.5f|%.5f,%.5f|%lu",
-      origin.latitude,
-      origin.longitude,
-      destination.latitude,
-      destination.longitude,
-      transportType.rawValue
-    )
-    return await SharedComparisonRouteCache.shared.value(for: cacheKey) {
-      await routeResultWithRetries(
-        from: origin,
-        to: destination,
-        transportType: transportType
-      )
-    }
-  }
-
-  private static func routeResultWithRetries(
-    from origin: CLLocationCoordinate2D,
-    to destination: CLLocationCoordinate2D,
-    transportType: MKDirectionsTransportType
-  ) async -> SharedRouteResult? {
-    let maximumAttempts = 3
-    for attempt in 0..<maximumAttempts {
-      guard !Task.isCancelled else { return nil }
-      let attemptResult = await uncachedRouteResult(
-        from: origin,
-        to: destination,
-        transportType: transportType
-      )
-      switch attemptResult {
-      case .success(let result):
-        return result
-      case .terminalFailure:
-        return nil
-      case .retryableFailure:
-        break
-      }
-      guard attempt < maximumAttempts - 1 else { break }
-      let delay = UInt64(350_000_000 * (1 << attempt))
-      try? await Task.sleep(nanoseconds: delay)
-    }
-    return nil
-  }
-
-  private static func uncachedRouteResult(
-    from origin: CLLocationCoordinate2D,
-    to destination: CLLocationCoordinate2D,
-    transportType: MKDirectionsTransportType
-  ) async -> SharedRouteAttemptResult {
-    let request = MKDirections.Request()
-    request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
-    request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
-    request.transportType = transportType
-    request.requestsAlternateRoutes = false
-    if transportType == .transit {
-      request.departureDate = Date()
-    }
-    let response: MKDirections.Response
-    do {
-      response = try await MKDirections(request: request).calculate()
-    } catch {
-      return routeFailureIsRetryable(error)
-        ? .retryableFailure
-        : .terminalFailure
-    }
-    guard let route = response.routes.min(by: {
-      $0.expectedTravelTime < $1.expectedTravelTime
-    }) else { return .terminalFailure }
-    let coordinates = routeCoordinates(from: route.polyline)
-    guard coordinates.count >= 2 else { return .terminalFailure }
-    let fallbackMode = commuteMode(
-      for: route.transportType,
-      fallback: commuteMode(for: transportType, fallback: .transit)
-    )
-    let legs = routeLegResults(
-      for: route,
-      fallbackMode: fallbackMode
-    )
-    let primaryTransitKind = legs
-      .filter { $0.mode == .transit }
-      .max { $0.coordinates.count < $1.coordinates.count }?
-      .transitKind
-    return .success(
-      SharedRouteResult(
-        minutes: max(1, Int((route.expectedTravelTime / 60).rounded())),
-        stepCount: route.steps.count,
-        transitKind: primaryTransitKind,
-        coordinates: coordinates,
-        legs: legs
-      )
-    )
-  }
-
-  private static func routeFailureIsRetryable(_ error: Error) -> Bool {
-    if error is CancellationError {
-      return false
-    }
-    if let mapError = error as? MKError {
-      switch mapError.code {
-      case .unknown, .serverFailure, .loadingThrottled:
-        return true
-      case .placemarkNotFound, .directionsNotFound, .decodingFailed:
-        return false
-      @unknown default:
-        return false
-      }
-    }
-    if let urlError = error as? URLError {
-      switch urlError.code {
-      case .timedOut,
-           .cannotFindHost,
-           .cannotConnectToHost,
-           .networkConnectionLost,
-           .dnsLookupFailed,
-           .notConnectedToInternet,
-           .resourceUnavailable:
-        return true
-      default:
-        return false
-      }
-    }
-    return true
-  }
-
-  private static func routeLegResults(
-    for route: MKRoute,
-    fallbackMode: SharedCommuteMode
-  ) -> [SharedRouteLegResult] {
-    var drafts: [SharedRouteLegDraft] = []
-    for step in route.steps {
-      let coordinates = routeCoordinates(from: step.polyline)
-      guard coordinates.count >= 2 else { continue }
-      let mode = commuteMode(
-        for: step.transportType,
-        fallback: fallbackMode,
-        instructions: step.instructions
-      )
-      let transitKind = mode == .transit
-        ? inferredTransitKind(from: [step])
-        : nil
-      if let lastIndex = drafts.indices.last,
-         drafts[lastIndex].mode == mode,
-         drafts[lastIndex].transitKind == transitKind {
-        drafts[lastIndex].distance += max(step.distance, 0)
-        drafts[lastIndex].coordinates = joinedRouteCoordinates(
-          drafts[lastIndex].coordinates,
-          coordinates
-        )
-      } else {
-        drafts.append(
-          SharedRouteLegDraft(
-            mode: mode,
-            transitKind: transitKind,
-            distance: max(step.distance, 0),
-            coordinates: coordinates
-          )
-        )
-      }
-    }
-
-    if drafts.isEmpty {
-      let coordinates = routeCoordinates(from: route.polyline)
-      guard coordinates.count >= 2 else { return [] }
-      drafts = [
-        SharedRouteLegDraft(
-          mode: fallbackMode,
-          transitKind: fallbackMode == .transit
-            ? inferredTransitKind(from: route.steps)
-            : nil,
-          distance: max(route.distance, 1),
-          coordinates: coordinates
-        )
-      ]
-    }
-
-    let weights = drafts.map { draft -> Double in
-      let metersPerSecond: Double = switch draft.mode {
-      case .walking: 1.3
-      case .automobile: 8.5
-      case .transit:
-        switch draft.transitKind {
-        case .bus: 5.5
-        case .train: 11.0
-        case .ferry: 8.0
-        case .transit, nil: 7.0
-        }
-      }
-      return max(draft.distance, 25) / metersPerSecond
-    }
-    let totalWeight = max(weights.reduce(0, +), 1)
-    let totalSeconds = max(route.expectedTravelTime, 60)
-
-    return drafts.enumerated().map { index, draft in
-      SharedRouteLegResult(
-        mode: draft.mode,
-        transitKind: draft.transitKind,
-        minutes: max(
-          1,
-          Int((totalSeconds * weights[index] / totalWeight / 60).rounded())
-        ),
-        coordinates: draft.coordinates
-      )
-    }
-  }
-
-  private static func commuteMode(
-    for transportType: MKDirectionsTransportType,
-    fallback: SharedCommuteMode,
-    instructions: String = ""
-  ) -> SharedCommuteMode {
-    if transportType == .walking
-      || instructions.localizedCaseInsensitiveContains("walk") {
-      return .walking
-    }
-    if transportType == .automobile {
-      return .automobile
-    }
-    if transportType == .transit {
-      return .transit
-    }
-    return fallback
-  }
-
-  private static func routeCoordinates(
-    from polyline: MKPolyline
-  ) -> [SharedRouteCoordinate] {
-    let points = polyline.points()
-    return (0..<polyline.pointCount).map {
-      SharedRouteCoordinate(
-        latitude: points[$0].coordinate.latitude,
-        longitude: points[$0].coordinate.longitude
-      )
-    }
-  }
-
-  private static func joinedRouteCoordinates(
-    _ leading: [SharedRouteCoordinate],
-    _ trailing: [SharedRouteCoordinate]
-  ) -> [SharedRouteCoordinate] {
-    guard let last = leading.last,
-          let first = trailing.first,
-          abs(last.latitude - first.latitude) < 0.000_001,
-          abs(last.longitude - first.longitude) < 0.000_001
-    else { return leading + trailing }
-    return leading + trailing.dropFirst()
-  }
-
-  private static func inferredTransitKind(
-    from steps: [MKRoute.Step]
-  ) -> SharedTransitKind {
-    let routeText = steps
-      .flatMap { step in [step.instructions, step.notice ?? ""] }
-      .joined(separator: " ")
-      .lowercased()
-
-    if routeText.contains("bus") || routeText.contains("coach") {
-      return .bus
-    }
-    if routeText.contains("ferry") || routeText.contains("boat") {
-      return .ferry
-    }
-    if routeText.contains("train")
-      || routeText.contains("rail")
-      || routeText.contains("subway")
-      || routeText.contains("metro")
-      || routeText.contains("tram") {
-      return .train
-    }
-    return .transit
-  }
-
-  private static func commuteScore(
-    minutes: Int,
-    preferredMinutes: Int?,
-    maximumMinutes: Int?
-  ) -> Double {
-    SharedComparisonMath.commuteScore(
-      minutes: minutes,
-      preferredMinutes: preferredMinutes,
-      maximumMinutes: maximumMinutes
-    )
   }
 
   private func filterCardsToCluster(_ cluster: SharedListingMapCluster) {
@@ -3134,104 +2238,39 @@ struct SharedSearchMapView: View {
       commuteRoutes = []
       return
     }
-
-    let destinations = appModel.board.members.compactMap {
-      member -> (name: String, target: String, colorKey: String, access: String?)? in
-      guard member.commuteAccess != "remote", member.commuteAccess != "skip" else {
-        return nil
-      }
-      let target = SharedListingText.commuteDestination(member.commuteLine)
-      guard !target.isEmpty else { return nil }
-      return (
-        member.name,
-        target,
-        member.userId.isEmpty ? member.name : member.userId,
-        member.commuteAccess
-      )
-    }
-    guard !destinations.isEmpty else {
-      commuteRoutes = []
-      return
-    }
-
     isLoadingRoutes = true
     defer { isLoadingRoutes = false }
-    var next: [SharedCommuteRoute] = []
-    for destination in destinations {
-      guard let target = await resolveCoordinate(for: destination.target) else { continue }
-      async let transitRequest = Self.mapRoute(
-        from: origin,
-        to: target,
-        transportType: .transit
-      )
-      async let automobileRequest = destination.access == "transit"
-        ? nil
-        : Self.mapRoute(from: origin, to: target, transportType: .automobile)
-      let directDistance = CLLocation(
-        latitude: origin.latitude,
-        longitude: origin.longitude
-      ).distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
-      async let walkingRequest = directDistance <= 3_200
-        ? Self.mapRoute(from: origin, to: target, transportType: .walking)
-        : nil
-
-      let transitRoute = await transitRequest
-      let automobileRoute = await automobileRequest
-      let walkingCandidate = await walkingRequest
-      let walkingRoute = walkingCandidate.flatMap {
-        $0.expectedTravelTime <= 30 * 60 ? $0 : nil
-      }
-      let usableRoutes: [(SharedCommuteMode, MKRoute)] = [
-        transitRoute.map { (.transit, $0) },
-        automobileRoute.map { (.automobile, $0) },
-        walkingRoute.map { (.walking, $0) }
-      ].compactMap { $0 }
-      guard let fastest = usableRoutes.min(by: {
-        $0.1.expectedTravelTime < $1.1.expectedTravelTime
-      }) else { continue }
-      next.append(
-        SharedCommuteRoute(
-          memberName: destination.name,
-          destination: destination.target,
-          route: fastest.1,
-          color: SharedMemberColors.color(for: destination.colorKey),
-          mode: fastest.0
-        )
+    let targets = await appModel.commuteService.resolvedTargets(
+      scope: commuteScope,
+      city: appModel.board.city,
+      members: commuteMemberInputs
+    )
+    let evidence = await appModel.commuteService.evidence(
+      scope: commuteScope,
+      listingID: listing.id,
+      manualLine: listing.commuteLine,
+      origin: origin,
+      targets: targets,
+      expectedDestinationCount: routableWorkMemberCount
+    )
+    guard !Task.isCancelled else { return }
+    commuteRoutes = evidence.routeSnapshots.compactMap { snapshot in
+      let routeID = "\(snapshot.targetID)|\(snapshot.mode.rawValue)"
+      guard evidence.scoredRouteIDs.contains(routeID) else { return nil }
+      let coordinates = snapshot.coordinates.map(\.mapCoordinate)
+      guard coordinates.count >= 2 else { return nil }
+      return SharedCommuteRoute(
+        id: "\(snapshot.memberID)|\(routeID)",
+        memberName: snapshot.memberName,
+        destination: snapshot.destination,
+        polyline: MKPolyline(coordinates: coordinates, count: coordinates.count),
+        color: SharedMemberColors.color(for: snapshot.memberID),
+        mode: snapshot.mode,
+        minutes: snapshot.minutes,
+        distanceMeters: snapshot.distanceMeters,
+        source: snapshot.source
       )
     }
-    commuteRoutes = next
-  }
-
-  private static func mapRoute(
-    from origin: CLLocationCoordinate2D,
-    to destination: CLLocationCoordinate2D,
-    transportType: MKDirectionsTransportType
-  ) async -> MKRoute? {
-    for attempt in 0..<3 {
-      guard !Task.isCancelled else { return nil }
-      let request = MKDirections.Request()
-      request.source = MKMapItem(placemark: MKPlacemark(coordinate: origin))
-      request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
-      request.transportType = transportType
-      request.requestsAlternateRoutes = false
-      if transportType == .transit {
-        request.departureDate = Date()
-      }
-      do {
-        let routes = try await MKDirections(request: request).calculate().routes
-        if let route = routes.min(by: {
-          $0.expectedTravelTime < $1.expectedTravelTime
-        }) {
-          return route
-        }
-      } catch {
-        guard routeFailureIsRetryable(error) else { return nil }
-      }
-      if attempt < 2 {
-        try? await Task.sleep(nanoseconds: UInt64(350_000_000 * (1 << attempt)))
-      }
-    }
-    return nil
   }
 
   private func resolveCoordinate(for destination: String) async -> CLLocationCoordinate2D? {
@@ -3413,6 +2452,9 @@ struct SharedShortlistView: View {
     }
     .onChange(of: appModel.board.shortlist.map(\.id)) { _, ids in
       comparisonSelection.formIntersection(Set(ids))
+    }
+    .task(id: sharedCommuteRefreshSignature(appModel)) {
+      await refreshSharedCommutes(appModel)
     }
     .alert("Compare up to 3 places", isPresented: $showsComparisonLimit) {
       Button("Got it", role: .cancel) { }
@@ -6056,7 +5098,7 @@ private struct SharedComparisonTierLegend: View {
         if commuteAvailable {
           Text(
             isLoadingCommutes
-              ? "\(routedListingCount) live routes ready · requesting the rest"
+              ? "\(routedListingCount) Apple routes ready · requesting the rest"
               : "\(routedListingCount)/\(max(routingTotalCount, listingCount)) homes · \(routedWorkMemberCount) commute route\(routedWorkMemberCount == 1 ? "" : "s") each"
           )
             .foregroundStyle(HomeboardPalette.primaryText)
@@ -6077,7 +5119,7 @@ private struct SharedComparisonTierLegend: View {
         )
         .tint(HomeboardPalette.accent)
       } else if routingFailedCount > 0 {
-        Text("\(routingFailedCount) home\(routingFailedCount == 1 ? "" : "s") had no live Apple route after retries")
+        Text("\(routingFailedCount) home\(routingFailedCount == 1 ? "" : "s") had no usable Apple route after retries")
           .font(.system(size: 9, weight: .semibold))
           .foregroundStyle(HomeboardPalette.tertiaryText)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -6264,7 +5306,7 @@ private struct SharedComparisonNodeRouteCard: View {
             }
 
             if let recommended = group.recommendedRoute {
-              Text("Best usable route: \(recommended.transportLabel) · \(formattedMinutes(recommended.minutes))")
+              Text("Best usable route: \(recommended.transportLabel) · \(formattedMinutes(recommended.minutes)) · \(recommended.distanceLabel)")
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(HomeboardPalette.success)
             }
@@ -6322,7 +5364,7 @@ private struct SharedComparisonNodeRouteCard: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(
-      "\(route.transportLabel), \(route.minutes) minutes, \(isRecommended ? "best usable route" : route.tier.accessibilityLabel)"
+      "\(route.transportLabel), \(route.minutes) minutes, \(route.distanceLabel), \(isRecommended ? "best usable route" : route.tier.accessibilityLabel)"
     )
   }
 
@@ -6528,6 +5570,10 @@ private struct SharedComparisonNodeDetailSheet: View {
         Text(formattedMinutes(route.minutes))
           .font(.subheadline.weight(.heavy))
           .foregroundStyle(route.tier.color)
+          .monospacedDigit()
+        Text(route.distanceLabel)
+          .font(.system(size: 8, weight: .semibold))
+          .foregroundStyle(HomeboardPalette.tertiaryText)
           .monospacedDigit()
         if route.easeMinutes >= 999 {
           Text("not usable by all")
@@ -6959,7 +6005,7 @@ private struct SharedComparisonPrioritySheet: View {
 
           Text(
             commuteAvailable
-              ? "Weights are normalized to 100%. Comparison mode queues live Apple routes for every listing and saved workplace, retries failures, and keeps completed routes cached until an endpoint changes. Other missing facts stay unknown."
+              ? "Weights are normalized to 100%. Comparison mode asks Apple Maps for routes for every listing and saved workplace, retries transient failures, and labels fresh, cached, or stale evidence. Other missing facts stay unknown."
               : "Weights are normalized to 100% without commute. Commute stays excluded until someone saves an office neighborhood or address and does not skip matching."
           )
           .font(.caption2)
@@ -7117,6 +6163,7 @@ private struct SharedFilterField: View {
 }
 
 private struct SharedSearchListSurface: View {
+  @Environment(AppModel.self) private var appModel
   let listings: [ListingPreview]
   let comparisonScores: [String: SharedListingComparisonScore]
   let topListingIDs: Set<String>
@@ -7188,10 +6235,10 @@ private struct SharedSearchListSurface: View {
                       .font(.caption)
                       .foregroundStyle(HomeboardPalette.secondaryText)
                       .lineLimit(2)
-                    Label(listing.commuteLine, systemImage: "tram.fill")
+                    Label(sharedCommuteSummary(listing, appModel: appModel), systemImage: "tram.fill")
                       .font(.caption2.weight(.semibold))
                       .foregroundStyle(HomeboardPalette.accent)
-                      .lineLimit(1)
+                      .lineLimit(2)
                     if let offer = listing.activeOffer {
                       SharedActiveOfferBanner(offer: offer, compact: true)
                     }
@@ -7372,7 +6419,7 @@ private struct SharedCommuteRouteStrip: View {
               Text(route.memberName)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(HomeboardPalette.primaryText)
-              Text("\(route.mode.label) · \(route.duration) · \(route.distance)")
+              Text("\(route.mode.label) · \(route.duration) · \(route.distance) · \(route.source == .appleLive ? "live" : route.source == .appleStaleCache ? "stale cache" : "cached")")
                 .font(.caption2)
                 .foregroundStyle(HomeboardPalette.secondaryText)
             }
@@ -7613,6 +6660,7 @@ private struct Triangle: Shape {
 }
 
 private struct SharedMapPreviewCard: View {
+  @Environment(AppModel.self) private var appModel
   let listing: ListingPreview
   let onOpen: () -> Void
 
@@ -7646,8 +6694,8 @@ private struct SharedMapPreviewCard: View {
 
           HStack(spacing: 5) {
             Image(systemName: "tram.fill")
-            Text(listing.commuteLine)
-              .lineLimit(1)
+            Text(sharedCommuteSummary(listing, appModel: appModel))
+              .lineLimit(2)
           }
           .font(.caption2.weight(.semibold))
           .foregroundStyle(HomeboardPalette.accent)
@@ -7966,6 +7014,7 @@ private struct SharedFilterBar: View {
 }
 
 private struct SharedShortlistRow: View {
+  @Environment(AppModel.self) private var appModel
   let listing: ListingPreview
   let memberCount: Int
   let isSelectedForComparison: Bool
@@ -7999,10 +7048,10 @@ private struct SharedShortlistRow: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
               .lineLimit(1)
 
-            Label(listing.commuteLine, systemImage: "tram.fill")
+            Label(sharedCommuteSummary(listing, appModel: appModel), systemImage: "tram.fill")
               .font(.caption2.weight(.semibold))
               .foregroundStyle(HomeboardPalette.accent)
-              .lineLimit(1)
+              .lineLimit(2)
 
             HStack(spacing: 7) {
               SharedMiniAvatars(count: memberCount)
@@ -8212,8 +7261,11 @@ struct SharedListingDetailView: View {
             SharedListingScamWarningPanel(warning: warning)
           }
 
-          HStack(spacing: 10) {
-            SharedDetailMetric(icon: "tram.fill", value: listing.commuteLine)
+          VStack(spacing: 10) {
+            SharedDetailMetric(
+              icon: "tram.fill",
+              value: sharedCommuteSummary(liveListing, appModel: appModel)
+            )
             SharedDetailMetric(
               icon: "person.3.fill",
               value: "\(max(appModel.board.members.filter { $0.status != "commute point" }.count, 1)) weighing in"
@@ -10695,6 +9747,7 @@ struct AddSharedListingSheet: View {
 
 private struct SharedComparisonSheet: View {
   let listings: [ListingPreview]
+  @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
@@ -10718,7 +9771,7 @@ private struct SharedComparisonSheet: View {
                 .foregroundStyle(HomeboardPalette.primaryText)
                 .lineLimit(2)
 
-              Label(listing.commuteLine, systemImage: "tram.fill")
+              Label(sharedCommuteSummary(listing, appModel: appModel), systemImage: "tram.fill")
                 .font(.caption)
                 .foregroundStyle(HomeboardPalette.accent)
 

@@ -35,6 +35,22 @@ const listingModelSource = readFileSync(
   "utf8",
 );
 
+const commuteServiceSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardNative/Sources/HomeboardCommuteService.swift",
+  ),
+  "utf8",
+);
+
+const boardShellSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "ios/HomeboardNative/HomeboardNative/Sources/BoardShellView.swift",
+  ),
+  "utf8",
+);
+
 const mobilePayloadSource = readFileSync(
   resolve(process.cwd(), "lib/mobile-payloads.ts"),
   "utf8",
@@ -47,6 +63,11 @@ const boardDataSource = readFileSync(
 
 const mobileListingRouteSource = readFileSync(
   resolve(process.cwd(), "app/api/mobile/boards/[id]/listings/route.ts"),
+  "utf8",
+);
+
+const mobileBoardRouteSource = readFileSync(
+  resolve(process.cwd(), "app/api/mobile/boards/[id]/route.ts"),
   "utf8",
 );
 
@@ -213,7 +234,7 @@ test("comparison uses tiered score regions and shows scored routes to work", () 
   assert.doesNotMatch(mapSource, /MapPolygon\(/);
   assert.doesNotMatch(mapSource, /MKGeoJSONDecoder/);
   assert.doesNotMatch(mapSource, /comparisonRegionCells/);
-  assert.match(mapSource, /let points = polyline\.points\(\)/);
+  assert.match(commuteServiceSource, /let points = polyline\.points\(\)/);
   assert.match(mapSource, /MKPolyline\([\s\S]*coordinates: routeCoordinates/);
   assert.doesNotMatch(mapSource, /SharedRecommendedRegionMarker/);
   assert.doesNotMatch(mapSource, /SharedComparisonMapLegend/);
@@ -223,44 +244,48 @@ test("comparison uses tiered score regions and shows scored routes to work", () 
   assert.match(mapSource, /if !isComparisonActive \{[\s\S]*loadMapInventory/);
   assert.match(mapSource, /missing facts stay unknown/i);
   assert.match(mapSource, /suppressedLongRouteDestinations/);
-  assert.match(mapSource, /if displayScore > 0/);
-  assert.match(mapSource, /optimisticMetersPerMinute = 120\.0/);
+  assert.match(commuteServiceSource, /if memberScore > 0/);
+  assert.match(commuteServiceSource, /optimisticMetersPerMinute = 120\.0/);
 });
 
-test("route finding uses uniform solid paths, live fallbacks, and transport labels", () => {
-  assert.match(mapSource, /transportType: \.transit/);
-  assert.match(mapSource, /transportType: \.walking/);
-  assert.match(mapSource, /transportType: \.automobile/);
+test("one typed MapKit evidence service drives routes, comparison, shortlist, and risk", () => {
+  assert.match(commuteServiceSource, /protocol HomeboardCommuteRoutingProviding/);
+  assert.match(commuteServiceSource, /MKDirections\(request: request\)\.calculate\(\)/);
+  assert.match(commuteServiceSource, /case \.transit: \.transit/);
+  assert.match(commuteServiceSource, /case \.walking: \.walking/);
+  assert.match(commuteServiceSource, /case \.automobile: \.automobile/);
+  assert.match(commuteServiceSource, /HomeboardCommuteEvidenceState/);
+  assert.match(commuteServiceSource, /HomeboardCommuteEvidenceSource/);
+  assert.match(commuteServiceSource, /HomeboardCommuteFreshness/);
+  assert.match(commuteServiceSource, /destinationSignature/);
+  assert.match(commuteServiceSource, /distanceMeters/);
+  assert.match(commuteServiceSource, /computedAt/);
   assert.match(mapSource, /pointsOfInterest: \.excludingAll/);
   assert.match(mapSource, /preferredMinutes: member\.preferredCommuteMinutes/);
   assert.match(mapSource, /maximumMinutes: member\.maxCommuteMinutes/);
   assert.match(mapSource, /commuteAccess: member\.commuteAccess/);
-  assert.match(mapSource, /averageScore \* 0\.72 \+ worstScore \* 0\.28/);
+  assert.match(commuteServiceSource, /average \* 0\.72 \+ worst \* 0\.28/);
   assert.match(mapSource, /let commuteEvidence = comparisonCommuteEvidence\[listing\.id\]/);
   assert.match(
     mapSource,
     /let commuteValue = comparisonWorkNodes\.isEmpty\s*\? nil\s*: commuteEvidence\?\.score/,
   );
-  assert.match(mapSource, /SharedCommuteRouteLogic\.permits/);
-  assert.match(mapSource, /easeAdjustedMinutes/);
-  assert.match(mapSource, /stepCount: route\.steps\.count/);
-  assert.match(mapSource, /access == nil \|\| access == "car" \|\| access == "flexible"/);
-  assert.match(mapSource, /let eligibleRoutes = visibleRoutes\.filter/);
-  assert.match(mapSource, /eligibleRoutes\.min\(by:/);
-  assert.match(mapSource, /backgroundRouteModes\(for: target\.commuteAccess\)/);
-  assert.match(mapSource, /return \[\.automobile, \.transit, \.walking\]/);
-  assert.match(mapSource, /return \[\.transit, \.walking, \.automobile\]/);
-  assert.doesNotMatch(mapSource, /transitRoute \?\? walkingRoute \?\? roadRoute/);
-  assert.match(mapSource, /maximumMinutes: max\(maximum, preferred \+ 5\)/);
+  assert.match(commuteServiceSource, /SharedCommuteRouteLogic\.permits/);
+  assert.match(commuteServiceSource, /easeAdjustedMinutes/);
+  assert.match(commuteServiceSource, /stepCount: route\.steps\.count/);
+  assert.match(commuteServiceSource, /access == nil \|\| access == "car" \|\| access == "flexible"/);
+  assert.match(commuteServiceSource, /let eligible = visible\.filter/);
+  assert.match(commuteServiceSource, /case "transit":[\s\S]*ordered = \[\.transit, \.walking\]/);
+  assert.doesNotMatch(commuteServiceSource, /case "transit":[\s\S]{0,100}\.automobile/);
   assert.match(mapSource, /SharedComparisonNodeRouteCard/);
-  assert.match(mapSource, /SharedCommuteMode\.allCases/);
+  assert.match(commuteServiceSource, /enum SharedCommuteMode: String, CaseIterable/);
   assert.match(mapSource, /Checking drive, transit, and walking times/);
   assert.match(mapSource, /Dismiss route details/);
   assert.match(mapSource, /Best usable route/);
   assert.match(mapSource, /route\.mode == \.walking && route\.minutes > 30/);
-  assert.match(mapSource, /case \.automobile: 0/);
-  assert.match(mapSource, /case \.transit: 1/);
-  assert.match(mapSource, /case \.walking: 2/);
+  assert.match(commuteServiceSource, /case \.automobile: 0/);
+  assert.match(commuteServiceSource, /case \.transit: 1/);
+  assert.match(commuteServiceSource, /case \.walking: 2/);
   assert.doesNotMatch(mapSource, /estimatedComparisonCommuteScore/);
   assert.doesNotMatch(mapSource, /estimatedRouteResult/);
   assert.doesNotMatch(mapSource, /usedEstimatedFallback|isEstimated/);
@@ -278,38 +303,45 @@ test("route finding uses uniform solid paths, live fallbacks, and transport labe
   assert.match(mapSource, /SharedSelectedTransportPopup/);
   assert.match(mapSource, /routes: comparisonCommuteCorridors\.filter/);
   assert.match(mapSource, /private func comparisonRouteColor/);
-  assert.match(mapSource, /inferredTransitKind/);
-  assert.match(mapSource, /case \.bus: "bus\.fill"/);
-  assert.match(mapSource, /case \.train: "tram\.fill"/);
-  assert.match(mapSource, /case \.automobile: "car\.fill"/);
+  assert.match(commuteServiceSource, /inferredTransitKind/);
+  assert.match(commuteServiceSource, /case \.bus: "bus\.fill"/);
+  assert.match(commuteServiceSource, /case \.train: "tram\.fill"/);
+  assert.match(commuteServiceSource, /case \.automobile: "car\.fill"/);
   assert.doesNotMatch(mapSource, /comparisonCommuteDistance/);
   assert.match(mapSource, /SharedComparisonNodeDetailSheet/);
   assert.match(mapSource, /Why it scored/);
   assert.match(mapSource, /Routes to work/);
-  assert.match(mapSource, /requestsAlternateRoutes = false/);
+  assert.match(commuteServiceSource, /requestsAlternateRoutes = false/);
   assert.match(mapSource, /comparisonRoutingSignature/);
-  assert.match(mapSource, /batchSize = 3/);
-  assert.match(mapSource, /SharedComparisonRouteCache\.shared\.value/);
-  assert.match(mapSource, /comparison-routes-v1\.json/);
-  assert.match(mapSource, /SharedComparisonRouteCachePayload: Codable/);
-  assert.match(mapSource, /Data\(contentsOf: cacheURL\)/);
-  assert.match(mapSource, /data\.write\(to: cacheURL, options: \.atomic\)/);
-  assert.match(mapSource, /maximumAttempts = 3/);
-  assert.match(mapSource, /Task\.sleep\(nanoseconds: delay\)/);
-  assert.match(mapSource, /case \.terminalFailure:\s*return nil/);
-  assert.match(mapSource, /case \.unknown, \.serverFailure, \.loadingThrottled:/);
-  assert.match(mapSource, /routeLegResults/);
-  assert.match(mapSource, /step\.transportType/);
-  assert.match(mapSource, /step\.polyline/);
+  assert.match(commuteServiceSource, /let batchSize = 3/);
+  assert.match(commuteServiceSource, /private var inFlight: \[String: Task/);
+  assert.match(commuteServiceSource, /commute-evidence-v2\.json/);
+  assert.match(commuteServiceSource, /comparison-routes-v1\.json/);
+  assert.match(commuteServiceSource, /Data\(contentsOf: resolvedURL\)/);
+  assert.match(commuteServiceSource, /\.completeFileProtection/);
+  assert.match(commuteServiceSource, /isExcludedFromBackup = true/);
+  assert.match(commuteServiceSource, /maximumAttempts = 3/);
+  assert.match(commuteServiceSource, /HomeboardCommuteRoutingError\.terminal/);
+  assert.match(commuteServiceSource, /case \.unknown, \.serverFailure, \.loadingThrottled:/);
+  assert.match(commuteServiceSource, /routeLegResults/);
+  assert.match(commuteServiceSource, /step\.transportType/);
+  assert.match(commuteServiceSource, /step\.polyline/);
   assert.match(mapSource, /routingCompletedCount/);
   assert.match(mapSource, /requesting the rest/);
-  assert.match(mapSource, /for target in targets/);
-  assert.match(mapSource, /guard !memberScores\.isEmpty \|\| !routeSnapshots\.isEmpty/);
-  assert.match(mapSource, /let resolvedEveryDestination = evaluatedDestinationCount == targets\.count/);
-  assert.match(mapSource, /score = nil/);
-  assert.match(mapSource, /displayedRouteIDs/);
+  assert.match(commuteServiceSource, /for target in targets/);
+  assert.match(commuteServiceSource, /let fullyResolved = evaluated == expectedDestinationCount/);
+  assert.match(commuteServiceSource, /score = nil/);
+  assert.match(commuteServiceSource, /displayedRouteIDs/);
   assert.match(mapSource, /Commute stays unscored until every destination resolves/);
-  assert.match(mapSource, /queues live Apple routes for every listing and saved workplace/);
+  assert.match(mapSource, /asks Apple Maps for routes for every listing and saved workplace/);
+  assert.match(mapSource, /appModel\.commuteService\.evaluateListings/);
+  assert.match(mapSource, /appModel\.commuteService\.evidence/);
+  assert.match(boardShellSource, /refreshHomeboardCommutes/);
+  assert.match(boardShellSource, /commuteEvidence\(for: listing\)\?\.hasResolvedRisk == true/);
+  assert.match(boardShellSource, /rankedShortlist\.compactMap[\s\S]*commuteEvidence\(for: entry\.listing\)\?\.score/);
+  assert.match(listingModelSource, /commuteScore: Double\? = nil/);
+  assert.match(listingModelSource, /HomeboardManualCommuteParser\.minutes/);
+  assert.doesNotMatch(listingModelSource, /commuteMinutes\(from:/);
 
   const coordinateRecovery = mapSource.slice(
     mapSource.indexOf("private func resolveListingCoordinates"),
@@ -318,28 +350,11 @@ test("route finding uses uniform solid paths, live fallbacks, and transport labe
   assert.match(coordinateRecovery, /for listing in candidates/);
   assert.match(coordinateRecovery, /await resolveCoordinate\(for: query\)/);
   assert.doesNotMatch(coordinateRecovery, /shortlistedIDs|\.prefix\(/);
-  const destinationRecovery = mapSource.slice(
-    mapSource.indexOf("private func resolveCoordinate(for destination: String)"),
-    mapSource.indexOf("\n}", mapSource.indexOf("private func resolveCoordinate(for destination: String)")),
-  );
-  assert.match(destinationRecovery, /for attempt in 0\.\.<3/);
-
-  const comparisonRouting = mapSource.slice(
-    mapSource.indexOf("private static func comparisonCommuteEvidence"),
-    mapSource.indexOf("private func filterCardsToCluster"),
-  );
   const routeBatching = mapSource.slice(
     mapSource.indexOf("private func resolveComparisonCommuteEvidence"),
-    mapSource.indexOf("private static func comparisonCommuteEvidence"),
+    mapSource.indexOf("private func loadComparisonRouteOptions"),
   );
-  assert.match(comparisonRouting, /\.automobile/);
-  assert.doesNotMatch(comparisonRouting, /route\.minutes > 30/);
-  assert.match(comparisonRouting, /let directDistance = CLLocation/);
-  assert.match(comparisonRouting, /impossible best case scores zero/);
-  assert.match(routeBatching, /for start in stride\(from: 0, to: pendingCandidates\.count/);
-  assert.doesNotMatch(routeBatching, /candidates\.prefix/);
-  assert.match(routeBatching, /comparisonEvidenceSignatures/);
-  assert.match(routeBatching, /nextSignatures\[item\.listing\.id\] != signatures\[item\.listing\.id\]/);
+  assert.match(routeBatching, /commuteService\.evaluateListings/);
   assert.doesNotMatch(
     mapSource.slice(
       mapSource.indexOf("private var comparisonRoutingSignature"),
@@ -347,8 +362,12 @@ test("route finding uses uniform solid paths, live fallbacks, and transport labe
     ),
     /filters\.|selectedBounds/,
   );
-  assert.match(mobilePayloadSource, /min driving estimate/);
-  assert.doesNotMatch(mobilePayloadSource, /min best route/);
+  assert.match(boardDataSource, /!includeCommutes \|\| isDemoModeEnabled\(\)/);
+  assert.match(boardDataSource, /options\.includeCommutes === false/);
+  assert.match(mobileBoardRouteSource, /includeCommutes: false/);
+  assert.match(mobilePayloadSource, /Compare group commutes in Apple Maps/);
+  assert.match(mobilePayloadSource, /Commute not evaluated on this device/);
+  assert.doesNotMatch(mobilePayloadSource, /min driving estimate|min best route/);
 });
 
 test("commute controls disable without a saved office area and explain the privacy-safe option", () => {

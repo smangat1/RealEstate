@@ -60,6 +60,10 @@ enum UITestFixture {
       idealBudget: 3000,
       budgetMax: 3500,
       budgetLine: "$2,500–$3,500/mo",
+      commuteDestination: "1 Market St, San Francisco, CA",
+      commuteAccess: "transit",
+      preferredCommuteMinutes: 25,
+      maxCommuteMinutes: 40,
       commuteLine: "22 min to SoMa",
       priorities: ["commute", "price"],
       dealbreakers: ["shared laundry"],
@@ -75,6 +79,10 @@ enum UITestFixture {
       idealBudget: 2500,
       budgetMax: 3000,
       budgetLine: "$2,000–$3,000/mo",
+      commuteDestination: "1355 Market St, San Francisco, CA",
+      commuteAccess: "car",
+      preferredCommuteMinutes: 20,
+      maxCommuteMinutes: 35,
       commuteLine: "18 min to Financial District",
       priorities: ["space", "natural light"],
       dealbreakers: ["no pets allowed"],
@@ -90,6 +98,7 @@ enum UITestFixture {
       idealBudget: 2200,
       budgetMax: 2600,
       budgetLine: "$1,800–$2,600/mo",
+      commuteAccess: "remote",
       commuteLine: "Remote",
       priorities: ["neighborhood vibe", "outdoor space"],
       dealbreakers: ["top-floor walk-up"],
@@ -113,7 +122,9 @@ enum UITestFixture {
       fitLabel: "Strong group fit",
       highlights: ["In-unit laundry", "Hardwood floors", "Rooftop deck"],
       openRisks: ["Loud weekend nights"],
-      status: "saved"
+      status: "saved",
+      latitude: 37.7694,
+      longitude: -122.4222
     ),
     ListingPreview(
       id: listing2ID,
@@ -127,7 +138,9 @@ enum UITestFixture {
       fitLabel: "Good group fit",
       highlights: ["Private garden", "Original details", "Dishwasher"],
       openRisks: ["Split bathrooms"],
-      status: "saved"
+      status: "saved",
+      latitude: 37.7772,
+      longitude: -122.4242
     ),
     ListingPreview(
       id: listing3ID,
@@ -141,7 +154,9 @@ enum UITestFixture {
       fitLabel: "Fair group fit",
       highlights: ["Panoramic views", "Deck", "Pet-friendly"],
       openRisks: ["One parking spot only"],
-      status: "saved"
+      status: "saved",
+      latitude: 37.7510,
+      longitude: -122.4292
     ),
   ]
 

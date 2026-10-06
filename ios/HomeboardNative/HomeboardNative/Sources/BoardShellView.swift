@@ -302,6 +302,79 @@ struct WorkspaceBackgroundView: View {
   }
 }
 
+@MainActor
+private func homeboardCommuteScope(_ appModel: AppModel) -> HomeboardCommuteService.Scope {
+  HomeboardCommuteService.Scope(
+    accountID: appModel.authSession?.userId ?? appModel.account?.id ?? "guest",
+    boardID: appModel.board.id ?? "local"
+  )
+}
+
+@MainActor
+private func homeboardCommuteMembers(_ appModel: AppModel) -> [HomeboardCommuteService.MemberInput] {
+  appModel.board.members.map { member in
+    HomeboardCommuteService.MemberInput(
+      id: member.id,
+      name: member.name,
+      destination: (member.commuteDestination ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+      commuteAccess: member.commuteAccess,
+      preferredMinutes: member.preferredCommuteMinutes,
+      maximumMinutes: member.maxCommuteMinutes
+    )
+  }
+}
+
+@MainActor
+private func homeboardCommuteListings(_ appModel: AppModel) -> [HomeboardCommuteService.ListingInput] {
+  appModel.board.shortlist.map { listing in
+    HomeboardCommuteService.ListingInput(
+      id: listing.id,
+      latitude: listing.latitude,
+      longitude: listing.longitude,
+      locationQuery: [listing.address, listing.location]
+        .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        ?? listing.location,
+      manualLine: listing.commuteLine
+    )
+  }
+}
+
+@MainActor
+private func homeboardCommuteRefreshSignature(_ appModel: AppModel) -> String {
+  let listings = appModel.board.shortlist.map {
+    "\($0.id):\($0.latitude ?? 0):\($0.longitude ?? 0):\($0.address):\($0.location):\($0.commuteLine)"
+  }.joined(separator: "|")
+  let members = appModel.board.members.map {
+    "\($0.id):\($0.commuteDestination ?? ""):\($0.commuteAccess ?? ""):\($0.preferredCommuteMinutes ?? 0):\($0.maxCommuteMinutes ?? 0)"
+  }.joined(separator: "|")
+  return "\(homeboardCommuteScope(appModel).key)|\(listings)|\(members)"
+}
+
+@MainActor
+private func refreshHomeboardCommutes(_ appModel: AppModel, forceRefresh: Bool = false) async {
+  await appModel.commuteService.evaluateListings(
+    scope: homeboardCommuteScope(appModel),
+    city: appModel.board.city,
+    listings: homeboardCommuteListings(appModel),
+    members: homeboardCommuteMembers(appModel),
+    forceRefresh: forceRefresh
+  )
+}
+
+@MainActor
+private func homeboardCommuteSummary(_ listing: ListingPreview, appModel: AppModel) -> String {
+  if let evidence = appModel.commuteService.evaluation(
+    for: listing.id,
+    scope: homeboardCommuteScope(appModel)
+  ) {
+    return evidence.displaySummary
+  }
+  if let minutes = HomeboardManualCommuteParser.minutes(from: listing.commuteLine) {
+    return "Manual fallback · \(minutes) min · not per-member verified"
+  }
+  return "Commute not evaluated"
+}
+
 private struct ShortlistWorkspaceView: View {
   @Environment(AppModel.self) private var appModel
   @State private var selectedListing: ListingPreview?
@@ -492,7 +565,7 @@ private struct ShortlistWorkspaceView: View {
                   .multilineTextAlignment(.leading)
 
                 HStack(alignment: .center, spacing: 10) {
-                  labelCapsule(systemName: "figure.walk", text: listing.commuteLine)
+                  labelCapsule(systemName: "map.fill", text: homeboardCommuteSummary(listing, appModel: appModel))
                   labelCapsule(systemName: "checkmark.seal", text: listing.fitLabel)
                 }
 
@@ -527,6 +600,9 @@ private struct ShortlistWorkspaceView: View {
       WorkspaceBackgroundView()
     }
     .toolbar(.hidden, for: .navigationBar)
+    .task(id: homeboardCommuteRefreshSignature(appModel)) {
+      await refreshHomeboardCommutes(appModel)
+    }
     .sheet(item: $selectedListing) { listing in
       ListingDetailSheet(listing: listing)
         .presentationDetents([.large])
@@ -600,6 +676,20 @@ private struct CompareWorkspaceView: View {
             risky: riskiestListing
           )
 
+          if commuteNeedsRetry {
+            Button {
+              Task { await refreshHomeboardCommutes(appModel, forceRefresh: true) }
+            } label: {
+              Label("Retry Apple Maps commutes", systemImage: "arrow.clockwise")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .foregroundStyle(HomeboardPalette.accent)
+            .homeboardInsetSurface()
+          }
+
           VStack(alignment: .leading, spacing: 10) {
             sectionHeader("Ranked contenders", "Deterministic board fit based on budget, commute, neighborhood pull, and must-haves.")
 
@@ -635,6 +725,14 @@ private struct CompareWorkspaceView: View {
                     .font(.footnote)
                     .foregroundStyle(HomeboardPalette.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
+
+                  Label(
+                    homeboardCommuteSummary(entry.listing, appModel: appModel),
+                    systemImage: "map.fill"
+                  )
+                  .font(.caption)
+                  .foregroundStyle(HomeboardPalette.secondaryText)
+                  .fixedSize(horizontal: false, vertical: true)
 
                   if !entry.concerns.isEmpty {
                     Text("Watch: \(entry.concerns.joined(separator: ", "))")
@@ -735,6 +833,9 @@ private struct CompareWorkspaceView: View {
       WorkspaceBackgroundView()
     }
     .toolbar(.hidden, for: .navigationBar)
+    .task(id: homeboardCommuteRefreshSignature(appModel)) {
+      await refreshHomeboardCommutes(appModel)
+    }
     .sheet(item: $selectedListing) { listing in
       ListingDetailSheet(listing: listing)
         .presentationDetents([.medium, .large])
@@ -769,10 +870,15 @@ private struct CompareWorkspaceView: View {
   }
 
   private var bestCommuteListing: ListingPreview? {
-    rankedShortlist.min {
-      commuteBandDistance(from: $0.listing.commuteLine)
-        < commuteBandDistance(from: $1.listing.commuteLine)
-    }?.listing
+    rankedShortlist.compactMap { entry -> (ListingPreview, Double)? in
+      guard let score = commuteEvidence(for: entry.listing)?.score else { return nil }
+      return (entry.listing, score)
+    }
+    .sorted {
+      if $0.1 == $1.1 { return $0.0.title < $1.0.title }
+      return $0.1 > $1.1
+    }
+    .first?.0
   }
 
   private var riskiestListing: ListingPreview? {
@@ -780,7 +886,11 @@ private struct CompareWorkspaceView: View {
   }
 
   private func score(for listing: ListingPreview) -> Int {
-    AdvisorListingRanker.score(listing, profile: appModel.profile)
+    AdvisorListingRanker.score(
+      listing,
+      profile: appModel.profile,
+      commuteScore: commuteEvidence(for: listing)?.score
+    )
   }
 
   private func budgetFits(_ listing: ListingPreview) -> Bool {
@@ -792,26 +902,23 @@ private struct CompareWorkspaceView: View {
     return listingValue <= boardMax
   }
 
-  private func commuteFits(_ listing: ListingPreview) -> Bool {
-    guard
-      let minMinutes = Int(appModel.profile.minCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines)),
-      let maxMinutes = Int(appModel.profile.maxCommuteMinutes.trimmingCharacters(in: .whitespacesAndNewlines))
-    else { return false }
-
-    let listingMinutes = commuteMinutes(from: listing.commuteLine)
-    guard listingMinutes != Int.max else { return false }
-    return (minMinutes...maxMinutes).contains(listingMinutes)
+  private func commuteEvidence(for listing: ListingPreview) -> SharedComparisonCommuteEvidence? {
+    appModel.commuteService.evaluation(
+      for: listing.id,
+      scope: homeboardCommuteScope(appModel)
+    )
   }
 
-  private func commuteBandDistance(from commuteLine: String) -> Int {
-    let minutes = commuteMinutes(from: commuteLine)
-    guard minutes != Int.max,
-          let minimum = Int(appModel.profile.minCommuteMinutes),
-          let maximum = Int(appModel.profile.maxCommuteMinutes)
-    else { return Int.max }
-    if minutes < minimum { return minimum - minutes }
-    if minutes > maximum { return minutes - maximum }
-    return 0
+  private var commuteNeedsRetry: Bool {
+    let relevantMembers = homeboardCommuteMembers(appModel).filter {
+      $0.commuteAccess != "remote" && $0.commuteAccess != "skip" && !$0.destination.isEmpty
+    }
+    guard !relevantMembers.isEmpty else { return false }
+    return appModel.board.shortlist.contains { listing in
+      guard let evidence = commuteEvidence(for: listing) else { return false }
+      return evidence.state == .failed
+        || (evidence.state == .unknown && evidence.requestedDestinations > 0)
+    }
   }
 
   private func neighborhoodFits(_ listing: ListingPreview) -> Bool {
@@ -835,9 +942,7 @@ private struct CompareWorkspaceView: View {
       items.append("budget stretch")
     }
 
-    if !commuteFits(listing),
-       !appModel.profile.minCommuteMinutes.isEmpty,
-       !appModel.profile.maxCommuteMinutes.isEmpty {
+    if commuteEvidence(for: listing)?.hasResolvedRisk == true {
       items.append("commute risk")
     }
 
@@ -854,7 +959,9 @@ private struct CompareWorkspaceView: View {
 
   private func reason(for listing: ListingPreview, score: Int) -> String {
     if score >= 5 {
-      return "This contender is lining up well with the current board brief across budget, commute, and the must-have stack."
+      return commuteEvidence(for: listing)?.score == nil
+        ? "This contender is lining up well on the known non-commute parts of the board brief; commute is still unresolved."
+        : "This contender is lining up well with the current board brief across budget, group commute, and the must-have stack."
     }
 
     if score >= 3 {
@@ -870,10 +977,6 @@ private struct CompareWorkspaceView: View {
     return Int(digits)
   }
 
-  private func commuteMinutes(from line: String) -> Int {
-    let parts = line.split(whereSeparator: { !$0.isNumber })
-    return parts.compactMap { Int($0) }.first ?? Int.max
-  }
 }
 
 private struct ConversationView: View {
@@ -3438,7 +3541,7 @@ private struct ShortlistCard: View {
                 }
               }
 
-              Text("\(listing.commuteLine). \(listing.summary)")
+              Text("\(homeboardCommuteSummary(listing, appModel: appModel)). \(listing.summary)")
                 .foregroundStyle(HomeboardPalette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -3496,7 +3599,7 @@ private struct ShortlistCard: View {
         .foregroundStyle(HomeboardPalette.secondaryText)
         .lineLimit(2)
 
-      Text(listing.commuteLine)
+      Text(homeboardCommuteSummary(listing, appModel: appModel))
         .font(.caption)
         .foregroundStyle(HomeboardPalette.tertiaryText)
         .lineLimit(2)
@@ -3853,7 +3956,7 @@ private struct ListingDetailSheet: View {
               .foregroundStyle(HomeboardPalette.success)
           }
 
-          infoBlock("Commute picture", listing.commuteLine)
+          infoBlock("Commute picture", homeboardCommuteSummary(listing, appModel: appModel))
           infoBlock("Why it is still on the board", listing.summary)
 
           if !listing.sourceURL.isEmpty {

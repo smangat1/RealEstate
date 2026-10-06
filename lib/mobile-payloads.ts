@@ -361,9 +361,10 @@ function mapSuggestedListingForMobile(
   data: BoardPageData,
 ): MobileListingPreviewPayload {
   const listing = entry.listing;
-  const commuteLine = entry.commute?.bestDurationMinutes
-    ? `${entry.commute.bestDurationMinutes} min driving estimate`
-    : "Compare group commutes";
+  // Native MapKit owns beta commute evidence. Server routing summaries are not
+  // promoted into the iOS display line because they are not per-member,
+  // access-aware Apple routes.
+  const commuteLine = "Compare group commutes in Apple Maps";
 
   return {
     id: listing.id,
@@ -743,7 +744,6 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
       .filter((entry) => entry.userStatus !== "rejected")
       .slice(0, 30)
       .map((entry) => {
-        const commute = data.boardListingCommutesByBoardListingId[entry.id];
         const reactions = data.listingVotesByBoardListingId[entry.id] ?? [];
         const comments = data.listingCommentsByBoardListingId[entry.id] ?? [];
         const ratings = data.listingRatingsByBoardListingId[entry.id] ?? [];
@@ -754,7 +754,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
           address: entry.listing.address ?? "",
           location: formatListingLocation(entry.listing),
           priceLine: typeof entry.listing.price === "number" ? `$${entry.listing.price.toLocaleString()}` : "Price unclear",
-          commuteLine: commute?.bestDurationMinutes ? `${commute.bestDurationMinutes} min driving estimate` : "Commute still unevaluated",
+          commuteLine: "Commute not evaluated on this device",
           summary: entry.aiTradeoffAnalysis || entry.aiSummary || entry.listing.description || "The group still needs to review this listing.",
           fitLabel: entry.userStatus === "interested" ? "Group favorite" : entry.userStatus === "toured" ? "Toured" : "Shortlisted",
           highlights: [entry.aiSummary, ...(entry.listing.amenities ?? [])].filter((value): value is string => Boolean(value)).slice(0, 3),

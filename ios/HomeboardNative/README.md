@@ -2,7 +2,9 @@
 
 The production-direction SwiftUI client for Homeboard.
 
-Open `HomeboardNative.xcodeproj` and run the `HomeboardNative` scheme. The app contains native passwordless Sign in with Apple backed by Supabase sessions, structured onboarding, board invites, map/card search, draw-area and manual filters, per-member MapKit commute routes, overlapping group rating charts, shortlist/update surfaces, member preferences, manual listing collaboration, settings, account controls, and backend persistence.
+Open `HomeboardNative.xcodeproj` and run the `HomeboardNative` scheme. The app contains native passwordless Sign in with Apple backed by Supabase sessions, structured onboarding, board invites, map/card search, draw-area and manual filters, per-member MapKit commute routes and shared commute scoring, overlapping group rating charts, shortlist/update surfaces, member preferences, manual listing collaboration, settings, account controls, and backend persistence.
+
+The commute feature asks Apple's online MapKit service for directions; Apple receives the route endpoints needed to answer those requests. Homeboard does not send native route evidence or route-cache contents to its backend. The local cache is bounded, account/board scoped, protected by iOS file protection, excluded from backup, and purged for an account on sign-out or deletion. Offline and throttled states remain usable through clearly labeled cached, stale, or recognizable manual-minute fallback data. Commute preferences and destinations are still synchronized through the existing backend profile model.
 
 The checked-in targets use the shared Vercel production deployment. For local development, override `HOMEBOARD_API_BASE_URL` and `HOMEBOARD_PUBLIC_WEB_URL` in the Xcode scheme environment with a reachable development server.
 

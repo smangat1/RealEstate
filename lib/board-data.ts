@@ -1095,6 +1095,7 @@ async function getSuggestedListings(
   profile: SearchProfileData,
   boardListings: BoardListingRecord[],
   roommates: RoommateRecord[],
+  includeCommutes: boolean,
 ): Promise<SuggestedListingRecord[]> {
   if (isDemoModeEnabled()) {
     await ensureStarterCatalog();
@@ -1202,13 +1203,13 @@ async function getSuggestedListings(
 
   const scenarioListingIds = isDemoModeEnabled() ? new Set(getDemoScenarioListingIds(profile)) : null;
   const commuteAnchors = getCommuteAnchors(roommates);
-  const commuteEstimates = isDemoModeEnabled()
+  const commuteEstimates = !includeCommutes || isDemoModeEnabled()
     ? listings.map((listing) => ({
         listingId: listing.id,
         bestDurationMinutes: null,
         bestDistanceMiles: null,
         bestOriginLabel: null,
-        evaluatedAnchors: commuteAnchors.map((anchor) => anchor.label),
+        evaluatedAnchors: [] as string[],
         routes: commuteAnchors.map((anchor) => ({
           originLabel: anchor.label,
           durationMinutes: null,
@@ -1632,6 +1633,7 @@ export async function getBoardPageData(
           effectiveProfile,
           [...boardListings, ...recentlyDeletedBoardListings],
           householdRoommates,
+          options.includeCommutes !== false,
         )
       : [];
   const commuteAnchors = getCommuteAnchors(roommates);
@@ -1641,7 +1643,7 @@ export async function getBoardPageData(
         bestDurationMinutes: null,
         bestDistanceMiles: null,
         bestOriginLabel: null,
-        evaluatedAnchors: commuteAnchors.map((anchor) => anchor.label),
+        evaluatedAnchors: [] as string[],
         routes: commuteAnchors.map((anchor) => ({
           originLabel: anchor.label,
           durationMinutes: null,

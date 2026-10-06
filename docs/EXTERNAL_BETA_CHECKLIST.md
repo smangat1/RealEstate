@@ -56,7 +56,7 @@ The application code can be built and tested locally without these items. The fo
 
 - Add a licensed listings provider behind `ListingProvider`; Homeboard intentionally does not scrape or invent live inventory.
 - The signed iPhone app now registers with APNs in development and declares the production APNs entitlement. Configure an APNs signing key and deploy a notification sender; device registration is implemented, but no server sender exists yet.
-- Keep OpenRouteService configured for server summaries if desired; the native app already uses MapKit for member-to-listing route comparisons.
+- OpenRouteService is optional for remaining non-iOS web and Advisor analysis only. iOS board hydration and all native commute ranking use Apple MapKit and do not require the ORS key.
 
 ## Required human QA
 
