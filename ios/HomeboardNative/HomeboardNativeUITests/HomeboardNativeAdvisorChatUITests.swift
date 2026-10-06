@@ -9,6 +9,61 @@ final class HomeboardNativeAdvisorChatUITests: FixtureUITestCase {
     "@advisor draft a casual text asking about parking",
     "@advisor compare the commute for all three listings",
   ]
+
+  func testReplyToRoommateRendersQuoteAndNavigatesToOriginal() {
+    launchFixture()
+    let original = app.descendants(matching: .any)["homeboard.chat.user.fixture-msg-001"]
+    reveal(original, upwards: false)
+    XCTAssertTrue(original.isHittable)
+    original.press(forDuration: 1.0)
+    XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 5))
+    app.buttons["Reply"].tap()
+
+    let chip = app.descendants(matching: .any)["homeboard.chat.reply-chip"]
+    XCTAssertTrue(chip.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Replying to Alex"].exists)
+    send("I agree with this")
+
+    let reply = app.staticTexts["I agree with this"]
+    wait("Roommate reply did not appear") { reply.exists }
+    reveal(reply)
+    let quote = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier BEGINSWITH %@", "homeboard.chat.quote.")
+    ).allElementsBoundByIndex.last
+    XCTAssertNotNil(quote)
+    XCTAssertTrue(quote?.label.contains("Alex") == true)
+    quote?.tap()
+    wait("Tapping the quote did not reveal the original message") { original.isHittable }
+    XCTAssertEqual(records("acceptances").count, 0)
+    assertClean()
+  }
+
+  func testReplyToAdvisorCardWithoutMentionCreatesAndSavesNewCard() {
+    launchFixture()
+    send(advisorPrompts[0])
+    _ = assertSaved("fixture-advisor-1", command: advisorPrompts[0])
+
+    let card = app.descendants(matching: .any)["homeboard.advisor.card.fixture-advisor-1"]
+    reveal(card)
+    card.press(forDuration: 1.0)
+    XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 5))
+    app.buttons["Reply"].tap()
+    let chip = app.descendants(matching: .any)["homeboard.chat.reply-chip"]
+    XCTAssertTrue(chip.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["Replying to Advisor"].exists)
+
+    send("Make this shorter")
+    _ = assertSaved(
+      "fixture-advisor-2", command: "@advisor Make this shorter",
+      afterAcceptanceCount: 1, afterGenerationCount: 1
+    )
+    XCTAssertEqual(diagnostics()["postCount"] as? Int, 2)
+    let stored = records("storedMessages")
+    let userReply = stored.last { $0["content"] as? String == "Make this shorter" }
+    XCTAssertEqual(userReply?["replyToMessageId"] as? String, "fixture-advisor-1")
+    XCTAssertFalse((userReply?["content"] as? String ?? "").hasPrefix("@advisor"))
+    assertClean()
+  }
   func testFiveSequentialPromptsGenerateAndPersistDistinctCards() {
     launchFixture()
     var seen = Set<String>()

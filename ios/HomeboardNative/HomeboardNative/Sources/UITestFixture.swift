@@ -449,7 +449,12 @@ final class UITestFixtureState {
     }
     if route == "POST \(boardPath)/updates" || route == "POST \(boardPath)/messages" {
       guard let text = input["content"] as? String ?? input["message"] as? String else { return reject(route) }
+      let replyToMessageId = input["replyToMessageId"] as? String
+      let replyTarget = replyToMessageId.flatMap { replyID in
+        board.chatMessages.first(where: { $0.id == replyID })
+      }
       let advisor = text.lowercased().hasPrefix("@advisor")
+        || ChatReplySendPolicy.isAdvisorCard(replyTarget)
       if advisor {
         postCount += 1
         if scenario == "fail" || scenario == "delayed-fail" {
@@ -457,18 +462,23 @@ final class UITestFixtureState {
         }
         if inactive { return reject(route) }
       }
-      board.chatMessages.append(BoardMessage(id: "fixture-user-\(board.chatMessages.count)", role: "user", authorName: "Sam", content: text, createdAt: "2026-09-28T10:00:00Z"))
+      let userMessageID = input["messageId"] as? String ?? "fixture-user-\(board.chatMessages.count)"
+      board.chatMessages.append(BoardMessage(
+        id: userMessageID, role: "user", authorName: "Sam", content: text,
+        createdAt: "2026-09-28T10:00:00Z", replyToMessageId: replyToMessageId
+      ))
       if !advisor { return (200, load()) }
       var payload = AdvisorMessagePayload()
       payload.messageId = "fixture-advisor-\(postCount)"
       payload.schemaVersion = 2
-      payload.originalCommand = text
+      payload.originalCommand = text.lowercased().hasPrefix("@advisor") ? text : "@advisor \(text)"
       payload.draftText = "Initial server template: please regenerate on device."
       payload.executionStatus = "draft_ready"
       payload.generationSource = "server_template"
       payload.financialDisclosure = "available_on_request"
       payload.missingInputs = []
       payload.targetListingBoardId = UITestFixture.listing1ID
+      payload.replyToMessageId = ChatReplySendPolicy.isAdvisorCard(replyTarget) ? replyToMessageId : nil
       payload.toggleOptions = [.init(id: "requirements", label: "Group requirements", enabled: true, required: false),
         .init(id: "tour", label: "Request a tour", enabled: true, required: false)]
       payload.context = AdvisorContext(leverage: AdvisorLeverage(memberCount: 3, strongestListings: [

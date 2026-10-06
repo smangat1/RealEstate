@@ -10,6 +10,12 @@ import { loadAdvisorDraftFeedback, settledAdvisorFeedback } from "@/lib/advisor-
 import { stageAdvisorPreferenceProposal } from "@/lib/advisor-preference-service";
 import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
 import { getBoardPageData, sendChat } from "@/lib/board-data";
+import {
+  InvalidChatReplyTargetError,
+  routeChatReply,
+  storeChatReplyLink,
+  validateChatReplyTarget,
+} from "@/lib/chat-replies";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { buildMobileBoardPayload } from "@/lib/mobile-payloads";
 import { notifyBoardChat } from "@/lib/apns";
@@ -24,6 +30,7 @@ const schema = z.object({
   /** The chat message id of the card being regenerated; echoed back so the client can match correctly. */
   originatingMessageId: z.string().trim().max(64).optional(),
   messageId: z.string().uuid().optional(),
+  replyToMessageId: z.string().trim().min(1).max(64).optional(),
   preferenceCandidate: preferenceCandidateSchema.optional(),
 });
 
@@ -48,10 +55,6 @@ const acceptedAdvisorSchema = z.object({
   }).passthrough(),
 });
 
-function isAdvisorMessage(content: string) {
-  return /^@advisor\b/i.test(content.trim());
-}
-
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireMobileAppUser(request);
@@ -65,11 +68,44 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     });
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
-    const advisorMessage = isAdvisorMessage(parsed.data.content);
-    const boardData = await getBoardPageData(id, user.id, advisorMessage
-      ? { includeSuggestedListings: false, includeCommutes: false }
-      : undefined);
+    const boardData = await getBoardPageData(id, user.id);
     if (!boardData) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    const rawReplyTarget = parsed.data.replyToMessageId
+      ? await prisma.chatMessage.findUnique({
+        where: { id: parsed.data.replyToMessageId },
+        select: {
+          id: true,
+          boardId: true,
+          role: true,
+          advisorPayload: { select: { id: true } },
+        },
+      })
+      : null;
+    let replyTarget;
+    try {
+      replyTarget = validateChatReplyTarget(
+        id,
+        parsed.data.replyToMessageId,
+        rawReplyTarget
+          ? {
+            id: rawReplyTarget.id,
+            boardId: rawReplyTarget.boardId,
+            role: String(rawReplyTarget.role),
+            hasAdvisorPayload: Boolean(rawReplyTarget.advisorPayload),
+          }
+          : null,
+      );
+    } catch (error) {
+      if (error instanceof InvalidChatReplyTargetError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      throw error;
+    }
+    // Keep the established command boundary in this route. Reply routing adds only
+    // the separate implicit-Advisor case; it must not broaden typed commands.
+    const explicitAdvisorMessage = /^@advisor\b/i.test(parsed.data.content);
+    const replyRouting = routeChatReply(parsed.data.content, replyTarget);
+    const advisorMessage = explicitAdvisorMessage || replyRouting.isImplicitAdvisorRequest;
 
     if (parsed.data.preferenceCandidate) {
       if (advisorMessage
@@ -129,7 +165,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
       const result = await runAdvisorEngine({
         boardData,
-        command: parsed.data.content,
+        command: replyRouting.engineCommand,
         tone: parsed.data.tone ? normalizeAdvisorTone(parsed.data.tone) : undefined,
         now,
         outreachHistory: outreachHistory.map((entry) => ({
@@ -142,7 +178,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
       // Use the originating message id so the client can match its existing chat bubble.
       const messageId = parsed.data.originatingMessageId ?? randomUUID();
-      const payload = { messageId, ...result };
+      const payload = {
+        messageId,
+        ...result,
+        ...(replyRouting.isImplicitAdvisorRequest && replyTarget
+          ? { replyToMessageId: replyTarget.id }
+          : {}),
+      };
 
       if (parsed.data.regenerateOnly) {
         const next = await getBoardPageData(id, user.id);
@@ -155,9 +197,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         });
       }
 
+      const userMessageId = parsed.data.messageId ?? randomUUID();
       await prisma.$transaction([
         prisma.chatMessage.create({
           data: {
+            id: userMessageId,
             boardId: id,
             role: "user",
             authorUserId: user.id,
@@ -199,6 +243,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         }),
         prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
       ]);
+      await storeChatReplyLink({
+        boardId: id,
+        messageId: userMessageId,
+        replyToMessageId: parsed.data.replyToMessageId,
+        create: (args) => prisma.chatMessageReply.create(args),
+        diagnostic: (event) => console.info(`[Homeboard][ChatReply] ${event}`),
+      });
 
       after(async () => {
         try {
@@ -237,6 +288,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       { userId: user.id, authorName: user.displayName },
       { messageId: parsed.data.messageId },
     );
+    await storeChatReplyLink({
+      boardId: id,
+      messageId: sentMessage.id,
+      replyToMessageId: parsed.data.replyToMessageId,
+      create: (args) => prisma.chatMessageReply.create(args),
+      diagnostic: (event) => console.info(`[Homeboard][ChatReply] ${event}`),
+    });
     const preferenceProposal = await stageAdvisorPreferenceProposal({
       boardId: id,
       userId: user.id,

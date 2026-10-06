@@ -641,6 +641,7 @@ struct BoardMessage: Identifiable, Hashable, Codable {
   var authorName: String?
   var content: String
   var createdAt: String
+  var replyToMessageId: String? = nil
   var advisorPayload: AdvisorMessagePayload? = nil
 }
 
@@ -662,6 +663,8 @@ struct AdvisorMessagePayload: Hashable, Codable {
   var context: AdvisorContext? = nil
   /// The boardListingId of the listing this draft specifically targets.
   var targetListingBoardId: String? = nil
+  /// Existing Advisor-card message used as local-only draft context for a chat reply.
+  var replyToMessageId: String? = nil
   var templateId: String? = nil
   var toneWasExplicit: Bool? = nil
 }
@@ -684,6 +687,7 @@ extension AdvisorMessagePayload {
     case contact
     case context
     case targetListingBoardId
+    case replyToMessageId
     case templateId
     case toneWasExplicit
   }
@@ -708,6 +712,7 @@ extension AdvisorMessagePayload {
     contact = try? container.decodeIfPresent(ListingContactInfo.self, forKey: .contact)
     context = try? container.decodeIfPresent(AdvisorContext.self, forKey: .context)
     targetListingBoardId = try? container.decodeIfPresent(String.self, forKey: .targetListingBoardId)
+    replyToMessageId = try? container.decodeIfPresent(String.self, forKey: .replyToMessageId)
     templateId = try? container.decodeIfPresent(String.self, forKey: .templateId)
     toneWasExplicit = try? container.decodeIfPresent(Bool.self, forKey: .toneWasExplicit)
   }

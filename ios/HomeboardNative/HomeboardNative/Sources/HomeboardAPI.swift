@@ -215,6 +215,7 @@ struct MobileBoardMessageCreateRequest: Encodable {
   var regenerateOnly: Bool?
   var originatingMessageId: String?
   var messageId: String?
+  var replyToMessageId: String?
   var preferenceCandidate: AdvisorPreferenceCandidate?
 
   init(
@@ -223,6 +224,7 @@ struct MobileBoardMessageCreateRequest: Encodable {
     regenerateOnly: Bool? = nil,
     originatingMessageId: String? = nil,
     messageId: String? = nil,
+    replyToMessageId: String? = nil,
     preferenceCandidate: AdvisorPreferenceCandidate? = nil
   ) {
     self.content = content
@@ -230,6 +232,7 @@ struct MobileBoardMessageCreateRequest: Encodable {
     self.regenerateOnly = regenerateOnly
     self.originatingMessageId = originatingMessageId
     self.messageId = messageId
+    self.replyToMessageId = replyToMessageId
     self.preferenceCandidate = preferenceCandidate
   }
 }
@@ -975,6 +978,7 @@ final class HomeboardAPI {
     regenerateOnly: Bool? = nil,
     originatingMessageId: String? = nil,
     messageId: String? = nil,
+    replyToMessageId: String? = nil,
     preferenceCandidate: AdvisorPreferenceCandidate? = nil
   ) async throws -> MobileBoardLoadResponse {
     return try await requestBackend(
@@ -987,6 +991,7 @@ final class HomeboardAPI {
         regenerateOnly: regenerateOnly,
         originatingMessageId: originatingMessageId,
         messageId: messageId,
+        replyToMessageId: replyToMessageId,
         preferenceCandidate: preferenceCandidate
       )
     )

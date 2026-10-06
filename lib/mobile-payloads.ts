@@ -159,6 +159,7 @@ export type MobileBoardPayload = {
     authorName: string | null;
     content: string;
     createdAt: string;
+    replyToMessageId?: string | null;
     advisorPayload?: unknown | null;
   }[];
   openQuestions: string[];
@@ -658,6 +659,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
       authorName: message.authorName,
       content: message.content,
       createdAt: message.createdAt,
+      replyToMessageId: message.replyToMessageId ?? null,
       advisorPayload: message.advisorPayload ?? null,
     })),
     // Suggestions belong in guidance, not in the group's actionable questions.
