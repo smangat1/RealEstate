@@ -135,6 +135,35 @@ final class HomeboardNativeCoreFlowUITests: FixtureUITestCase {
     XCTAssertFalse(app.otherElements["PaymentSheet"].exists)
     assertClean()
   }
+
+  func testAdvisorBetaFlagOffHidesActiveWalletAndKeepsRoommateChat() {
+    launchFixture(["HOMEBOARD_ADVISOR_ENABLED": "0"])
+    XCTAssertFalse(app.progressIndicators["homeboard.wallet.progress"].exists)
+    XCTAssertFalse(app.buttons["homeboard.wallet.fund"].exists)
+
+    let field = app.textFields["homeboard.chat.field"]
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    XCTAssertEqual(field.placeholderValue, "Message your roommates...")
+
+    let text = "Beta roommate check-in"
+    send(text)
+    XCTAssertTrue(app.staticTexts[text].waitForExistence(timeout: 15))
+    wait("Roommate message was not stored") {
+      self.records("storedMessages").contains { $0["content"] as? String == text }
+    }
+    assertClean()
+  }
+
+  func testAdvisorBetaFlagOffHidesInactiveWallet() {
+    launchFixture([
+      "HOMEBOARD_ADVISOR_ENABLED": "0",
+      "UITEST_WALLET_INACTIVE": "1",
+    ])
+    XCTAssertFalse(app.progressIndicators["homeboard.wallet.progress"].exists)
+    XCTAssertFalse(app.buttons["homeboard.wallet.fund"].exists)
+    XCTAssertFalse(app.staticTexts["Advisor needs an active board week"].exists)
+    assertClean()
+  }
   func testSettingsSignOutReturnsToUnauthenticatedWelcome() {
     launchFixture()
     reveal(app.buttons["homeboard.settings.open"], upwards: false)

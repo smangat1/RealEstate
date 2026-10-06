@@ -2742,10 +2742,14 @@ struct SharedUpdatesView: View {
   @FocusState private var updateFieldFocused: Bool
   @AppStorage("homeboard.guide.updates.dismissed") private var updatesGuideDismissed = false
 
+  private var visibleBoardMessages: [BoardMessage] {
+    appModel.visibleBoardMessages
+  }
+
   private var timeline: [SharedTimelineItem] {
     var seenIDs = Set<String>()
     var items: [SharedTimelineItem] = []
-    for (index, msg) in appModel.board.chatMessages.filter({ $0.role == "user" }).enumerated() {
+    for (index, msg) in visibleBoardMessages.filter({ $0.role == "user" }).enumerated() {
       var itemID = "message-\(msg.id)"
       if seenIDs.contains(itemID) {
         itemID = "message-\(msg.id)-\(index)"
@@ -2793,15 +2797,17 @@ struct SharedUpdatesView: View {
 
             SharedDecisionHub()
 
-            AdvisorWalletPanel()
-              .id("advisor-wallet")
+            if appModel.isAdvisorFeatureEnabled {
+              AdvisorWalletPanel()
+                .id("advisor-wallet")
+            }
 
             SharedSectionTitle(
               title: "Conversation",
-              trailing: appModel.board.chatMessages.isEmpty ? "No messages yet" : "\(appModel.board.chatMessages.count) message\(appModel.board.chatMessages.count == 1 ? "" : "s")"
+              trailing: visibleBoardMessages.isEmpty ? "No messages yet" : "\(visibleBoardMessages.count) message\(visibleBoardMessages.count == 1 ? "" : "s")"
             )
 
-            if appModel.isBoardLoading && appModel.board.chatMessages.isEmpty {
+            if appModel.isBoardLoading && visibleBoardMessages.isEmpty {
               VStack(spacing: 12) {
                 ForEach(0..<3, id: \.self) { _ in
                   HStack(alignment: .top, spacing: 12) {
@@ -2816,20 +2822,20 @@ struct SharedUpdatesView: View {
                   .sharedSurface(cornerRadius: 18)
                 }
               }
-            } else if appModel.board.chatMessages.isEmpty {
+            } else if visibleBoardMessages.isEmpty {
               SharedInlineEmpty(
                 icon: "bubble.left.and.bubble.right",
                 title: "Start the group conversation",
                 message: "Send the first message so everyone starts with the same context."
               )
             } else {
-              ForEach(appModel.board.chatMessages) { msg in
+              ForEach(visibleBoardMessages) { msg in
                 chatMessage(msg, scrollProxy: scrollProxy)
                   .id("message-\(msg.id)")
               }
             }
 
-            if appModel.isAdvisorProcessing {
+            if appModel.isAdvisorFeatureEnabled && appModel.isAdvisorProcessing {
               AdvisorTypingBubble()
                 .accessibilityIdentifier("homeboard.chat.processing")
                 .id("advisor-typing-indicator")
@@ -2853,7 +2859,7 @@ struct SharedUpdatesView: View {
           try? await Task.sleep(nanoseconds: 180_000_000)
           scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
         }
-        .onChange(of: appModel.board.chatMessages.count) { _, _ in
+        .onChange(of: visibleBoardMessages.count) { _, _ in
           withAnimation(.easeOut(duration: 0.25)) {
             scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
           }
@@ -2881,11 +2887,24 @@ struct SharedUpdatesView: View {
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(alignment: .leading, spacing: 7) {
-        if let replyID = appModel.replyToBoardMessageId {
+        if let replyID = appModel.replyToBoardMessageId,
+           visibleBoardMessages.contains(where: { $0.id == replyID }) {
           replyComposerChip(replyID: replyID)
         }
 
-        if isAdvisorCommandBlocked {
+        if !appModel.isAdvisorFeatureEnabled && isCompleteAdvisorCommand(updateDraft) {
+          Label(
+            "Advisor isn't available in this beta. Your draft will stay here.",
+            systemImage: "info.circle.fill"
+          )
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.secondaryText)
+          .padding(12)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.white.opacity(0.06))
+          .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+          .accessibilityIdentifier("homeboard.advisor.beta-unavailable")
+        } else if appModel.isAdvisorFeatureEnabled && isAdvisorCommandBlocked {
           HStack(alignment: .top, spacing: 10) {
             Image(systemName: advisorAccessIcon)
               .font(.caption.weight(.bold))
@@ -2941,7 +2960,9 @@ struct SharedUpdatesView: View {
 
         HStack(alignment: .center, spacing: 10) {
           TextField(
-            "Message your roommates or @advisor...",
+            appModel.isAdvisorFeatureEnabled
+              ? "Message your roommates or @advisor..."
+              : "Message your roommates...",
             text: $updateDraft
           )
           .accessibilityIdentifier("homeboard.chat.field")
@@ -3008,7 +3029,9 @@ struct SharedUpdatesView: View {
     }
     .toolbar(.hidden, for: .navigationBar)
     .sheet(item: Binding(
-      get: { appModel.pendingPreferenceProposal },
+      get: {
+        appModel.isAdvisorFeatureEnabled ? appModel.pendingPreferenceProposal : nil
+      },
       set: { appModel.pendingPreferenceProposal = $0 }
     )) { proposal in
       AdvisorPreferenceProposalView(proposal: proposal)
@@ -3040,6 +3063,11 @@ struct SharedUpdatesView: View {
     guard !message.isEmpty, !appModel.isPostingBoardUpdate else { return }
 
     let advisorCommand = isCompleteAdvisorCommand(message) || isReplyingToAdvisor
+    if advisorCommand, !appModel.isAdvisorFeatureEnabled {
+      appModel.boardError = "Advisor isn't available in this beta. Your message is still in the composer."
+      updateFieldFocused = true
+      return
+    }
     if advisorCommand, !appModel.isAdvisorAccessActive {
       appModel.boardError = nil
       updateFieldFocused = true
@@ -3071,10 +3099,13 @@ struct SharedUpdatesView: View {
   }
 
   private var showsAdvisorSuggestions: Bool {
-    isCompleteAdvisorCommand(updateDraft) && appModel.isAdvisorAccessActive
+    appModel.isAdvisorFeatureEnabled
+      && isCompleteAdvisorCommand(updateDraft)
+      && appModel.isAdvisorAccessActive
   }
 
   private var isPartialAdvisorMention: Bool {
+    guard appModel.isAdvisorFeatureEnabled else { return false }
     let text = updateDraft
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .lowercased()
@@ -3096,7 +3127,7 @@ struct SharedUpdatesView: View {
 
   private var isReplyingToAdvisor: Bool {
     guard let replyID = appModel.replyToBoardMessageId,
-          let target = appModel.board.chatMessages.first(where: { $0.id == replyID }) else {
+          let target = visibleBoardMessages.first(where: { $0.id == replyID }) else {
       return false
     }
     return ChatReplySendPolicy.isAdvisorCard(target)
@@ -3109,7 +3140,7 @@ struct SharedUpdatesView: View {
         chatReplyQuote(replyID: replyID, replyingMessageID: message.id, scrollProxy: scrollProxy)
       }
 
-      if message.authorName == "Advisor" {
+      if appModel.isAdvisorFeatureEnabled && ChatReplySendPolicy.isAdvisorMessage(message) {
         AdvisorCardView(message: message)
       } else {
         SharedTimelineRow(
@@ -3138,7 +3169,7 @@ struct SharedUpdatesView: View {
     replyingMessageID: String,
     scrollProxy: ScrollViewProxy
   ) -> some View {
-    let original = appModel.board.chatMessages.first(where: { $0.id == replyID })
+    let original = visibleBoardMessages.first(where: { $0.id == replyID })
     return Button {
       guard original != nil else { return }
       withAnimation(.easeOut(duration: 0.25)) {
@@ -3177,7 +3208,7 @@ struct SharedUpdatesView: View {
   }
 
   private func replyComposerChip(replyID: String) -> some View {
-    let target = appModel.board.chatMessages.first(where: { $0.id == replyID })
+    let target = visibleBoardMessages.first(where: { $0.id == replyID })
     return HStack(spacing: 9) {
       Image(systemName: "arrowshape.turn.up.left.fill")
         .font(.caption.weight(.bold))
@@ -3757,11 +3788,13 @@ struct SharedSetupView: View {
 
             SharedDivider()
 
-            SharedSettingsRow(icon: "bell.badge.fill", title: "Advisor notifications", subtitle: "One daily digest, timing, and quiet controls") {
-              showsNotificationSettings = true
-            }
+            if appModel.isAdvisorFeatureEnabled {
+              SharedSettingsRow(icon: "bell.badge.fill", title: "Advisor notifications", subtitle: "One daily digest, timing, and quiet controls") {
+                showsNotificationSettings = true
+              }
 
-            SharedDivider()
+              SharedDivider()
+            }
 
             SharedSettingsRow(
               icon: "trash.fill",
@@ -3822,13 +3855,15 @@ struct SharedSetupView: View {
               Text("API \(apiVersion) · commit \(apiCommit)")
                 .font(.caption.monospaced())
                 .foregroundStyle(HomeboardPalette.secondaryText)
-              Text(appModel.apiAdvisorDraftAcceptanceReady == true
-                ? "Advisor draft PATCH: ready"
-                : "Advisor draft PATCH: incompatible")
-                .font(.caption.monospaced())
-                .foregroundStyle(appModel.apiAdvisorDraftAcceptanceReady == true
-                  ? HomeboardPalette.success
-                  : HomeboardPalette.danger)
+              if appModel.isAdvisorFeatureEnabled {
+                Text(appModel.apiAdvisorDraftAcceptanceReady == true
+                  ? "Advisor draft PATCH: ready"
+                  : "Advisor draft PATCH: incompatible")
+                  .font(.caption.monospaced())
+                  .foregroundStyle(appModel.apiAdvisorDraftAcceptanceReady == true
+                    ? HomeboardPalette.success
+                    : HomeboardPalette.danger)
+              }
             } else if let apiVersionError = appModel.apiVersionError {
               Text("API version unavailable: \(apiVersionError)")
                 .font(.caption)
@@ -4025,7 +4060,10 @@ struct SharedSetupView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
-    .sheet(isPresented: $showsNotificationSettings) {
+    .sheet(isPresented: Binding(
+      get: { appModel.isAdvisorFeatureEnabled && showsNotificationSettings },
+      set: { showsNotificationSettings = $0 }
+    )) {
       SharedAdvisorNotificationSettingsSheet()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -7421,6 +7459,7 @@ struct SharedListingDetailView: View {
           SharedListingWorkflowPanel(
             listing: liveListing,
             readiness: appModel.profile.readiness,
+            advisorEnabled: appModel.isAdvisorFeatureEnabled,
             isLoadingPacket: isLoadingApplicationPacket,
             onDraftTour: {
               guard appModel.isAdvisorAccessActive else {
@@ -8163,6 +8202,7 @@ private struct SharedListingAnalysisPanel: View {
 private struct SharedListingWorkflowPanel: View {
   let listing: ListingPreview
   let readiness: RentalReadiness
+  let advisorEnabled: Bool
   let isLoadingPacket: Bool
   let onDraftTour: () -> Void
   let onMarkToured: () -> Void
@@ -8204,23 +8244,27 @@ private struct SharedListingWorkflowPanel: View {
 
       HStack(spacing: 9) {
         if !toured {
-          Button("Draft tour request", action: onDraftTour)
-            .buttonStyle(.borderedProminent)
-            .tint(HomeboardPalette.accent)
+          if advisorEnabled {
+            Button("Draft tour request", action: onDraftTour)
+              .buttonStyle(.borderedProminent)
+              .tint(HomeboardPalette.accent)
+          }
           Button("Mark toured", action: onMarkToured)
             .buttonStyle(.bordered)
             .tint(HomeboardPalette.accent)
         } else if !applied {
-          Button(action: onPreparePacket) {
-            if isLoadingPacket { ProgressView().tint(Color.black) } else { Text("Application packet") }
+          if advisorEnabled {
+            Button(action: onPreparePacket) {
+              if isLoadingPacket { ProgressView().tint(Color.black) } else { Text("Application packet") }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(HomeboardPalette.accent)
+            .disabled(isLoadingPacket)
           }
-          .buttonStyle(.borderedProminent)
-          .tint(HomeboardPalette.accent)
-          .disabled(isLoadingPacket)
           Button("Mark applied", action: onMarkApplied)
             .buttonStyle(.bordered)
             .tint(HomeboardPalette.accent)
-        } else {
+        } else if advisorEnabled {
           Button(action: onPreparePacket) {
             if isLoadingPacket { ProgressView().tint(Color.black) } else { Label("Open packet", systemImage: "doc.text.fill") }
           }
@@ -8231,7 +8275,7 @@ private struct SharedListingWorkflowPanel: View {
       }
       .font(.caption.weight(.bold))
 
-      if !toured {
+      if advisorEnabled && !toured {
         Button(action: onPlanTour) {
           Label("Coordinate group times", systemImage: "calendar.badge.clock")
             .font(.subheadline.weight(.semibold))
@@ -8241,7 +8285,7 @@ private struct SharedListingWorkflowPanel: View {
         .tint(HomeboardPalette.accent)
       }
 
-      if contacted {
+      if advisorEnabled && contacted {
         Button(action: onAddReply) {
           Label("Log broker reply", systemImage: "text.bubble.fill")
             .font(.subheadline.weight(.semibold))
@@ -8251,7 +8295,7 @@ private struct SharedListingWorkflowPanel: View {
         .tint(HomeboardPalette.accent)
       }
 
-      if toured {
+      if advisorEnabled && toured {
         Button(action: onOptimizeRooms) {
           Label("Optimize room split", systemImage: "person.2.badge.gearshape.fill")
             .font(.subheadline.weight(.semibold))

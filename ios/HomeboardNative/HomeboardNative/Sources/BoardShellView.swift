@@ -14,7 +14,8 @@ struct BoardShellView: View {
       }
     }
     .overlay(alignment: .top) {
-      if let confirmation = appModel.advisorConfirmation {
+      if appModel.isAdvisorFeatureEnabled,
+         let confirmation = appModel.advisorConfirmation {
         AdvisorConfirmationBanner(message: confirmation.message)
           .padding(.horizontal, 16)
           .padding(.top, 10)
@@ -997,7 +998,7 @@ private struct ConversationView: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
           }
 
-          if appModel.board.chatMessages.isEmpty {
+          if appModel.visibleBoardMessages.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
               Text("No messages yet")
                 .font(.headline)
@@ -1008,9 +1009,11 @@ private struct ConversationView: View {
             .padding(18)
             .homeboardPanel()
           } else {
-            AdvisorWalletPanel()
+            if appModel.isAdvisorFeatureEnabled {
+              AdvisorWalletPanel()
+            }
 
-            ForEach(appModel.board.chatMessages) { message in
+            ForEach(appModel.visibleBoardMessages) { message in
               boardMessageBubble(message)
                 .id(message.id)
             }
@@ -1092,22 +1095,24 @@ private struct ConversationView: View {
         .padding(.bottom, 18)
         .background(.ultraThinMaterial.opacity(0.45))
       }
-      .onChange(of: appModel.board.chatMessages.count) {
-        if let last = appModel.board.chatMessages.last {
+      .onChange(of: appModel.visibleBoardMessages.count) {
+        if let last = appModel.visibleBoardMessages.last {
           withAnimation(.easeOut(duration: 0.25)) {
             proxy.scrollTo(last.id, anchor: .bottom)
           }
         }
       }
       .onAppear {
-        if let last = appModel.board.chatMessages.last {
+        if let last = appModel.visibleBoardMessages.last {
           proxy.scrollTo(last.id, anchor: .bottom)
         }
       }
       .toolbar(.hidden, for: .navigationBar)
     }
     .sheet(item: Binding(
-      get: { appModel.pendingPreferenceProposal },
+      get: {
+        appModel.isAdvisorFeatureEnabled ? appModel.pendingPreferenceProposal : nil
+      },
       set: { appModel.pendingPreferenceProposal = $0 }
     )) { proposal in
       AdvisorPreferenceProposalView(proposal: proposal)
@@ -1121,7 +1126,7 @@ private struct ConversationView: View {
   private func boardMessageBubble(_ message: BoardMessage) -> some View {
     HStack {
       if message.role == "assistant" || message.role == "system" {
-        if message.authorName == "Advisor" {
+        if appModel.isAdvisorFeatureEnabled && ChatReplySendPolicy.isAdvisorMessage(message) {
           AdvisorCardView(message: message)
         } else {
           VStack(alignment: .leading, spacing: 8) {

@@ -10,6 +10,10 @@ The checked-in targets use the shared Vercel production deployment. For local de
 
 Generate and verify the project from the repository root with `npm run ios:generate`, `npm run ios:test`, and `npm run ios:release`. The unit suite covers profile completion and exact listing-coordinate persistence; the UI suite verifies a clean first launch on the supported simulator.
 
+## Advisor beta visibility
+
+Native Advisor surfaces and invocations are disabled for the TestFlight beta by the single `HomeboardConfig.advisorEnabled` switch in `HomeboardConfig.swift`. To restore Advisor in a future production release, change that switch's production default to `true`. DEBUG builds may set `HOMEBOARD_ADVISOR_ENABLED=1` for Advisor tests and screenshots; Release/TestFlight builds ignore that environment override. This presentation flag does not delete persisted Advisor data or change server/APNs delivery.
+
 The app registers the `homeboard://` URL scheme. A shared web invitation opens a bridge page whose **Open in iPhone app** action stages the secure bearer token, then continues through Sign in with Apple before joining the board. The app also accepts a pasted full link or token as a fallback.
 
 The empty `UILaunchScreen` entry in `HomeboardNative/Info.plist` is intentional. Removing it causes modern simulators to render the app inside an incorrect inset compatibility canvas.
