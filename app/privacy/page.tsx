@@ -5,7 +5,13 @@ import styles from "../info.module.css";
 
 export const metadata: Metadata = {
   title: "Privacy",
-  description: "How Homeboard handles information during the beta.",
+  description: "How Homeboard handles and protects your data.",
+};
+
+const sectionBodyStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "8px",
 };
 
 export default function PrivacyPage() {
@@ -13,17 +19,139 @@ export default function PrivacyPage() {
     <main className={styles.page}>
       <InfoHeader />
       <div className={styles.main}>
-        <span className={styles.kicker}>Beta privacy notice · Updated September 5, 2026</span>
-        <h1>How Homeboard uses your information.</h1>
-        <p className={styles.lead}>Homeboard uses account and rental-search information to run shared boards. It does not sell personal information or use it for targeted advertising.</p>
+        <span className={styles.kicker}>Privacy policy</span>
+        <h1>How Homeboard handles your data.</h1>
+        <p className={styles.lead}>
+          Homeboard is an iOS roommate house-hunting app. Groups make boards,
+          shortlist listings, score commutes, and chat. We collect only what is
+          required to run the app, keep sensitive details on your device, and
+          never sell your information.
+        </p>
+
         <div className={styles.sections}>
-          <article><h2>Information Homeboard stores</h2><p>This includes your account identity, shared-board membership, rental preferences, commute destinations, listing links and facts, uploaded listing photos, messages, comments, reactions, invitations, push-device records, device-pairing records, bug reports, and product diagnostics.</p></article>
-          <article><h2>How it is used</h2><p>The information powers authentication, board syncing, listing capture, maps and commute comparisons, collaboration, notifications, troubleshooting, security, and product improvement. Members of a board can see the content shared with that board.</p></article>
-          <article><h2>Services involved</h2><p>Homeboard relies on hosting and database providers, Apple services, mapping and routing services, error monitoring, and any listing-data provider enabled for the beta. Each service receives only the information needed for its role.</p></article>
-          <article><h2>Your control</h2><p>You can sign out, leave eligible boards, remove content through available board controls, or delete your account in the app. Account deletion removes active application records and uploaded account images; infrastructure backups and security logs may follow their providers&apos; limited retention cycles.</p></article>
-          <article><h2>Beta reports</h2><p>Bug reports can include app and device versions, the current screen, item counts, and a filtered diagnostic trace. Homeboard asks before sending a report and filters common credentials, email addresses, and listing URLs.</p></article>
+          <article>
+            <h2>What we collect</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                <strong>Account data:</strong> Name and email address only,
+                stored on our servers.
+              </p>
+              <p>
+                <strong>User content:</strong> Boards, shortlisted listings,
+                group chat messages, housing preferences (including saved
+                commute destinations), and replies, stored on our servers.
+              </p>
+              <p>
+                <strong>App function:</strong> Push notification device tokens,
+                stored on our servers only if you choose to enable
+                notifications.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>What we never collect</h2>
+            <div style={sectionBodyStyle}>
+              <p>We never sell your data.</p>
+              <p>No ads and no ad tracking.</p>
+              <p>No analytics SDKs.</p>
+              <p>No financial data collected.</p>
+              <p>No retention dark patterns.</p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Where your data lives</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                Processing is done on your device where possible. Sensitive
+                details stay on-device by design.
+              </p>
+              <p>
+                Shared group content (boards, shortlisted listings, messages,
+                and housing preferences) syncs to our servers so your roommate
+                group stays up to date.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Third parties</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                We use trusted third parties to process data strictly for app
+                operations:
+              </p>
+              <p>
+                <strong>Supabase:</strong> Database infrastructure to store
+                account and board records.
+              </p>
+              <p>
+                <strong>Vercel:</strong> Application hosting and API routing.
+              </p>
+              <p>
+                <strong>Apple MapKit:</strong> Listing and commute addresses are
+                sent to Apple to compute routes and travel times.
+              </p>
+              <p>
+                <strong>Apple Push Notification service:</strong> Delivers push
+                notifications to your device when enabled.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Notifications</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                Push notification device tokens are stored only if you enable
+                notifications.
+              </p>
+              <p>
+                Notifications are used strictly to keep you updated on your
+                group boards and messages. You can turn notifications off at
+                any time in iOS Settings.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Deleting your data</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                You can delete your account at any time directly in app
+                settings.
+              </p>
+              <p>
+                When you delete your account, your data and your boards are
+                deleted with it.
+              </p>
+              <p>
+                A recently-deleted recovery window exists so accidental
+                deletions can be recovered before permanent removal.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Contact</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                For questions about this privacy policy or your personal data,
+                contact us:
+              </p>
+              <a className={styles.emailLink} href="mailto:SUPPORT_EMAIL">
+                SUPPORT_EMAIL
+              </a>
+            </div>
+          </article>
         </div>
-        <p className={styles.notice}>Questions or deletion problems can be submitted through the in-app bug-report tool, TestFlight feedback, or the contact route listed on this site.</p>
+
+        <p className={styles.notice}>
+          Homeboard is built for roommate groups. We collect only what is
+          required to run your search and never sell or monetize your personal
+          information.
+        </p>
       </div>
       <InfoFooter />
     </main>
