@@ -35,6 +35,20 @@ final class HomeboardNativeCoreFlowUITests: FixtureUITestCase {
     XCTAssertEqual(app.state, .runningForeground)
     XCTAssertTrue((diagnostics()["unexpected"] as? [String] ?? []).isEmpty)
   }
+  func testSeededShortlistShowsExpectedListings() {
+    launchFixture()
+    app.tabBars.buttons["Shortlist"].tap()
+    for title in [
+      "2BR in the Mission",
+      "3BR Hayes Valley Flat",
+      "2BR Noe Valley Sun-Trap",
+    ] {
+      let listing = app.staticTexts[title].firstMatch
+      reveal(listing)
+      XCTAssertTrue(listing.exists, "Missing seeded shortlist entry: \(title)")
+    }
+    assertClean()
+  }
   func testCreateBoardThroughSignedInOnboarding() {
     launchFixture(["UITEST_ONBOARDING": "1"])
     let next = app.buttons["homeboard.onboarding.continue"]
@@ -59,8 +73,21 @@ final class HomeboardNativeCoreFlowUITests: FixtureUITestCase {
   }
   func testAddListingFromSyntheticURL() {
     launchFixture()
-    app.tabBars.buttons["Shortlist"].tap()
-    app.buttons["Add a listing"].tap()
+    let shortlist = app.tabBars.buttons["Shortlist"]
+    XCTAssertTrue(shortlist.waitForExistence(timeout: 10))
+    wait("Shortlist tab was not ready") { shortlist.isHittable }
+    for _ in 0..<3 where !shortlist.isSelected {
+      shortlist.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      let selected = XCTNSPredicateExpectation(
+        predicate: NSPredicate(format: "selected == true"),
+        object: shortlist
+      )
+      if XCTWaiter.wait(for: [selected], timeout: 3) == .completed { break }
+    }
+    XCTAssertTrue(shortlist.isSelected, "Shortlist tab did not become selected")
+    let addListing = app.buttons["Add a listing"]
+    XCTAssertTrue(addListing.waitForExistence(timeout: 10))
+    addListing.tap()
     app.buttons["Paste a listing link"].tap()
     for (id, text) in [("title", "321 Test Lane"), ("price", "3200"), ("bedrooms", "2"), ("bathrooms", "1")] {
       let field = app.textFields["homeboard.listing.field.\(id)"]
@@ -108,6 +135,7 @@ final class HomeboardNativeCoreFlowUITests: FixtureUITestCase {
     let listing = app.staticTexts["2BR in the Mission"].firstMatch
     XCTAssertTrue(listing.waitForExistence(timeout: 10))
     listing.tap()
+    XCTAssertTrue(app.staticTexts["$3,200/mo"].waitForExistence(timeout: 10))
     let like = app.buttons["homeboard.listing.vote.fixture-listing-001.like"]
     reveal(like)
     like.tap()
@@ -162,6 +190,15 @@ final class HomeboardNativeCoreFlowUITests: FixtureUITestCase {
     XCTAssertFalse(app.progressIndicators["homeboard.wallet.progress"].exists)
     XCTAssertFalse(app.buttons["homeboard.wallet.fund"].exists)
     XCTAssertFalse(app.staticTexts["Advisor needs an active board week"].exists)
+    assertClean()
+  }
+  func testSearchTabIsReachable() {
+    launchFixture()
+    let search = app.tabBars.buttons["Search"]
+    XCTAssertTrue(search.waitForExistence(timeout: 10))
+    search.tap()
+    XCTAssertTrue(search.isSelected)
+    XCTAssertEqual(app.state, .runningForeground)
     assertClean()
   }
   func testSettingsSignOutReturnsToUnauthenticatedWelcome() {
