@@ -242,7 +242,7 @@ test("the on-device model uses frozen evidence independently from the animation"
   );
 });
 
-test("iOS Share uses an App Store-safe activation rule for URLs and text", () => {
+test("iOS Share allows URL and plain-text attachments but rejects image-only activation", () => {
   assert.match(
     shareExtensionInfoPlist,
     /NSExtensionActivationRule<\/key>[\s\S]*?<string>\$\(HOMEBOARD_EXTENSION_ACTIVATION_RULE\)<\/string>/,
@@ -265,6 +265,15 @@ test("iOS Share uses an App Store-safe activation rule for URLs and text", () =>
     xcodeProjectSource,
     new RegExp(`HOMEBOARD_EXTENSION_ACTIVATION_RULE = ${forbiddenPredicate}`),
   );
+  const generatedActivationRules = xcodeProjectSource
+    .split("\n")
+    .filter((line) => line.includes("HOMEBOARD_EXTENSION_ACTIVATION_RULE = "))
+    .map((line) => line.trim());
+  assert.equal(generatedActivationRules.length, 4);
+  assert.equal(new Set(generatedActivationRules).size, 1);
+  assert.match(generatedActivationRules[0], /SUBQUERY\(extensionItems/);
+  assert.match(generatedActivationRules[0], /public\.url/);
+  assert.match(generatedActivationRules[0], /public\.plain-text/);
   assert.match(
     shareExtensionInfoPlist,
     /NSExtensionJavaScriptPreprocessingFile<\/key><string>SharePreprocessor<\/string>/,
@@ -277,6 +286,20 @@ test("iOS Share uses an App Store-safe activation rule for URLs and text", () =>
   assert.match(compactShareViewControllerSource, /metadata\.originalURL/);
   assert.match(compactShareViewControllerSource, /validatedWebURL/);
   assert.match(compactShareViewControllerSource, /Homeboard needs the listing link from this app/);
+  const resolveFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func resolve(_ payload:"),
+    compactShareViewControllerSource.indexOf("private func startFastZillowSnapshot"),
+  );
+  const missingLinkBranch = resolveFlow.match(
+    /guard let url = payload\.url else \{\s*showFailure\("Homeboard needs the listing link from this app\."\)\s*return\s*\}/,
+  );
+  assert.ok(missingLinkBranch);
+  assert.doesNotMatch(missingLinkBranch[0], /webView\.load/);
+  assert.doesNotMatch(missingLinkBranch[0], /HomeboardListingSavePipeline\.enqueue/);
+  assert.ok(
+    resolveFlow.indexOf("guard let url = payload.url else") <
+      resolveFlow.indexOf("webView.load(request)"),
+  );
   assert.match(shareViewControllerSource, /private func startAutomaticPageScan\(\)/);
   assert.match(shareViewControllerSource, /scan\.automaticStarted/);
   assert.match(shareViewControllerSource, /await self\.runHighlightedPageScan\(\)/);
