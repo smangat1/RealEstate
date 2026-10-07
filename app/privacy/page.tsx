@@ -33,18 +33,64 @@ export default function PrivacyPage() {
             <h2>What we collect</h2>
             <div style={sectionBodyStyle}>
               <p>
-                <strong>Account data:</strong> Name and email address only,
-                stored on our servers.
+                <strong>Account information:</strong> Your name and email
+                address when you register using email and password or Sign in
+                with Apple.
               </p>
               <p>
-                <strong>User content:</strong> Boards, shortlisted listings,
-                group chat messages, housing preferences (including saved
-                commute destinations), and replies, stored on our servers.
+                <strong>Group house-hunting content:</strong> Shared boards,
+                shortlisted listings, group chat messages, message replies,
+                listing comments, roommate votes, custom ratings, reviews,
+                tour availability, and roommate decision votes.
               </p>
               <p>
-                <strong>App function:</strong> Push notification device tokens,
-                stored on our servers only if you choose to enable
-                notifications.
+                <strong>Housing and commute preferences:</strong> Target
+                neighborhoods, budget ranges, move-in dates, priorities,
+                must-haves, dealbreakers, and saved commute destinations or
+                work addresses.
+              </p>
+              <p>
+                <strong>Listing photos:</strong> Photos you upload for listings
+                are stored in private cloud storage and optimized for the app.
+              </p>
+              <p>
+                <strong>Shared expenses:</strong> House-hunting costs you log on
+                a board (such as application fees, deposits, or moving
+                expenses) to calculate roommate split balances.
+              </p>
+              <p>
+                <strong>Device tokens and pairings:</strong> Apple Push
+                Notification service (APNs) device tokens and time zones (if you
+                enable notifications), and cryptographic pairing codes if you
+                connect a Mac or browser companion.
+              </p>
+              <p>
+                <strong>Payment contribution records:</strong> If you fund a
+                shared subscription via Stripe, we store the Stripe payment
+                identifier and contribution amount. We never see or store your
+                payment card or bank numbers.
+              </p>
+              <p>
+                <strong>First-party operational activity:</strong> Essential
+                product events (like creating a board or importing a listing)
+                are logged in our database to keep the service working and
+                troubleshoot problems.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>What stays on your device</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                <strong>Private financial inputs:</strong> Sensitive numbers
+                entered into the Advisor financial tool (such as individual
+                income or credit score ranges) are saved on your device in the
+                iOS Keychain. They are not stored on our application servers.
+              </p>
+              <p>
+                <strong>Local commute routing:</strong> Travel times and commute
+                routes are calculated on your device using Apple MapKit.
               </p>
             </div>
           </article>
@@ -52,25 +98,21 @@ export default function PrivacyPage() {
           <article>
             <h2>What we never collect</h2>
             <div style={sectionBodyStyle}>
-              <p>We never sell your data.</p>
-              <p>No ads and no ad tracking.</p>
-              <p>No analytics SDKs.</p>
-              <p>No financial data collected.</p>
-              <p>No retention dark patterns.</p>
-            </div>
-          </article>
-
-          <article>
-            <h2>Where your data lives</h2>
-            <div style={sectionBodyStyle}>
               <p>
-                Processing is done on your device where possible. Sensitive
-                details stay on-device by design.
+                We never sell or rent your personal data to brokerages,
+                advertisers, or data brokers.
               </p>
               <p>
-                Shared group content (boards, shortlisted listings, messages,
-                and housing preferences) syncs to our servers so your roommate
-                group stays up to date.
+                No third-party advertising SDKs or tracking networks (no ad
+                pixels, no cross-app tracking).
+              </p>
+              <p>
+                No bank account or credit card numbers stored on our servers
+                (payments are handled directly by Stripe).
+              </p>
+              <p>
+                No retention dark patterns. You can delete your account at any
+                time directly in app settings.
               </p>
             </div>
           </article>
@@ -79,23 +121,34 @@ export default function PrivacyPage() {
             <h2>Third parties</h2>
             <div style={sectionBodyStyle}>
               <p>
-                We use trusted third parties to process data strictly for app
-                operations:
+                We use trusted third parties strictly to operate the service:
               </p>
               <p>
-                <strong>Supabase:</strong> Database infrastructure to store
-                account and board records.
+                <strong>Supabase:</strong> Database hosting, authentication
+                (including Sign in with Apple), and private storage for
+                uploaded listing photos.
               </p>
               <p>
-                <strong>Vercel:</strong> Application hosting and API routing.
+                <strong>Vercel:</strong> Web application hosting and API
+                routing.
               </p>
               <p>
-                <strong>Apple MapKit:</strong> Listing and commute addresses are
-                sent to Apple to compute routes and travel times.
+                <strong>Apple:</strong> Sign in with Apple (authentication),
+                Apple MapKit (commute calculations and map data), and Apple
+                Push Notification service (delivering push alerts).
               </p>
               <p>
-                <strong>Apple Push Notification service:</strong> Delivers push
-                notifications to your device when enabled.
+                <strong>Stripe:</strong> Payment processing for board wallet
+                funding and shared subscriptions.
+              </p>
+              <p>
+                <strong>Sentry:</strong> Error tracking, crash reporting, and
+                diagnostic trace ingestion. Sentry requests automatically
+                scrub personal data, tokens, and query strings.
+              </p>
+              <p>
+                <strong>RentCast:</strong> Rental listing data provider used for
+                public catalog comparison data.
               </p>
             </div>
           </article>
@@ -104,13 +157,29 @@ export default function PrivacyPage() {
             <h2>Notifications</h2>
             <div style={sectionBodyStyle}>
               <p>
-                Push notification device tokens are stored only if you enable
-                notifications.
+                Push notification device tokens are stored only if you choose to
+                enable notifications.
               </p>
               <p>
-                Notifications are used strictly to keep you updated on your
-                group boards and messages. You can turn notifications off at
-                any time in iOS Settings.
+                Notifications keep you informed about board updates, new
+                listings, and messages. You can change your preferences or turn
+                notifications off at any time in iOS Settings.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Bug reports and diagnostics</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                If you voluntarily submit an in-app bug report, we receive your
+                description, app version, device kind, and a diagnostic trace.
+                The trace automatically redacts authentication tokens, email
+                addresses, and web links.
+              </p>
+              <p>
+                Diagnostic crash and performance traces (such as MetricKit logs)
+                may be sent to Sentry to help us fix crashes.
               </p>
             </div>
           </article>
@@ -123,12 +192,12 @@ export default function PrivacyPage() {
                 settings.
               </p>
               <p>
-                When you delete your account, your data and your boards are
-                deleted with it.
+                Account deletion removes your user profile, authentication
+                credentials, uploaded photos, chat messages, and owned boards.
               </p>
               <p>
-                A recently-deleted recovery window exists so accidental
-                deletions can be recovered before permanent removal.
+                Deleted listings on a board remain in a recently-deleted view
+                for a short recovery window before permanent removal.
               </p>
             </div>
           </article>
@@ -140,8 +209,11 @@ export default function PrivacyPage() {
                 For questions about this privacy policy or your personal data,
                 contact us:
               </p>
-              <a className={styles.emailLink} href="mailto:SUPPORT_EMAIL">
-                SUPPORT_EMAIL
+              <a
+                className={styles.emailLink}
+                href="mailto:homeboard.support@gmail.com"
+              >
+                homeboard.support@gmail.com
               </a>
             </div>
           </article>
