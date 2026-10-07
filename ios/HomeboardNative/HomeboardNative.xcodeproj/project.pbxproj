@@ -875,7 +875,7 @@
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
-				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "extensionItems.@count > 0";
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.url\" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.plain-text\").@count > 0).@count > 0";
 				INFOPLIST_FILE = HomeboardShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -950,7 +950,7 @@
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
-				HOMEBOARD_EXTENSION_ACTIVATION_RULE = TRUEPREDICATE;
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.url\" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.plain-text\").@count > 0).@count > 0";
 				INFOPLIST_FILE = HomeboardShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1225,7 +1225,7 @@
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
-				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "extensionItems.@count > 0";
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.url\" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.plain-text\").@count > 0).@count > 0";
 				INFOPLIST_FILE = HomeboardActionExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1324,7 +1324,7 @@
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
-				HOMEBOARD_EXTENSION_ACTIVATION_RULE = TRUEPREDICATE;
+				HOMEBOARD_EXTENSION_ACTIVATION_RULE = "SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.url\" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.plain-text\").@count > 0).@count > 0";
 				INFOPLIST_FILE = HomeboardActionExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -242,16 +242,38 @@ test("the on-device model uses frozen evidence independently from the animation"
   );
 });
 
-test("iOS Share admits every nonempty host share item and validates its URL in Swift", () => {
+test("iOS Share allows URL and plain-text attachments but rejects image-only activation", () => {
   assert.match(
     shareExtensionInfoPlist,
     /NSExtensionActivationRule<\/key>[\s\S]*?<string>\$\(HOMEBOARD_EXTENSION_ACTIVATION_RULE\)<\/string>/,
   );
-  assert.doesNotMatch(shareExtensionInfoPlist, /TRUEPREDICATE/);
-  assert.match(
-    xcodeProjectSpec,
-    /HomeboardShareExtension:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*"extensionItems\.@count > 0"[\s\S]*?Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*TRUEPREDICATE/,
+  const forbiddenPredicate = ["TRUE", "PREDICATE"].join("");
+  assert.doesNotMatch(shareExtensionInfoPlist, new RegExp(forbiddenPredicate));
+  const shareExtensionBlock = xcodeProjectSpec.slice(
+    xcodeProjectSpec.indexOf("HomeboardShareExtension:"),
+    xcodeProjectSpec.indexOf("HomeboardActionExtension:"),
   );
+  assert.match(
+    shareExtensionBlock,
+    /HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*['"]SUBQUERY\(extensionItems[\s\S]*?public\.url[\s\S]*?public\.plain-text/,
+  );
+  assert.doesNotMatch(
+    shareExtensionBlock,
+    /Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE/,
+  );
+  assert.doesNotMatch(
+    xcodeProjectSource,
+    new RegExp(`HOMEBOARD_EXTENSION_ACTIVATION_RULE = ${forbiddenPredicate}`),
+  );
+  const generatedActivationRules = xcodeProjectSource
+    .split("\n")
+    .filter((line) => line.includes("HOMEBOARD_EXTENSION_ACTIVATION_RULE = "))
+    .map((line) => line.trim());
+  assert.equal(generatedActivationRules.length, 4);
+  assert.equal(new Set(generatedActivationRules).size, 1);
+  assert.match(generatedActivationRules[0], /SUBQUERY\(extensionItems/);
+  assert.match(generatedActivationRules[0], /public\.url/);
+  assert.match(generatedActivationRules[0], /public\.plain-text/);
   assert.match(
     shareExtensionInfoPlist,
     /NSExtensionJavaScriptPreprocessingFile<\/key><string>SharePreprocessor<\/string>/,
@@ -264,6 +286,20 @@ test("iOS Share admits every nonempty host share item and validates its URL in S
   assert.match(compactShareViewControllerSource, /metadata\.originalURL/);
   assert.match(compactShareViewControllerSource, /validatedWebURL/);
   assert.match(compactShareViewControllerSource, /Homeboard needs the listing link from this app/);
+  const resolveFlow = compactShareViewControllerSource.slice(
+    compactShareViewControllerSource.indexOf("private func resolve(_ payload:"),
+    compactShareViewControllerSource.indexOf("private func startFastZillowSnapshot"),
+  );
+  const missingLinkBranch = resolveFlow.match(
+    /guard let url = payload\.url else \{\s*showFailure\("Homeboard needs the listing link from this app\."\)\s*return\s*\}/,
+  );
+  assert.ok(missingLinkBranch);
+  assert.doesNotMatch(missingLinkBranch[0], /webView\.load/);
+  assert.doesNotMatch(missingLinkBranch[0], /HomeboardListingSavePipeline\.enqueue/);
+  assert.ok(
+    resolveFlow.indexOf("guard let url = payload.url else") <
+      resolveFlow.indexOf("webView.load(request)"),
+  );
   assert.match(shareViewControllerSource, /private func startAutomaticPageScan\(\)/);
   assert.match(shareViewControllerSource, /scan\.automaticStarted/);
   assert.match(shareViewControllerSource, /await self\.runHighlightedPageScan\(\)/);
@@ -293,9 +329,17 @@ test("native apps also expose Homeboard in the vertical Edit Actions list", () =
     xcodeProjectSpec,
     /HomeboardNative:[\s\S]*?dependencies:[\s\S]*?- target: HomeboardActionExtension/,
   );
+  const actionExtensionBlock = xcodeProjectSpec.slice(
+    xcodeProjectSpec.indexOf("HomeboardActionExtension:"),
+    xcodeProjectSpec.indexOf("HomeboardSafariExtension:"),
+  );
   assert.match(
-    xcodeProjectSpec,
-    /HomeboardActionExtension:[\s\S]*?PRODUCT_BUNDLE_IDENTIFIER:\s*com\.homeboard\.native\.action[\s\S]*?Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*TRUEPREDICATE/,
+    actionExtensionBlock,
+    /PRODUCT_BUNDLE_IDENTIFIER:\s*com\.homeboard\.native\.action[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*['"]SUBQUERY\(extensionItems[\s\S]*?public\.url[\s\S]*?public\.plain-text/,
+  );
+  assert.doesNotMatch(
+    actionExtensionBlock,
+    /Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE/,
   );
   assert.match(
     xcodeProjectSource,

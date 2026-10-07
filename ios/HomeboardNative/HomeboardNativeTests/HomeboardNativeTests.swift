@@ -2715,6 +2715,98 @@ final class HomeboardNativeTests: XCTestCase {
     """
   }
 
+  func testBuiltShareExtensionActivationRulesMatchURLAndPlainTextContract() throws {
+    let rules = try builtExtensionActivationRules()
+    XCTAssertEqual(Set(rules.values).count, 1)
+
+    // Safari listing page shares contain public.url.
+    let urlItem = NSExtensionItem()
+    urlItem.attachments = [
+      NSItemProvider(item: NSURL(string: "https://www.zillow.com/homedetails/123_zpid/")!, typeIdentifier: "public.url")
+    ]
+
+    // Notes text shares contain public.plain-text whether or not they include a URL.
+    let textItem = NSExtensionItem()
+    textItem.attachments = [
+      NSItemProvider(item: "Check this out: https://www.zillow.com/homedetails/123" as NSString, typeIdentifier: "public.plain-text")
+    ]
+
+    let urlFreeTextItem = NSExtensionItem()
+    urlFreeTextItem.attachments = [
+      NSItemProvider(item: "A listing to look up later" as NSString, typeIdentifier: "public.plain-text")
+    ]
+
+    // UTF-8 plain text also conforms to public.plain-text
+    let utf8TextItem = NSExtensionItem()
+    utf8TextItem.attachments = [
+      NSItemProvider(item: "Check this out: https://www.zillow.com/homedetails/123" as NSString, typeIdentifier: "public.utf8-plain-text")
+    ]
+
+    // Photos share alone contains public.jpeg or public.image, but no URL or plain text.
+    let photoItem = NSExtensionItem()
+    photoItem.attachments = [
+      NSItemProvider(item: NSData(), typeIdentifier: "public.jpeg")
+    ]
+
+    let genericImageItem = NSExtensionItem()
+    genericImageItem.attachments = [
+      NSItemProvider(item: NSData(), typeIdentifier: "public.image")
+    ]
+
+    // Other media has no URL or plain-text attachment.
+    let movieItem = NSExtensionItem()
+    movieItem.attachments = [
+      NSItemProvider(item: NSData(), typeIdentifier: "public.movie")
+    ]
+
+    let emptyAttachmentsItem = NSExtensionItem()
+    emptyAttachmentsItem.attachments = []
+
+    for (extensionName, rule) in rules {
+      XCTAssertTrue(rule.contains("SUBQUERY"), extensionName)
+      XCTAssertTrue(rule.contains("public.url"), extensionName)
+      XCTAssertTrue(rule.contains("public.plain-text"), extensionName)
+      XCTAssertFalse(rule.contains(["TRUE", "PREDICATE"].joined()), extensionName)
+
+      let predicate = NSPredicate(format: rule)
+      XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [urlItem]]), extensionName)
+      XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [textItem]]), extensionName)
+      XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [urlFreeTextItem]]), extensionName)
+      XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [utf8TextItem]]), extensionName)
+      XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [photoItem]]), extensionName)
+      XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [genericImageItem]]), extensionName)
+      XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [movieItem]]), extensionName)
+      XCTAssertFalse(predicate.evaluate(with: ["extensionItems": []]), extensionName)
+      XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [emptyAttachmentsItem]]), extensionName)
+    }
+  }
+
+  private func builtExtensionActivationRules() throws -> [String: String] {
+    var candidateURL = Bundle(for: type(of: self)).bundleURL
+    var hostAppURL: URL?
+
+    while candidateURL.path != "/" {
+      if candidateURL.pathExtension == "app" {
+        hostAppURL = candidateURL
+        break
+      }
+      candidateURL.deleteLastPathComponent()
+    }
+
+    let appURL = try XCTUnwrap(hostAppURL, "Could not locate the built HomeboardNative.app from the test bundle")
+    let plugInsURL = appURL.appendingPathComponent("PlugIns", isDirectory: true)
+    let extensionNames = ["HomeboardShareExtension", "HomeboardActionExtension"]
+
+    return try Dictionary(uniqueKeysWithValues: extensionNames.map { extensionName in
+      let bundleURL = plugInsURL.appendingPathComponent("\(extensionName).appex", isDirectory: true)
+      let bundle = try XCTUnwrap(Bundle(url: bundleURL), "Missing built \(extensionName).appex")
+      let extensionDictionary = try XCTUnwrap(bundle.infoDictionary?["NSExtension"] as? [String: Any])
+      let attributes = try XCTUnwrap(extensionDictionary["NSExtensionAttributes"] as? [String: Any])
+      let rule = try XCTUnwrap(attributes["NSExtensionActivationRule"] as? String)
+      return (extensionName, rule)
+    })
+  }
+
 }
 
 private final class AdvisorWalletURLProtocol: URLProtocol {

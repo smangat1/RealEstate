@@ -107,7 +107,7 @@ targets:
         CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
-        HOMEBOARD_EXTENSION_ACTIVATION_RULE: "extensionItems.@count > 0"
+        HOMEBOARD_EXTENSION_ACTIVATION_RULE: 'SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text").@count > 0).@count > 0'
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         TARGETED_DEVICE_FAMILY: "1"
@@ -116,9 +116,6 @@ targets:
           # Keep extension code in the executable so PlugInKit does not have to
           # load Xcode's auxiliary *.debug.dylib before our controller starts.
           ENABLE_DEBUG_DYLIB: NO
-          # Apple recommends TRUEPREDICATE while diagnosing extension discovery.
-          # Release keeps the functional nonempty-item predicate above.
-          HOMEBOARD_EXTENSION_ACTIVATION_RULE: TRUEPREDICATE
   HomeboardActionExtension:
     type: app-extension
     platform: iOS
@@ -144,14 +141,13 @@ targets:
         CURRENT_PROJECT_VERSION: 22
         MARKETING_VERSION: 0.0.13
         HOMEBOARD_API_BASE_URL: "https://real-estate-samyanmangat-6662s-projects.vercel.app"
-        HOMEBOARD_EXTENSION_ACTIVATION_RULE: "extensionItems.@count > 0"
+        HOMEBOARD_EXTENSION_ACTIVATION_RULE: 'SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text").@count > 0).@count > 0'
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         TARGETED_DEVICE_FAMILY: "1"
       configs:
         Debug:
           ENABLE_DEBUG_DYLIB: NO
-          HOMEBOARD_EXTENSION_ACTIVATION_RULE: TRUEPREDICATE
   HomeboardSafariExtension:
     type: app-extension
     platform: iOS
