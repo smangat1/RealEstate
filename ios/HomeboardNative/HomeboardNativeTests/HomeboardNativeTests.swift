@@ -2715,6 +2715,58 @@ final class HomeboardNativeTests: XCTestCase {
     """
   }
 
+  func testShareExtensionActivationRulePredicateMatchesURLAndPlainTextOnly() {
+    let predicateString = "SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.url\" OR ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.plain-text\").@count > 0).@count > 0"
+    let predicate = NSPredicate(format: predicateString)
+
+    // 1. Safari listing page share: contains public.url
+    let urlItem = NSExtensionItem()
+    urlItem.attachments = [
+      NSItemProvider(item: NSURL(string: "https://www.zillow.com/homedetails/123_zpid/")!, typeIdentifier: "public.url")
+    ]
+    XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [urlItem]]))
+
+    // 2. Notes text snippet share: contains public.plain-text
+    let textItem = NSExtensionItem()
+    textItem.attachments = [
+      NSItemProvider(item: "Check this out: https://www.zillow.com/homedetails/123" as NSString, typeIdentifier: "public.plain-text")
+    ]
+    XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [textItem]]))
+
+    // UTF-8 plain text also conforms to public.plain-text
+    let utf8TextItem = NSExtensionItem()
+    utf8TextItem.attachments = [
+      NSItemProvider(item: "Check this out: https://www.zillow.com/homedetails/123" as NSString, typeIdentifier: "public.utf8-plain-text")
+    ]
+    XCTAssertTrue(predicate.evaluate(with: ["extensionItems": [utf8TextItem]]))
+
+    // 3. Photos share alone: contains public.jpeg or public.image (no public.url or public.plain-text)
+    let photoItem = NSExtensionItem()
+    photoItem.attachments = [
+      NSItemProvider(item: NSData(), typeIdentifier: "public.jpeg")
+    ]
+    XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [photoItem]]))
+
+    let genericImageItem = NSExtensionItem()
+    genericImageItem.attachments = [
+      NSItemProvider(item: NSData(), typeIdentifier: "public.image")
+    ]
+    XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [genericImageItem]]))
+
+    // 4. Other media (video/audio): no public.url or public.plain-text
+    let movieItem = NSExtensionItem()
+    movieItem.attachments = [
+      NSItemProvider(item: NSData(), typeIdentifier: "public.movie")
+    ]
+    XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [movieItem]]))
+
+    // 5. Empty extension items
+    XCTAssertFalse(predicate.evaluate(with: ["extensionItems": []]))
+    let emptyAttachmentsItem = NSExtensionItem()
+    emptyAttachmentsItem.attachments = []
+    XCTAssertFalse(predicate.evaluate(with: ["extensionItems": [emptyAttachmentsItem]]))
+  }
+
 }
 
 private final class AdvisorWalletURLProtocol: URLProtocol {

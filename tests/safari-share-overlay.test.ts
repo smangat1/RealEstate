@@ -242,15 +242,28 @@ test("the on-device model uses frozen evidence independently from the animation"
   );
 });
 
-test("iOS Share admits every nonempty host share item and validates its URL in Swift", () => {
+test("iOS Share uses an App Store-safe activation rule for URLs and text", () => {
   assert.match(
     shareExtensionInfoPlist,
     /NSExtensionActivationRule<\/key>[\s\S]*?<string>\$\(HOMEBOARD_EXTENSION_ACTIVATION_RULE\)<\/string>/,
   );
-  assert.doesNotMatch(shareExtensionInfoPlist, /TRUEPREDICATE/);
+  const forbiddenPredicate = ["TRUE", "PREDICATE"].join("");
+  assert.doesNotMatch(shareExtensionInfoPlist, new RegExp(forbiddenPredicate));
+  const shareExtensionBlock = xcodeProjectSpec.slice(
+    xcodeProjectSpec.indexOf("HomeboardShareExtension:"),
+    xcodeProjectSpec.indexOf("HomeboardActionExtension:"),
+  );
   assert.match(
-    xcodeProjectSpec,
-    /HomeboardShareExtension:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*"extensionItems\.@count > 0"[\s\S]*?Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*TRUEPREDICATE/,
+    shareExtensionBlock,
+    /HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*['"]SUBQUERY\(extensionItems[\s\S]*?public\.url[\s\S]*?public\.plain-text/,
+  );
+  assert.doesNotMatch(
+    shareExtensionBlock,
+    /Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE/,
+  );
+  assert.doesNotMatch(
+    xcodeProjectSource,
+    new RegExp(`HOMEBOARD_EXTENSION_ACTIVATION_RULE = ${forbiddenPredicate}`),
   );
   assert.match(
     shareExtensionInfoPlist,
@@ -293,9 +306,17 @@ test("native apps also expose Homeboard in the vertical Edit Actions list", () =
     xcodeProjectSpec,
     /HomeboardNative:[\s\S]*?dependencies:[\s\S]*?- target: HomeboardActionExtension/,
   );
+  const actionExtensionBlock = xcodeProjectSpec.slice(
+    xcodeProjectSpec.indexOf("HomeboardActionExtension:"),
+    xcodeProjectSpec.indexOf("HomeboardSafariExtension:"),
+  );
   assert.match(
-    xcodeProjectSpec,
-    /HomeboardActionExtension:[\s\S]*?PRODUCT_BUNDLE_IDENTIFIER:\s*com\.homeboard\.native\.action[\s\S]*?Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*TRUEPREDICATE/,
+    actionExtensionBlock,
+    /PRODUCT_BUNDLE_IDENTIFIER:\s*com\.homeboard\.native\.action[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE:\s*['"]SUBQUERY\(extensionItems[\s\S]*?public\.url[\s\S]*?public\.plain-text/,
+  );
+  assert.doesNotMatch(
+    actionExtensionBlock,
+    /Debug:[\s\S]*?HOMEBOARD_EXTENSION_ACTIVATION_RULE/,
   );
   assert.match(
     xcodeProjectSource,

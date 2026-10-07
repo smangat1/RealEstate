@@ -28,12 +28,9 @@
     <dict>
       <key>NSExtensionActivationRule</key>
       <!--
-        Some rental apps advertise only a private rich-preview representation,
-        and some put the useful URL in NSExtensionItem.attributedContentText
-        instead of an attachment. Match the presence of a share item itself so
-        those hosts cannot filter Homeboard out before its controller launches.
-        CompactShareViewController still requires a valid HTTP(S) URL before it
-        offers a save, so unrelated shares fail closed inside the extension.
+        Activates only when at least one attachment conforms to public.url
+        or public.plain-text. Image-only shares are excluded because
+        Homeboard imports web listings rather than standalone photos.
       -->
       <string>$(HOMEBOARD_EXTENSION_ACTIVATION_RULE)</string>
       <key>NSExtensionJavaScriptPreprocessingFile</key>
