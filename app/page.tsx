@@ -900,14 +900,28 @@ export default function HomeboardPage() {
                       }}
                     >
                       <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>1. No selling data:</strong> We never sell search history, preferences, or contact info to brokerages or data brokers.
+                        <strong style={{ color: "#202124", fontWeight: 600 }}>1. Zero tracking:</strong> We do not sell or monetize personal browsing history or search data.
                       </p>
                       <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>2. Encrypted doc vault:</strong> W-2s, paystubs, and IDs are AES-256 encrypted at rest and only decrypted when you submit an application.
+                        <strong style={{ color: "#202124", fontWeight: 600 }}>2. Secure sync:</strong> Saved listings and board messages sync over encrypted channels between your devices.
                       </p>
                       <p style={{ margin: 0 }}>
-                        <strong style={{ color: "#202124", fontWeight: 600 }}>3. Apple Pay token isolation:</strong> Deposit splits use device-level Apple Pay payment tokens; we never store or see bank numbers.
+                        <strong style={{ color: "#202124", fontWeight: 600 }}>3. Full control:</strong> Delete your listings, boards, or account data anytime directly in settings.
                       </p>
+                    </div>
+
+                    <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #f1f3f4", textAlign: "right" }}>
+                      <Link
+                        href="/privacy"
+                        style={{
+                          fontSize: "11px",
+                          color: "#1a73e8",
+                          textDecoration: "underline",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Read Full Privacy Policy →
+                      </Link>
                     </div>
 
                     {/* Pointer Triangle Caret */}
@@ -929,7 +943,7 @@ export default function HomeboardPage() {
                 )}
 
                 <a
-                  href="#privacy"
+                  href="/privacy"
                   onClick={(e) => {
                     e.preventDefault();
                     setIsPrivacyOpen(!isPrivacyOpen);

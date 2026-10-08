@@ -921,7 +921,7 @@ export default function MacCompanionPage() {
                 )}
 
                 <a
-                  href="#privacy"
+                  href="/privacy"
                   onClick={(e) => {
                     e.preventDefault();
                     setIsPrivacyOpen(!isPrivacyOpen);
