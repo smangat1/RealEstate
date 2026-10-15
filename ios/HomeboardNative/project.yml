@@ -73,6 +73,8 @@ targets:
           CODE_SIGN_ENTITLEMENTS: HomeboardNative/HomeboardNativeDebug.entitlements
         Release:
           CODE_SIGN_ENTITLEMENTS: HomeboardNative/HomeboardNative.entitlements
+          HOMEBOARD_API_BASE_URL: "https://joinhomeboard.com"
+          HOMEBOARD_PUBLIC_WEB_URL: "https://joinhomeboard.com"
     dependencies:
       # Safari scans automatically. Native rental apps can expose Homeboard in
       # either the destination row or the vertical action list.
