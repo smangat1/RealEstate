@@ -1032,10 +1032,10 @@
 				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
-				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
 				HOMEBOARD_APP_COMMIT = local;
 				HOMEBOARD_BUILD_CHANNEL = production;
-				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
+				HOMEBOARD_PUBLIC_WEB_URL = "https://joinhomeboard.com";
 				HOMEBOARD_STRIPE_PUBLISHABLE_KEY = "";
 				INFOPLIST_FILE = HomeboardNative/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
