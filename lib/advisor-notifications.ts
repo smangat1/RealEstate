@@ -23,6 +23,7 @@ import {
   notifyBoardMembers,
   type BoardPushType,
 } from "@/lib/apns";
+import { isAdvisorPushEnabled } from "@/lib/advisor-push";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
@@ -263,6 +264,7 @@ async function deliverClaimed(input: {
 }
 
 export async function deliverUrgentAdvisorNotification(fingerprint: string, now = new Date()) {
+  if (!isAdvisorPushEnabled()) return 0;
   const event = await prisma.advisorNotificationEvent.findUnique({
     where: { fingerprint },
     include: {
@@ -391,6 +393,16 @@ async function releasePreference(input: {
 }
 
 export async function flushDueAdvisorDigests(now = new Date()) {
+  if (!isAdvisorPushEnabled()) {
+    return {
+      deliveredDigests: 0,
+      deliveredEvents: 0,
+      suppressedEvents: 0,
+      failedEvents: 0,
+      waitingEvents: 0,
+      retriedUrgent: 0,
+    };
+  }
   const retriedUrgent = await flushPendingUrgentNotifications(now);
   const preferences = await pendingDigestPreferences(now);
   const results = {
