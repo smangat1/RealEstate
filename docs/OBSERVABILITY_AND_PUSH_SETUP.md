@@ -36,10 +36,11 @@ Create an APNs token key in the Apple Developer portal for the Homeboard team, w
 - `APNS_TEAM_ID` (`4SSAVHCM6U` for the current team)
 - `APNS_PRIVATE_KEY` (the complete `.p8` value; escaped newlines or base64 are accepted)
 - `APNS_BUNDLE_ID` (`com.homeboard.native`)
+- `HOMEBOARD_ADVISOR_ENABLED` (`true` enables Advisor pushes; missing or any other value keeps them off)
 
 The provider uses the sandbox APNs endpoint for Debug tokens and production APNs for Release/TestFlight tokens. Invalid and unregistered device tokens are removed automatically.
 
-The sender is excluded from human board-chat notifications. Advisor follow-up drafts, listing changes, and board-comparison flags notify every board member. Tapping any of these notifications opens that board’s Updates tab.
+The Advisor switch does not affect human board-chat notifications. When it is enabled, Advisor follow-up drafts, listing changes, and board-comparison flags notify every board member. Tapping any of these notifications opens that board’s Updates tab.
 
 ## Advisor proactive schedule
 
