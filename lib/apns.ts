@@ -10,6 +10,7 @@ import { createAPNsProviderToken } from "@/lib/apns-token";
 import {
   classifyBoardPushAttempt,
 } from "@/lib/apns-delivery";
+import { isAdvisorPushEnabled } from "@/lib/advisor-push";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
 
@@ -185,6 +186,9 @@ export async function notifyBoardMembers(input: {
   recipientUserIds?: string[];
   collapseId?: string;
 }) {
+  if (input.type !== "board_chat" && !isAdvisorPushEnabled()) {
+    return classifyBoardPushAttempt({ configured: false, statuses: [] });
+  }
   const configuration = credentials();
   if (!configuration) return classifyBoardPushAttempt({ configured: false, statuses: [] });
 
