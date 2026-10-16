@@ -479,9 +479,13 @@ test("onboarding keeps only core setup steps and teaches the first listing save"
   assert.match(workspaceSource, /SharedListingShareWorkflowGuide/);
   assert.match(workspaceSource, /Save from Safari/);
   assert.match(workspaceSource, /Enable Safari capture once/);
-  assert.match(workspaceSource, /Enable in Safari/);
+  assert.match(workspaceSource, /Open Safari settings/);
   assert.match(workspaceSource, /SFSafariExtensionManager\.stateOfExtension/);
   assert.match(workspaceSource, /SFSafariSettings\.openExtensionsSettings/);
+  assert.match(workspaceSource, /If Settings shows the Extensions list, tap Save to Homeboard/);
+  assert.match(workspaceSource, /Turn on Allow Extension/);
+  assert.match(workspaceSource, /Open Website Access and choose Allow/);
+  assert.match(workspaceSource, /Open Safari Settings/);
   assert.match(workspaceSource, /puzzlepiece\.extension/);
   assert.match(workspaceSource, /CFBundleIcons/);
   assert.match(workspaceSource, /Swipe left to the next unit/);
