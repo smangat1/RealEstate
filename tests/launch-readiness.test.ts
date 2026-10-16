@@ -67,6 +67,23 @@ test("information pages have a mobile menu, useful footer, and custom 404", () =
   assert.match(notFound, /Return to Homeboard/);
 });
 
+test("the privacy policy page uses support@joinhomeboard.com and explains Advisor status", () => {
+  const privacy = read("app/privacy/page.tsx");
+
+  assert.match(privacy, /support@joinhomeboard\.com/);
+  assert.match(privacy, /process\.env\.NEXT_PUBLIC_SUPPORT_EMAIL/);
+  assert.doesNotMatch(privacy, /homeboard\.support@gmail\.com/);
+  assert.match(privacy, /<h2>Homeboard Advisor<\/h2>/);
+  assert.match(
+    privacy,
+    /The Homeboard Advisor is not available in this version of the[\s\S]+?will be released in a later update\./,
+  );
+  assert.match(
+    privacy,
+    /No advisor features[\s\S]+?collect or process any data today\./,
+  );
+});
+
 test("mobile pages prevent sideways overflow and retain final-page legal links", () => {
   const globals = read("app/globals.css");
   const marketingStyles = read("app/marketing.module.css");

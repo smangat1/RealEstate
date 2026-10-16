@@ -14,6 +14,9 @@ const sectionBodyStyle = {
   gap: "8px",
 };
 
+const supportEmail =
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "support@joinhomeboard.com";
+
 export default function PrivacyPage() {
   return (
     <main className={styles.page}>
@@ -91,6 +94,17 @@ export default function PrivacyPage() {
               <p>
                 <strong>Local commute routing:</strong> Travel times and commute
                 routes are calculated on your device using Apple MapKit.
+              </p>
+            </div>
+          </article>
+
+          <article>
+            <h2>Homeboard Advisor</h2>
+            <div style={sectionBodyStyle}>
+              <p>
+                The Homeboard Advisor is not available in this version of the
+                app and will be released in a later update. No advisor features
+                collect or process any data today.
               </p>
             </div>
           </article>
@@ -211,9 +225,9 @@ export default function PrivacyPage() {
               </p>
               <a
                 className={styles.emailLink}
-                href="mailto:homeboard.support@gmail.com"
+                href={`mailto:${supportEmail}`}
               >
-                homeboard.support@gmail.com
+                {supportEmail}
               </a>
             </div>
           </article>
