@@ -38,6 +38,19 @@ test("roommate invitations are secure bearer links instead of email locks", () =
   assert.doesNotMatch(boardData, /This invite is for .*signed in as/);
 });
 
+test("the App Store review invite can be accepted twice and stays pending", () => {
+  assert.match(boardData, /const DEMO_BOARD_INVITE_CODE = process\.env\.DEMO_BOARD_INVITE_CODE \?\? "REVIEW2026"/);
+
+  const acceptStart = boardData.indexOf("export async function acceptBoardInvitation");
+  const acceptEnd = boardData.indexOf("export async function addRoommateToBoard");
+  const acceptInvitation = boardData.slice(acceptStart, acceptEnd);
+
+  assert.match(acceptInvitation, /invitation\.inviteCode\.toUpperCase\(\) === DEMO_BOARD_INVITE_CODE\.toUpperCase\(\)/);
+  assert.match(acceptInvitation, /if \(!isDemoBoardInvite && invitationIsExpired\(invitation\)\)/);
+  assert.match(acceptInvitation, /if \(!isDemoBoardInvite\) \{[\s\S]*boardInvitation\.updateMany[\s\S]*data: \{ status: "accepted", acceptedAt \}[\s\S]*\}[\s\S]*transaction\.boardMember\.create/);
+  assert.equal(acceptInvitation.match(/boardInvitation\.updateMany/g)?.length, 1);
+});
+
 test("native invite UI shares a link that works with hidden Apple email", () => {
   assert.match(appModel, /func createInvite\(\)/);
   assert.match(appModel, /Single-use roommate link ready/);

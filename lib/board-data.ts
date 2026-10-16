@@ -58,6 +58,7 @@ import {
 } from "@/lib/listing-source-policy";
 
 const RECENTLY_DELETED_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
+const DEMO_BOARD_INVITE_CODE = process.env.DEMO_BOARD_INVITE_CODE ?? "REVIEW2026";
 
 function recentlyDeletedCutoff() {
   return new Date(Date.now() - RECENTLY_DELETED_RETENTION_MS);
@@ -2526,6 +2527,7 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
   if (!invitation) {
     throw new Error("This invite is no longer available.");
   }
+  const isDemoBoardInvite = invitation.inviteCode.toUpperCase() === DEMO_BOARD_INVITE_CODE.toUpperCase();
 
   const existingMembership = await prisma.boardMember.findUnique({
     where: { boardId_userId: { boardId: invitation.boardId, userId } },
@@ -2539,7 +2541,7 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
   if (invitation.status !== "pending") {
     throw new Error("This invite is no longer available.");
   }
-  if (invitationIsExpired(invitation)) {
+  if (!isDemoBoardInvite && invitationIsExpired(invitation)) {
     await prisma.boardInvitation.update({
       where: { id: invitation.id },
       data: { status: "revoked" },
@@ -2552,22 +2554,24 @@ export async function acceptBoardInvitation(inviteCode: string, userId: string) 
 
   const acceptedAt = new Date();
   await prisma.$transaction(async (transaction) => {
-    // Atomically claim the bearer link before adding membership. PostgreSQL
-    // rechecks this predicate after a concurrent update, so exactly one user
-    // can move a pending link to accepted.
-    const claim = await transaction.boardInvitation.updateMany({
-      where: {
-        id: invitation.id,
-        status: "pending",
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: acceptedAt } },
-        ],
-      },
-      data: { status: "accepted", acceptedAt },
-    });
-    if (claim.count !== 1) {
-      throw new Error("This invite has already been used.");
+    if (!isDemoBoardInvite) {
+      // Atomically claim the bearer link before adding membership. PostgreSQL
+      // rechecks this predicate after a concurrent update, so exactly one user
+      // can move a pending link to accepted.
+      const claim = await transaction.boardInvitation.updateMany({
+        where: {
+          id: invitation.id,
+          status: "pending",
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: acceptedAt } },
+          ],
+        },
+        data: { status: "accepted", acceptedAt },
+      });
+      if (claim.count !== 1) {
+        throw new Error("This invite has already been used.");
+      }
     }
 
     await transaction.boardMember.create({
