@@ -330,33 +330,59 @@ struct WelcomeView: View {
 
   private var fullAccountButtons: some View {
     VStack(alignment: .leading, spacing: 10) {
-      ZStack {
-        SignInWithAppleButton(.continue) { request in
-          do {
-            appleNonce = try HomeboardAppleSignIn.prepare(request)
-            appModel.authError = nil
-          } catch {
-            appleNonce = nil
-            appModel.authError = readable(error)
+      if isAppReviewInvite {
+        Button {
+          Task {
+            await appModel.continueWithAppReviewInvite(code: activeInviteCode)
           }
-        } onCompletion: { result in
-          finishAppleAuthorization(result)
+        } label: {
+          ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+              .fill(Color.white)
+            if appModel.isAuthLoading {
+              ProgressView()
+                .tint(.black)
+            } else {
+              Text("Continue")
+                .font(.headline)
+                .foregroundStyle(.black)
+            }
+          }
+          .frame(height: 52)
         }
-        .signInWithAppleButtonStyle(.white)
-        .frame(height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .buttonStyle(.plain)
         .disabled(appModel.isAuthLoading)
         .opacity(appModel.isAuthLoading ? 0.58 : 1)
-        .accessibilityIdentifier("homeboard.welcome.apple")
+        .accessibilityIdentifier("homeboard.welcome.review-continue")
+      } else {
+        ZStack {
+          SignInWithAppleButton(.continue) { request in
+            do {
+              appleNonce = try HomeboardAppleSignIn.prepare(request)
+              appModel.authError = nil
+            } catch {
+              appleNonce = nil
+              appModel.authError = readable(error)
+            }
+          } onCompletion: { result in
+            finishAppleAuthorization(result)
+          }
+          .signInWithAppleButtonStyle(.white)
+          .frame(height: 52)
+          .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+          .disabled(appModel.isAuthLoading)
+          .opacity(appModel.isAuthLoading ? 0.58 : 1)
+          .accessibilityIdentifier("homeboard.welcome.apple")
 
-        if appModel.isAuthLoading {
-          RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(Color.black.opacity(0.48))
-          ProgressView()
-            .tint(.white)
+          if appModel.isAuthLoading {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+              .fill(Color.black.opacity(0.48))
+            ProgressView()
+              .tint(.white)
+          }
         }
+        .frame(height: 52)
       }
-      .frame(height: 52)
 
       if let authError = appModel.authError, !authError.isEmpty {
         Label(authError, systemImage: "exclamationmark.circle.fill")
@@ -441,7 +467,7 @@ struct WelcomeView: View {
         .tracking(1.5)
         .foregroundStyle(HomeboardPalette.accent)
 
-      Text("Your invite link will be checked after you continue with Apple.")
+      Text(isAppReviewInvite ? "Tap Continue to open the App Review demo board." : "Your invite link will be checked after you continue with Apple.")
         .font(.footnote)
         .foregroundStyle(HomeboardPalette.primaryText)
         .fixedSize(horizontal: false, vertical: true)
@@ -498,7 +524,7 @@ struct WelcomeView: View {
         }
       }
 
-      Text("Homeboard checks the link after you authenticate.")
+      Text(isAppReviewInvite ? "Continue to open the App Review demo board." : "Homeboard checks the link after you authenticate.")
         .font(.caption)
         .foregroundStyle(HomeboardPalette.tertiaryText)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -666,6 +692,14 @@ struct WelcomeView: View {
     joinCode.count == 10 || joinCode.count == 32
   }
 
+  private var isAppReviewInvite: Bool {
+    activeInviteCode.uppercased() == "REVIEW2026"
+  }
+
+  private var activeInviteCode: String {
+    joinCode.isEmpty ? appModel.pendingInviteCode : joinCode
+  }
+
   private var inviteCodeBinding: Binding<String> {
     Binding(
       get: { joinCode },
@@ -690,6 +724,7 @@ struct WelcomeView: View {
   }
 
   private var keyActionDetail: String {
+    if isInviteUnlocked && isAppReviewInvite { return "Tap Continue below to open Demo Board." }
     if isInviteUnlocked { return "Continue with Apple below to join the board." }
     if showsInviteEntry { return "Paste the link your roommate sent you." }
     return "Tap to turn the key and join an existing board."
