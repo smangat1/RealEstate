@@ -679,6 +679,30 @@ final class AppModel {
     }
   }
 
+  func continueWithAppReviewInvite(code rawCode: String) async {
+    authError = nil
+    authFeedback = nil
+    isAuthLoading = true
+    defer {
+      isAuthLoading = false
+      persist()
+    }
+
+    let inviteCode = normalizedInviteToken(from: rawCode)
+    do {
+      let session = try await api.signInForAppReview(inviteCode: inviteCode)
+      authSession = session
+      NativeAuthSessionStore.save(session)
+      pendingInviteCode = inviteCode
+
+      let response = try await api.fetchSession(accessToken: session.accessToken)
+      guard applySessionResponse(response, session: session) else { return }
+      try await acceptInvite(code: inviteCode)
+    } catch {
+      authError = readableAuthError(error, email: "App Review")
+    }
+  }
+
   func submitAuth(name: String, email: String, password: String, inviteCode: String = "") async {
     authError = nil
     authFeedback = nil

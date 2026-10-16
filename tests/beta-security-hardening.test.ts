@@ -231,16 +231,23 @@ test("database and tracked-file defaults are private", () => {
   assert.match(gitignore, /^\/output\/$/m);
 });
 
-test("mobile endpoints require verified auth except possession-based device pairing", () => {
+test("mobile endpoints require verified auth except narrow possession-based entry points", () => {
   const pairingRoutes = new Set([
     "app/api/mobile/device-pairings/route.ts",
     "app/api/mobile/device-pairings/[id]/route.ts",
   ]);
+  const reviewSessionRoute = "app/api/mobile/review-session/route.ts";
 
   for (const path of routeFiles("app/api/mobile")) {
     const source = read(path);
     if (pairingRoutes.has(path)) {
       assert.match(source, /hashDevicePairingValue|matchesDevicePairingHash/, path);
+      continue;
+    }
+    if (path === reviewSessionRoute) {
+      assert.match(source, /inviteCode !== demoInviteCode/, path);
+      assert.match(source, /invitation\?\.status !== "pending"/, path);
+      assert.match(source, /generateLink\(\{[\s\S]*type: "magiclink"/, path);
       continue;
     }
     assert.match(source, /requireMobileAppUser/, path);

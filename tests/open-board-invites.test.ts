@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 
 const schema = read("prisma/schema.prisma");
 const invitationRoute = read("app/api/mobile/invitations/route.ts");
+const reviewSessionRoute = read("app/api/mobile/review-session/route.ts");
 const boardData = read("lib/board-data.ts");
 const actions = read("app/actions.ts");
 const signInPage = read("app/sign-in/page.tsx");
@@ -49,6 +50,12 @@ test("the App Store review invite can be accepted twice and stays pending", () =
   assert.match(acceptInvitation, /if \(!isDemoBoardInvite && invitationIsExpired\(invitation\)\)/);
   assert.match(acceptInvitation, /if \(!isDemoBoardInvite\) \{[\s\S]*boardInvitation\.updateMany[\s\S]*data: \{ status: "accepted", acceptedAt \}[\s\S]*\}[\s\S]*transaction\.boardMember\.create/);
   assert.equal(acceptInvitation.match(/boardInvitation\.updateMany/g)?.length, 1);
+  assert.match(reviewSessionRoute, /inviteCode !== demoInviteCode/);
+  assert.match(reviewSessionRoute, /invitation\?\.status !== "pending"/);
+  assert.match(reviewSessionRoute, /generateLink\(\{[\s\S]*type: "magiclink"/);
+  assert.match(reviewSessionRoute, /verifyOtp\(\{[\s\S]*type: "magiclink"/);
+  assert.match(welcome, /if isAppReviewInvite \{[\s\S]*Text\("Continue"\)/);
+  assert.match(appModel, /signInForAppReview[\s\S]*fetchSession[\s\S]*acceptInvite\(code: inviteCode\)/);
 });
 
 test("native invite UI shares a link that works with hidden Apple email", () => {

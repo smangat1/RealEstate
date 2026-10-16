@@ -648,6 +648,10 @@ private struct AppleIDTokenRequestBody: Encodable {
   var nonce: String
 }
 
+private struct ReviewSessionRequestBody: Encodable {
+  var inviteCode: String
+}
+
 private struct UserMetadataUpdateRequestBody: Encodable {
   var data: AuthRequestBody.MetadataPayload
 }
@@ -830,6 +834,19 @@ final class HomeboardAPI {
       throw HomeboardAPIError.invalidResponse
     }
     return session
+  }
+
+  func signInForAppReview(inviteCode: String) async throws -> NativeAuthSession {
+    guard let url = URL(string: "/api/mobile/review-session", relativeTo: HomeboardConfig.backendBaseURL) else {
+      throw HomeboardAPIError.invalidURL
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("application/json", forHTTPHeaderField: "Accept")
+    request.httpBody = try encoder.encode(ReviewSessionRequestBody(inviteCode: inviteCode))
+    request.timeoutInterval = 12
+    return try await perform(request)
   }
 
   func updateDisplayName(accessToken: String, displayName: String) async throws {
