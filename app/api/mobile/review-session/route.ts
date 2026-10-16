@@ -36,9 +36,14 @@ export async function POST(request: Request) {
       throw linkError ?? new Error("Unable to create the review session link.");
     }
 
+    const verificationType = linkData.properties.verification_type;
+    if (verificationType !== "signup" && verificationType !== "magiclink") {
+      throw new Error("Unexpected review session verification type.");
+    }
+
     const { data: authData, error: authError } = await supabaseAdmin.auth.verifyOtp({
       token_hash: linkData.properties.hashed_token,
-      type: "magiclink",
+      type: verificationType,
     });
     if (authError || !authData.session || !authData.user) {
       throw authError ?? new Error("Unable to verify the review session.");
