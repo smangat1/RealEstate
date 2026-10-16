@@ -69,8 +69,8 @@ Both extension targets use the `group.com.homeboard.native` app group. Keep that
 
 After installing the app, enable its Safari extension once:
 
-1. In Homeboard, open Workspace, Safari Capture, and tap `Enable in Safari` on iOS 26.2 or later. On older iOS versions, open Settings, Apps, Safari, Extensions.
-2. Turn on `Save to Homeboard` and set website access to Allow for the supported rental sites.
+1. In Homeboard, open Workspace, Safari Capture, and tap `Open Safari settings` on iOS 26.2 or later. On older iOS versions, open Settings, Apps, Safari, Extensions, then tap `Save to Homeboard`.
+2. Turn on `Allow Extension`, then open `Website Access` and choose `Allow` for the supported rental sites.
 3. Open an exact supported rental page in Safari. Homeboard scans it automatically and shows one pill for the listing or one pill per available unit.
 4. Tap the intended pill to save. Nothing saves merely because the page was opened. If required facts are missing, Homeboard opens its review form instead.
 

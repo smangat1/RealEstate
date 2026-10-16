@@ -4120,6 +4120,7 @@ private struct SharedSafariExtensionSetupCard: View {
   @Environment(\.scenePhase) private var scenePhase
   @State private var status: SharedSafariExtensionSetupStatus = .checking
   @State private var isOpeningSettings = false
+  @State private var showsSettingsInstructions = false
   @State private var setupError: String?
   let compact: Bool
 
@@ -4165,13 +4166,13 @@ private struct SharedSafariExtensionSetupCard: View {
 
       if supportsDirectSettings {
         Button {
-          Task { await openExtensionSettings() }
+          showsSettingsInstructions = true
         } label: {
           HStack {
             Text(
               isOpeningSettings
                 ? "Opening Settings…"
-                : (status == .enabled ? "Review website access" : "Enable in Safari")
+                : (status == .enabled ? "Review website access" : "Open Safari settings")
             )
             Spacer()
             Image(systemName: "arrow.up.forward.app.fill")
@@ -4185,21 +4186,9 @@ private struct SharedSafariExtensionSetupCard: View {
         }
         .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(isOpeningSettings || status == .checking)
-      } else if status != .enabled {
-        if compact {
-          Label("Settings → Safari → Extensions → Homeboard", systemImage: "gearshape.fill")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(HomeboardPalette.secondaryText)
-        } else {
-          VStack(alignment: .leading, spacing: 7) {
-            Label("Open Settings → Apps → Safari", systemImage: "1.circle.fill")
-            Label("Tap Extensions → Save to Homeboard", systemImage: "2.circle.fill")
-            Label("Turn on Allow Extension and allow website access", systemImage: "3.circle.fill")
-          }
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(HomeboardPalette.secondaryText)
-        }
       }
+
+      settingsInstructions
 
       if !compact {
         SharedDivider()
@@ -4227,6 +4216,41 @@ private struct SharedSafariExtensionSetupCard: View {
     .onChange(of: scenePhase) { _, nextPhase in
       guard nextPhase == .active else { return }
       Task { await refreshStatus() }
+    }
+    .alert("Enable Save to Homeboard", isPresented: $showsSettingsInstructions) {
+      Button("Open Safari Settings") {
+        Task { await openExtensionSettings() }
+      }
+      Button("Not now", role: .cancel) {}
+    } message: {
+      Text(
+        "If Settings shows the Extensions list, tap Save to Homeboard. Turn on Allow Extension, then open Website Access and choose Allow."
+      )
+    }
+  }
+
+  @ViewBuilder
+  private var settingsInstructions: some View {
+    if compact {
+      VStack(alignment: .leading, spacing: 6) {
+        Label("Settings → Apps → Safari → Extensions → Save to Homeboard", systemImage: "gearshape.fill")
+        Label("Turn on Allow Extension, then set Website Access to Allow", systemImage: "checkmark.circle.fill")
+      }
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.secondaryText)
+      .fixedSize(horizontal: false, vertical: true)
+    } else {
+      VStack(alignment: .leading, spacing: 7) {
+        Text("In Settings")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.primaryText)
+        Label("Open Apps → Safari → Extensions", systemImage: "1.circle.fill")
+        Label("Tap Save to Homeboard", systemImage: "2.circle.fill")
+        Label("Turn on Allow Extension", systemImage: "3.circle.fill")
+        Label("Open Website Access and choose Allow", systemImage: "4.circle.fill")
+      }
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(HomeboardPalette.secondaryText)
     }
   }
 
@@ -4287,7 +4311,7 @@ private struct SharedSafariExtensionSetupCard: View {
         forIdentifiers: [Self.extensionIdentifier]
       )
     } catch {
-      setupError = "Settings did not open. Keep Homeboard in the foreground and try again."
+      setupError = "Settings did not open. Open Settings → Apps → Safari → Extensions → Save to Homeboard."
     }
   }
 }
