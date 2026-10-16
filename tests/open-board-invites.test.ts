@@ -53,7 +53,8 @@ test("the App Store review invite can be accepted twice and stays pending", () =
   assert.match(reviewSessionRoute, /inviteCode !== demoInviteCode/);
   assert.match(reviewSessionRoute, /invitation\?\.status !== "pending"/);
   assert.match(reviewSessionRoute, /generateLink\(\{[\s\S]*type: "magiclink"/);
-  assert.match(reviewSessionRoute, /verifyOtp\(\{[\s\S]*type: "magiclink"/);
+  assert.match(reviewSessionRoute, /verificationType !== "signup" && verificationType !== "magiclink"/);
+  assert.match(reviewSessionRoute, /verifyOtp\(\{[\s\S]*type: verificationType/);
   assert.match(welcome, /if isAppReviewInvite \{[\s\S]*Text\("Continue"\)/);
   assert.match(appModel, /signInForAppReview[\s\S]*fetchSession[\s\S]*acceptInvite\(code: inviteCode\)/);
 });
