@@ -29,7 +29,7 @@ test("web and server failures are connected to privacy-safe Sentry monitoring", 
   assert.match(globalError, /Sentry\.captureException\(error\)/);
   assert.match(healthWorkflow, /cron: "\*\/10 \* \* \* \*"/);
   assert.match(healthWorkflow, /\/api\/health/);
-  assert.match(healthWorkflow, /body\.betaReady!==true/);
+  assert.match(healthWorkflow, /body\.ok===false/);
   assert.match(healthRoute, /const betaReady = ok/);
   assert.match(healthRoute, /runtime\.boardChatPushConfigured/);
   assert.match(healthRoute, /runtime\.advisorAutomationConfigured/);
