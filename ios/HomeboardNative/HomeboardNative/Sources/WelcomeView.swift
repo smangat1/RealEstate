@@ -350,7 +350,7 @@ struct WelcomeView: View {
           }
           .frame(height: 52)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HomeboardAreaButtonStyle())
         .disabled(appModel.isAuthLoading)
         .opacity(appModel.isAuthLoading ? 0.58 : 1)
         .accessibilityIdentifier("homeboard.welcome.review-continue")
