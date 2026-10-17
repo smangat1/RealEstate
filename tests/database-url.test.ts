@@ -5,7 +5,7 @@ import { getPrismaDatasourceUrl } from "../lib/database-url";
 
 test("serverless Prisma uses one transaction-pool connection for Supabase", () => {
   const result = getPrismaDatasourceUrl(
-    "postgresql://postgres.example:password@example.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=10",
+    "postgresql://example.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=10",
     true,
   );
   const url = new URL(result!);
@@ -19,8 +19,8 @@ test("serverless Prisma uses one transaction-pool connection for Supabase", () =
 
 test("database URLs outside the Vercel serverless pool stay unchanged", () => {
   const sessionPooler =
-    "postgresql://postgres.example:password@example.pooler.supabase.com:5432/postgres";
-  const otherProvider = "postgresql://user:password@database.example.com:5432/app";
+    "postgresql://example.pooler.supabase.com:5432/postgres";
+  const otherProvider = "postgresql://database.example.com:5432/app";
 
   assert.equal(getPrismaDatasourceUrl(sessionPooler, false), sessionPooler);
   assert.equal(getPrismaDatasourceUrl(otherProvider, true), otherProvider);
