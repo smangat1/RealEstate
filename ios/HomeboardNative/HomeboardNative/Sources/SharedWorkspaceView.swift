@@ -3833,50 +3833,6 @@ struct SharedSetupView: View {
           }
           .sharedSurface(cornerRadius: 20)
 
-          VStack(alignment: .leading, spacing: 10) {
-            SharedSectionTitle(title: "Build information", trailing: nil)
-            Text("App \(HomeboardConfig.appVersion) (\(HomeboardConfig.appBuild))")
-              .font(.subheadline.weight(.semibold))
-              .foregroundStyle(HomeboardPalette.primaryText)
-            Text("App commit: \(HomeboardConfig.appCommit)")
-              .font(.caption.monospaced())
-              .foregroundStyle(HomeboardPalette.secondaryText)
-            Text("Build channel: \(HomeboardConfig.buildChannel)")
-              .font(.caption.monospaced())
-              .foregroundStyle(HomeboardPalette.secondaryText)
-            Text("API origin: \(HomeboardConfig.backendBaseURL.absoluteString)")
-              .font(.caption.monospaced())
-              .foregroundStyle(HomeboardPalette.secondaryText)
-              .textSelection(.enabled)
-            Text("Origin source: \(HomeboardConfig.backendConfigurationSource)")
-              .font(.caption.monospaced())
-              .foregroundStyle(HomeboardPalette.secondaryText)
-            if let apiVersion = appModel.apiVersion, let apiCommit = appModel.apiCommit {
-              Text("API \(apiVersion) · commit \(apiCommit)")
-                .font(.caption.monospaced())
-                .foregroundStyle(HomeboardPalette.secondaryText)
-              if appModel.isAdvisorFeatureEnabled {
-                Text(appModel.apiAdvisorDraftAcceptanceReady == true
-                  ? "Advisor draft PATCH: ready"
-                  : "Advisor draft PATCH: incompatible")
-                  .font(.caption.monospaced())
-                  .foregroundStyle(appModel.apiAdvisorDraftAcceptanceReady == true
-                    ? HomeboardPalette.success
-                    : HomeboardPalette.danger)
-              }
-            } else if let apiVersionError = appModel.apiVersionError {
-              Text("API version unavailable: \(apiVersionError)")
-                .font(.caption)
-                .foregroundStyle(HomeboardPalette.danger)
-            } else {
-              Text("Checking API version…")
-                .font(.caption)
-                .foregroundStyle(HomeboardPalette.secondaryText)
-            }
-          }
-          .padding(14)
-          .sharedSurface(cornerRadius: 18)
-
           if !appModel.availableBoards.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
               SharedSectionTitle(title: "Your boards", trailing: "\(appModel.availableBoards.count)")
@@ -3996,9 +3952,6 @@ struct SharedSetupView: View {
     .toolbar(.hidden, for: .navigationBar)
     .onAppear {
       titleDraft = appModel.board.title
-    }
-    .task {
-      await appModel.refreshVersionInfo()
     }
     .sheet(isPresented: $showsBriefEditor) {
       OnboardingView(
@@ -4484,7 +4437,7 @@ private struct SharedBugReportSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             Label(
-              "Homeboard includes the app version, device, current screen, item counts, and a privacy-filtered share-extension trace. It does not send your email, listing addresses, page contents, comments, preferences, or access tokens.",
+              "Homeboard includes app and API build details, device, current screen, item counts, and a privacy-filtered share-extension trace. It does not send your email, listing addresses, page contents, comments, preferences, or access tokens.",
               systemImage: "hand.raised.fill"
             )
             .font(.caption)

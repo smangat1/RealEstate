@@ -485,6 +485,14 @@ private struct MobileBugReportRequest: Encodable {
   var boardId: String?
   var appVersion: String
   var buildNumber: String
+  var appCommit: String
+  var buildChannel: String
+  var apiOrigin: String
+  var apiOriginSource: String
+  var apiVersion: String
+  var apiCommit: String
+  var apiAdvisorDraftAcceptanceReady: Bool?
+  var apiVersionError: String?
   var deviceKind: String
   var osVersion: String
   var boardLoaded: Bool
@@ -1717,9 +1725,12 @@ final class HomeboardAPI {
     boardCount: Int,
     memberCount: Int,
     savedListingCount: Int,
-    shareDiagnostics: String
+    shareDiagnostics: String,
+    apiVersion: String?,
+    apiCommit: String?,
+    apiAdvisorDraftAcceptanceReady: Bool?,
+    apiVersionError: String?
   ) async throws -> MobileBugReportResponse {
-    let info = Bundle.main.infoDictionary
     return try await requestBackend(
       path: "/api/mobile/bug-reports",
       method: "POST",
@@ -1728,8 +1739,16 @@ final class HomeboardAPI {
         description: description,
         currentScreen: currentScreen,
         boardId: boardId,
-        appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
-        buildNumber: info?["CFBundleVersion"] as? String ?? "unknown",
+        appVersion: HomeboardConfig.appVersion,
+        buildNumber: HomeboardConfig.appBuild,
+        appCommit: HomeboardConfig.appCommit,
+        buildChannel: HomeboardConfig.buildChannel,
+        apiOrigin: HomeboardConfig.backendOrigin,
+        apiOriginSource: HomeboardConfig.backendConfigurationSource,
+        apiVersion: apiVersion ?? "unavailable",
+        apiCommit: apiCommit ?? "unavailable",
+        apiAdvisorDraftAcceptanceReady: apiAdvisorDraftAcceptanceReady,
+        apiVersionError: apiVersionError.map { String($0.prefix(500)) },
         deviceKind: deviceKind,
         osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
         boardLoaded: boardLoaded,

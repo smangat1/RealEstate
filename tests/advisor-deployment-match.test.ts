@@ -10,7 +10,6 @@ function source(path: string) {
 const healthRoute = source("app/api/health/route.ts");
 const api = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardAPI.swift");
 const config = source("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
-const settings = source("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
 const previewScheme = source(
   "ios/HomeboardNative/HomeboardNative.xcodeproj/xcshareddata/xcschemes/Homeboard Advisor Preview.xcscheme",
 );
@@ -48,7 +47,7 @@ test("the shared preview scheme targets the matching stack without changing prod
   assert.match(previewScheme, /HOMEBOARD_BUILD_CHANNEL[\s\S]*advisor-stack-preview/);
   assert.match(config, /productionBackendBaseURL/);
   assert.match(config, /backendConfigurationSource/);
-  assert.match(settings, /API origin:/);
-  assert.match(settings, /Origin source:/);
-  assert.match(settings, /Advisor draft PATCH:/);
+  assert.match(api, /apiOrigin: HomeboardConfig\.backendOrigin/);
+  assert.match(api, /apiOriginSource: HomeboardConfig\.backendConfigurationSource/);
+  assert.match(api, /apiAdvisorDraftAcceptanceReady: apiAdvisorDraftAcceptanceReady/);
 });

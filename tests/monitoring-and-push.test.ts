@@ -52,7 +52,7 @@ test("native crash and hang diagnostics are retained until authenticated upload"
   assert.doesNotMatch(route, /email|boardId|listing|comment|preference/);
 });
 
-test("API failures and build versions are visible without exposing secrets", () => {
+test("API failures and build versions stay internal without exposing secrets", () => {
   const health = read("app/api/health/route.ts");
   const buildInfo = read("lib/build-info.ts");
   const envContract = read("scripts/check-env-contract.ts");
@@ -75,15 +75,15 @@ test("API failures and build versions are visible without exposing secrets", () 
   assert.match(api, /func fetchHealth/);
   assert.match(config, /static var appCommit/);
   assert.match(appModel, /func refreshVersionInfo/);
-  assert.match(settings, /title: "Build information"/);
-  assert.match(settings, /App commit:/);
-  assert.match(settings, /API version unavailable:/);
+  assert.doesNotMatch(settings, /title: "Build information"/);
+  assert.doesNotMatch(settings, /App commit:|Build channel:|API origin:|Origin source:/);
 });
 
 test("settings sends authenticated bug reports and returns a tracking receipt", () => {
   const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
   const appModel = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
   const api = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardAPI.swift");
+  const config = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardConfig.swift");
   const route = read("app/api/mobile/bug-reports/route.ts");
   const analytics = read("lib/analytics.ts");
 
@@ -93,7 +93,13 @@ test("settings sends authenticated bug reports and returns a tracking receipt", 
   assert.match(appModel, /func submitBugReport/);
   assert.match(api, /\/api\/mobile\/bug-reports/);
   assert.match(api, /shareDiagnostics: String/);
+  assert.match(api, /appCommit: HomeboardConfig\.appCommit/);
+  assert.match(api, /buildChannel: HomeboardConfig\.buildChannel/);
+  assert.match(config, /components\.user = nil[\s\S]*components\.password = nil/);
+  assert.match(api, /apiOrigin: HomeboardConfig\.backendOrigin/);
+  assert.match(api, /apiOriginSource: HomeboardConfig\.backendConfigurationSource/);
   assert.match(appModel, /shareDiagnostics: HomeboardShareReportDiagnostics\.exportText\(\)/);
+  assert.match(appModel, /await refreshVersionInfo\(\)[\s\S]*apiVersion: apiVersion,[\s\S]*apiCommit: apiCommit/);
   assert.match(route, /requireMobileAppUser/);
   assert.match(route, /scope: "mobile-bug-report"/);
   assert.match(route, /receivedAt: receivedAt\.toISOString\(\)/);
@@ -101,6 +107,8 @@ test("settings sends authenticated bug reports and returns a tracking receipt", 
   assert.match(route, /Sentry\.captureFeedback/);
   assert.match(route, /sanitizeDiagnosticTrace/);
   assert.match(route, /scope\.addAttachment/);
+  assert.match(route, /scope\.setContext\("homeboard_build"/);
+  assert.match(route, /apiAdvisorDraftAcceptanceReady: parsed\.data\.apiAdvisorDraftAcceptanceReady/);
   assert.match(route, /share-diagnostics\.txt/);
   assert.match(route, /trackEvent\("bug_report_submitted"/);
   assert.match(analytics, /"bug_report_submitted"/);

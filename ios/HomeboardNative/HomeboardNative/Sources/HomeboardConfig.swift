@@ -88,6 +88,19 @@ enum HomeboardConfig {
     return "production fallback"
   }
 
+  static var backendOrigin: String {
+    guard var components = URLComponents(
+      url: backendBaseURL,
+      resolvingAgainstBaseURL: false
+    ) else { return "unavailable" }
+    components.user = nil
+    components.password = nil
+    components.path = ""
+    components.query = nil
+    components.fragment = nil
+    return components.url?.absoluteString ?? "unavailable"
+  }
+
   static var publicWebBaseURL: URL {
     #if DEBUG
     if UITestFixtureState.enabled { return URL(string: "https://example.com")! }
