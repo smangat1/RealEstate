@@ -47,30 +47,15 @@
 	<true/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.business</string>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>NSAppTransportSecurity</key>
   <dict>
 	<key>NSAllowsArbitraryLoads</key>
 	<false/>
-	<key>NSAllowsLocalNetworking</key>
-	<true/>
-	<key>NSExceptionDomains</key>
-	<dict>
-		<key>localhost</key>
-		<dict>
-			<key>NSExceptionAllowsInsecureHTTPLoads</key>
-			<true/>
-		</dict>
-		<key>127.0.0.1</key>
-		<dict>
-			<key>NSExceptionAllowsInsecureHTTPLoads</key>
-			<true/>
-		</dict>
-	</dict>
   </dict>
-  <key>NSLocalNetworkUsageDescription</key>
-  <string>Homeboard connects to your development server on the local network while testing.</string>
   <key>NSCameraUsageDescription</key>
-  <string>Homeboard uses the camera only to scan the secure QR code shown on your Mac.</string>
+  <string>Homeboard uses the camera to scan a QR code that connects your Mac.</string>
   <key>UIApplicationSceneManifest</key>
   <dict>
     <key>UIApplicationSupportsMultipleScenes</key>

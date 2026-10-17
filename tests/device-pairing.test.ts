@@ -85,4 +85,5 @@ test("Mac and iPhone expose the complete QR pairing workflow", () => {
   assert.match(appModel, /MacDevicePairingRequest\(url: url\)/);
   assert.match(workspace, /title: "Connect a Mac"/);
   assert.match(infoPlist, /NSCameraUsageDescription/);
+  assert.match(infoPlist, /scan a QR code that connects your Mac/);
 });
