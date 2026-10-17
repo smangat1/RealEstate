@@ -116,6 +116,27 @@ test("the native app already ships a complete icon set", () => {
   }
 });
 
+test("Release app and extensions use the public production origin without unused local access", () => {
+  const project = read("ios/HomeboardNative/project.yml");
+  const info = read("ios/HomeboardNative/HomeboardNative/Info.plist");
+
+  for (const [target, nextTarget] of [
+    ["HomeboardShareExtension", "HomeboardActionExtension"],
+    ["HomeboardActionExtension", "HomeboardSafariExtension"],
+    ["HomeboardSafariExtension", "HomeboardMac"],
+  ]) {
+    const start = project.indexOf(`  ${target}:`);
+    const end = project.indexOf(`  ${nextTarget}:`, start);
+    const block = project.slice(start, end);
+    assert.match(block, /Release:[\s\S]*HOMEBOARD_API_BASE_URL: "https:\/\/joinhomeboard\.com"/);
+  }
+
+  assert.match(info, /ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/);
+  assert.match(info, /NSCameraUsageDescription/);
+  assert.doesNotMatch(info, /NSLocalNetworkUsageDescription|NSAllowsLocalNetworking/);
+  assert.doesNotMatch(info, /NSExceptionDomains|localhost|127\.0\.0\.1/);
+});
+
 test("the beta exposes a non-secret health check and invite-gates web registration", () => {
   const health = read("app/api/health/route.ts");
   const actions = read("app/actions.ts");

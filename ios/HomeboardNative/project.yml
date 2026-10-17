@@ -118,6 +118,8 @@ targets:
           # Keep extension code in the executable so PlugInKit does not have to
           # load Xcode's auxiliary *.debug.dylib before our controller starts.
           ENABLE_DEBUG_DYLIB: NO
+        Release:
+          HOMEBOARD_API_BASE_URL: "https://joinhomeboard.com"
   HomeboardActionExtension:
     type: app-extension
     platform: iOS
@@ -150,6 +152,8 @@ targets:
       configs:
         Debug:
           ENABLE_DEBUG_DYLIB: NO
+        Release:
+          HOMEBOARD_API_BASE_URL: "https://joinhomeboard.com"
   HomeboardSafariExtension:
     type: app-extension
     platform: iOS
@@ -176,6 +180,9 @@ targets:
         DEVELOPMENT_TEAM: 4SSAVHCM6U
         TARGETED_DEVICE_FAMILY: "1"
         OTHER_LDFLAGS: "-framework SafariServices"
+      configs:
+        Release:
+          HOMEBOARD_API_BASE_URL: "https://joinhomeboard.com"
   HomeboardMac:
     type: application
     platform: macOS

@@ -75,8 +75,11 @@ test("shared web links open the installed app and otherwise retain an install pa
   assert.doesNotMatch(siteURL, /VERCEL_PROJECT_PRODUCTION_URL|VERCEL_URL/);
   assert.match(siteURL, /real-estate-samyanmangat-6662s-projects\.vercel\.app/);
   assert.match(releaseEntitlements, /com\.apple\.developer\.associated-domains/);
+  assert.match(releaseEntitlements, /applinks:joinhomeboard\.com/);
   assert.match(releaseEntitlements, /applinks:real-estate-samyanmangat-6662s-projects\.vercel\.app/);
   assert.match(debugEntitlements, /com\.apple\.developer\.associated-domains/);
+  assert.match(debugEntitlements, /applinks:joinhomeboard\.com/);
+  assert.match(debugEntitlements, /applinks:real-estate-samyanmangat-6662s-projects\.vercel\.app/);
   assert.match(inviteActions, /window\.location\.assign\(nativeURL\)/);
   assert.match(inviteActions, /window\.location\.assign\(installURL\)/);
   assert.match(inviteActions, /visibilitychange/);
