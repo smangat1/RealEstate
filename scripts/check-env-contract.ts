@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
-const platformVariables = new Set(["NEXT_RUNTIME", "NODE_ENV", "VERCEL_ENV", "NEXT_PUBLIC_VERCEL_ENV"]);
+const platformVariables = new Set([
+  "AWS_LAMBDA_FUNCTION_NAME",
+  "NEXT_RUNTIME",
+  "NODE_ENV",
+  "VERCEL",
+  "VERCEL_ENV",
+  "NEXT_PUBLIC_VERCEL_ENV",
+]);
 const trustedBuildMetadataVariables = new Set([
   "GIT_COMMIT_SHA",
   "SOURCE_VERSION",

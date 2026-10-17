@@ -38,7 +38,7 @@ The current beta path is deliberately non-AI. Onboarding is a deterministic set 
 2. Install dependencies: `npm ci`
 3. Create `.env.local` from `.env.example`. Use the same Supabase URL and publishable key for both the server and `NEXT_PUBLIC_` variables; keep the secret key and database connection server-only.
 4. Generate Prisma: `npx prisma generate`
-5. Link the Supabase CLI with `npx --yes supabase@latest link --project-ref YOUR_PROJECT_REF`, then apply migrations with `npx --yes supabase@latest db push`. A Supabase pooler URL is recommended for `DATABASE_URL` when the direct hostname is not reachable over IPv4.
+5. Link the Supabase CLI with `npx --yes supabase@latest link --project-ref YOUR_PROJECT_REF`, then apply migrations with `npx --yes supabase@latest db push`. On serverless hosts, `DATABASE_URL` must use Supabase's transaction pooler on port `6543` with `pgbouncer=true&connection_limit=1`; do not use the session pooler on port `5432` for runtime traffic.
 6. Run checks: `npm run verify`
 7. Start the backend: `npm run dev`
 
@@ -98,7 +98,7 @@ xcodebuild -quiet \
 
 - Add the provisioned iPhone and Mac App IDs to Supabase Auth's Apple provider Client IDs, then verify the related App IDs are grouped under one primary App ID before distribution.
 - Deploy the Next.js backend and set the two native URL build settings.
-- Supply a Supabase pooler connection string if the direct database hostname is not reachable over IPv4.
+- Supply a Supabase transaction-pooler connection string on port `6543` with `pgbouncer=true&connection_limit=1` for serverless runtime traffic.
 - Set `HOMEBOARD_ADMIN_EMAILS` for server-only source verification.
 - Set `BRAVE_SEARCH_API_KEY` only when source resolution is ready to use. Resolution is permanently cached and never retries automatically.
 - Add Apple push credentials and a notification sender if live push notifications are desired.
