@@ -796,8 +796,10 @@ export default function HomeboardPage() {
                 paddingTop: "16px",
                 borderTop: "1px solid #e8eaed",
                 display: "flex",
+                flexWrap: "wrap",
                 alignItems: "center",
                 justifyContent: "space-between",
+                gap: "12px",
                 fontSize: "12px",
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                 color: "#70757a",
@@ -805,6 +807,17 @@ export default function HomeboardPage() {
               }}
             >
               <span>Homeboard</span>
+
+              <a
+                href="mailto:support@joinhomeboard.com"
+                style={{
+                  color: "#1a73e8",
+                  textDecoration: "underline",
+                  fontSize: "12px",
+                }}
+              >
+                contact us: support@joinhomeboard.com
+              </a>
 
               {/* Universal Blue Hyperlink for Privacy Policy */}
               <div style={{ position: "relative" }}>

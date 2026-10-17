@@ -54,6 +54,13 @@ export default async function RegisterPage({
               </div>
             </div>
           </div>
+
+          <footer className="account-footer">
+            <span>Homeboard</span>
+            <a href="mailto:support@joinhomeboard.com">
+              contact us: support@joinhomeboard.com
+            </a>
+          </footer>
         </section>
       </main>
     );
@@ -126,6 +133,13 @@ export default async function RegisterPage({
             </form>
           </section>
         </div>
+
+        <footer className="account-footer">
+          <span>Homeboard</span>
+          <a href="mailto:support@joinhomeboard.com">
+            contact us: support@joinhomeboard.com
+          </a>
+        </footer>
       </section>
     </main>
   );

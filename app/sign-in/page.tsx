@@ -75,6 +75,13 @@ export default async function SignInPage({
             </form>
           </section>
         </div>
+
+        <footer className="account-footer">
+          <span>Homeboard</span>
+          <a href="mailto:support@joinhomeboard.com">
+            contact us: support@joinhomeboard.com
+          </a>
+        </footer>
       </section>
     </main>
   );

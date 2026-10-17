@@ -1,43 +1,44 @@
 :root {
-  color-scheme: dark;
-  --font-body: "Inter";
-  --font-display: "Cormorant Garamond";
-  --bg: #16161b;
-  --bg-soft: #232527;
-  --panel: rgba(20, 24, 31, 0.78);
-  --panel-2: rgba(31, 36, 46, 0.88);
-  --panel-3: rgba(14, 18, 24, 0.92);
-  --line: rgba(255, 255, 255, 0.05);
-  --line-strong: rgba(255, 255, 255, 0.1);
-  --text: #f5f7fb;
-  --muted: #a0a9b7;
-  --accent: #7ad4ff;
-  --accent-strong: #3c9cff;
-  --accent-soft: rgba(122, 212, 255, 0.14);
-  --success: #76e3bb;
-  --danger: #ff9a96;
-  --shadow: 0 5px 80px rgba(26, 25, 25, 0);
-  --shadow-soft: 0 12px 36px rgba(22, 21, 21, 0);
+  color-scheme: light;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bg: #f0f2f5;
+  --bg-soft: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #ffffff;
+  --panel-3: #f8f9fa;
+  --line: #dadce0;
+  --line-strong: #bdc1c6;
+  --text: #1f2328;
+  --muted: #5f6368;
+  --accent: #1a73e8;
+  --accent-strong: #1557b0;
+  --accent-soft: rgba(26, 115, 232, 0.1);
+  --success: #1e8e3e;
+  --danger: #d93025;
+  --shadow: 0 1px 3px rgba(60, 64, 67, 0.15);
+  --shadow-soft: 0 1px 2px rgba(60, 64, 67, 0.1);
 }
 
-html[data-theme="light"] {
+html[data-theme="light"],
+html[data-theme="dark"] {
   color-scheme: light;
-  --bg: #eef2f8;
-  --bg-soft: #f7f9fc;
-  --panel: rgba(255, 255, 255, 0.72);
-  --panel-2: rgba(255, 255, 255, 0.9);
-  --panel-3: rgba(248, 250, 253, 0.94);
-  --line: rgba(47, 66, 96, 0.11);
-  --line-strong: rgba(47, 66, 96, 0.18);
-  --text: #17212f;
-  --muted: #687588;
-  --accent: #1677ff;
-  --accent-strong: #0057d8;
-  --accent-soft: rgba(22, 119, 255, 0.1);
-  --success: #1fa971;
-  --danger: #d9485f;
-  --shadow: 0 22px 60px rgba(76, 93, 122, 0.16);
-  --shadow-soft: 0 12px 24px rgba(76, 93, 122, 0.1);
+  --bg: #f0f2f5;
+  --bg-soft: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #ffffff;
+  --panel-3: #f8f9fa;
+  --line: #dadce0;
+  --line-strong: #bdc1c6;
+  --text: #1f2328;
+  --muted: #5f6368;
+  --accent: #1a73e8;
+  --accent-strong: #1557b0;
+  --accent-soft: rgba(26, 115, 232, 0.1);
+  --success: #1e8e3e;
+  --danger: #d93025;
+  --shadow: 0 1px 3px rgba(60, 64, 67, 0.15);
+  --shadow-soft: 0 1px 2px rgba(60, 64, 67, 0.1);
 }
 
 * {
@@ -52,18 +53,15 @@ body {
   padding: 0;
   min-height: 100%;
   overflow-x: clip;
-  background:
-    radial-gradient(circle at top left, rgba(122, 212, 255, 0.18), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(118, 227, 187, 0.16), transparent 22%),
-    linear-gradient(180deg, var(--bg-soft), var(--bg));
+  background: #f0f2f5;
   color: var(--text);
   font-family:
-    var(--font-body),
-    "SF Pro Text",
-    ui-sans-serif,
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -78,7 +76,7 @@ body:has(.homeboard-marketing) {
 }
 
 html {
-  font-size: 10.4px;
+  font-size: 16px;
 }
 
 a {
@@ -93,13 +91,7 @@ video {
 }
 
 body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent 28%),
-    radial-gradient(circle at center, transparent 55%, rgba(8, 10, 14, 0.04) 100%);
+  display: none !important;
 }
 
 button,
@@ -598,155 +590,87 @@ html[data-theme="light"] .mac-sidebar {
 .account-shell,
 .settings-shell {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 4vw, 48px) 16px;
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
+  background: #f0f2f5;
+  color: #1f2328;
 }
 
-.account-shell::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background:
-    radial-gradient(circle at 14% 18%, rgba(8, 10, 14, 0.18), transparent 22%),
-    radial-gradient(circle at 82% 76%, rgba(6, 8, 12, 0.16), transparent 18%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-soft) 86%, white 4%), color-mix(in srgb, var(--bg) 100%, black 0%));
-  opacity: 1;
-}
-
+.account-shell::before,
 .account-shell::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(circle at 50% 100%, rgba(0, 0, 0, 0.18), transparent 42%),
-    linear-gradient(180deg, rgba(5, 8, 12, 0.02), rgba(3, 5, 9, 0.08));
-  pointer-events: none;
+  display: none !important;
 }
 
 .account-card,
 .settings-page-card {
-  width: min(1080px, 100%);
+  width: min(680px, 100%);
   display: grid;
-  gap: 24px;
+  gap: 20px;
   position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  padding: 18px 18px 28px;
-  border-radius: 34px;
-  border: 1px solid var(--line);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    color-mix(in srgb, var(--panel) 100%, transparent);
-  box-shadow:
-    0 30px 70px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(28px) saturate(180%);
+  padding: clamp(24px, 4vw, 40px);
+  border-radius: 4px;
+  border: 1px solid #dadce0;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.15), 0 1px 2px rgba(60, 64, 67, 0.1);
+  color: #1f2328;
 }
 
-.account-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--panel) 20%, transparent) 0%, color-mix(in srgb, var(--panel) 32%, transparent) 26%, color-mix(in srgb, var(--panel) 44%, transparent) 48%, color-mix(in srgb, var(--panel) 56%, transparent) 66%, color-mix(in srgb, var(--panel) 68%, transparent) 100%),
-    url("/images/homeboard-auth-bg.jpg");
-  background-size: auto, 600px auto;
-  background-position: center, top left;
-  background-repeat: no-repeat, repeat;
-  opacity: 0.90;
-  filter: brightness(0.65) saturate(0.80) contrast(0.90);
-  transform: none;
-}
-
+.account-card::before,
 .account-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(90deg, rgba(9, 12, 18, 0.04), rgba(9, 12, 18, 0.08) 40%, rgba(9, 12, 18, 0.14) 64%, rgba(9, 12, 18, 0.2) 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(4, 6, 10, 0.07));
-  pointer-events: none;
-}
-
-.account-card {
-  border-color: transparent;
-  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.12);
-  overflow: hidden;
+  display: none !important;
 }
 
 .account-card .account-layout {
   position: relative;
   z-index: 1;
-  align-items: start;
-}
-
-.account-card .account-intro {
-  align-content: start;
-  min-height: 700px;
-  padding: 18px 16px 18px 10px;
-}
-
-.account-card .home-badge {
-  letter-spacing: 0.12em;
-}
-
-.account-card h1 {
-  max-width: 16ch;
-  font-family:
-    var(--font-display),
-    Georgia,
-    serif;
-  font-size: clamp(3.8rem, 5.4vw, 5.9rem);
-  font-weight: 700;
-  line-height: 0.94;
-  letter-spacing: -0.04em;
-  text-wrap: balance;
-}
-
-.account-card > .account-layout > .account-intro > p {
-  max-width: 60ch;
-  color: color-mix(in srgb, var(--text) 80%, var(--muted) 20%);
-  font-size: 1.18rem;
-  line-height: 1.62;
-}
-
-.account-card .account-launch-stats,
-.account-card .account-feature-list {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
 }
 
-.account-card .account-intro .account-feature,
-.account-card .account-intro .account-message {
+.account-card .account-intro {
+  min-height: unset;
   padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  display: grid;
+  gap: 8px;
 }
 
-.account-card .account-intro .account-feature strong {
-  font-size: 1.02rem;
+.account-card .home-badge {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: #70757a;
+  background: #f1f3f4;
+  border: 1px solid #dadce0;
+  border-radius: 3px;
+  padding: 2px 8px;
+  width: fit-content;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.account-card h1 {
+  max-width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: clamp(22px, 3.5vw, 28px);
   font-weight: 700;
-  letter-spacing: -0.01em;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: #202124;
+  margin: 0;
 }
 
-.account-card .account-intro .account-feature span {
-  max-width: 68ch;
-  color: color-mix(in srgb, var(--text) 82%, var(--muted) 18%);
-  font-size: 1.02rem;
-  line-height: 1.5;
-}
-
-.account-card .account-panel-stack {
-  padding: 4px 0;
+.account-card > .account-layout > .account-intro > p,
+.account-card p {
+  margin: 0;
+  color: #3c4043;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .account-card h1,
@@ -959,18 +883,61 @@ html[data-theme="light"] .mac-sidebar {
 }
 
 .account-card .account-primary-button {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, white 14%, var(--accent)) 0%, color-mix(in srgb, var(--accent-strong) 92%, #1e5ec5 8%) 100%);
-  box-shadow:
-    0 8px 18px color-mix(in srgb, var(--accent) 14%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  background: #1a73e8;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: background-color 150ms ease;
 }
 
 .account-card .account-primary-button:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  background: #1557b0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.secondary-button {
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  color: #3c4043;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.secondary-button:hover {
+  background: #f8f9fa;
+  color: #202124;
+}
+
+.account-footer {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid #dadce0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #70757a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  width: 100%;
+}
+
+.account-footer a {
+  color: #1a73e8;
+  text-decoration: underline;
 }
 
 .account-link-button {

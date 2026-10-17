@@ -65,17 +65,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${cormorant.variable}`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${cormorant.variable}`}>
       <head>
         <Script id="theme-bootstrap" strategy="beforeInteractive">
           {`
             (function() {
               try {
-                var saved = window.localStorage.getItem('homeboard-theme');
-                var theme = saved === 'light' || saved === 'dark'
-                  ? saved
-                  : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-                document.documentElement.dataset.theme = theme;
+                document.documentElement.dataset.theme = 'light';
               } catch (error) {}
             })();
           `}

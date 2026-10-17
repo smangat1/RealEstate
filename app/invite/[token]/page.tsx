@@ -171,6 +171,13 @@ function InviteFrame({
           </footer>
         </aside>
       </section>
+
+      <footer className={styles.supportFooter}>
+        <span>Homeboard</span>
+        <a href="mailto:support@joinhomeboard.com" className={styles.supportLink}>
+          contact us: support@joinhomeboard.com
+        </a>
+      </footer>
     </main>
   );
 }

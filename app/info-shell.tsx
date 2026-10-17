@@ -45,6 +45,9 @@ export function InfoFooter() {
         <Link href="/privacy">Privacy</Link>
         <Link href="/contact">Contact</Link>
       </nav>
+      <a className={styles.footerContact} href="mailto:support@joinhomeboard.com">
+        contact us: support@joinhomeboard.com
+      </a>
       <span>© {currentYear} Homeboard</span>
     </footer>
   );

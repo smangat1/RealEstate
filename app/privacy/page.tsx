@@ -22,7 +22,7 @@ export default function PrivacyPage() {
     <main className={styles.page}>
       <InfoHeader />
       <div className={styles.main}>
-        <span className={styles.kicker}>Privacy policy</span>
+        <span className={styles.kicker}>privacy_policy · read-only</span>
         <h1>How Homeboard handles your data.</h1>
         <p className={styles.lead}>
           Homeboard is an iOS roommate house-hunting app. Groups make boards,
