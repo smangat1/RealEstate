@@ -3968,6 +3968,8 @@ final class AppModel {
       throw HomeboardAPIError.missingSession
     }
 
+    await refreshVersionInfo()
+
     return try await api.submitBugReport(
       accessToken: session.accessToken,
       description: description,
@@ -3978,7 +3980,11 @@ final class AppModel {
       boardCount: availableBoards.count,
       memberCount: board.members.count,
       savedListingCount: board.shortlist.count,
-      shareDiagnostics: HomeboardShareReportDiagnostics.exportText()
+      shareDiagnostics: HomeboardShareReportDiagnostics.exportText(),
+      apiVersion: apiVersion,
+      apiCommit: apiCommit,
+      apiAdvisorDraftAcceptanceReady: apiAdvisorDraftAcceptanceReady,
+      apiVersionError: apiVersionError
     )
   }
 
