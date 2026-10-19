@@ -10,11 +10,14 @@
 		08DEA609F65BC5294136823A /* HomeboardPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */; };
 		08F9E9B09B6AE59364F48037 /* AdvisorReplyIntake.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCA1195B39BB81562240A6C /* AdvisorReplyIntake.swift */; };
 		0AE54DFADC7B225F37F77150 /* homeboard-mark.png in Resources */ = {isa = PBXBuildFile; fileRef = 672F37334EE5BCC5C9714B2A /* homeboard-mark.png */; };
+		0B9712E0A17A691D7BC33737 /* icon-256.png in Resources */ = {isa = PBXBuildFile; fileRef = 7FCF73F4F2AF7DB995DD6E0F /* icon-256.png */; };
 		0DE567EDBBAAFE1B0B3651F9 /* HomeboardAppleSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD120DC7D9A784D4E5AE23B2 /* HomeboardAppleSignIn.swift */; };
 		0E16066A124A1CAAB52624D2 /* ShareBootProbe.m in Sources */ = {isa = PBXBuildFile; fileRef = 470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */; };
+		12D3F5D902E7BA9D9B2BC849 /* icon-96.png in Resources */ = {isa = PBXBuildFile; fileRef = FE0E3A817E9463914A3BA8C7 /* icon-96.png */; };
 		13394B035B15115A08AEEBEF /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */; };
 		14BC67A32612600D65C9F280 /* HomeboardCommuteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6C34ACBEE63921623602E5 /* HomeboardCommuteService.swift */; };
 		161DEA3227A9D911F9D15AC2 /* HomeboardNativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E0269D17D65D0CA0E219 /* HomeboardNativeTests.swift */; };
+		17B5C42548EB4D399725CEB7 /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 77B82ACD13CBDFA2AD002D44 /* icon-48.png */; };
 		185E668327F60D9FCCE619EF /* HomeboardMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3D4A0349D2B0C2D64FB534 /* HomeboardMacApp.swift */; };
 		1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */; };
 		1E283618879F96B0621CC64B /* UITestFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16454DD4523AE8F09B3F99E2 /* UITestFixture.swift */; };
@@ -28,7 +31,9 @@
 		39052E4C828B1A5ED3BFD2F8 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		39D434A8051644723A6D379F /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		3B944F23DC6F266974409897 /* HomeboardAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F52927D18A60DB80024121 /* HomeboardAPI.swift */; };
+		4016D884D6889D6B4129E40A /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = 97DA211FEEB606D4D4145589 /* icon-128.png */; };
 		42DD7CE594D25B9A4BDF45D4 /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
+		4B9FC1AC1BE5B9C498A293DF /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 77B82ACD13CBDFA2AD002D44 /* icon-48.png */; };
 		574FE78535771F9EBA7DCFC2 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		5A1BE148C7BC9B09EB658CD2 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
@@ -42,6 +47,7 @@
 		6D62F6F14B1B1CC20F987A43 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		72117B31EB6E6A12F4FCDFE6 /* CommuteEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25971423FD6D046F19556CD /* CommuteEvidenceTests.swift */; };
 		72AC6E1E462E68DB7EC54788 /* MacDevicePairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3810EEB8B0BA423B327F9E93 /* MacDevicePairingView.swift */; };
+		73A5C03E4D3D052D2BBAB39C /* icon-256.png in Resources */ = {isa = PBXBuildFile; fileRef = 7FCF73F4F2AF7DB995DD6E0F /* icon-256.png */; };
 		74B4031207603405891BB068 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */; };
 		790524246BBBD9B8761420CE /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		792161098507BD52B60029E8 /* toolbar-icon.svg in Resources */ = {isa = PBXBuildFile; fileRef = 575C511E3BC5CCE16A232686 /* toolbar-icon.svg */; };
@@ -57,6 +63,7 @@
 		8DFFD86620BA89F818C96386 /* FixtureUITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6BC158033945502CA476990 /* FixtureUITestCase.swift */; };
 		91DA4A62482097EA943047E6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5ECFD84B81DF02A593DA0F24 /* Assets.xcassets */; };
 		98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69FCB73F4C2B9E99A5B401A /* AppModel.swift */; };
+		9C15FB220B4D10EE8128852B /* icon-96.png in Resources */ = {isa = PBXBuildFile; fileRef = FE0E3A817E9463914A3BA8C7 /* icon-96.png */; };
 		9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9F3B2B705031CFD24F556D /* BoardShellView.swift */; };
 		9ECE8063C952796CE3826F05 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		A07C44532C2D0AFAB30976F7 /* HomeboardNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091D339CE592DED07FA6C6F6 /* HomeboardNativeApp.swift */; };
@@ -67,12 +74,15 @@
 		AE6C78096E09AE9AC6220663 /* HomeboardSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5936FDD620BE7E4245F8FEC5 /* HomeboardSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B127D29D704A6A6E994982E9 /* HomeboardListingIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB788A13F9F06ED9AE027874 /* HomeboardListingIntelligence.swift */; };
 		B1CCB61DBE1E92895581CC41 /* HomeboardActiveOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */; };
+		B1FC6EF2A06F98CF62F3F06F /* icon-512.png in Resources */ = {isa = PBXBuildFile; fileRef = F295596F10F6EAC1A894B424 /* icon-512.png */; };
 		B5B500245ED71175ED5AD84C /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
 		B7855DB36D0A397147C979C8 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		B8B35807148E04881DEF0BD2 /* HomeboardBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */; };
 		BB00C219498B248279BC3A3B /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 4E61E97384A9AFC7C18F3E63 /* manifest.json */; };
 		BDD9844EDC35CAD4368FC2AE /* UITestFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07370B84F76D5F648CD6454 /* UITestFixtureTests.swift */; };
 		C0AB8E085FDAE0C1CCF061EA /* HomeboardNativeCoreFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570ABFDFBBCB9AE752A46C4C /* HomeboardNativeCoreFlowUITests.swift */; };
+		C295ED49A4FEF6108F98437F /* icon-512.png in Resources */ = {isa = PBXBuildFile; fileRef = F295596F10F6EAC1A894B424 /* icon-512.png */; };
+		CD35B1EC150844ED7C67A13B /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = 97DA211FEEB606D4D4145589 /* icon-128.png */; };
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
 		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */; };
@@ -192,7 +202,9 @@
 		6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardSharedImportStore.swift; sourceTree = "<group>"; };
 		6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorOutcomeMemory.swift; sourceTree = "<group>"; };
 		75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardModels.swift; sourceTree = "<group>"; };
+		77B82ACD13CBDFA2AD002D44 /* icon-48.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.png"; sourceTree = "<group>"; };
 		7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthView.swift; sourceTree = "<group>"; };
+		7FCF73F4F2AF7DB995DD6E0F /* icon-256.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-256.png"; sourceTree = "<group>"; };
 		81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactShareViewController.swift; sourceTree = "<group>"; };
 		896D608081E5FEB43724C2D5 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		89B9D8794AE9C993BA4FABA1 /* HomeboardShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HomeboardShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -200,6 +212,7 @@
 		935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDispatcher.swift; sourceTree = "<group>"; };
 		958E86AF374173284BD9D79E /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		95FF9DA419A7DAEBA7D0961D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		97DA211FEEB606D4D4145589 /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-128.png"; sourceTree = "<group>"; };
 		9823B166F6A5B12565336371 /* HomeboardNativeAdvisorChatUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardNativeAdvisorChatUITests.swift; sourceTree = "<group>"; };
 		9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardActiveOffer.swift; sourceTree = "<group>"; };
 		A69FCB73F4C2B9E99A5B401A /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -220,6 +233,8 @@
 		ECB08524664C9C447B1ADA12 /* KeychainSensitiveStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSensitiveStoreTests.swift; sourceTree = "<group>"; };
 		ECCA1195B39BB81562240A6C /* AdvisorReplyIntake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorReplyIntake.swift; sourceTree = "<group>"; };
 		F194BDF57739A8DBAD19A911 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F295596F10F6EAC1A894B424 /* icon-512.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-512.png"; sourceTree = "<group>"; };
+		FE0E3A817E9463914A3BA8C7 /* icon-96.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-96.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -239,6 +254,11 @@
 			children = (
 				958E86AF374173284BD9D79E /* background.js */,
 				65FC9AAA1DE307DE8A4A3D50 /* content.js */,
+				77B82ACD13CBDFA2AD002D44 /* icon-48.png */,
+				FE0E3A817E9463914A3BA8C7 /* icon-96.png */,
+				97DA211FEEB606D4D4145589 /* icon-128.png */,
+				7FCF73F4F2AF7DB995DD6E0F /* icon-256.png */,
+				F295596F10F6EAC1A894B424 /* icon-512.png */,
 				4E61E97384A9AFC7C18F3E63 /* manifest.json */,
 				575C511E3BC5CCE16A232686 /* toolbar-icon.svg */,
 			);
@@ -670,6 +690,11 @@
 			files = (
 				B5B500245ED71175ED5AD84C /* background.js in Resources */,
 				AD2DAE3F54FDC6E12EC53216 /* content.js in Resources */,
+				CD35B1EC150844ED7C67A13B /* icon-128.png in Resources */,
+				73A5C03E4D3D052D2BBAB39C /* icon-256.png in Resources */,
+				4B9FC1AC1BE5B9C498A293DF /* icon-48.png in Resources */,
+				C295ED49A4FEF6108F98437F /* icon-512.png in Resources */,
+				9C15FB220B4D10EE8128852B /* icon-96.png in Resources */,
 				F0E38EF838CE4A52F313FD07 /* manifest.json in Resources */,
 				F109A7AD071A6E5861A32430 /* toolbar-icon.svg in Resources */,
 			);
@@ -681,6 +706,11 @@
 			files = (
 				5A1BE148C7BC9B09EB658CD2 /* background.js in Resources */,
 				F5EEA5FB9B27310924110C71 /* content.js in Resources */,
+				4016D884D6889D6B4129E40A /* icon-128.png in Resources */,
+				0B9712E0A17A691D7BC33737 /* icon-256.png in Resources */,
+				17B5C42548EB4D399725CEB7 /* icon-48.png in Resources */,
+				B1FC6EF2A06F98CF62F3F06F /* icon-512.png in Resources */,
+				12D3F5D902E7BA9D9B2BC849 /* icon-96.png in Resources */,
 				BB00C219498B248279BC3A3B /* manifest.json in Resources */,
 				792161098507BD52B60029E8 /* toolbar-icon.svg in Resources */,
 			);
@@ -845,7 +875,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -871,7 +901,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -920,7 +950,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -945,7 +975,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1029,7 +1059,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNative.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -1080,7 +1110,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -1192,7 +1222,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNativeDebug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1221,7 +1251,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardActionExtension/HomeboardActionExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -1249,7 +1279,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1296,7 +1326,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMacDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1319,7 +1349,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardActionExtension/HomeboardActionExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1347,7 +1377,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";

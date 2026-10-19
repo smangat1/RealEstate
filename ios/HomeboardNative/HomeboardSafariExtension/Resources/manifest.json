@@ -3,9 +3,22 @@
   "name": "Save to Homeboard",
   "description": "Collect the rental open in Safari and send it to your shared Homeboard.",
   "version": "0.0.13",
+  "icons": {
+    "48": "icon-48.png",
+    "96": "icon-96.png",
+    "128": "icon-128.png",
+    "256": "icon-256.png",
+    "512": "icon-512.png"
+  },
   "action": {
     "default_title": "Save to Homeboard",
-    "default_icon": "toolbar-icon.svg"
+    "default_icon": {
+      "48": "icon-48.png",
+      "96": "icon-96.png",
+      "128": "icon-128.png",
+      "256": "icon-256.png",
+      "512": "icon-512.png"
+    }
   },
   "background": {
     "scripts": ["background.js"],
