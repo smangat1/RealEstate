@@ -36,6 +36,7 @@ targets:
       - path: HomeboardNative/Sources/MacDevicePairingView.swift
       - path: HomeboardNative/Sources/BoardShellView.swift
       - path: HomeboardNative/Sources/SharedWorkspaceView.swift
+      - path: HomeboardNative/Sources/FinanceWorkspaceView.swift
       - path: HomeboardNative/Sources/HomeboardActiveOffer.swift
       - path: HomeboardNative/Sources/MessageDispatcher.swift
       - path: HomeboardNative/Sources/UITestFixture.swift

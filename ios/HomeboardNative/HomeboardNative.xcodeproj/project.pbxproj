@@ -86,6 +86,7 @@
 		D1B9186AB916A6F94EF7B655 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4419FB3FD9C9031892FD /* ShareViewController.swift */; };
 		D21E5051CB5281EB7DD815EA /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		D2DB7208B00DE95C08BE1A4C /* MessageDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935B1CAA7F51461FC41E7DB8 /* MessageDispatcher.swift */; };
+		D731B1D11DDC222E9A30EFDD /* FinanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B424AB5BA7E45E379E40D56 /* FinanceWorkspaceView.swift */; };
 		D976E3309AD682890ABFA21B /* AdvisorSensitiveStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF80F81549A29E98A895992 /* AdvisorSensitiveStore.swift */; };
 		DD73B582465029458AE91A20 /* SharedWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8664666CC74BEDF9C807F6 /* SharedWorkspaceView.swift */; };
 		E43B1F338B6C534146F9BD36 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
@@ -199,6 +200,7 @@
 		65FC9AAA1DE307DE8A4A3D50 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = content.js; sourceTree = "<group>"; };
 		672F37334EE5BCC5C9714B2A /* homeboard-mark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "homeboard-mark.png"; sourceTree = "<group>"; };
 		694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardExtensionSync.swift; sourceTree = "<group>"; };
+		6B424AB5BA7E45E379E40D56 /* FinanceWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceWorkspaceView.swift; sourceTree = "<group>"; };
 		6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardSharedImportStore.swift; sourceTree = "<group>"; };
 		6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorOutcomeMemory.swift; sourceTree = "<group>"; };
 		75ABDEBFAEECD3BDB1DD21E6 /* HomeboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardModels.swift; sourceTree = "<group>"; };
@@ -360,6 +362,7 @@
 				7DE199D733F0E7B4BB625440 /* AppleAuthView.swift */,
 				A69FCB73F4C2B9E99A5B401A /* AppModel.swift */,
 				5C9F3B2B705031CFD24F556D /* BoardShellView.swift */,
+				6B424AB5BA7E45E379E40D56 /* FinanceWorkspaceView.swift */,
 				9D7E7B312EBE2BAEFB4EC627 /* HomeboardActiveOffer.swift */,
 				C9F52927D18A60DB80024121 /* HomeboardAPI.swift */,
 				033D3C2F4D8AE62E4476C9B7 /* HomeboardBackgroundView.swift */,
@@ -789,6 +792,7 @@
 				98B04B6882F97EF9687DEF67 /* AppModel.swift in Sources */,
 				2CFB096A80CAF30432EE29B1 /* AppleAuthView.swift in Sources */,
 				9EC8B1DEF7F409A954E248C7 /* BoardShellView.swift in Sources */,
+				D731B1D11DDC222E9A30EFDD /* FinanceWorkspaceView.swift in Sources */,
 				3B944F23DC6F266974409897 /* HomeboardAPI.swift in Sources */,
 				B1CCB61DBE1E92895581CC41 /* HomeboardActiveOffer.swift in Sources */,
 				AC93FEA3832938FE343A2469 /* HomeboardAppleSignIn.swift in Sources */,

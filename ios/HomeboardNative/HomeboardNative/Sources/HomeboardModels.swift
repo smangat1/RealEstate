@@ -1104,6 +1104,18 @@ struct BoardExpense: Identifiable, Hashable, Codable {
   var paidAt: String
   var paidByUserId: String
   var paidByName: String
+  var boardListingId: String? = nil
+  var listingName: String? = nil
+  var splitUserIds: [String]? = nil
+  var splitNames: [String]? = nil
+  var shares: [BoardExpenseShare]? = nil
+}
+
+struct BoardExpenseShare: Identifiable, Hashable, Codable {
+  var id: String { userId }
+  var userId: String
+  var name: String
+  var owedCents: Int
 }
 
 struct BoardExpenseBalance: Identifiable, Hashable, Codable {

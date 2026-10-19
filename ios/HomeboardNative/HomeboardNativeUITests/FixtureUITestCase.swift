@@ -5,7 +5,7 @@ class FixtureUITestCase: XCTestCase {
   override func setUpWithError() throws { continueAfterFailure = false }
   override func tearDownWithError() throws { app?.terminate() }
 
-  func launchFixture(_ settings: [String: String] = [:]) {
+  func launchFixture(_ settings: [String: String] = [:], openChat: Bool = true) {
     app = XCUIApplication()
     app.launchArguments = ["-homeboard.resetForUITesting", "-homeboard.uiTestFixture"]
     app.launchEnvironment["HOMEBOARD_ADVISOR_ENABLED"] = "1"
@@ -14,6 +14,12 @@ class FixtureUITestCase: XCTestCase {
     XCTAssertTrue(app.descendants(matching: .any)["homeboard.fixture.diagnostics"].waitForExistence(timeout: 20))
     if settings["UITEST_ONBOARDING"] != "1" {
       XCTAssertTrue(app.tabBars.buttons["Group"].waitForExistence(timeout: 15))
+      if openChat {
+        let chatWidget = app.buttons["homeboard.group.chat-widget"]
+        XCTAssertTrue(chatWidget.waitForExistence(timeout: 15))
+        chatWidget.tap()
+        XCTAssertTrue(app.textFields["homeboard.chat.field"].waitForExistence(timeout: 15))
+      }
     }
   }
   func diagnostics() -> [String: Any] {

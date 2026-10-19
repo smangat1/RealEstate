@@ -57,6 +57,7 @@ test("listing data mutations enforce board ownership inside the data layer", () 
 
 test("native logout cancels local work and ignores stale authenticated responses", () => {
   const model = read("ios/HomeboardNative/HomeboardNative/Sources/AppModel.swift");
+  const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
   const api = read("ios/HomeboardNative/HomeboardNative/Sources/HomeboardAPI.swift");
   const pushRoute = read("app/api/mobile/push-devices/route.ts");
 
@@ -68,6 +69,10 @@ test("native logout cancels local work and ignores stale authenticated responses
   assert.match(api, /func unregisterPushDevice/);
   assert.match(pushRoute, /export async function DELETE/);
   assert.match(pushRoute, /userId: user\.id, token:/);
+  assert.match(
+    workspace,
+    /Button\(role: \.destructive\) \{\s*dismiss\(\)\s*appModel\.signOut\(\)\s*\} label: \{\s*HStack \{\s*Text\("Sign out"\)/,
+  );
 });
 
 test("shared listing saves use a durable non-destructive queue", () => {

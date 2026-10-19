@@ -273,6 +273,9 @@ private struct MobileBoardExpenseRequest: Encodable {
   var description: String
   var category: String
   var amountCents: Int
+  var boardListingId: String?
+  var paidByUserId: String?
+  var splitUserIds: [String]?
 }
 
 private struct MobileRoomAssignmentRequest: Encodable {
@@ -1262,13 +1265,23 @@ final class HomeboardAPI {
     boardId: String,
     description: String,
     category: String,
-    amountCents: Int
+    amountCents: Int,
+    boardListingId: String? = nil,
+    paidByUserId: String? = nil,
+    splitUserIds: [String]? = nil
   ) async throws -> BoardExpenseLedger {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/expenses",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardExpenseRequest(description: description, category: category, amountCents: amountCents)
+      body: MobileBoardExpenseRequest(
+        description: description,
+        category: category,
+        amountCents: amountCents,
+        boardListingId: boardListingId,
+        paidByUserId: paidByUserId,
+        splitUserIds: splitUserIds
+      )
     )
   }
 

@@ -1934,13 +1934,25 @@ final class AppModel {
     }
     do {
       return try await api.loadBoardExpenses(accessToken: session.accessToken, boardId: boardId)
+    } catch is CancellationError {
+      // SwiftUI cancels view-bound ledger refreshes when the user moves between
+      // the Group hub, chat, and Finance. That is navigation lifecycle control,
+      // not a user-facing failure.
+      return nil
     } catch {
       boardError = readable(error)
       return nil
     }
   }
 
-  func addBoardExpense(description: String, category: String, amountCents: Int) async -> BoardExpenseLedger? {
+  func addBoardExpense(
+    description: String,
+    category: String,
+    amountCents: Int,
+    boardListingId: String? = nil,
+    paidByUserId: String? = nil,
+    splitUserIds: [String]? = nil
+  ) async -> BoardExpenseLedger? {
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before tracking group money."
       return nil
@@ -1951,10 +1963,15 @@ final class AppModel {
         boardId: boardId,
         description: description,
         category: category,
-        amountCents: amountCents
+        amountCents: amountCents,
+        boardListingId: boardListingId,
+        paidByUserId: paidByUserId,
+        splitUserIds: splitUserIds
       )
       boardFeedback = "Expense added to the group ledger."
       return ledger
+    } catch is CancellationError {
+      return nil
     } catch {
       boardError = readable(error)
       return nil

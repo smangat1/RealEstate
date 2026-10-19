@@ -123,6 +123,9 @@ enum UITestFixture {
       highlights: ["In-unit laundry", "Hardwood floors", "Rooftop deck"],
       openRisks: ["Loud weekend nights"],
       status: "saved",
+      bedrooms: "2",
+      bathrooms: "1",
+      squareFeet: 860,
       latitude: 37.7694,
       longitude: -122.4222
     ),
@@ -139,6 +142,9 @@ enum UITestFixture {
       highlights: ["Private garden", "Original details", "Dishwasher"],
       openRisks: ["Split bathrooms"],
       status: "saved",
+      bedrooms: "3",
+      bathrooms: "1.5",
+      squareFeet: 1_240,
       latitude: 37.7772,
       longitude: -122.4242
     ),
@@ -155,6 +161,9 @@ enum UITestFixture {
       highlights: ["Panoramic views", "Deck", "Pet-friendly"],
       openRisks: ["One parking spot only"],
       status: "saved",
+      bedrooms: "2",
+      bathrooms: "1",
+      squareFeet: 940,
       latitude: 37.7510,
       longitude: -122.4292
     ),
@@ -305,6 +314,26 @@ final class UITestFixtureState {
   var delayedPostStarted = false
   var modelDiagnostics: [[String: String]] = []
   var created = false
+  var expenses: [BoardExpense] = [
+    BoardExpense(
+      id: "fixture-expense-001",
+      description: "Application fee",
+      category: "application_fee",
+      amountCents: 22500,
+      paidAt: "2026-09-28T09:00:00Z",
+      paidByUserId: UITestFixture.samUserID,
+      paidByName: "Sam",
+      boardListingId: UITestFixture.listing1ID,
+      listingName: "123 Valencia St",
+      splitUserIds: [UITestFixture.samUserID, UITestFixture.alexUserID, UITestFixture.jordanUserID],
+      splitNames: ["Sam", "Alex", "Jordan"],
+      shares: [
+        BoardExpenseShare(userId: UITestFixture.samUserID, name: "Sam", owedCents: 7500),
+        BoardExpenseShare(userId: UITestFixture.alexUserID, name: "Alex", owedCents: 7500),
+        BoardExpenseShare(userId: UITestFixture.jordanUserID, name: "Jordan", owedCents: 7500),
+      ]
+    )
+  ]
 
   var availability: String {
     #if canImport(FoundationModels)
@@ -339,6 +368,28 @@ final class UITestFixtureState {
     var result: [String: Any] = ["board": object(board), "profile": profile, "missingFields": []]
     if let payload { result["advisorPayload"] = object(payload) }
     return result
+  }
+  func expenseLedger() -> BoardExpenseLedger {
+    let people = UITestFixture.members.map { ($0.userId, $0.name) }
+    let balances = people.map { userID, name in
+      let paid = expenses.filter { $0.paidByUserId == userID }.reduce(0) { $0 + $1.amountCents }
+      let owed = expenses.reduce(0) { total, expense in
+        total + (expense.shares?.first(where: { $0.userId == userID })?.owedCents ?? 0)
+      }
+      return BoardExpenseBalance(
+        userId: userID,
+        name: name,
+        paidCents: paid,
+        owedCents: owed,
+        balanceCents: paid - owed
+      )
+    }
+    return BoardExpenseLedger(
+      totalCents: expenses.reduce(0) { $0 + $1.amountCents },
+      splitMode: "equal",
+      expenses: expenses,
+      balances: balances
+    )
   }
   func generate(payload: AdvisorMessagePayload, tone: String, toggles: [AdvisorToggleOption],
                 financialSentence: String?, senderName: String) async -> AdvisorDraftGeneration {
@@ -434,6 +485,44 @@ final class UITestFixtureState {
     if route == "GET \(boardPath)/preference-proposals" { return (200, ["preferenceProposal": NSNull()]) }
     if route == "GET \(boardPath)/listings" {
       return (200, ["listings": object(board.shortlist), "hasMore": false, "source": "fixture", "nextCursor": NSNull()])
+    }
+    if route == "GET \(boardPath)/expenses" {
+      return (200, object(expenseLedger()) as! [String: Any])
+    }
+    if route == "POST \(boardPath)/expenses" {
+      guard let description = input["description"] as? String,
+            let category = input["category"] as? String,
+            let amountCents = input["amountCents"] as? Int else { return reject(route) }
+      let payerID = input["paidByUserId"] as? String ?? UITestFixture.samUserID
+      let payerName = UITestFixture.members.first(where: { $0.userId == payerID })?.name ?? "Sam"
+      let splitIDs = input["splitUserIds"] as? [String] ?? UITestFixture.members.map(\.userId)
+      let base = amountCents / max(1, splitIDs.count)
+      let remainder = amountCents % max(1, splitIDs.count)
+      let shares = splitIDs.enumerated().map { index, userID in
+        BoardExpenseShare(
+          userId: userID,
+          name: UITestFixture.members.first(where: { $0.userId == userID })?.name ?? "Member",
+          owedCents: base + (index < remainder ? 1 : 0)
+        )
+      }
+      expenses.insert(
+        BoardExpense(
+          id: "fixture-expense-\(expenses.count + 1)",
+          description: description,
+          category: category,
+          amountCents: amountCents,
+          paidAt: "2026-09-28T11:00:00Z",
+          paidByUserId: payerID,
+          paidByName: payerName,
+          boardListingId: input["boardListingId"] as? String,
+          listingName: board.shortlist.first(where: { $0.id == input["boardListingId"] as? String })?.title,
+          splitUserIds: splitIDs,
+          splitNames: shares.map(\.name),
+          shares: shares
+        ),
+        at: 0
+      )
+      return (200, object(expenseLedger()) as! [String: Any])
     }
     if route == "POST /api/mobile/listing-import/preview" {
       guard let url = input["url"] as? String, url == "https://example.com/rental/fixture" else { return reject(route) }
