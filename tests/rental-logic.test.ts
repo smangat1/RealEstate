@@ -79,3 +79,31 @@ test("Advisor setup choices survive the profile notes round trip", () => {
   assert.equal(mapped.advisorSetupCompletedAt, "2026-09-25T15:00:00.000Z");
   assert.equal(mapped.advisorSetupVersion, 2);
 });
+
+test("application preparation choices survive a real profile notes round trip", () => {
+  const profile = {
+    ...createBlankProfile("board-readiness"),
+    notes: "Keep the leasing contact's verification note intact.",
+    rentalReadiness: {
+      hasOfferLetter: false,
+      needsGuarantor: true,
+      hasProofOfIncome: false,
+      incomeProofType: "tax_returns" as const,
+      documentStatus: "can_request" as const,
+      usesGuarantor: true,
+    },
+  };
+
+  const mapped = mapProfileRow({
+    ...profile,
+    notes: encodeNotesPayload(profile),
+    locations: "[]",
+    mustHaves: "[]",
+    dealbreakers: "[]",
+    niceToHaves: "[]",
+    bedroomsFlexible: "[]",
+  });
+
+  assert.deepEqual(mapped.rentalReadiness, profile.rentalReadiness);
+  assert.equal(mapped.notes, profile.notes);
+});

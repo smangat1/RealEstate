@@ -12,6 +12,40 @@ final class HomeboardNativeTests: XCTestCase {
     "homeboard.native.pending-operations",
   ]
 
+  func testApplicationPreparationChoicesRoundTripWithoutClobberingNotes() throws {
+    let readiness = RentalReadiness(
+      hasOfferLetter: false,
+      needsGuarantor: true,
+      hasProofOfIncome: false,
+      notes: "Keep the verified leasing contact note.",
+      incomeProofType: "tax_returns",
+      documentStatus: "can_request",
+      usesGuarantor: true
+    )
+
+    let data = try JSONEncoder().encode(readiness)
+    let restored = try JSONDecoder().decode(RentalReadiness.self, from: data)
+
+    XCTAssertEqual(restored, readiness)
+    XCTAssertEqual(restored.notes, "Keep the verified leasing contact note.")
+    XCTAssertEqual(restored.incomeProofType, "tax_returns")
+    XCTAssertEqual(restored.documentStatus, "can_request")
+    XCTAssertEqual(restored.usesGuarantor, true)
+  }
+
+  func testLegacyReadinessPayloadStillDecodesWithoutNewPreparationFields() throws {
+    let data = Data(#"{"hasOfferLetter":true,"needsGuarantor":false,"hasProofOfIncome":true,"notes":"Legacy note"}"#.utf8)
+    let restored = try JSONDecoder().decode(RentalReadiness.self, from: data)
+
+    XCTAssertTrue(restored.hasOfferLetter)
+    XCTAssertFalse(restored.needsGuarantor)
+    XCTAssertTrue(restored.hasProofOfIncome)
+    XCTAssertEqual(restored.notes, "Legacy note")
+    XCTAssertNil(restored.incomeProofType)
+    XCTAssertNil(restored.documentStatus)
+    XCTAssertNil(restored.usesGuarantor)
+  }
+
   func testOldBoardMessageJSONDecodesWithoutReplyField() throws {
     let data = Data(#"{"id":"message-old","role":"user","authorName":"Sam","content":"Still available?","createdAt":"2026-10-05T12:00:00Z"}"#.utf8)
     let message = try JSONDecoder().decode(BoardMessage.self, from: data)

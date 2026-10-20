@@ -755,6 +755,9 @@ private struct RentalReadinessRequest: Encodable {
   var hasOfferLetter: Bool
   var needsGuarantor: Bool
   var hasProofOfIncome: Bool
+  var incomeProofType: String?
+  var documentStatus: String?
+  var usesGuarantor: Bool?
 }
 
 private struct RemoteChatMessageRequest: Encodable {
@@ -2144,7 +2147,10 @@ extension RemoteRentalProfileRequest {
     self.rentalReadiness = RentalReadinessRequest(
       hasOfferLetter: profile.readiness.hasOfferLetter,
       needsGuarantor: profile.readiness.needsGuarantor,
-      hasProofOfIncome: profile.readiness.hasProofOfIncome
+      hasProofOfIncome: profile.readiness.hasProofOfIncome,
+      incomeProofType: profile.readiness.incomeProofType,
+      documentStatus: profile.readiness.documentStatus,
+      usesGuarantor: profile.readiness.usesGuarantor
     )
     self.completionStatus = profile.isBoardReady ? "complete" : "incomplete"
     self.notes = profile.readiness.notes.isEmpty ? nil : profile.readiness.notes

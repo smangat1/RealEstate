@@ -1498,7 +1498,9 @@ private struct FinanceReadinessSheet: View {
       .onAppear {
         let readiness = appModel.profile.readiness
         if proofChoice == nil {
-          if readiness.needsGuarantor {
+          if let stored = readiness.incomeProofType.flatMap(FinanceIncomeProofChoice.init(rawValue:)) {
+            proofChoice = stored
+          } else if readiness.needsGuarantor {
             proofChoice = .guarantor
           } else if readiness.hasOfferLetter {
             proofChoice = .employmentLetter
@@ -1506,9 +1508,15 @@ private struct FinanceReadinessSheet: View {
             proofChoice = .payStubs
           }
         }
-        if documentStatus == nil, readiness.hasProofOfIncome { documentStatus = .ready }
-        if guarantorChoice == nil, readiness.hasProofOfIncome || readiness.hasOfferLetter || readiness.needsGuarantor {
-          guarantorChoice = readiness.needsGuarantor
+        if documentStatus == nil {
+          documentStatus = readiness.documentStatus.flatMap(FinanceDocumentStatus.init(rawValue:))
+          if documentStatus == nil, readiness.hasProofOfIncome { documentStatus = .ready }
+        }
+        if guarantorChoice == nil {
+          guarantorChoice = readiness.usesGuarantor
+          if guarantorChoice == nil, readiness.hasProofOfIncome || readiness.hasOfferLetter || readiness.needsGuarantor {
+            guarantorChoice = readiness.needsGuarantor
+          }
         }
       }
     }
@@ -1520,8 +1528,10 @@ private struct FinanceReadinessSheet: View {
     let documentIsReady = documentStatus == .ready && proofChoice != .unsure
     appModel.profile.readiness.hasProofOfIncome = documentIsReady
     appModel.profile.readiness.hasOfferLetter = documentIsReady && proofChoice == .employmentLetter
-    appModel.profile.readiness.needsGuarantor = guarantorChoice || proofChoice == .guarantor
-    appModel.profile.readiness.notes = "Income proof: \(proofChoice.title). Status: \(documentStatus.title)."
+    appModel.profile.readiness.needsGuarantor = guarantorChoice
+    appModel.profile.readiness.incomeProofType = proofChoice.rawValue
+    appModel.profile.readiness.documentStatus = documentStatus.rawValue
+    appModel.profile.readiness.usesGuarantor = guarantorChoice
     Task {
       await appModel.saveBoardBrief()
       isSaving = false
@@ -1531,10 +1541,10 @@ private struct FinanceReadinessSheet: View {
 }
 
 private enum FinanceIncomeProofChoice: String, CaseIterable, Identifiable {
-  case payStubs
-  case employmentLetter
-  case taxReturns
-  case bankStatements
+  case payStubs = "pay_stubs"
+  case employmentLetter = "employment_letter"
+  case taxReturns = "tax_returns"
+  case bankStatements = "bank_statements"
   case guarantor
   case unsure
 
@@ -1593,8 +1603,8 @@ private enum FinanceIncomeProofChoice: String, CaseIterable, Identifiable {
 
 private enum FinanceDocumentStatus: String, CaseIterable, Identifiable {
   case ready
-  case canRequest
-  case notStarted
+  case canRequest = "can_request"
+  case notStarted = "not_started"
 
   var id: String { rawValue }
 
