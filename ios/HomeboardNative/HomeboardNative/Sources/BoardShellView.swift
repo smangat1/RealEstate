@@ -90,7 +90,7 @@ struct BoardShellView: View {
       .tag(AppModel.BoardTab.board)
 
       NavigationStack {
-        SharedUpdatesView()
+        SharedGroupHubView()
       }
       .toolbarBackground(HomeboardPalette.surface, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)

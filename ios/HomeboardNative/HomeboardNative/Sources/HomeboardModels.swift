@@ -73,17 +73,26 @@ struct RentalReadiness: Hashable, Codable {
   var needsGuarantor: Bool
   var hasProofOfIncome: Bool
   var notes: String = ""
+  var incomeProofType: String? = nil
+  var documentStatus: String? = nil
+  var usesGuarantor: Bool? = nil
 
   init(
     hasOfferLetter: Bool,
     needsGuarantor: Bool,
     hasProofOfIncome: Bool,
-    notes: String = ""
+    notes: String = "",
+    incomeProofType: String? = nil,
+    documentStatus: String? = nil,
+    usesGuarantor: Bool? = nil
   ) {
     self.hasOfferLetter = hasOfferLetter
     self.needsGuarantor = needsGuarantor
     self.hasProofOfIncome = hasProofOfIncome
     self.notes = notes
+    self.incomeProofType = incomeProofType
+    self.documentStatus = documentStatus
+    self.usesGuarantor = usesGuarantor
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -91,6 +100,9 @@ struct RentalReadiness: Hashable, Codable {
     case needsGuarantor
     case hasProofOfIncome
     case notes
+    case incomeProofType
+    case documentStatus
+    case usesGuarantor
   }
 
   init(from decoder: Decoder) throws {
@@ -99,6 +111,9 @@ struct RentalReadiness: Hashable, Codable {
     needsGuarantor = try container.decodeIfPresent(Bool.self, forKey: .needsGuarantor) ?? false
     hasProofOfIncome = try container.decodeIfPresent(Bool.self, forKey: .hasProofOfIncome) ?? false
     notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+    incomeProofType = try container.decodeIfPresent(String.self, forKey: .incomeProofType)
+    documentStatus = try container.decodeIfPresent(String.self, forKey: .documentStatus)
+    usesGuarantor = try container.decodeIfPresent(Bool.self, forKey: .usesGuarantor)
   }
 }
 
@@ -1104,6 +1119,18 @@ struct BoardExpense: Identifiable, Hashable, Codable {
   var paidAt: String
   var paidByUserId: String
   var paidByName: String
+  var boardListingId: String? = nil
+  var listingName: String? = nil
+  var splitUserIds: [String]? = nil
+  var splitNames: [String]? = nil
+  var shares: [BoardExpenseShare]? = nil
+}
+
+struct BoardExpenseShare: Identifiable, Hashable, Codable {
+  var id: String { userId }
+  var userId: String
+  var name: String
+  var owedCents: Int
 }
 
 struct BoardExpenseBalance: Identifiable, Hashable, Codable {

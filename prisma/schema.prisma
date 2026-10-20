@@ -439,6 +439,7 @@ model BoardListing {
   listingSnapshots   ListingSnapshot[]
   listingChanges     ListingChange[]
   advisorFeedback    AdvisorFeedback[]
+  expenses           BoardExpense[]
 
   @@unique([boardId, listingId])
   @@index([boardId, userStatus])
@@ -884,18 +885,24 @@ model ListingChange {
 }
 
 model BoardExpense {
-  id           String      @id @default(cuid())
-  boardId      String
-  paidByUserId String
-  description  String
-  category     String
-  amountCents  Int
-  paidAt       DateTime    @default(now())
-  createdAt    DateTime    @default(now())
-  board        SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  paidBy       User        @relation(fields: [paidByUserId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  boardId        String
+  boardListingId String?
+  paidByUserId   String
+  paidByName     String?
+  description    String
+  category       String
+  amountCents    Int
+  splitUserIds   Json?
+  splitShares    Json?
+  paidAt         DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  board          SearchBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  boardListing   BoardListing? @relation(fields: [boardListingId], references: [id], onDelete: SetNull)
+  paidBy         User          @relation(fields: [paidByUserId], references: [id], onDelete: Cascade)
 
   @@index([boardId, paidAt])
+  @@index([boardListingId, paidAt])
   @@index([paidByUserId])
 }
 

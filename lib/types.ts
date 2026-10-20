@@ -5,6 +5,15 @@ export type RentalReadiness = {
   hasOfferLetter?: boolean;
   needsGuarantor?: boolean;
   hasProofOfIncome?: boolean;
+  incomeProofType?:
+    | "pay_stubs"
+    | "employment_letter"
+    | "tax_returns"
+    | "bank_statements"
+    | "guarantor"
+    | "unsure";
+  documentStatus?: "ready" | "can_request" | "not_started";
+  usesGuarantor?: boolean;
 };
 
 export type ProfileCompletion = {

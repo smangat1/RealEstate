@@ -2736,9 +2736,12 @@ struct SharedGroupView: View {
 
 struct SharedUpdatesView: View {
   @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+  var showsBackButton = false
   @State private var updateDraft = ""
   @State private var showsSettings = false
   @State private var scrollsToAdvisorWallet = false
+  @State private var updatesGuideStep = 0
   @FocusState private var updateFieldFocused: Bool
   @AppStorage("homeboard.guide.updates.dismissed") private var updatesGuideDismissed = false
 
@@ -2780,22 +2783,41 @@ struct SharedUpdatesView: View {
               title: "Group",
               subtitle: "One conversation. Every decision answered together."
             ) {
-              Button {
-                showsSettings = true
-              } label: {
-                Image(systemName: "gearshape.fill")
-                  .font(.subheadline.weight(.bold))
-                  .foregroundStyle(HomeboardPalette.secondaryText)
-                  .frame(width: 40, height: 40)
-                  .background(Color.white.opacity(0.06))
-                  .clipShape(Circle())
+              HStack(spacing: 8) {
+                if showsBackButton {
+                  Button {
+                    dismiss()
+                  } label: {
+                    Image(systemName: "chevron.left")
+                      .font(.subheadline.weight(.bold))
+                      .foregroundStyle(HomeboardPalette.primaryText)
+                      .frame(width: 40, height: 40)
+                      .background(Color.white.opacity(0.06))
+                      .clipShape(Circle())
+                  }
+                  .buttonStyle(HomeboardAreaButtonStyle())
+                  .accessibilityLabel("Back to Group")
+                }
+
+                Button {
+                  showsSettings = true
+                } label: {
+                  Image(systemName: "gearshape.fill")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(HomeboardPalette.secondaryText)
+                    .frame(width: 40, height: 40)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(Circle())
+                }
+                .buttonStyle(HomeboardAreaButtonStyle())
+                .accessibilityLabel("Board settings")
+                .accessibilityIdentifier("homeboard.settings.open")
               }
-              .buttonStyle(HomeboardAreaButtonStyle())
-              .accessibilityLabel("Board settings")
-              .accessibilityIdentifier("homeboard.settings.open")
             }
 
             SharedDecisionHub()
+              .sharedCoachmarkTarget("updates-decisions")
+              .id("updates-guide-decisions")
 
             if appModel.isAdvisorFeatureEnabled {
               AdvisorWalletPanel()
@@ -2857,7 +2879,15 @@ struct SharedUpdatesView: View {
         }
         .task {
           try? await Task.sleep(nanoseconds: 180_000_000)
+          guard updatesGuideDismissed || updatesGuideStep > 0 else { return }
           scrollProxy.scrollTo("chat-bottom-anchor", anchor: .bottom)
+        }
+        .onChange(of: updatesGuideDismissed) { _, isDismissed in
+          guard !isDismissed else { return }
+          withAnimation(.easeInOut(duration: 0.3)) {
+            updatesGuideStep = 0
+            scrollProxy.scrollTo("updates-guide-decisions", anchor: .top)
+          }
         }
         .onChange(of: visibleBoardMessages.count) { _, _ in
           withAnimation(.easeOut(duration: 0.25)) {
@@ -3046,12 +3076,30 @@ struct SharedUpdatesView: View {
         .presentationBackground(HomeboardPalette.background)
     }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
-      if !updatesGuideDismissed {
+      if !updatesGuideDismissed, updatesGuideStep == 0 {
+        SharedCoachmarkOverlay(
+          target: anchors["updates-decisions"],
+          title: "Turn discussion into a decision",
+          message: "Use this area when the group needs a clear answer, not another loose message. Start a decision and track who has responded.",
+          targetLabel: "GROUP DECISIONS",
+          actionLabel: "Next: Messages",
+          stepLabel: "1 of 2",
+          onClose: { updatesGuideDismissed = true },
+          onDismiss: {
+            withAnimation(.easeInOut(duration: 0.25)) {
+              updatesGuideStep = 1
+            }
+          }
+        )
+      } else if !updatesGuideDismissed {
         SharedCoachmarkOverlay(
           target: anchors["updates-composer"],
-          title: "Talk it through together",
-          message: "Use messages for discussion. Start a group decision above when everyone needs to answer.",
+          title: "Message the roommates",
+          message: "Use the composer for discussion, listing links, and replies. Long-press any message to reply in context; keep money and application documents in Finance.",
           targetLabel: "MESSAGE THE GROUP",
+          actionLabel: "Done",
+          stepLabel: "2 of 2",
+          onClose: { updatesGuideDismissed = true },
           onDismiss: { updatesGuideDismissed = true }
         )
       }
@@ -3739,7 +3787,6 @@ struct SharedSetupView: View {
   @State private var showsBoardExitConfirmation = false
   @State private var showsAccountDeletionConfirmation = false
   @State private var showsBugReport = false
-  @State private var showsGroupMoney = false
   @State private var showsNotificationSettings = false
 
   private var isCurrentUserOwner: Bool {
@@ -3778,12 +3825,6 @@ struct SharedSetupView: View {
 
             SharedSettingsRow(icon: "safari.fill", title: "Safari capture", subtitle: "Enable once, then listing pills appear automatically") {
               showsSafariSetup = true
-            }
-
-            SharedDivider()
-
-            SharedSettingsRow(icon: "dollarsign.arrow.circlepath", title: "Group money", subtitle: "Application fees, deposits, and who paid") {
-              showsGroupMoney = true
             }
 
             SharedDivider()
@@ -3912,6 +3953,7 @@ struct SharedSetupView: View {
           }
 
           Button(role: .destructive) {
+            dismiss()
             appModel.signOut()
           } label: {
             HStack {
@@ -4007,12 +4049,6 @@ struct SharedSetupView: View {
       .presentationDragIndicator(.visible)
       .presentationBackground(HomeboardPalette.background)
     }
-    .sheet(isPresented: $showsGroupMoney) {
-      SharedGroupMoneySheet()
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(HomeboardPalette.background)
-    }
     .sheet(isPresented: Binding(
       get: { appModel.isAdvisorFeatureEnabled && showsNotificationSettings },
       set: { showsNotificationSettings = $0 }
@@ -4051,6 +4087,8 @@ struct SharedSetupView: View {
     UserDefaults.standard.set(false, forKey: "homeboard.guide.search.dismissed")
     UserDefaults.standard.set(false, forKey: "homeboard.guide.shortlist.dismissed")
     UserDefaults.standard.set(false, forKey: "homeboard.guide.updates.dismissed")
+    UserDefaults.standard.set(false, forKey: "homeboard.guide.group-hub.dismissed")
+    UserDefaults.standard.set(false, forKey: "homeboard.guide.finance.dismissed")
     appModel.boardFeedback = "Page guides restarted."
     UINotificationFeedbackGenerator().notificationOccurred(.success)
     showsHelp = false
@@ -4304,7 +4342,9 @@ private struct SharedHelpTutorialsSheet: View {
             SharedSectionTitle(title: "Pages at a glance", trailing: nil)
             Label("Search: find, filter, map, and compare homes.", systemImage: "map")
             Label("Shortlist: review the places your group saved.", systemImage: "rectangle.stack")
-            Label("Group: talk together and answer decisions.", systemImage: "bubble.left.and.bubble.right")
+            Label("Group hub: see recent conversation and money status without opening another page.", systemImage: "rectangle.grid.1x2.fill")
+            Label("Group chat: discuss homes, share updates, and answer group decisions.", systemImage: "bubble.left.and.bubble.right")
+            Label("Finance: compare rent, bedrooms, space, and move-in cash; prepare application forms; track who paid and owes.", systemImage: "dollarsign.circle.fill")
           }
           .font(.subheadline)
           .foregroundStyle(HomeboardPalette.secondaryText)
@@ -11195,7 +11235,7 @@ private struct SharedHomeboardAppIcon: View {
   }()
 }
 
-private struct SharedCoachmarkAnchorKey: PreferenceKey {
+struct SharedCoachmarkAnchorKey: PreferenceKey {
   static var defaultValue: [String: Anchor<CGRect>] = [:]
 
   static func reduce(
@@ -11206,7 +11246,7 @@ private struct SharedCoachmarkAnchorKey: PreferenceKey {
   }
 }
 
-private struct SharedCoachmarkDimmingShape: Shape {
+struct SharedCoachmarkDimmingShape: Shape {
   let spotlightRect: CGRect
   let cornerRadius: CGFloat
 
@@ -11221,13 +11261,36 @@ private struct SharedCoachmarkDimmingShape: Shape {
   }
 }
 
-private struct SharedCoachmarkOverlay: View {
+struct SharedCoachmarkOverlay: View {
   let target: Anchor<CGRect>?
   let title: String
   let message: String
   let targetLabel: String
+  let actionLabel: String
+  let stepLabel: String?
+  let onClose: () -> Void
   let onDismiss: () -> Void
   @State private var isPulsing = false
+
+  init(
+    target: Anchor<CGRect>?,
+    title: String,
+    message: String,
+    targetLabel: String,
+    actionLabel: String = "Got it",
+    stepLabel: String? = nil,
+    onClose: (() -> Void)? = nil,
+    onDismiss: @escaping () -> Void
+  ) {
+    self.target = target
+    self.title = title
+    self.message = message
+    self.targetLabel = targetLabel
+    self.actionLabel = actionLabel
+    self.stepLabel = stepLabel
+    self.onClose = onClose ?? onDismiss
+    self.onDismiss = onDismiss
+  }
 
   var body: some View {
     GeometryReader { geometry in
@@ -11239,7 +11302,7 @@ private struct SharedCoachmarkOverlay: View {
       )
       let targetRect = target.map { geometry[$0] } ?? fallback
       let spotlightRect = targetRect.insetBy(dx: -10, dy: -9)
-      let spotlightCornerRadius = max(spotlightRect.height * 0.36, 16)
+      let spotlightCornerRadius = min(max(spotlightRect.height * 0.08, 14), 28)
       let cardAtTop = targetRect.midY > geometry.size.height * 0.50
       let labelFitsBelow = spotlightRect.maxY + 44 < geometry.size.height - geometry.safeAreaInsets.bottom
       let labelY = labelFitsBelow ? spotlightRect.maxY + 22 : spotlightRect.minY - 22
@@ -11303,7 +11366,17 @@ private struct SharedCoachmarkOverlay: View {
 
             Spacer(minLength: 0)
 
-            Button(action: onDismiss) {
+            if let stepLabel {
+              Text(stepLabel)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(HomeboardPalette.accent)
+                .padding(.horizontal, 9)
+                .frame(height: 28)
+                .background(HomeboardPalette.accent.opacity(0.10))
+                .clipShape(Capsule())
+            }
+
+            Button(action: onClose) {
               Image(systemName: "xmark")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(HomeboardPalette.tertiaryText)
@@ -11316,7 +11389,7 @@ private struct SharedCoachmarkOverlay: View {
 
           Button(action: onDismiss) {
             HStack {
-              Text("Got it")
+              Text(actionLabel)
               Spacer()
               Image(systemName: "arrow.right")
             }
@@ -12407,7 +12480,7 @@ private enum SharedListingText {
   }
 }
 
-private extension View {
+extension View {
   func sharedCoachmarkTarget(_ id: String) -> some View {
     anchorPreference(key: SharedCoachmarkAnchorKey.self, value: .bounds) { anchor in
       [id: anchor]

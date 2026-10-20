@@ -1,6 +1,21 @@
 import XCTest
 
 final class HomeboardNativeCoreFlowUITests: FixtureUITestCase {
+  func testGroupHubPreviewsChatAndFinance() {
+    launchFixture(openChat: false)
+
+    XCTAssertTrue(app.buttons["homeboard.group.chat-widget"].waitForExistence(timeout: 10))
+    let finance = app.buttons["homeboard.group.finance-widget"]
+    reveal(finance)
+    XCTAssertTrue(finance.exists)
+    wait("Finance widget was not tappable") { finance.isHittable }
+    finance.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+    XCTAssertTrue(app.buttons["homeboard.finance.listing-picker"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["homeboard.finance.add-payment"].exists)
+    assertClean()
+  }
+
   func testFixtureCredentialsDoNotSurviveOrdinaryDebugLaunch() {
     launchFixture()
     app.terminate()

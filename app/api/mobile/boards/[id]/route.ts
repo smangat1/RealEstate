@@ -13,6 +13,9 @@ const rentalReadinessSchema = z
     hasOfferLetter: z.boolean().optional(),
     needsGuarantor: z.boolean().optional(),
     hasProofOfIncome: z.boolean().optional(),
+    incomeProofType: z.enum(["pay_stubs", "employment_letter", "tax_returns", "bank_statements", "guarantor", "unsure"]).optional(),
+    documentStatus: z.enum(["ready", "can_request", "not_started"]).optional(),
+    usesGuarantor: z.boolean().optional(),
   })
   .partial();
 

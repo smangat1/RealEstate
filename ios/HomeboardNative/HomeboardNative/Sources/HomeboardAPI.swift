@@ -273,6 +273,9 @@ private struct MobileBoardExpenseRequest: Encodable {
   var description: String
   var category: String
   var amountCents: Int
+  var boardListingId: String?
+  var paidByUserId: String?
+  var splitUserIds: [String]?
 }
 
 private struct MobileRoomAssignmentRequest: Encodable {
@@ -752,6 +755,9 @@ private struct RentalReadinessRequest: Encodable {
   var hasOfferLetter: Bool
   var needsGuarantor: Bool
   var hasProofOfIncome: Bool
+  var incomeProofType: String?
+  var documentStatus: String?
+  var usesGuarantor: Bool?
 }
 
 private struct RemoteChatMessageRequest: Encodable {
@@ -1262,13 +1268,23 @@ final class HomeboardAPI {
     boardId: String,
     description: String,
     category: String,
-    amountCents: Int
+    amountCents: Int,
+    boardListingId: String? = nil,
+    paidByUserId: String? = nil,
+    splitUserIds: [String]? = nil
   ) async throws -> BoardExpenseLedger {
     try await requestBackend(
       path: "/api/mobile/boards/\(boardId)/expenses",
       method: "POST",
       accessToken: accessToken,
-      body: MobileBoardExpenseRequest(description: description, category: category, amountCents: amountCents)
+      body: MobileBoardExpenseRequest(
+        description: description,
+        category: category,
+        amountCents: amountCents,
+        boardListingId: boardListingId,
+        paidByUserId: paidByUserId,
+        splitUserIds: splitUserIds
+      )
     )
   }
 
@@ -2131,7 +2147,10 @@ extension RemoteRentalProfileRequest {
     self.rentalReadiness = RentalReadinessRequest(
       hasOfferLetter: profile.readiness.hasOfferLetter,
       needsGuarantor: profile.readiness.needsGuarantor,
-      hasProofOfIncome: profile.readiness.hasProofOfIncome
+      hasProofOfIncome: profile.readiness.hasProofOfIncome,
+      incomeProofType: profile.readiness.incomeProofType,
+      documentStatus: profile.readiness.documentStatus,
+      usesGuarantor: profile.readiness.usesGuarantor
     )
     self.completionStatus = profile.isBoardReady ? "complete" : "incomplete"
     self.notes = profile.readiness.notes.isEmpty ? nil : profile.readiness.notes

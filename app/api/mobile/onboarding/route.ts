@@ -21,7 +21,11 @@ const profileSchema = z.object({
   commuteTarget: z.string().max(240).optional(), commuteAccess: z.enum(["car", "transit", "flexible", "remote", "skip"]).optional(), minCommuteMinutes: z.number().int().nonnegative().max(300).optional(), maxCommuteMinutes: z.number().int().nonnegative().max(300).optional(), mustHaves: z.array(z.string().max(120)).max(30),
   dealbreakers: z.array(z.string().max(120)).max(30), niceToHaves: z.array(z.string().max(120)).max(30), priorities: z.array(z.string().max(120)).max(20),
   pets: z.boolean().optional(), parking: z.boolean().optional(), groupSize: z.number().int().positive().max(20).optional(), hasRoommates: z.boolean().optional(),
-  rentalReadiness: z.object({ hasOfferLetter: z.boolean().optional(), needsGuarantor: z.boolean().optional(), hasProofOfIncome: z.boolean().optional() }).optional(),
+  rentalReadiness: z.object({
+    hasOfferLetter: z.boolean().optional(), needsGuarantor: z.boolean().optional(), hasProofOfIncome: z.boolean().optional(),
+    incomeProofType: z.enum(["pay_stubs", "employment_letter", "tax_returns", "bank_statements", "guarantor", "unsure"]).optional(),
+    documentStatus: z.enum(["ready", "can_request", "not_started"]).optional(), usesGuarantor: z.boolean().optional(),
+  }).optional(),
   completionStatus: z.enum(["incomplete", "complete", "confirmed"]), notes: z.string().max(5000).nullable().optional(), createdAt: z.string().max(80), updatedAt: z.string().max(80),
   intent: z.enum(["rent", "buy"]).nullable().optional(), propertyType: z.enum(["apartment", "house", "condo", "room", "unknown"]).nullable().optional(),
   locations: z.array(z.string().max(160)).max(30), bedroomsPreferred: z.number().int().nonnegative().max(20).nullable().optional(), bedroomsFlexible: z.array(z.string().max(80)).max(20),

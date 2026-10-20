@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
+import {
+  allocateExpenseShares,
+  boardExpenseCreateSchema,
+  calculateExpenseBalances,
+  normalizeExpenseShares,
+  resolveRequestedSplitUserIds,
+  sanitizeStoredExpenseShares,
+  sanitizeStoredSplitUserIds,
+} from "@/lib/group-finance";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/prisma";
-
-const createSchema = z.object({
-  description: z.string().trim().min(1).max(160),
-  category: z.enum(["application_fee", "deposit", "tour", "moving", "other"]),
-  amountCents: z.number().int().min(1).max(10_000_000),
-});
 
 async function accessibleBoard(boardId: string, userId: string) {
   return prisma.searchBoard.findFirst({
@@ -18,40 +20,82 @@ async function accessibleBoard(boardId: string, userId: string) {
       id: true,
       user: { select: { id: true, displayName: true } },
       members: { select: { user: { select: { id: true, displayName: true } } } },
+      boardListings: {
+        where: { deletedAt: null },
+        select: { id: true, listing: { select: { address: true, unit: true } } },
+      },
     },
   });
 }
 
 async function payload(board: NonNullable<Awaited<ReturnType<typeof accessibleBoard>>>) {
-  const members = [board.user, ...board.members.map((member) => member.user)]
+  const currentMembers = [board.user, ...board.members.map((member) => member.user)]
     .filter((member, index, all) => all.findIndex((candidate) => candidate.id === member.id) === index);
   const expenses = await prisma.boardExpense.findMany({
     where: { boardId: board.id },
-    include: { paidBy: { select: { displayName: true } } },
+    include: {
+      paidBy: { select: { displayName: true } },
+      boardListing: { select: { listing: { select: { address: true, unit: true } } } },
+    },
     orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
     take: 200,
   });
-  const totalCents = expenses.reduce((sum, expense) => sum + expense.amountCents, 0);
-  const baseShare = members.length > 0 ? Math.floor(totalCents / members.length) : 0;
-  const remainder = members.length > 0 ? totalCents % members.length : 0;
-  const balances = members.map((member, index) => {
-    const paidCents = expenses.filter((expense) => expense.paidByUserId === member.id)
-      .reduce((sum, expense) => sum + expense.amountCents, 0);
-    const owedCents = baseShare + (index < remainder ? 1 : 0);
-    return { userId: member.id, name: member.displayName, paidCents, owedCents, balanceCents: paidCents - owedCents };
-  });
-  return {
-    totalCents,
-    splitMode: "equal",
-    expenses: expenses.map((expense) => ({
+  const historicalUserIds = new Set<string>();
+  for (const expense of expenses) {
+    historicalUserIds.add(expense.paidByUserId);
+    for (const userId of sanitizeStoredSplitUserIds(expense.splitUserIds)) {
+      historicalUserIds.add(userId);
+    }
+    for (const share of sanitizeStoredExpenseShares(expense.splitShares, expense.amountCents)) {
+      historicalUserIds.add(share.userId);
+    }
+  }
+  const historicalUsers = historicalUserIds.size > 0
+    ? await prisma.user.findMany({
+        where: { id: { in: [...historicalUserIds] } },
+        select: { id: true, displayName: true },
+      })
+    : [];
+  const memberNames = new Map([
+    ...historicalUsers.map((member) => [member.id, member.displayName] as const),
+    ...currentMembers.map((member) => [member.id, member.displayName] as const),
+    ...expenses.map((expense) => [expense.paidByUserId, expense.paidByName?.trim() || expense.paidBy.displayName] as const),
+  ]);
+  const normalizedExpenses = expenses.map((expense) => {
+    const shares = normalizeExpenseShares({
+      amountCents: expense.amountCents,
+      storedShares: expense.splitShares,
+      storedSplitUserIds: expense.splitUserIds,
+      fallbackUserIds: currentMembers.map((member) => member.id),
+      memberNames,
+    });
+    const splitUserIds = shares.map((share) => share.userId);
+    const address = expense.boardListing?.listing.address?.trim() ?? "";
+    const unit = expense.boardListing?.listing.unit?.trim() ?? "";
+    return {
       id: expense.id,
       description: expense.description,
       category: expense.category,
       amountCents: expense.amountCents,
       paidAt: expense.paidAt.toISOString(),
       paidByUserId: expense.paidByUserId,
-      paidByName: expense.paidBy.displayName,
-    })),
+      paidByName: expense.paidByName?.trim() || expense.paidBy.displayName,
+      boardListingId: expense.boardListingId,
+      listingName: [address, unit].filter(Boolean).join(" · ") || null,
+      splitUserIds,
+      splitNames: shares.map((share) => share.name),
+      shares,
+    };
+  });
+  const totalCents = normalizedExpenses.reduce((sum, expense) => sum + expense.amountCents, 0);
+  const balances = calculateExpenseBalances(
+    normalizedExpenses,
+    currentMembers.map((member) => ({ id: member.id, name: member.displayName })),
+  );
+  return {
+    totalCents,
+    splitMode: "equal",
+    expenses: normalizedExpenses,
     balances,
   };
 }
@@ -74,12 +118,43 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const user = await requireMobileAppUser(request);
     const { id } = await context.params;
     assertThrottle({ scope: "board-expense", key: `${user.id}:${id}`, limit: 50, windowMs: 60 * 60 * 1_000, message: "Expenses are being added too quickly." });
-    const parsed = createSchema.safeParse(await request.json().catch(() => null));
+    const parsed = boardExpenseCreateSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Expense details are invalid." }, { status: 400 });
     const board = await accessibleBoard(id, user.id);
     if (!board) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    const memberIds = new Set([board.user.id, ...board.members.map((member) => member.user.id)]);
+    const memberNames = new Map([
+      [board.user.id, board.user.displayName] as const,
+      ...board.members.map((member) => [member.user.id, member.user.displayName] as const),
+    ]);
+    const paidByUserId = parsed.data.paidByUserId ?? user.id;
+    if (!memberIds.has(paidByUserId)) {
+      return NextResponse.json({ error: "The selected payer is not on this board." }, { status: 400 });
+    }
+    const splitUserIds = resolveRequestedSplitUserIds(parsed.data.splitUserIds, [...memberIds]);
+    if (!splitUserIds) {
+      return NextResponse.json({ error: "Every split participant must be on this board." }, { status: 400 });
+    }
+    if (parsed.data.boardListingId
+      && !board.boardListings.some((listing) => listing.id === parsed.data.boardListingId)) {
+      return NextResponse.json({ error: "The selected listing is not on this board." }, { status: 400 });
+    }
+    const { boardListingId } = parsed.data;
+    const splitShares = allocateExpenseShares(parsed.data.amountCents, splitUserIds, memberNames);
     await prisma.$transaction([
-      prisma.boardExpense.create({ data: { boardId: id, paidByUserId: user.id, ...parsed.data } }),
+      prisma.boardExpense.create({
+        data: {
+          boardId: id,
+          paidByUserId,
+          paidByName: memberNames.get(paidByUserId) ?? user.displayName,
+          boardListingId,
+          splitUserIds,
+          splitShares,
+          description: parsed.data.description,
+          category: parsed.data.category,
+          amountCents: parsed.data.amountCents,
+        },
+      }),
       prisma.boardEvent.create({
         data: {
           boardId: id,
