@@ -7,7 +7,9 @@ import {
   boardExpenseCategories,
   boardExpenseCreateSchema,
   calculateExpenseBalances,
+  normalizeExpenseShares,
   resolveRequestedSplitUserIds,
+  sanitizeStoredExpenseShares,
   sanitizeStoredSplitUserIds,
 } from "@/lib/group-finance";
 
@@ -127,6 +129,8 @@ test("new ledger entries preserve their listing, payer, and split participants",
 
   assert.match(schema, /boardListingId String\?/);
   assert.match(schema, /splitUserIds\s+Json\?/);
+  assert.match(schema, /splitShares\s+Json\?/);
+  assert.match(schema, /paidByName\s+String\?/);
   assert.match(financeLogic, /paidByUserId: z\.string/);
   assert.match(financeLogic, /splitUserIds: z\.array/);
   assert.match(financeLogic, /boardListingId: z\.string/);
@@ -135,6 +139,8 @@ test("new ledger entries preserve their listing, payer, and split participants",
   assert.match(route, /Every split participant must be on this board/);
   assert.match(route, /The selected listing is not on this board/);
   assert.match(migration, /FOREIGN KEY \("boardListingId"\)/);
+  assert.match(migration, /ADD COLUMN "splitShares" JSONB/);
+  assert.match(migration, /ADD COLUMN "paidByName" TEXT/);
 });
 
 test("the finance ledger accepts housing costs and rejects malformed entries", () => {
@@ -170,13 +176,79 @@ test("requested splits reject outsiders and remove duplicate board members", () 
   assert.equal(resolveRequestedSplitUserIds(["sam", "outsider"], ["sam", "maya"]), null);
 });
 
-test("stored legacy splits are safely normalized before falling back to all members", () => {
-  const memberIds = new Set(["sam", "maya", "jordan"]);
-  assert.deepEqual(
-    sanitizeStoredSplitUserIds(["sam", 42, "outsider", "sam", "maya"], memberIds),
-    ["sam", "maya"],
-  );
-  assert.deepEqual(sanitizeStoredSplitUserIds(null, memberIds), []);
+test("stored legacy splits keep historical ids and safely discard malformed values", () => {
+  assert.deepEqual(sanitizeStoredSplitUserIds(["sam", 42, "former", "sam", " maya "]), [
+    "sam",
+    "former",
+    "maya",
+  ]);
+  assert.deepEqual(sanitizeStoredSplitUserIds(null), []);
+  assert.deepEqual(sanitizeStoredExpenseShares([
+    { userId: "sam", name: "Sam", owedCents: 51 },
+    { userId: "former", name: "Former roommate", owedCents: 50 },
+  ], 101), [
+    { userId: "sam", name: "Sam", owedCents: 51 },
+    { userId: "former", name: "Former roommate", owedCents: 50 },
+  ]);
+  assert.deepEqual(sanitizeStoredExpenseShares([
+    { userId: "sam", name: "Sam", owedCents: 50 },
+  ], 101), []);
+});
+
+test("a departing split participant keeps the original penny allocation and zero-sum balance", () => {
+  const names = new Map([
+    ["sam", "Sam"],
+    ["maya", "Maya"],
+    ["jordan", "Jordan"],
+  ]);
+  const savedShares = allocateExpenseShares(100, ["sam", "maya", "jordan"], names);
+  assert.deepEqual(savedShares.map((share) => share.owedCents), [34, 33, 33]);
+
+  const restoredShares = normalizeExpenseShares({
+    amountCents: 100,
+    storedShares: savedShares,
+    storedSplitUserIds: ["sam", "maya", "jordan"],
+    fallbackUserIds: ["sam", "maya"],
+    memberNames: new Map([["sam", "Sam"], ["maya", "Maya"]]),
+  });
+  assert.deepEqual(restoredShares, savedShares);
+
+  const balances = calculateExpenseBalances([
+    { amountCents: 100, paidByUserId: "sam", paidByName: "Sam", shares: restoredShares },
+  ], [
+    { id: "sam", name: "Sam" },
+    { id: "maya", name: "Maya" },
+  ]);
+  assert.deepEqual(balances, [
+    { userId: "sam", name: "Sam", paidCents: 100, owedCents: 34, balanceCents: 66 },
+    { userId: "maya", name: "Maya", paidCents: 0, owedCents: 33, balanceCents: -33 },
+    { userId: "jordan", name: "Jordan", paidCents: 0, owedCents: 33, balanceCents: -33 },
+  ]);
+  assert.equal(balances.reduce((sum, balance) => sum + balance.balanceCents, 0), 0);
+});
+
+test("a departing payer remains in accounting and balances still net to zero", () => {
+  const shares = [
+    { userId: "sam", name: "Sam", owedCents: 75 },
+    { userId: "maya", name: "Maya", owedCents: 75 },
+  ];
+  const balances = calculateExpenseBalances([
+    {
+      amountCents: 150,
+      paidByUserId: "jordan",
+      paidByName: "Jordan (former roommate)",
+      shares,
+    },
+  ], [
+    { id: "sam", name: "Sam" },
+    { id: "maya", name: "Maya" },
+  ]);
+  assert.deepEqual(balances, [
+    { userId: "sam", name: "Sam", paidCents: 0, owedCents: 75, balanceCents: -75 },
+    { userId: "maya", name: "Maya", paidCents: 0, owedCents: 75, balanceCents: -75 },
+    { userId: "jordan", name: "Jordan (former roommate)", paidCents: 150, owedCents: 0, balanceCents: 150 },
+  ]);
+  assert.equal(balances.reduce((sum, balance) => sum + balance.balanceCents, 0), 0);
 });
 
 test("equal splits preserve every cent and balances net to zero", () => {

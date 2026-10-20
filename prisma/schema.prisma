@@ -889,10 +889,12 @@ model BoardExpense {
   boardId        String
   boardListingId String?
   paidByUserId   String
+  paidByName     String?
   description    String
   category       String
   amountCents    Int
   splitUserIds   Json?
+  splitShares    Json?
   paidAt         DateTime      @default(now())
   createdAt      DateTime      @default(now())
   board          SearchBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)

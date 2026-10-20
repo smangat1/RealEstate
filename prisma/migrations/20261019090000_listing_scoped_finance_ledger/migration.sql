@@ -1,6 +1,8 @@
 ALTER TABLE "BoardExpense"
   ADD COLUMN "boardListingId" TEXT,
-  ADD COLUMN "splitUserIds" JSONB;
+  ADD COLUMN "splitUserIds" JSONB,
+  ADD COLUMN "splitShares" JSONB,
+  ADD COLUMN "paidByName" TEXT;
 
 CREATE INDEX "BoardExpense_boardListingId_paidAt_idx"
   ON "BoardExpense"("boardListingId", "paidAt");

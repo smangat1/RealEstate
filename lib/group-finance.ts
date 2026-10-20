@@ -31,22 +31,54 @@ export type BoardExpenseShare = {
   owedCents: number;
 };
 
-type FinanceMember = {
+export type FinanceMember = {
   id: string;
   name: string;
 };
 
-type ExpenseWithShares = {
+export type ExpenseWithShares = {
   amountCents: number;
   paidByUserId: string;
+  paidByName?: string;
   shares: BoardExpenseShare[];
 };
 
-export function sanitizeStoredSplitUserIds(value: unknown, validUserIds: ReadonlySet<string>) {
+export function sanitizeStoredSplitUserIds(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((entry): entry is string => typeof entry === "string" && validUserIds.has(entry))
-    .filter((entry, index, all) => all.indexOf(entry) === index);
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .filter((entry, index, all) => all.indexOf(entry) === index)
+    .slice(0, 20);
+}
+
+export function sanitizeStoredExpenseShares(
+  value: unknown,
+  amountCents: number,
+  memberNames: ReadonlyMap<string, string> = new Map(),
+): BoardExpenseShare[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 20) return [];
+  const shares: BoardExpenseShare[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") return [];
+    const candidate = entry as Record<string, unknown>;
+    const userId = typeof candidate.userId === "string" ? candidate.userId.trim() : "";
+    const owedCents = candidate.owedCents;
+    if (!userId || seen.has(userId) || typeof owedCents !== "number"
+      || !Number.isSafeInteger(owedCents) || owedCents < 0) {
+      return [];
+    }
+    seen.add(userId);
+    const storedName = typeof candidate.name === "string" ? candidate.name.trim() : "";
+    shares.push({
+      userId,
+      name: storedName || memberNames.get(userId) || "Former member",
+      owedCents,
+    });
+  }
+  return shares.reduce((sum, share) => sum + share.owedCents, 0) === amountCents ? shares : [];
 }
 
 export function resolveRequestedSplitUserIds(
@@ -74,22 +106,56 @@ export function allocateExpenseShares(
   }));
 }
 
+export function normalizeExpenseShares(input: {
+  amountCents: number;
+  storedShares: unknown;
+  storedSplitUserIds: unknown;
+  fallbackUserIds: readonly string[];
+  memberNames: ReadonlyMap<string, string>;
+}): BoardExpenseShare[] {
+  const storedShares = sanitizeStoredExpenseShares(
+    input.storedShares,
+    input.amountCents,
+    input.memberNames,
+  );
+  if (storedShares.length > 0) return storedShares;
+
+  const storedUserIds = sanitizeStoredSplitUserIds(input.storedSplitUserIds);
+  const splitUserIds = storedUserIds.length > 0
+    ? storedUserIds
+    : sanitizeStoredSplitUserIds(input.fallbackUserIds);
+  return allocateExpenseShares(input.amountCents, splitUserIds, input.memberNames);
+}
+
 export function calculateExpenseBalances(
   expenses: readonly ExpenseWithShares[],
   members: readonly FinanceMember[],
 ) {
-  return members.map((member) => {
+  const accountingMembers = new Map<string, string>();
+  for (const member of members) accountingMembers.set(member.id, member.name);
+  for (const expense of expenses) {
+    if (!accountingMembers.has(expense.paidByUserId)) {
+      accountingMembers.set(expense.paidByUserId, expense.paidByName?.trim() || "Former payer");
+    }
+    for (const share of expense.shares) {
+      if (!accountingMembers.has(share.userId)) {
+        accountingMembers.set(share.userId, share.name.trim() || "Former member");
+      }
+    }
+  }
+
+  return [...accountingMembers].map(([userId, name]) => {
     const paidCents = expenses.reduce(
-      (sum, expense) => sum + (expense.paidByUserId === member.id ? expense.amountCents : 0),
+      (sum, expense) => sum + (expense.paidByUserId === userId ? expense.amountCents : 0),
       0,
     );
     const owedCents = expenses.reduce(
-      (sum, expense) => sum + (expense.shares.find((share) => share.userId === member.id)?.owedCents ?? 0),
+      (sum, expense) => sum + (expense.shares.find((share) => share.userId === userId)?.owedCents ?? 0),
       0,
     );
     return {
-      userId: member.id,
-      name: member.name,
+      userId,
+      name,
       paidCents,
       owedCents,
       balanceCents: paidCents - owedCents,
