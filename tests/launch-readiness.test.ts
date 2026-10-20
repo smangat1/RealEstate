@@ -2,9 +2,69 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import test from "node:test";
+import { inflateSync } from "node:zlib";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+
+function decodeRGBPNG(path: string) {
+  const png = readFileSync(resolve(root, path));
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  const imageData: Buffer[] = [];
+
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString("ascii", offset + 4, offset + 8);
+    const data = png.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      assert.equal(data[8], 8, `${path} must use 8-bit color`);
+      assert.equal(data[9], 2, `${path} must be RGB with no alpha channel`);
+      assert.equal(data[12], 0, `${path} must not be interlaced`);
+    } else if (type === "IDAT") {
+      imageData.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+    offset += length + 12;
+  }
+
+  const bytesPerPixel = 3;
+  const stride = width * bytesPerPixel;
+  const filtered = inflateSync(Buffer.concat(imageData));
+  const pixels = Buffer.alloc(stride * height);
+  const paeth = (a: number, b: number, c: number) => {
+    const estimate = a + b - c;
+    const aDistance = Math.abs(estimate - a);
+    const bDistance = Math.abs(estimate - b);
+    const cDistance = Math.abs(estimate - c);
+    return aDistance <= bDistance && aDistance <= cDistance ? a : bDistance <= cDistance ? b : c;
+  };
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = filtered[y * (stride + 1)];
+    for (let x = 0; x < stride; x += 1) {
+      const raw = filtered[y * (stride + 1) + x + 1];
+      const left = x >= bytesPerPixel ? pixels[y * stride + x - bytesPerPixel] : 0;
+      const above = y > 0 ? pixels[(y - 1) * stride + x] : 0;
+      const upperLeft = y > 0 && x >= bytesPerPixel ? pixels[(y - 1) * stride + x - bytesPerPixel] : 0;
+      const predictor = filter === 0 ? 0
+        : filter === 1 ? left
+          : filter === 2 ? above
+            : filter === 3 ? Math.floor((left + above) / 2)
+              : filter === 4 ? paeth(left, above, upperLeft)
+                : Number.NaN;
+      assert.ok(Number.isFinite(predictor), `${path} uses unsupported PNG filter ${filter}`);
+      pixels[y * stride + x] = (raw + predictor) & 0xff;
+    }
+  }
+
+  return { width, height, pixels };
+}
 
 function userFacingSourceFiles(relativePath: string): string[] {
   const absolutePath = resolve(root, relativePath);
@@ -36,6 +96,49 @@ test("ASD-STE100 copy avoids em dashes in the website and app", () => {
     .map((path) => path.slice(root.length + 1));
 
   assert.deepEqual(offenders, []);
+});
+
+test("the iOS icon is opaque, square, full bleed, and centered at every catalog size", () => {
+  const iconRoot = "ios/HomeboardNative/HomeboardNative/Resources/Assets.xcassets/AppIcon.appiconset";
+  const sizes = [20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024];
+
+  for (const size of sizes) {
+    const icon = decodeRGBPNG(`${iconRoot}/AppIcon-${size}.png`);
+    assert.equal(icon.width, size);
+    assert.equal(icon.height, size);
+    const pixel = (x: number, y: number) => [...icon.pixels.subarray((y * size + x) * 3, (y * size + x + 1) * 3)];
+    const background = pixel(0, 0);
+    for (let position = 0; position < size; position += 1) {
+      assert.deepEqual(pixel(position, 0), background, `top edge must bleed at ${size}px`);
+      assert.deepEqual(pixel(position, size - 1), background, `bottom edge must bleed at ${size}px`);
+      assert.deepEqual(pixel(0, position), background, `left edge must bleed at ${size}px`);
+      assert.deepEqual(pixel(size - 1, position), background, `right edge must bleed at ${size}px`);
+    }
+  }
+
+  const master = decodeRGBPNG(`${iconRoot}/AppIcon-1024.png`);
+  const background = master.pixels.subarray(0, 3);
+  let minimumX = master.width;
+  let minimumY = master.height;
+  let maximumX = -1;
+  let maximumY = -1;
+  for (let y = 0; y < master.height; y += 1) {
+    for (let x = 0; x < master.width; x += 1) {
+      const offset = (y * master.width + x) * 3;
+      if (master.pixels[offset] !== background[0]
+        || master.pixels[offset + 1] !== background[1]
+        || master.pixels[offset + 2] !== background[2]) {
+        minimumX = Math.min(minimumX, x);
+        minimumY = Math.min(minimumY, y);
+        maximumX = Math.max(maximumX, x);
+        maximumY = Math.max(maximumY, y);
+      }
+    }
+  }
+  assert.deepEqual(
+    { minimumX, minimumY, maximumX, maximumY },
+    { minimumX: 151, minimumY: 144, maximumX: 872, maximumY: 879 },
+  );
 });
 
 test("the public site has branded metadata and installable icons", () => {
