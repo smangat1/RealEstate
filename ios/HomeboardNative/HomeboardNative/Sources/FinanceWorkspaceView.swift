@@ -464,7 +464,7 @@ struct FinanceWorkspaceView: View {
     if !readiness.hasProofOfIncome {
       return (
         "Choose the proof you’ll actually submit",
-        "Pay stubs, an employment or offer letter, tax returns, bank statements, and guarantor documents are common—but the property decides what it accepts.",
+        "Pay stubs, an employment or offer letter, tax returns, bank statements, and guarantor documents are common, but the property decides what it accepts.",
         "doc.text.magnifyingglass"
       )
     }
@@ -554,7 +554,7 @@ struct FinanceWorkspaceView: View {
           } else if !financeGuideDismissed, financeGuideStep == 1, !rankedListings.isEmpty {
             SharedCoachmarkOverlay(
               target: anchors["finance-comparison"],
-              title: "Compare value—not just rent",
+              title: "Compare value, not just rent",
               message: "Shortlisted homes are ranked using budget fit, monthly cost per bedroom, and space for the money. Tap one to make it the active finance plan.",
               targetLabel: "BEST FINANCIAL OPTIONS",
               actionLabel: "Next: Application prep",
@@ -571,7 +571,7 @@ struct FinanceWorkspaceView: View {
             SharedCoachmarkOverlay(
               target: anchors["finance-readiness"],
               title: "Leave with a real application task",
-              message: "Choose the income form you will use, say whether it is ready, and prepare any guarantor packet. Homeboard gives you the next document action—not a generic checklist.",
+              message: "Choose the income form you will use, say whether it is ready, and prepare any guarantor packet. Homeboard gives you the next document action, not a generic checklist.",
               targetLabel: "APPLICATION PREP",
               actionLabel: "Done",
               stepLabel: rankedListings.isEmpty ? "2 of 2" : "3 of 3",
@@ -850,7 +850,7 @@ struct FinanceWorkspaceView: View {
       HStack(spacing: 10) {
         FinanceMetricTile(
           label: "Your plan",
-          value: plannedPersonalShare.map(FinanceMath.dollars) ?? "—",
+          value: plannedPersonalShare.map(FinanceMath.dollars) ?? "Not set",
           tint: HomeboardPalette.accent
         )
         FinanceMetricTile(
@@ -1700,7 +1700,7 @@ private enum FinanceDocumentStatus: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
-    case .ready: "Yes—current and ready to send"
+    case .ready: "Yes, current and ready to send"
     case .canRequest: "I know where to get it"
     case .notStarted: "Not yet"
     }

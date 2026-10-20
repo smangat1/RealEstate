@@ -3080,7 +3080,7 @@ struct SharedUpdatesView: View {
         SharedCoachmarkOverlay(
           target: anchors["updates-decisions"],
           title: "Turn discussion into a decision",
-          message: "Use this area when the group needs a clear answer—not another loose message. Start a decision and track who has responded.",
+          message: "Use this area when the group needs a clear answer, not another loose message. Start a decision and track who has responded.",
           targetLabel: "GROUP DECISIONS",
           actionLabel: "Next: Messages",
           stepLabel: "1 of 2",
