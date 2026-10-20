@@ -50,7 +50,7 @@ struct SharedGroupHubView: View {
   @AppStorage("homeboard.guide.group-hub.dismissed") private var groupHubGuideDismissed = false
 
   private var recentMessages: [BoardMessage] {
-    Array(appModel.visibleBoardMessages.suffix(4))
+    Array(appModel.visibleBoardMessages.suffix(5))
   }
 
   private var currentBalance: BoardExpenseBalance? {
@@ -67,6 +67,39 @@ struct SharedGroupHubView: View {
       appModel.board.shortlist,
       memberCount: max(1, appModel.board.members.filter { !$0.userId.isEmpty }.count)
     ).first
+  }
+
+  private var visibleBalances: [BoardExpenseBalance] {
+    Array((ledger?.balances ?? []).sorted { left, right in
+      if left.userId == currentBalance?.userId { return true }
+      if right.userId == currentBalance?.userId { return false }
+      return abs(left.balanceCents) > abs(right.balanceCents)
+    }.prefix(3))
+  }
+
+  private var settlementSummary: (title: String, amount: String)? {
+    guard let debtor = ledger?.balances.filter({ $0.balanceCents < 0 }).min(by: { $0.balanceCents < $1.balanceCents }),
+          let creditor = ledger?.balances.filter({ $0.balanceCents > 0 }).max(by: { $0.balanceCents < $1.balanceCents })
+    else { return nil }
+    let amount = min(abs(debtor.balanceCents), creditor.balanceCents)
+    let currentUserID = appModel.account?.id ?? appModel.authSession?.userId
+    let debtorName = debtor.userId == currentUserID ? "You" : debtor.name
+    let creditorName = creditor.userId == currentUserID ? "you" : creditor.name
+    return ("\(debtorName) pays \(creditorName)", FinanceMath.money(amount))
+  }
+
+  private var nextDueItem: String {
+    guard let listing = bestFinanceOption?.listing else { return "Choose a home to plan move-in costs" }
+    let recorded = Set((ledger?.expenses ?? [])
+      .filter { $0.boardListingId == listing.id }
+      .map(\.category))
+    let milestones: [(String, String)] = [
+      (FinanceExpenseCategory.applicationFee.rawValue, "Application fee"),
+      (FinanceExpenseCategory.holdingDeposit.rawValue, "Holding deposit"),
+      (FinanceExpenseCategory.securityDeposit.rawValue, "Security deposit"),
+      (FinanceExpenseCategory.firstMonthRent.rawValue, "First month’s rent"),
+    ]
+    return milestones.first { !recorded.contains($0.0) }?.1 ?? "Core move-in payments recorded"
   }
 
   var body: some View {
@@ -188,14 +221,14 @@ struct SharedGroupHubView: View {
   }
 
   private var groupChatWidget: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 12) {
       HStack(spacing: 12) {
         Image(systemName: "bubble.left.and.bubble.right.fill")
           .font(.title2)
           .foregroundStyle(HomeboardPalette.buttonText)
-          .frame(width: 48, height: 48)
+          .frame(width: 44, height: 44)
           .background(HomeboardPalette.accentGradient)
-          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         VStack(alignment: .leading, spacing: 3) {
           Text("Group chat")
             .font(.title3.weight(.bold))
@@ -248,15 +281,16 @@ struct SharedGroupHubView: View {
                 Text(message.content)
                   .font(.subheadline)
                   .foregroundStyle(HomeboardPalette.primaryText)
-                  .lineLimit(2)
+                  .lineLimit(1)
+                  .minimumScaleFactor(0.82)
               }
               Spacer(minLength: 0)
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, 6)
             if index < recentMessages.count - 1 { FinanceDivider() }
           }
         }
-        .padding(.horizontal, 13)
+        .padding(.horizontal, 11)
         .background(Color.white.opacity(0.045))
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
       }
@@ -271,20 +305,19 @@ struct SharedGroupHubView: View {
           .foregroundStyle(HomeboardPalette.tertiaryText)
       }
     }
-    .padding(17)
-    .frame(minHeight: 390, alignment: .top)
+    .padding(15)
     .financeSurface(cornerRadius: 22)
   }
 
   private var financeWidget: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 12) {
       HStack(spacing: 12) {
         Image(systemName: "dollarsign.circle.fill")
           .font(.title2)
           .foregroundStyle(HomeboardPalette.buttonText)
-          .frame(width: 48, height: 48)
+          .frame(width: 44, height: 44)
           .background(HomeboardPalette.accentGradient)
-          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         VStack(alignment: .leading, spacing: 3) {
           Text("Finances")
             .font(.title3.weight(.bold))
@@ -322,7 +355,7 @@ struct SharedGroupHubView: View {
       .foregroundStyle(HomeboardPalette.tertiaryText)
 
       if let option = bestFinanceOption {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 7) {
           Text("BEST SHORTLIST VALUE")
             .font(.system(size: 9, weight: .bold))
             .tracking(0.9)
@@ -341,47 +374,105 @@ struct SharedGroupHubView: View {
             .font(.caption2)
             .foregroundStyle(HomeboardPalette.secondaryText)
             .lineLimit(2)
+          FinanceDivider()
+          HStack(spacing: 8) {
+            Image(systemName: "calendar.badge.clock")
+              .foregroundStyle(HomeboardPalette.accentSecondary)
+            Text("Next due")
+              .font(.caption2.weight(.bold))
+              .foregroundStyle(HomeboardPalette.tertiaryText)
+            Spacer(minLength: 6)
+            Text(nextDueItem)
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .lineLimit(1)
+              .minimumScaleFactor(0.75)
+          }
         }
-        .padding(13)
+        .padding(11)
         .background(HomeboardPalette.accent.opacity(0.075))
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
       }
 
-      if let expenses = ledger?.expenses, !expenses.isEmpty {
-        VStack(spacing: 9) {
-          ForEach(expenses.prefix(2)) { expense in
+      if let ledger, !ledger.balances.isEmpty {
+        VStack(alignment: .leading, spacing: 7) {
+          if let settlementSummary {
             HStack {
-              VStack(alignment: .leading, spacing: 2) {
-                Text(expense.description)
-                  .font(.subheadline.weight(.semibold))
-                  .foregroundStyle(HomeboardPalette.primaryText)
-                  .lineLimit(1)
-                Text("Paid by \(expense.paidByName)")
-                  .font(.caption2)
-                  .foregroundStyle(HomeboardPalette.secondaryText)
-              }
-              Spacer()
-              Text(FinanceMath.money(expense.amountCents))
-                .font(.subheadline.weight(.bold))
+              Label(settlementSummary.title, systemImage: "arrow.right.circle.fill")
+                .font(.caption.weight(.bold))
                 .foregroundStyle(HomeboardPalette.primaryText)
+              Spacer()
+              Text(settlementSummary.amount)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(HomeboardPalette.accentSecondary)
+            }
+            FinanceDivider()
+          }
+          Text("PER-PERSON BALANCES")
+            .font(.system(size: 9, weight: .bold))
+            .tracking(0.8)
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+          ForEach(visibleBalances) { item in
+            HStack {
+              Text(item.userId == currentBalance?.userId ? "You" : item.name)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+              Spacer()
+              Text(item.balanceCents > 0
+                ? "+\(FinanceMath.money(item.balanceCents))"
+                : item.balanceCents < 0
+                  ? "−\(FinanceMath.money(abs(item.balanceCents)))"
+                  : "Settled")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(item.balanceCents >= 0 ? HomeboardPalette.success : HomeboardPalette.accentSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             }
           }
         }
-        .padding(13)
+        .padding(11)
         .background(Color.white.opacity(0.045))
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+      }
+
+      if let expenses = ledger?.expenses, !expenses.isEmpty {
+        VStack(alignment: .leading, spacing: 7) {
+          Text("RECENT ENTRIES")
+            .font(.system(size: 9, weight: .bold))
+            .tracking(0.8)
+            .foregroundStyle(HomeboardPalette.tertiaryText)
+          ForEach(expenses.prefix(3)) { expense in
+            HStack(spacing: 8) {
+              Text(expense.description)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .lineLimit(1)
+              Spacer(minLength: 6)
+              Text(FinanceMath.money(expense.amountCents))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            }
+          }
+        }
       } else {
-        Text("Estimate move-in cash, check application readiness, and record the first shared payment.")
-          .font(.subheadline)
+        Text("Estimate move-in cash, prepare documents, and record the first shared payment.")
+          .font(.caption)
           .foregroundStyle(HomeboardPalette.secondaryText)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(14)
-          .background(Color.white.opacity(0.045))
-          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+      }
+
+      HStack {
+        Label("Open finances", systemImage: "arrow.up.right")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(HomeboardPalette.accent)
+        Spacer()
+        Text("\(ledger?.expenses.count ?? 0) total entries")
+          .font(.caption2.weight(.semibold))
+          .foregroundStyle(HomeboardPalette.tertiaryText)
       }
     }
-    .padding(17)
-    .frame(minHeight: 390, alignment: .top)
+    .padding(15)
     .financeSurface(cornerRadius: 22)
   }
 }
@@ -614,7 +705,7 @@ struct FinanceWorkspaceView: View {
 
   private var groupLedgerSnapshot: some View {
     let balance = groupPersonalBalance?.balanceCents ?? 0
-    return VStack(alignment: .leading, spacing: 15) {
+    return VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .top, spacing: 12) {
         VStack(alignment: .leading, spacing: 4) {
           Text("GROUP LEDGER")
@@ -648,9 +739,9 @@ struct FinanceWorkspaceView: View {
         Image(systemName: "list.bullet.rectangle.portrait.fill")
           .font(.title2)
           .foregroundStyle(HomeboardPalette.buttonText)
-          .frame(width: 50, height: 50)
+          .frame(width: 44, height: 44)
           .background(HomeboardPalette.accentGradient)
-          .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
       }
 
       HStack(spacing: 10) {
@@ -669,12 +760,12 @@ struct FinanceWorkspaceView: View {
       if !isLoadingLedger, let ledger {
         if !ledger.balances.isEmpty {
           FinanceDivider()
-          VStack(alignment: .leading, spacing: 9) {
+          VStack(alignment: .leading, spacing: 7) {
             Text("WHO’S AHEAD")
               .font(.system(size: 9, weight: .bold))
               .tracking(0.9)
               .foregroundStyle(HomeboardPalette.tertiaryText)
-            ForEach(ledger.balances) { item in
+            ForEach(Array(ledger.balances.prefix(4))) { item in
               HStack {
                 Text(item.userId == currentUserID ? "You" : item.name)
                   .font(.caption.weight(.semibold))
@@ -689,11 +780,16 @@ struct FinanceWorkspaceView: View {
                   .foregroundStyle(item.balanceCents >= 0 ? HomeboardPalette.success : HomeboardPalette.accentSecondary)
               }
             }
+            if ledger.balances.count > 4 {
+              Text("+ \(ledger.balances.count - 4) more roommate balances")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.tertiaryText)
+            }
           }
         }
 
         FinanceDivider()
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
           Text("RECENT ENTRIES")
             .font(.system(size: 9, weight: .bold))
             .tracking(0.9)
@@ -704,7 +800,7 @@ struct FinanceWorkspaceView: View {
               .foregroundStyle(HomeboardPalette.secondaryText)
               .fixedSize(horizontal: false, vertical: true)
           } else {
-            ForEach(Array(ledger.expenses.prefix(4))) { expense in
+            ForEach(Array(ledger.expenses.prefix(5))) { expense in
               FinanceExpenseRow(expense: expense)
             }
           }
@@ -718,14 +814,14 @@ struct FinanceWorkspaceView: View {
           .font(.headline)
           .foregroundStyle(HomeboardPalette.buttonText)
           .frame(maxWidth: .infinity)
-          .frame(height: 50)
+          .frame(height: 46)
           .background(HomeboardPalette.accentGradient)
           .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
       }
       .buttonStyle(HomeboardAreaButtonStyle())
       .accessibilityIdentifier("homeboard.finance.add-payment")
     }
-    .padding(18)
+    .padding(15)
     .background {
       ZStack {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -1776,7 +1872,8 @@ private struct FinanceMetricTile: View {
         .lineLimit(1)
         .minimumScaleFactor(0.75)
     }
-    .padding(13)
+    .padding(.horizontal, 11)
+    .padding(.vertical, 10)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.white.opacity(0.06))
     .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
@@ -1973,11 +2070,11 @@ private struct FinanceExpenseRow: View {
   let expense: BoardExpense
 
   var body: some View {
-    HStack(spacing: 11) {
+    HStack(spacing: 9) {
       Image(systemName: FinanceExpenseCategory(rawValue: expense.category)?.icon ?? "dollarsign")
         .font(.caption.weight(.bold))
         .foregroundStyle(HomeboardPalette.accent)
-        .frame(width: 34, height: 34)
+        .frame(width: 30, height: 30)
         .background(HomeboardPalette.accent.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
       VStack(alignment: .leading, spacing: 2) {

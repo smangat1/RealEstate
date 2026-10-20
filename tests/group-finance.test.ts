@@ -26,10 +26,14 @@ test("the third tab is a Group hub with chat and finance destinations", () => {
   assert.match(finance, /FinanceWorkspaceView\(showsBackButton: true\)/);
   assert.match(finance, /homeboard\.group\.chat-widget/);
   assert.match(finance, /homeboard\.group\.finance-widget/);
-  assert.match(finance, /suffix\(4\)/);
-  assert.match(finance, /\.frame\(minHeight: 390/);
+  assert.match(finance, /suffix\(5\)/);
+  assert.doesNotMatch(finance, /\.frame\(minHeight: 390/);
   assert.match(finance, /Best fit:/);
   assert.match(finance, /Ledger ready without a listing/);
+  assert.match(finance, /Next due/);
+  assert.match(finance, /PER-PERSON BALANCES/);
+  assert.match(finance, /RECENT ENTRIES/);
+  assert.match(finance, /settlementSummary/);
   assert.doesNotMatch(finance, /Chat keeps decisions visible/);
 });
 
