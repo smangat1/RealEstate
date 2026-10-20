@@ -1,6 +1,46 @@
 import Foundation
 import SwiftUI
 
+enum FinanceAmountValidationError: Error, Equatable {
+  case empty
+  case invalidFormat
+  case outOfRange
+
+  var message: String {
+    switch self {
+    case .empty:
+      "Enter the amount that was paid."
+    case .invalidFormat:
+      "Use dollars and up to two cents, like 125.50."
+    case .outOfRange:
+      "Enter an amount from $0.01 through $100,000."
+    }
+  }
+}
+
+enum FinanceAmountParser {
+  static let maximumCents = 10_000_000
+
+  static func cents(from rawValue: String) -> Result<Int, FinanceAmountValidationError> {
+    var cleaned = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !cleaned.isEmpty else { return .failure(.empty) }
+    if cleaned.first == "$" { cleaned.removeFirst() }
+    cleaned = cleaned.replacingOccurrences(of: ",", with: "")
+
+    guard cleaned.range(of: #"^(?:\d+|\d*\.\d{1,2})$"#, options: .regularExpression) != nil,
+          let dollars = Decimal(string: cleaned, locale: Locale(identifier: "en_US_POSIX"))
+    else { return .failure(.invalidFormat) }
+
+    let maximumDollars = Decimal(maximumCents) / 100
+    guard dollars > 0, dollars <= maximumDollars else { return .failure(.outOfRange) }
+
+    var value = dollars
+    var cents = Decimal()
+    NSDecimalMultiplyByPowerOf10(&cents, &value, 2, .plain)
+    return .success(NSDecimalNumber(decimal: cents).intValue)
+  }
+}
+
 struct SharedGroupHubView: View {
   @Environment(AppModel.self) private var appModel
   @State private var showsSettings = false
@@ -1076,6 +1116,7 @@ private struct FinanceAddPaymentSheet: View {
   @State private var payerUserID = ""
   @State private var splitUserIDs = Set<String>()
   @State private var isSaving = false
+  @State private var saveError: String?
 
   init(
     listing: ListingPreview?,
@@ -1105,18 +1146,20 @@ private struct FinanceAddPaymentSheet: View {
   }
 
   private var parsedAmountCents: Int? {
-    let cleaned = amount.replacingOccurrences(of: ",", with: "").replacingOccurrences(of: "$", with: "")
-    guard let dollars = Double(cleaned), dollars > 0 else { return nil }
-    return Int((dollars * 100).rounded())
+    guard case .success(let cents) = FinanceAmountParser.cents(from: amount) else { return nil }
+    return cents
+  }
+
+  private var amountError: String? {
+    guard saveError == nil, !amount.isEmpty,
+          case .failure(let error) = FinanceAmountParser.cents(from: amount)
+    else { return nil }
+    return error.message
   }
 
   private var perPersonCents: Int? {
     guard let parsedAmountCents, !splitUserIDs.isEmpty else { return nil }
     return Int(ceil(Double(parsedAmountCents) / Double(splitUserIDs.count)))
-  }
-
-  private var canSave: Bool {
-    parsedAmountCents != nil && !payerUserID.isEmpty && !splitUserIDs.isEmpty && !isSaving
   }
 
   var body: some View {
@@ -1206,6 +1249,7 @@ private struct FinanceAddPaymentSheet: View {
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(HomeboardPalette.primaryText)
                 .keyboardType(.decimalPad)
+                .onChange(of: amount) { _, _ in saveError = nil }
             }
             .padding(.horizontal, 16)
             .frame(height: 72)
@@ -1215,13 +1259,22 @@ private struct FinanceAddPaymentSheet: View {
               RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(HomeboardPalette.borderStrong.opacity(0.7), lineWidth: 1)
             }
+            if let amountError {
+              Label(amountError, systemImage: "exclamationmark.circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.danger)
+                .fixedSize(horizontal: false, vertical: true)
+            }
           }
 
           VStack(alignment: .leading, spacing: 10) {
             FinanceSectionTitle(title: "Paid by", trailing: nil)
             Menu {
               ForEach(people) { person in
-                Button(person.name) { payerUserID = person.id }
+                Button(person.name) {
+                  payerUserID = person.id
+                  saveError = nil
+                }
               }
             } label: {
               FinanceSelectionRow(
@@ -1241,6 +1294,7 @@ private struct FinanceAddPaymentSheet: View {
                 } else {
                   splitUserIDs.insert(person.id)
                 }
+                saveError = nil
               } label: {
                 HStack(spacing: 11) {
                   Image(systemName: splitUserIDs.contains(person.id) ? "checkmark.circle.fill" : "circle")
@@ -1282,6 +1336,22 @@ private struct FinanceAddPaymentSheet: View {
               }
           }
 
+          if let error = saveError {
+            HStack(alignment: .top, spacing: 10) {
+              Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(HomeboardPalette.danger)
+              Text(error)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(13)
+            .background(HomeboardPalette.danger.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityIdentifier("homeboard.finance.payment-error")
+          }
+
           Button(action: save) {
             HStack(spacing: 9) {
               if isSaving { ProgressView().tint(HomeboardPalette.buttonText) }
@@ -1296,8 +1366,8 @@ private struct FinanceAddPaymentSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
           }
           .buttonStyle(HomeboardAreaButtonStyle())
-          .disabled(!canSave)
-          .opacity(canSave ? 1 : 0.52)
+          .disabled(isSaving)
+          .opacity(isSaving ? 0.72 : 1)
           .accessibilityIdentifier("homeboard.finance.payment-save")
         }
         .padding(18)
@@ -1319,7 +1389,23 @@ private struct FinanceAddPaymentSheet: View {
   }
 
   private func save() {
-    guard let amountCents = parsedAmountCents, canSave else { return }
+    saveError = nil
+    let amountCents: Int
+    switch FinanceAmountParser.cents(from: amount) {
+    case .success(let cents):
+      amountCents = cents
+    case .failure(let error):
+      saveError = error.message
+      return
+    }
+    guard !payerUserID.isEmpty else {
+      saveError = "Choose the roommate who made the payment."
+      return
+    }
+    guard !splitUserIDs.isEmpty else {
+      saveError = "Choose at least one roommate who shares this expense."
+      return
+    }
     isSaving = true
     Task {
       let updated = await appModel.addBoardExpense(
@@ -1334,6 +1420,9 @@ private struct FinanceAddPaymentSheet: View {
       if let updated {
         onSaved(updated)
         dismiss()
+      } else {
+        let reason = appModel.boardError ?? "The server could not save this payment."
+        saveError = "\(reason) Your entries are still here; check the selections and try again."
       }
     }
   }

@@ -1970,6 +1970,7 @@ final class AppModel {
     paidByUserId: String? = nil,
     splitUserIds: [String]? = nil
   ) async -> BoardExpenseLedger? {
+    boardError = nil
     guard let session = authSession, let boardId = board.id else {
       boardError = "Open a real board before tracking group money."
       return nil

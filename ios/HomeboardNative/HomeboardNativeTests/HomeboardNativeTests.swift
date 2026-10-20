@@ -56,6 +56,28 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertEqual(model.currentBoardExpenseLedger?.totalCents, 2_500)
   }
 
+  func testFailedExpenseSaveKeepsThePreviouslyLoadedLedger() async throws {
+    let model = makeExpenseTestModel(boardID: "board-a")
+    AdvisorWalletURLProtocol.response = { request in
+      if request.httpMethod == "POST" {
+        return .init(status: 503, body: #"{"error":"Temporarily unavailable"}"#)
+      }
+      return .init(status: 200, body: Self.expenseLedgerJSON(totalCents: 1_000, entryID: "existing-expense"))
+    }
+
+    _ = await model.loadBoardExpenses()
+    let beforeSave = model.currentBoardExpenseLedger
+    let saved = await model.addBoardExpense(
+      description: "Holding deposit",
+      category: "holding_deposit",
+      amountCents: 500
+    )
+
+    XCTAssertNil(saved)
+    XCTAssertEqual(model.currentBoardExpenseLedger, beforeSave)
+    XCTAssertNotNil(model.boardError)
+  }
+
   func testLateExpenseResponseCannotLeakAcrossBoardChange() async throws {
     let model = makeExpenseTestModel(boardID: "board-a")
     AdvisorWalletURLProtocol.response = { request in
@@ -93,6 +115,21 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertNil(restored.incomeProofType)
     XCTAssertNil(restored.documentStatus)
     XCTAssertNil(restored.usesGuarantor)
+  }
+
+  func testFinanceAmountParserValidatesFormatAndRangeBeforeIntegerConversion() throws {
+    XCTAssertEqual(try FinanceAmountParser.cents(from: "$1,234.56").get(), 123_456)
+    XCTAssertEqual(try FinanceAmountParser.cents(from: ".50").get(), 50)
+    XCTAssertEqual(try FinanceAmountParser.cents(from: "100000").get(), 10_000_000)
+
+    assertAmountFailure("", equals: .empty)
+    assertAmountFailure("nan", equals: .invalidFormat)
+    assertAmountFailure("inf", equals: .invalidFormat)
+    assertAmountFailure("1e100", equals: .invalidFormat)
+    assertAmountFailure("1.999", equals: .invalidFormat)
+    assertAmountFailure("0", equals: .outOfRange)
+    assertAmountFailure("100000.01", equals: .outOfRange)
+    assertAmountRejected(String(repeating: "9", count: 400))
   }
 
   func testOldBoardMessageJSONDecodesWithoutReplyField() throws {
@@ -2802,6 +2839,30 @@ final class HomeboardNativeTests: XCTestCase {
     model.board = .empty
     model.board.id = boardID
     return model
+  }
+
+  private func assertAmountFailure(
+    _ value: String,
+    equals expected: FinanceAmountValidationError,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    switch FinanceAmountParser.cents(from: value) {
+    case .success(let cents):
+      XCTFail("Expected \(value) to fail, got \(cents) cents", file: file, line: line)
+    case .failure(let error):
+      XCTAssertEqual(error, expected, file: file, line: line)
+    }
+  }
+
+  private func assertAmountRejected(
+    _ value: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    if case .success(let cents) = FinanceAmountParser.cents(from: value) {
+      XCTFail("Expected \(value) to fail, got \(cents) cents", file: file, line: line)
+    }
   }
 
   private static func expenseLedgerJSON(totalCents: Int, entryID: String) -> String {
