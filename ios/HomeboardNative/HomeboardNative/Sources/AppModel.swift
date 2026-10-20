@@ -267,6 +267,8 @@ final class AppModel {
   var inviteFeedback: String?
   var incomingLinkError: String?
   var boardFeedback: String?
+  private(set) var boardExpenseLedger: BoardExpenseLedger?
+  private(set) var boardExpenseLedgerBoardID: String?
   var advisorConfirmation: AdvisorConfirmation?
   var boardMessageDraft = ""
   var replyToBoardMessageId: String?
@@ -291,6 +293,10 @@ final class AppModel {
       board.chatMessages,
       advisorEnabled: isAdvisorFeatureEnabled
     )
+  }
+  var currentBoardExpenseLedger: BoardExpenseLedger? {
+    guard boardExpenseLedgerBoardID == board.id else { return nil }
+    return boardExpenseLedger
   }
   var listingInventory: [ListingPreview] = []
   var listingInventoryNextCursor: String?
@@ -1932,14 +1938,25 @@ final class AppModel {
       boardError = "Open a real board before tracking group money."
       return nil
     }
+    prepareBoardExpenseLedger(for: boardId)
+    let requestEpoch = sessionEpoch
     do {
-      return try await api.loadBoardExpenses(accessToken: session.accessToken, boardId: boardId)
+      let ledger = try await api.loadBoardExpenses(accessToken: session.accessToken, boardId: boardId)
+      guard requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return nil }
+      boardExpenseLedgerBoardID = boardId
+      boardExpenseLedger = ledger
+      return ledger
     } catch is CancellationError {
       // SwiftUI cancels view-bound ledger refreshes when the user moves between
       // the Group hub, chat, and Finance. That is navigation lifecycle control,
       // not a user-facing failure.
       return nil
     } catch {
+      guard requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return nil }
       boardError = readable(error)
       return nil
     }
@@ -1957,6 +1974,8 @@ final class AppModel {
       boardError = "Open a real board before tracking group money."
       return nil
     }
+    prepareBoardExpenseLedger(for: boardId)
+    let requestEpoch = sessionEpoch
     do {
       let ledger = try await api.addBoardExpense(
         accessToken: session.accessToken,
@@ -1968,14 +1987,28 @@ final class AppModel {
         paidByUserId: paidByUserId,
         splitUserIds: splitUserIds
       )
+      guard requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return nil }
+      boardExpenseLedgerBoardID = boardId
+      boardExpenseLedger = ledger
       boardFeedback = "Expense added to the group ledger."
       return ledger
     } catch is CancellationError {
       return nil
     } catch {
+      guard requestEpoch == sessionEpoch,
+            authSession?.userId == session.userId,
+            board.id == boardId else { return nil }
       boardError = readable(error)
       return nil
     }
+  }
+
+  private func prepareBoardExpenseLedger(for boardId: String) {
+    guard boardExpenseLedgerBoardID != boardId else { return }
+    boardExpenseLedgerBoardID = boardId
+    boardExpenseLedger = nil
   }
 
   func optimizeRoomAssignment(listingId: String, rooms: [AdvisorRoomInput]) async -> AdvisorRoomAssignmentResult? {
@@ -2653,6 +2686,8 @@ final class AppModel {
     pendingConfirmationEmail = ""
     onboardingCreationRequestId = nil
     board = .empty
+    boardExpenseLedger = nil
+    boardExpenseLedgerBoardID = nil
     replyToBoardMessageId = nil
     profile = RentalProfile()
     onboardingMessages = []
@@ -2705,6 +2740,8 @@ final class AppModel {
     authenticatedMembershipState = nil
     onboardingCreationRequestId = nil
     board = .empty
+    boardExpenseLedger = nil
+    boardExpenseLedgerBoardID = nil
     replyToBoardMessageId = nil
     profile = RentalProfile()
     onboardingMessages = []

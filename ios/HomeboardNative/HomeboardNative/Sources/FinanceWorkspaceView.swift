@@ -3,7 +3,6 @@ import SwiftUI
 
 struct SharedGroupHubView: View {
   @Environment(AppModel.self) private var appModel
-  @State private var ledger: BoardExpenseLedger?
   @State private var showsSettings = false
   @State private var showsChat = false
   @State private var showsFinance = false
@@ -17,6 +16,10 @@ struct SharedGroupHubView: View {
   private var currentBalance: BoardExpenseBalance? {
     let userID = appModel.account?.id ?? appModel.authSession?.userId
     return ledger?.balances.first { $0.userId == userID }
+  }
+
+  private var ledger: BoardExpenseLedger? {
+    appModel.currentBoardExpenseLedger
   }
 
   private var bestFinanceOption: FinanceListingOption? {
@@ -134,9 +137,7 @@ struct SharedGroupHubView: View {
       FinanceWorkspaceView(showsBackButton: true)
     }
     .task(id: appModel.board.id) {
-      let updatedLedger = await appModel.loadBoardExpenses()
-      guard !Task.isCancelled else { return }
-      if let updatedLedger { ledger = updatedLedger }
+      _ = await appModel.loadBoardExpenses()
     }
     .sheet(isPresented: $showsSettings) {
       SharedSetupView()
@@ -350,7 +351,6 @@ struct FinanceWorkspaceView: View {
   @Environment(\.dismiss) private var dismiss
   var showsBackButton = false
   @State private var selectedListingID: String?
-  @State private var ledger: BoardExpenseLedger?
   @State private var isLoadingLedger = true
   @State private var ledgerLoadFailed = false
   @State private var showsAddPayment = false
@@ -405,6 +405,10 @@ struct FinanceWorkspaceView: View {
   private var listingExpenses: [BoardExpense] {
     guard let selectedListing else { return [] }
     return ledger?.expenses.filter { $0.boardListingId == selectedListing.id } ?? []
+  }
+
+  private var ledger: BoardExpenseLedger? {
+    appModel.currentBoardExpenseLedger
   }
 
   private var listingPaidCents: Int {
@@ -555,9 +559,7 @@ struct FinanceWorkspaceView: View {
       await refreshLedger()
     }
     .sheet(isPresented: $showsAddPayment) {
-      FinanceAddPaymentSheet(listing: selectedListing) { updatedLedger in
-        ledger = updatedLedger
-      }
+      FinanceAddPaymentSheet(listing: selectedListing) { _ in }
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
       .presentationBackground(HomeboardPalette.background)
@@ -1054,7 +1056,6 @@ struct FinanceWorkspaceView: View {
     let updatedLedger = await appModel.loadBoardExpenses()
     guard !Task.isCancelled else { return }
     if let updatedLedger {
-      ledger = updatedLedger
       ledgerLoadFailed = false
     } else {
       ledgerLoadFailed = true

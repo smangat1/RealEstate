@@ -33,6 +33,55 @@ final class HomeboardNativeTests: XCTestCase {
     XCTAssertEqual(restored.usesGuarantor, true)
   }
 
+  func testExpenseSaveImmediatelyRefreshesSharedBoardLedger() async throws {
+    let model = makeExpenseTestModel(boardID: "board-a")
+    AdvisorWalletURLProtocol.response = { request in
+      XCTAssertTrue(request.url?.path.contains("/board-a/expenses") == true)
+      if request.httpMethod == "POST" {
+        return .init(status: 200, body: Self.expenseLedgerJSON(totalCents: 2_500, entryID: "saved-expense"))
+      }
+      return .init(status: 200, body: Self.expenseLedgerJSON(totalCents: 1_000, entryID: "loaded-expense"))
+    }
+
+    _ = await model.loadBoardExpenses()
+    XCTAssertEqual(model.currentBoardExpenseLedger?.totalCents, 1_000)
+
+    let saved = await model.addBoardExpense(
+      description: "Application fee",
+      category: "application_fee",
+      amountCents: 1_500
+    )
+
+    XCTAssertEqual(saved?.expenses.first?.id, "saved-expense")
+    XCTAssertEqual(model.currentBoardExpenseLedger?.totalCents, 2_500)
+  }
+
+  func testLateExpenseResponseCannotLeakAcrossBoardChange() async throws {
+    let model = makeExpenseTestModel(boardID: "board-a")
+    AdvisorWalletURLProtocol.response = { request in
+      if request.url?.path.contains("/board-a/expenses") == true {
+        return .init(
+          status: 200,
+          body: Self.expenseLedgerJSON(totalCents: 9_900, entryID: "board-a-expense"),
+          delay: 0.2
+        )
+      }
+      return .init(status: 200, body: Self.expenseLedgerJSON(totalCents: 2_200, entryID: "board-b-expense"))
+    }
+
+    let firstLoad = Task { await model.loadBoardExpenses() }
+    try? await Task.sleep(nanoseconds: 30_000_000)
+    model.board.id = "board-b"
+    XCTAssertNil(model.currentBoardExpenseLedger)
+
+    _ = await model.loadBoardExpenses()
+    await firstLoad.value
+
+    XCTAssertEqual(model.boardExpenseLedgerBoardID, "board-b")
+    XCTAssertEqual(model.currentBoardExpenseLedger?.totalCents, 2_200)
+    XCTAssertEqual(model.currentBoardExpenseLedger?.expenses.first?.id, "board-b-expense")
+  }
+
   func testLegacyReadinessPayloadStillDecodesWithoutNewPreparationFields() throws {
     let data = Data(#"{"hasOfferLetter":true,"needsGuarantor":false,"hasProofOfIncome":true,"notes":"Legacy note"}"#.utf8)
     let restored = try JSONDecoder().decode(RentalReadiness.self, from: data)
@@ -2734,6 +2783,50 @@ final class HomeboardNativeTests: XCTestCase {
     model.board = .empty
     model.board.id = boardID
     return model
+  }
+
+  private func makeExpenseTestModel(boardID: String) -> AppModel {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [AdvisorWalletURLProtocol.self]
+    let model = AppModel(
+      api: HomeboardAPI(session: URLSession(configuration: configuration)),
+      advisorEnabled: false
+    )
+    model.authSession = NativeAuthSession(
+      accessToken: "expense-token",
+      refreshToken: "expense-refresh",
+      userId: "user-a",
+      email: "user-a@example.com",
+      displayName: "User A"
+    )
+    model.board = .empty
+    model.board.id = boardID
+    return model
+  }
+
+  private static func expenseLedgerJSON(totalCents: Int, entryID: String) -> String {
+    """
+    {
+      "totalCents": \(totalCents),
+      "splitMode": "equal",
+      "expenses": [{
+        "id": "\(entryID)",
+        "description": "Application fee",
+        "category": "application_fee",
+        "amountCents": \(totalCents),
+        "paidAt": "2026-10-19T12:00:00.000Z",
+        "paidByUserId": "user-a",
+        "paidByName": "User A"
+      }],
+      "balances": [{
+        "userId": "user-a",
+        "name": "User A",
+        "paidCents": \(totalCents),
+        "owedCents": \(totalCents),
+        "balanceCents": 0
+      }]
+    }
+    """
   }
 
   private static func walletJSON(active: Bool, testMode: Bool) -> String {
