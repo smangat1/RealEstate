@@ -34,6 +34,7 @@
 		4016D884D6889D6B4129E40A /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = 97DA211FEEB606D4D4145589 /* icon-128.png */; };
 		42DD7CE594D25B9A4BDF45D4 /* CompactShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DF93C8A044D0A8CE5D80A9 /* CompactShareViewController.swift */; };
 		4B9FC1AC1BE5B9C498A293DF /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 77B82ACD13CBDFA2AD002D44 /* icon-48.png */; };
+		516EAEFB6DE5647FD7D85CF6 /* AdvisorCaptureSpike.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44D70D4BAA386A0EBD75CF84 /* AdvisorCaptureSpike.swift */; };
 		574FE78535771F9EBA7DCFC2 /* HomeboardExtensionSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694895D8A9A34B83955E91AB /* HomeboardExtensionSync.swift */; };
 		585823C66666510F477E2860 /* HomeboardSharedImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBB068E60C0E3275AC81447 /* HomeboardSharedImportStore.swift */; };
 		5A1BE148C7BC9B09EB658CD2 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 958E86AF374173284BD9D79E /* background.js */; };
@@ -183,6 +184,7 @@
 		3C193B56530767CD0B8E7D7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3CF80F81549A29E98A895992 /* AdvisorSensitiveStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorSensitiveStore.swift; sourceTree = "<group>"; };
 		40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountOnboardingView.swift; sourceTree = "<group>"; };
+		44D70D4BAA386A0EBD75CF84 /* AdvisorCaptureSpike.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvisorCaptureSpike.swift; sourceTree = "<group>"; };
 		470A89AE5DC74258BBC83FD6 /* ShareBootProbe.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ShareBootProbe.m; sourceTree = "<group>"; };
 		498D5D70E76F58CA75874A53 /* HomeboardPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeboardPalette.swift; sourceTree = "<group>"; };
 		4AB61DA2FD0EAA808AE128B6 /* HomeboardNativeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HomeboardNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -354,6 +356,7 @@
 			isa = PBXGroup;
 			children = (
 				40BB8E5C70D3404DFFB689B5 /* AccountOnboardingView.swift */,
+				44D70D4BAA386A0EBD75CF84 /* AdvisorCaptureSpike.swift */,
 				EC91685B176A8C96751EF9D0 /* AdvisorCardView.swift */,
 				4D7BEDA8E6D21D58CEC574EA /* AdvisorDraftGenerator.swift */,
 				6EDD59B95A2CA652F000CD51 /* AdvisorOutcomeMemory.swift */,
@@ -784,6 +787,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D3EEF8F7B5EA5DF48BA70ED /* AccountOnboardingView.swift in Sources */,
+				516EAEFB6DE5647FD7D85CF6 /* AdvisorCaptureSpike.swift in Sources */,
 				1DB81EA83E11A201EA7A3B76 /* AdvisorCardView.swift in Sources */,
 				E9915A425D456A69BAC8FEBF /* AdvisorDraftGenerator.swift in Sources */,
 				F482E9E7887E8FE94C3015B2 /* AdvisorOutcomeMemory.swift in Sources */,
@@ -1068,6 +1072,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
 				HOMEBOARD_APP_COMMIT = local;
+				HOMEBOARD_APP_GROUP_IDENTIFIER = group.com.homeboard.native;
 				HOMEBOARD_BUILD_CHANNEL = production;
 				HOMEBOARD_PUBLIC_WEB_URL = "https://joinhomeboard.com";
 				HOMEBOARD_STRIPE_PUBLISHABLE_KEY = "";
@@ -1231,6 +1236,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				HOMEBOARD_APP_COMMIT = local;
+				HOMEBOARD_APP_GROUP_IDENTIFIER = group.com.homeboard.native;
 				HOMEBOARD_BUILD_CHANNEL = production;
 				HOMEBOARD_PUBLIC_WEB_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
 				HOMEBOARD_STRIPE_PUBLISHABLE_KEY = "";

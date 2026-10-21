@@ -65,6 +65,11 @@ struct RootView: View {
           .transition(.opacity.combined(with: .scale(scale: 1.015)))
           .zIndex(20)
       }
+
+      #if DEBUG
+      AdvisorCaptureSpikeDebugLauncher()
+        .zIndex(30)
+      #endif
     }
     .background(HomeboardPalette.background.ignoresSafeArea())
     .preferredColorScheme(.dark)
