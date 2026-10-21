@@ -607,8 +607,6 @@ struct FinanceWorkspaceView: View {
               costPlan(listing)
               monthlyReality(listing)
               paymentSafety(listing)
-            } else {
-              noListingState
             }
 
             readinessCard
@@ -1169,22 +1167,6 @@ struct FinanceWorkspaceView: View {
       RoundedRectangle(cornerRadius: 18, style: .continuous)
         .stroke((listing.scamWarning == nil ? HomeboardPalette.success : HomeboardPalette.danger).opacity(0.35), lineWidth: 1)
     }
-  }
-
-  private var noListingState: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Image(systemName: "building.2.crop.circle")
-        .font(.system(size: 34))
-        .foregroundStyle(HomeboardPalette.accent)
-      Text("Your ledger is ready now")
-        .font(.title3.weight(.bold))
-        .foregroundStyle(HomeboardPalette.primaryText)
-      Text("You can record general application, moving, utility, and roommate expenses above. Add homes to the shortlist when you want rent, bedroom, space, and move-in cash comparisons.")
-        .font(.subheadline)
-        .foregroundStyle(HomeboardPalette.secondaryText)
-    }
-    .padding(18)
-    .financeSurface(cornerRadius: 22)
   }
 
   private func refreshLedger() async {
