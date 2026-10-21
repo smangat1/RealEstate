@@ -12,6 +12,10 @@ coverage/
 .next
 *.tsbuildinfo
 
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
 /generated/prisma
 data/*.db
 data/*.db-shm
