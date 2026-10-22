@@ -2740,6 +2740,8 @@ struct SharedUpdatesView: View {
   var showsBackButton = false
   @State private var updateDraft = ""
   @State private var showsSettings = false
+  @State private var reportTarget: BoardMessage?
+  @State private var blockTarget: BoardMessage?
   @State private var scrollsToAdvisorWallet = false
   @State private var updatesGuideStep = 0
   @FocusState private var updateFieldFocused: Bool
@@ -3075,6 +3077,30 @@ struct SharedUpdatesView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
+    .sheet(item: $reportTarget) { message in
+      SharedReportMessageSheet(message: message)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
+    .confirmationDialog(
+      "Block \(blockTarget?.authorName ?? "this member")?",
+      isPresented: Binding(
+        get: { blockTarget != nil },
+        set: { if !$0 { blockTarget = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      if let message = blockTarget {
+        Button("Block \(message.authorName ?? "member")", role: .destructive) {
+          blockTarget = nil
+          Task { await appModel.blockUser(from: message) }
+        }
+      }
+      Button("Cancel", role: .cancel) { blockTarget = nil }
+    } message: {
+      Text("You will no longer see messages from \(blockTarget?.authorName ?? "this member"). They will not be told. You can unblock in Settings.")
+    }
     .overlayPreferenceValue(SharedCoachmarkAnchorKey.self) { anchors in
       if !updatesGuideDismissed, updatesGuideStep == 0 {
         SharedCoachmarkOverlay(
@@ -3208,6 +3234,24 @@ struct SharedUpdatesView: View {
         updateFieldFocused = true
       } label: {
         Label("Reply", systemImage: "arrowshape.turn.up.left")
+      }
+
+      if appModel.canModerateMessage(message) {
+        Button {
+          reportTarget = message
+        } label: {
+          Label("Report message", systemImage: "exclamationmark.bubble")
+        }
+        .accessibilityLabel("Report message from \(message.authorName ?? "member")")
+        .accessibilityIdentifier("homeboard.chat.report")
+
+        Button(role: .destructive) {
+          blockTarget = message
+        } label: {
+          Label("Block \(message.authorName ?? "member")", systemImage: "person.crop.circle.badge.xmark")
+        }
+        .accessibilityLabel("Block \(message.authorName ?? "member")")
+        .accessibilityIdentifier("homeboard.chat.block")
       }
     }
   }
@@ -3788,6 +3832,7 @@ struct SharedSetupView: View {
   @State private var showsAccountDeletionConfirmation = false
   @State private var showsBugReport = false
   @State private var showsNotificationSettings = false
+  @State private var showsBlockedUsers = false
 
   private var isCurrentUserOwner: Bool {
     guard let userId = appModel.account?.id else { return false }
@@ -3864,6 +3909,13 @@ struct SharedSetupView: View {
             SharedSettingsRow(icon: "person.crop.circle.badge.plus", title: "Join another board", subtitle: "Open a shared link or paste its token") {
               showsJoinBoard = true
             }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "person.crop.circle.badge.xmark", title: "Blocked users", subtitle: "Review people you no longer see") {
+              showsBlockedUsers = true
+            }
+            .accessibilityIdentifier("homeboard.settings.blockedUsers")
 
             SharedDivider()
 
@@ -4041,6 +4093,12 @@ struct SharedSetupView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(HomeboardPalette.background)
     }
+    .sheet(isPresented: $showsBlockedUsers) {
+      SharedBlockedUsersSheet()
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(HomeboardPalette.background)
+    }
     .sheet(isPresented: $showsBugReport) {
       SharedBugReportSheet(
         currentScreen: appModel.boardTab.rawValue
@@ -4094,6 +4152,176 @@ struct SharedSetupView: View {
     showsHelp = false
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
       dismiss()
+    }
+  }
+}
+
+private struct SharedReportMessageSheet: View {
+  @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+  let message: BoardMessage
+  @State private var reason: ContentReportReason = .harassment
+  @State private var details = ""
+  @State private var isSubmitting = false
+  @State private var errorMessage: String?
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        WorkspaceBackgroundView()
+        ScrollView {
+          VStack(alignment: .leading, spacing: 18) {
+            Text("Why are you reporting this message?")
+              .font(.title3.weight(.bold))
+              .foregroundStyle(HomeboardPalette.primaryText)
+              .fixedSize(horizontal: false, vertical: true)
+
+            Picker("Reason", selection: $reason) {
+              ForEach(ContentReportReason.allCases) { reason in
+                Text(reason.title).tag(reason)
+              }
+            }
+            .pickerStyle(.inline)
+            .accessibilityLabel("Report reason")
+
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Details (optional)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.secondaryText)
+              TextEditor(text: $details)
+                .font(.body)
+                .foregroundStyle(HomeboardPalette.primaryText)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 96)
+                .padding(10)
+                .background(Color.white.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityLabel("Optional report details")
+                .onChange(of: details) { _, value in
+                  if value.count > 500 { details = String(value.prefix(500)) }
+                }
+              Text("\(details.count)/500")
+                .font(.caption2)
+                .foregroundStyle(HomeboardPalette.tertiaryText)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            if let errorMessage {
+              Text(errorMessage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(HomeboardPalette.danger)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+              submit()
+            } label: {
+              Group {
+                if isSubmitting { ProgressView().tint(HomeboardPalette.buttonText) }
+                else { Text("Submit report") }
+              }
+              .font(.headline.weight(.bold))
+              .foregroundStyle(HomeboardPalette.buttonText)
+              .frame(maxWidth: .infinity)
+              .frame(minHeight: 52)
+              .background(HomeboardPalette.accentGradient)
+              .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(HomeboardAreaButtonStyle())
+            .disabled(isSubmitting)
+            .accessibilityIdentifier("homeboard.chat.report.submit")
+
+            Button("Cancel") { dismiss() }
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(HomeboardPalette.secondaryText)
+              .frame(maxWidth: .infinity, minHeight: 44)
+              .buttonStyle(HomeboardAreaButtonStyle())
+          }
+          .padding(20)
+        }
+      }
+      .navigationTitle("Report message")
+      .navigationBarTitleDisplayMode(.inline)
+    }
+  }
+
+  private func submit() {
+    guard !isSubmitting else { return }
+    isSubmitting = true
+    errorMessage = nil
+    Task {
+      let succeeded = await appModel.reportMessage(message, reason: reason, details: details)
+      isSubmitting = false
+      if succeeded { dismiss() }
+      else { errorMessage = appModel.boardError ?? "The report could not be submitted. Please try again." }
+    }
+  }
+}
+
+private struct SharedBlockedUsersSheet: View {
+  @Environment(AppModel.self) private var appModel
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        WorkspaceBackgroundView()
+        Group {
+          if appModel.isBlockedUsersLoading && appModel.blockedUsers.isEmpty {
+            ProgressView("Loading blocked users…")
+              .tint(HomeboardPalette.accent)
+          } else if appModel.blockedUsers.isEmpty {
+            SharedInlineEmpty(
+              icon: "person.crop.circle.badge.checkmark",
+              title: "No blocked users",
+              message: "People you block from a conversation will appear here."
+            )
+            .padding(20)
+          } else {
+            ScrollView {
+              VStack(spacing: 12) {
+                ForEach(appModel.blockedUsers) { user in
+                  HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle")
+                      .font(.title2)
+                      .foregroundStyle(HomeboardPalette.secondaryText)
+                    Text(user.displayName)
+                      .font(.body.weight(.semibold))
+                      .foregroundStyle(HomeboardPalette.primaryText)
+                      .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button("Unblock") {
+                      Task { await appModel.unblockUser(user) }
+                    }
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(HomeboardPalette.accent)
+                    .buttonStyle(HomeboardAreaButtonStyle())
+                    .accessibilityLabel("Unblock \(user.displayName)")
+                  }
+                  .padding(16)
+                  .sharedSurface(cornerRadius: 18)
+                }
+
+                if let error = appModel.blockedUsersError {
+                  Text(error)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(HomeboardPalette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+              }
+              .padding(20)
+            }
+          }
+        }
+      }
+      .navigationTitle("Blocked users")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+        }
+      }
+      .task { await appModel.loadBlockedUsers() }
     }
   }
 }

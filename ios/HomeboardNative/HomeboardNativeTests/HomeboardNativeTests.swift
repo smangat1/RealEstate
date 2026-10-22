@@ -138,6 +138,48 @@ final class HomeboardNativeTests: XCTestCase {
 
     XCTAssertEqual(message.id, "message-old")
     XCTAssertNil(message.replyToMessageId)
+    XCTAssertNil(message.authorUserId)
+  }
+
+  func testBoardMessageDecodesAppUserAuthorID() throws {
+    let data = Data(#"{"id":"message-new","role":"user","authorUserId":"app-user-2","authorName":"Alex","content":"Still available?","createdAt":"2026-10-22T12:00:00Z"}"#.utf8)
+    let message = try JSONDecoder().decode(BoardMessage.self, from: data)
+
+    XCTAssertEqual(message.authorUserId, "app-user-2")
+  }
+
+  func testChatModerationUsesApplicationUserIDAndHidesLocally() {
+    let other = BoardMessage(
+      id: "other-message", role: "user", authorUserId: "app-user-2", authorName: "Alex",
+      content: "Tour Saturday?", createdAt: "2026-10-22T12:00:00Z"
+    )
+    let own = BoardMessage(
+      id: "own-message", role: "user", authorUserId: "app-user-1", authorName: "Sam",
+      content: "Yes", createdAt: "2026-10-22T12:01:00Z"
+    )
+    let reply = BoardMessage(
+      id: "reply", role: "user", authorUserId: "app-user-3", authorName: "Jordan",
+      content: "I can join", createdAt: "2026-10-22T12:02:00Z", replyToMessageId: "other-message"
+    )
+
+    XCTAssertTrue(ChatModerationPolicy.canModerate(other, currentAppUserId: "app-user-1"))
+    XCTAssertFalse(ChatModerationPolicy.canModerate(own, currentAppUserId: "app-user-1"))
+    // A Supabase auth ID is intentionally not the own-message comparison key.
+    XCTAssertTrue(ChatModerationPolicy.canModerate(own, currentAppUserId: "supabase-auth-user-1"))
+
+    let afterReport = ChatModerationPolicy.hidingMessage(
+      id: "other-message",
+      from: [other, own, reply]
+    )
+    XCTAssertEqual(afterReport.map(\.id), ["own-message", "reply"])
+    XCTAssertNil(afterReport.last?.replyToMessageId)
+
+    let afterBlock = ChatModerationPolicy.hidingMessages(
+      authoredBy: "app-user-2",
+      from: [other, own, reply]
+    )
+    XCTAssertEqual(afterBlock.map(\.id), ["own-message", "reply"])
+    XCTAssertNil(afterBlock.last?.replyToMessageId)
   }
 
   func testChatReplySendPolicyRoutesOnlyExplicitOrAdvisorCardRepliesToAdvisor() {

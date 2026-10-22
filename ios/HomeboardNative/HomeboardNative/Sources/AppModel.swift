@@ -137,6 +137,45 @@ enum ChatReplySendPolicy {
   }
 }
 
+enum ChatModerationPolicy {
+  static func canModerate(_ message: BoardMessage, currentAppUserId: String?) -> Bool {
+    message.role == "user"
+      && message.authorUserId != nil
+      && message.authorUserId != currentAppUserId
+  }
+
+  static func hidingMessage(
+    id: String,
+    from messages: [BoardMessage]
+  ) -> [BoardMessage] {
+    hiding(messageIDs: [id], from: messages)
+  }
+
+  static func hidingMessages(
+    authoredBy userId: String,
+    from messages: [BoardMessage]
+  ) -> [BoardMessage] {
+    let hiddenIDs = Set(messages.filter { $0.authorUserId == userId }.map(\.id))
+    return hiding(messageIDs: hiddenIDs, from: messages)
+  }
+
+  private static func hiding(
+    messageIDs: Set<String>,
+    from messages: [BoardMessage]
+  ) -> [BoardMessage] {
+    messages
+      .filter { !messageIDs.contains($0.id) }
+      .map { message in
+        var visible = message
+        if let replyToMessageId = visible.replyToMessageId,
+           messageIDs.contains(replyToMessageId) {
+          visible.replyToMessageId = nil
+        }
+        return visible
+      }
+  }
+}
+
 @Observable
 @MainActor
 final class AppModel {
@@ -344,6 +383,9 @@ final class AppModel {
   var inviteFeedback: String?
   var incomingLinkError: String?
   var boardFeedback: String?
+  var blockedUsers: [BlockedUser] = []
+  var blockedUsersError: String?
+  var isBlockedUsersLoading = false
   private(set) var boardExpenseLedger: BoardExpenseLedger?
   private(set) var boardExpenseLedgerBoardID: String?
   var advisorConfirmation: AdvisorConfirmation?
@@ -1222,6 +1264,7 @@ final class AppModel {
       BoardMessage(
         id: temporaryID,
         role: "user",
+        authorUserId: account?.id,
         authorName: account?.name ?? authSession?.displayName ?? "You",
         content: message,
         createdAt: ISO8601DateFormatter().string(from: Date()),
@@ -1299,6 +1342,115 @@ final class AppModel {
 
   func cancelChatReply() {
     replyToBoardMessageId = nil
+  }
+
+  func canModerateMessage(_ message: BoardMessage) -> Bool {
+    ChatModerationPolicy.canModerate(message, currentAppUserId: account?.id)
+  }
+
+  @discardableResult
+  func reportMessage(
+    _ message: BoardMessage,
+    reason: ContentReportReason,
+    details: String
+  ) async -> Bool {
+    guard canModerateMessage(message),
+          let session = authSession,
+          let boardId = board.id else {
+      boardError = "This message cannot be reported."
+      return false
+    }
+    do {
+      try await api.reportMessage(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        messageId: message.id,
+        reason: reason,
+        details: details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          ? nil
+          : details.trimmingCharacters(in: .whitespacesAndNewlines)
+      )
+      board.chatMessages = ChatModerationPolicy.hidingMessage(
+        id: message.id,
+        from: board.chatMessages
+      )
+      if replyToBoardMessageId == message.id { replyToBoardMessageId = nil }
+      storeCurrentBoardSnapshot()
+      boardFeedback = "Thanks. We review reports within 24 hours."
+      boardError = nil
+      persist()
+      return true
+    } catch {
+      boardError = readable(error)
+      return false
+    }
+  }
+
+  @discardableResult
+  func blockUser(from message: BoardMessage) async -> Bool {
+    guard canModerateMessage(message),
+          let blockedUserId = message.authorUserId,
+          let session = authSession else {
+      boardError = "This user cannot be blocked."
+      return false
+    }
+    do {
+      try await api.blockUser(accessToken: session.accessToken, blockedUserId: blockedUserId)
+      board.chatMessages = ChatModerationPolicy.hidingMessages(
+        authoredBy: blockedUserId,
+        from: board.chatMessages
+      )
+      if let replyId = replyToBoardMessageId,
+         !board.chatMessages.contains(where: { $0.id == replyId }) {
+        replyToBoardMessageId = nil
+      }
+      if !blockedUsers.contains(where: { $0.userId == blockedUserId }) {
+        blockedUsers.insert(
+          BlockedUser(
+            userId: blockedUserId,
+            displayName: message.authorName ?? "Member",
+            blockedAt: ISO8601DateFormatter().string(from: Date())
+          ),
+          at: 0
+        )
+      }
+      storeCurrentBoardSnapshot()
+      boardFeedback = "\(message.authorName ?? "This member") is blocked."
+      boardError = nil
+      persist()
+      return true
+    } catch {
+      boardError = readable(error)
+      return false
+    }
+  }
+
+  func loadBlockedUsers() async {
+    guard let session = authSession else { return }
+    isBlockedUsersLoading = true
+    blockedUsersError = nil
+    defer { isBlockedUsersLoading = false }
+    do {
+      blockedUsers = try await api.listBlocks(accessToken: session.accessToken)
+    } catch {
+      blockedUsersError = readable(error)
+    }
+  }
+
+  func unblockUser(_ blockedUser: BlockedUser) async {
+    guard let session = authSession else { return }
+    do {
+      try await api.unblockUser(accessToken: session.accessToken, userId: blockedUser.userId)
+      blockedUsers.removeAll { $0.userId == blockedUser.userId }
+      if let boardId = board.id {
+        try await loadBoard(id: boardId)
+      }
+      boardFeedback = "\(blockedUser.displayName) is unblocked."
+      blockedUsersError = nil
+      persist()
+    } catch {
+      blockedUsersError = readable(error)
+    }
   }
 
   func regenerateAdvisorDraft(
