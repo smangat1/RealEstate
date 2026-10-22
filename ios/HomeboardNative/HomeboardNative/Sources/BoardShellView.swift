@@ -1126,7 +1126,7 @@ private struct ConversationView: View {
   private func boardMessageBubble(_ message: BoardMessage) -> some View {
     HStack {
       if message.role == "assistant" || message.role == "system" {
-        if appModel.isAdvisorFeatureEnabled && ChatReplySendPolicy.isAdvisorMessage(message) {
+        if appModel.isAdvisorFeatureEnabled && ChatReplySendPolicy.isAdvisorCard(message) {
           AdvisorCardView(message: message)
         } else {
           VStack(alignment: .leading, spacing: 8) {

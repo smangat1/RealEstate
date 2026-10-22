@@ -3188,7 +3188,7 @@ struct SharedUpdatesView: View {
         chatReplyQuote(replyID: replyID, replyingMessageID: message.id, scrollProxy: scrollProxy)
       }
 
-      if appModel.isAdvisorFeatureEnabled && ChatReplySendPolicy.isAdvisorMessage(message) {
+      if appModel.isAdvisorFeatureEnabled && ChatReplySendPolicy.isAdvisorCard(message) {
         AdvisorCardView(message: message)
       } else {
         SharedTimelineRow(
@@ -3639,7 +3639,7 @@ private struct SharedListingPollSheet: View {
             Text("Your response")
           } footer: {
             Text(decision == nil
-              ? "Your response starts the decision in Group. It stays open until every member responds."
+              ? "Your response starts the decision in Group. It stays open until every required member responds."
               : "Your response counts toward Resolved \(decision?.groupResolvedCount ?? 0)/\(decision?.groupRequiredCount ?? max(2, groupMemberCount)). You can change it later; no one can close this alone.")
           }
           .listRowBackground(HomeboardPalette.surface)

@@ -28,6 +28,11 @@ import {
 import { getBoardPageData } from "@/lib/board-data";
 import { findScamPriceWarnings } from "@/lib/listing-cost";
 import { prisma } from "@/lib/prisma";
+import {
+  loadAdvisorMemberAvailability,
+  selectAdvisorReminderRecipients,
+  selectRequiredAdvisorMembers,
+} from "@/lib/advisor-availability";
 
 function stateFingerprint(state: WatchedListingState) {
   return createHash("sha256").update(JSON.stringify(state)).digest("hex");
@@ -360,10 +365,15 @@ export async function runAdvisorProactiveBoard(
   });
   if (!board) return { baselinesCreated: 0, listingChangeMessages: 0, followUpDrafts: 0, negotiationFlags: 0, scamWarnings: 0, groupNags: 0 };
 
-  const recipientUserIds = Array.from(new Set([
-    board.userId,
-    ...board.members.map((member) => member.userId),
-  ]));
+  const availability = await loadAdvisorMemberAvailability(boardId, now);
+  const recipientUserIds = selectAdvisorReminderRecipients(
+    Array.from(new Set([
+      board.userId,
+      ...board.members.map((member) => member.userId),
+    ])).map((userId) => ({ userId })),
+    availability.byUserId,
+    now,
+  ).map((member) => member.userId);
 
   let baselinesCreated = 0;
   let listingChangeMessages = 0;
@@ -589,8 +599,12 @@ export async function runAdvisorProactiveBoard(
     includeSuggestedListings: false,
     includeCommutes: false,
   });
-  if (decisionData && decisionData.members.length > 1) {
-    const activeMemberIds = new Set(decisionData.members.map((member) => member.userId));
+  if (decisionData) {
+    const requiredMembers = selectRequiredAdvisorMembers(
+      decisionData.members,
+      decisionData.memberAvailabilityByUserId,
+      now,
+    );
     for (const boardListing of decisionData.boardListings) {
       const decisions = decisionData.listingDecisionsByBoardListingId[boardListing.id] ?? [];
       for (const decision of decisions) {
@@ -598,8 +612,7 @@ export async function runAdvisorProactiveBoard(
         const responded = new Set(decision.votes
           .map((vote) => vote.roommate.linkedUserId)
           .filter((userId): userId is string => Boolean(userId)));
-        const remaining = decisionData.members.filter((member) =>
-          activeMemberIds.has(member.userId) && !responded.has(member.userId));
+        const remaining = requiredMembers.filter((member) => !responded.has(member.userId));
         if (remaining.length === 0) continue;
         const label = listingLabel(boardListing.listing);
         const names = remaining.map((member) => member.user.displayName).sort();
