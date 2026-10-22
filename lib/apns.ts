@@ -269,15 +269,26 @@ export async function notifyBoardChat(input: {
   authorName: string;
   content: string;
 }) {
-  const board = await prisma.searchBoard.findUnique({
-    where: { id: input.boardId },
-    select: { title: true },
-  });
+  const [board, blocks] = await Promise.all([
+    prisma.searchBoard.findUnique({
+      where: { id: input.boardId },
+      select: { title: true },
+    }),
+    input.authorUserId
+      ? prisma.userBlock.findMany({
+        where: { blockedUserId: input.authorUserId },
+        select: { blockerUserId: true },
+      })
+      : Promise.resolve([]),
+  ]);
   return notifyBoardMembers({
     boardId: input.boardId,
     type: "board_chat",
     title: `${input.authorName} in ${board?.title ?? "Homeboard"}`,
     body: input.content,
-    excludeUserIds: input.authorUserId ? [input.authorUserId] : [],
+    excludeUserIds: [
+      ...(input.authorUserId ? [input.authorUserId] : []),
+      ...blocks.map((block) => block.blockerUserId),
+    ],
   });
 }

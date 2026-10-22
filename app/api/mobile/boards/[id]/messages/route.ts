@@ -9,7 +9,7 @@ import { normalizeAdvisorTone, runAdvisorEngine } from "@/lib/advisor-engine";
 import { loadAdvisorDraftFeedback, settledAdvisorFeedback } from "@/lib/advisor-memory";
 import { stageAdvisorPreferenceProposal } from "@/lib/advisor-preference-service";
 import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
-import { getBoardPageData, sendChat } from "@/lib/board-data";
+import { COMMUNITY_RULES_MESSAGE, getBoardPageData, sendChat } from "@/lib/board-data";
 import {
   InvalidChatReplyTargetError,
   routeChatReply,
@@ -22,6 +22,7 @@ import { notifyBoardChat } from "@/lib/apns";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { preferenceCandidateSchema } from "@/lib/preference-candidate";
 import { prisma } from "@/lib/prisma";
+import { checkObjectionableText } from "@/lib/content-filter";
 
 const schema = z.object({
   content: z.string().trim().min(1).max(4000),
@@ -70,6 +71,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (!parsed.success) return NextResponse.json({ error: "Message cannot be empty." }, { status: 400 });
     const boardData = await getBoardPageData(id, user.id);
     if (!boardData) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+    if (checkObjectionableText(parsed.data.content).isObjectionable) {
+      return NextResponse.json({ error: COMMUNITY_RULES_MESSAGE }, { status: 400 });
+    }
     const rawReplyTarget = parsed.data.replyToMessageId
       ? await prisma.chatMessage.findUnique({
         where: { id: parsed.data.replyToMessageId },

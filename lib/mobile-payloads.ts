@@ -156,6 +156,7 @@ export type MobileBoardPayload = {
   chatMessages: {
     id: string;
     role: "user" | "assistant" | "system";
+    authorUserId: string | null;
     authorName: string | null;
     content: string;
     createdAt: string;
@@ -656,6 +657,7 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
     chatMessages: data.messages.map((message) => ({
       id: message.id,
       role: message.role,
+      authorUserId: message.authorUserId,
       authorName: message.authorName,
       content: message.content,
       createdAt: message.createdAt,

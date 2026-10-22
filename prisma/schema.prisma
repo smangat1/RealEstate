@@ -232,31 +232,35 @@ enum AdvisorPreferenceProposalStatus {
 }
 
 model User {
-  id                        String                          @id @default(cuid())
-  authUserId                String?                         @unique
-  email                     String?                         @unique
-  displayName               String
-  isDemoAccount             Boolean                         @default(false)
-  workAddress               String?
-  secondaryWorkAddress      String?
-  createdAt                 DateTime                        @default(now())
-  updatedAt                 DateTime                        @updatedAt
-  searchBoards              SearchBoard[]
-  roommateProfiles          RoommateProfile[]
-  memberships               BoardMember[]
-  invitationsSent           BoardInvitation[]               @relation("InvitationsSent")
-  pushDevices               PushDevice[]
-  devicePairings            DevicePairing[]
-  catalogSourceAttestations CatalogSourceAttestation[]
-  catalogSourceReports      CatalogSourceReport[]
-  catalogSourcesVerified    CatalogListingSource[]          @relation("CatalogSourceVerifiedBy")
-  walletLedgers             BoardWalletLedger[]
-  advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
-  brokerOutreachRecords     BrokerOutreachRecord[]
-  boardExpensesPaid         BoardExpense[]
+  id                            String                          @id @default(cuid())
+  authUserId                    String?                         @unique
+  email                         String?                         @unique
+  displayName                   String
+  isDemoAccount                 Boolean                         @default(false)
+  workAddress                   String?
+  secondaryWorkAddress          String?
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @updatedAt
+  searchBoards                  SearchBoard[]
+  roommateProfiles              RoommateProfile[]
+  memberships                   BoardMember[]
+  invitationsSent               BoardInvitation[]               @relation("InvitationsSent")
+  pushDevices                   PushDevice[]
+  devicePairings                DevicePairing[]
+  catalogSourceAttestations     CatalogSourceAttestation[]
+  catalogSourceReports          CatalogSourceReport[]
+  catalogSourcesVerified        CatalogListingSource[]          @relation("CatalogSourceVerifiedBy")
+  walletLedgers                 BoardWalletLedger[]
+  advisorFinancialProfiles      AdvisorMemberFinancialProfile[]
+  brokerOutreachRecords         BrokerOutreachRecord[]
+  boardExpensesPaid             BoardExpense[]
   boardNotificationPreferences  BoardNotificationPreference[]
   advisorNotificationDeliveries AdvisorNotificationDelivery[]
-  advisorFeedback              AdvisorFeedback[]
+  advisorFeedback               AdvisorFeedback[]
+  blocksInitiated               UserBlock[]                     @relation("UserBlocksInitiated")
+  blocksReceived                UserBlock[]                     @relation("UserBlocksReceived")
+  contentReportsSubmitted       ContentReport[]                 @relation("ContentReportsSubmitted")
+  contentReportsReceived        ContentReport[]                 @relation("ContentReportsReceived")
 }
 
 model DevicePairing {
@@ -281,32 +285,33 @@ model DevicePairing {
 }
 
 model SearchBoard {
-  id                        String                          @id @default(cuid())
-  userId                    String
-  creationRequestId         String?                         @unique
-  title                     String
-  createdAt                 DateTime                        @default(now())
-  updatedAt                 DateTime                        @updatedAt
-  user                      User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  searchProfile             SearchProfile?
-  roommates                 RoommateProfile[]
-  boardListings             BoardListing[]
-  chatMessages              ChatMessage[]
-  boardEvents               BoardEvent[]
-  members                   BoardMember[]
-  invitations               BoardInvitation[]
-  catalogSourceAttestations CatalogSourceAttestation[]
-  catalogSourceReports      CatalogSourceReport[]
-  walletLedgers             BoardWalletLedger[]
-  advisorSubscription       AdvisorSubscription?
-  advisorFinancialProfiles  AdvisorMemberFinancialProfile[]
-  advisorActions            AdvisorAction[]
-  expenses                  BoardExpense[]
+  id                         String                          @id @default(cuid())
+  userId                     String
+  creationRequestId          String?                         @unique
+  title                      String
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+  user                       User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  searchProfile              SearchProfile?
+  roommates                  RoommateProfile[]
+  boardListings              BoardListing[]
+  chatMessages               ChatMessage[]
+  boardEvents                BoardEvent[]
+  members                    BoardMember[]
+  invitations                BoardInvitation[]
+  catalogSourceAttestations  CatalogSourceAttestation[]
+  catalogSourceReports       CatalogSourceReport[]
+  walletLedgers              BoardWalletLedger[]
+  advisorSubscription        AdvisorSubscription?
+  advisorFinancialProfiles   AdvisorMemberFinancialProfile[]
+  advisorActions             AdvisorAction[]
+  expenses                   BoardExpense[]
   advisorPreferenceProposals AdvisorPreferenceProposal[]
   notificationPreferences    BoardNotificationPreference[]
   advisorNotificationEvents  AdvisorNotificationEvent[]
   advisorFeedback            AdvisorFeedback[]
   chatMessageReplies         ChatMessageReply[]
+  contentReports             ContentReport[]
 
   @@index([userId])
 }
@@ -586,8 +591,41 @@ model ChatMessage {
   advisorPayload AdvisorMessagePayload?
   replyLink      ChatMessageReply?      @relation("ChatMessageReplySource")
   replyChildren  ChatMessageReply[]     @relation("ChatMessageReplyTarget")
+  contentReports ContentReport[]
 
   @@index([boardId, createdAt])
+}
+
+model UserBlock {
+  blockerUserId String
+  blockedUserId String
+  createdAt     DateTime @default(now())
+  blocker       User     @relation("UserBlocksInitiated", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blocked       User     @relation("UserBlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@id([blockerUserId, blockedUserId])
+  @@index([blockedUserId])
+}
+
+model ContentReport {
+  id              String       @id @default(cuid())
+  boardId         String
+  messageId       String?
+  reportedUserId  String?
+  reporterUserId  String
+  reason          String
+  details         String
+  contentSnapshot String
+  status          String       @default("open")
+  createdAt       DateTime     @default(now())
+  resolvedAt      DateTime?
+  board           SearchBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  message         ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  reportedUser    User?        @relation("ContentReportsReceived", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  reporter        User         @relation("ContentReportsSubmitted", fields: [reporterUserId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterUserId, messageId])
+  @@index([status, createdAt])
 }
 
 model ChatMessageReply {
@@ -604,45 +642,45 @@ model ChatMessageReply {
 }
 
 model RoommateProfile {
-  id                        String                     @id @default(cuid())
-  boardId                   String
-  linkedUserId              String?
-  name                      String
-  roleLabel                 String
-  budgetMin                 Int?
-  idealBudget               Int?
-  budgetMax                 Int?
-  stretchBudget             Int?
-  commuteDestination        String?
-  commuteAccess             String?
-  preferredCommuteMinutes   Int?
-  maxCommuteMinutes         Int?
-  commutePriority           RoommatePriority
-  neighborhoodPriority      RoommatePriority
-  spacePriority             RoommatePriority
-  privacyPriority           RoommatePriority
-  preferredNeighborhoods    String?
-  mustHaves                 String?
-  dealbreakers              String?
-  petsRequired              Boolean?
-  accessibilityNeeds        String?
-  preferenceSignals         Json                       @default("{}")
-  tourAvailability          Json                       @default("[]")
-  notes                     String?
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @updatedAt
-  board                     SearchBoard                @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  linkedUser                User?                      @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
-  listingVotes              BoardListingVote[]
-  listingComments           BoardListingComment[]
-  listingRatings            BoardListingRating[]
-  listingSourcesAdded       BoardListingSource[]
-  catalogSourceAttestations CatalogSourceAttestation[]
-  catalogSourceReports      CatalogSourceReport[]
-  listingVerifications      BoardListingVerification[]
-  listingReviews            BoardListingReview[]
-  listingDecisionsCreated   BoardListingDecision[]
-  listingDecisionVotes      BoardListingDecisionVote[]
+  id                         String                      @id @default(cuid())
+  boardId                    String
+  linkedUserId               String?
+  name                       String
+  roleLabel                  String
+  budgetMin                  Int?
+  idealBudget                Int?
+  budgetMax                  Int?
+  stretchBudget              Int?
+  commuteDestination         String?
+  commuteAccess              String?
+  preferredCommuteMinutes    Int?
+  maxCommuteMinutes          Int?
+  commutePriority            RoommatePriority
+  neighborhoodPriority       RoommatePriority
+  spacePriority              RoommatePriority
+  privacyPriority            RoommatePriority
+  preferredNeighborhoods     String?
+  mustHaves                  String?
+  dealbreakers               String?
+  petsRequired               Boolean?
+  accessibilityNeeds         String?
+  preferenceSignals          Json                        @default("{}")
+  tourAvailability           Json                        @default("[]")
+  notes                      String?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  board                      SearchBoard                 @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  linkedUser                 User?                       @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
+  listingVotes               BoardListingVote[]
+  listingComments            BoardListingComment[]
+  listingRatings             BoardListingRating[]
+  listingSourcesAdded        BoardListingSource[]
+  catalogSourceAttestations  CatalogSourceAttestation[]
+  catalogSourceReports       CatalogSourceReport[]
+  listingVerifications       BoardListingVerification[]
+  listingReviews             BoardListingReview[]
+  listingDecisionsCreated    BoardListingDecision[]
+  listingDecisionVotes       BoardListingDecisionVote[]
   advisorPreferenceProposals AdvisorPreferenceProposal[]
 
   @@index([boardId, createdAt])
@@ -987,23 +1025,23 @@ model AdvisorNotificationEvent {
 }
 
 model AdvisorNotificationDelivery {
-  id           String                   @id @default(cuid())
-  eventId      String
-  userId       String
-  status       String                   @default("pending")
-  leaseUntil   DateTime?
-  leaseToken   String?
-  deliveredAt  DateTime?
-  suppressedAt DateTime?
-  failedAt     DateTime?
-  attemptCount Int                      @default(0)
-  lastAttemptAt DateTime?
+  id              String                   @id @default(cuid())
+  eventId         String
+  userId          String
+  status          String                   @default("pending")
+  leaseUntil      DateTime?
+  leaseToken      String?
+  deliveredAt     DateTime?
+  suppressedAt    DateTime?
+  failedAt        DateTime?
+  attemptCount    Int                      @default(0)
+  lastAttemptAt   DateTime?
   deliveryOutcome String?
-  failureReason String?
-  createdAt    DateTime                 @default(now())
-  updatedAt    DateTime                 @updatedAt
-  event        AdvisorNotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  failureReason   String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  event           AdvisorNotificationEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, userId])
   @@index([status, leaseUntil, createdAt])
@@ -1026,15 +1064,15 @@ model BoardWalletLedger {
 }
 
 model AdvisorSubscription {
-  id                    String      @id @default(cuid())
-  boardId               String      @unique
-  validUntil            DateTime?
-  isActive              Boolean     @default(false)
-  proactiveCheckedAt    DateTime?
-  proactiveLeaseUntil   DateTime?
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
-  board                 SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  id                  String      @id @default(cuid())
+  boardId             String      @unique
+  validUntil          DateTime?
+  isActive            Boolean     @default(false)
+  proactiveCheckedAt  DateTime?
+  proactiveLeaseUntil DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  board               SearchBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
   @@index([validUntil, proactiveCheckedAt])
   @@index([proactiveLeaseUntil])
