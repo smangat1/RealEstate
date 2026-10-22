@@ -93,7 +93,7 @@ test("mobile mutation routes expose no unilateral close or resolve action", () =
 });
 
 test("group decision payload and native UI report response progress", () => {
-  assert.match(payloadSource, /resolvedCount: seenUserIds\.size/);
+  assert.match(payloadSource, /resolvedCount: requiredMembers\.filter/);
   assert.match(payloadSource, /requiredCount: decisionRequiredCount/);
   assert.match(payloadSource, /remainingMemberNames:/);
 
@@ -102,7 +102,7 @@ test("group decision payload and native UI report response progress", () => {
     workspaceSource.indexOf("struct SharedSetupView"),
   );
   assert.match(sharedDecisionFlow, /Resolved .*groupResolvedCount.*groupRequiredCount/);
-  assert.match(sharedDecisionFlow, /Everyone must respond|every member responds|no one can close this alone/i);
+  assert.match(sharedDecisionFlow, /every required member responds|no one can close this alone/i);
   assert.doesNotMatch(sharedDecisionFlow, /Close poll|Resolve decision|Ask the group/);
   assert.match(shellSource, /Label\("Group", systemImage: "bubble\.left\.and\.bubble\.right\.fill"\)/);
 });

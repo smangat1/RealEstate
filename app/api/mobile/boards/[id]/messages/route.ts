@@ -5,7 +5,8 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { assertThrottle, isThrottleError } from "@/lib/action-throttle";
-import { normalizeAdvisorTone, runAdvisorEngine } from "@/lib/advisor-engine";
+import { normalizeAdvisorTone, parseAdvisorCommand, runAdvisorEngine } from "@/lib/advisor-engine";
+import { setAdvisorMemberAvailability } from "@/lib/advisor-availability";
 import { loadAdvisorDraftFeedback, settledAdvisorFeedback } from "@/lib/advisor-memory";
 import { stageAdvisorPreferenceProposal } from "@/lib/advisor-preference-service";
 import { hasAdvisorTestAccess } from "@/lib/advisor-test-access";
@@ -106,6 +107,90 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const explicitAdvisorMessage = /^@advisor\b/i.test(parsed.data.content);
     const replyRouting = routeChatReply(parsed.data.content, replyTarget);
     const advisorMessage = explicitAdvisorMessage || replyRouting.isImplicitAdvisorRequest;
+
+    const availabilityCommand = explicitAdvisorMessage
+      ? parseAdvisorCommand(parsed.data.content).availabilityCommand
+      : null;
+    if (availabilityCommand) {
+      if (availabilityCommand.error) {
+        return NextResponse.json({ error: availabilityCommand.error }, { status: 400 });
+      }
+      const now = new Date();
+      const availability = await setAdvisorMemberAvailability({
+        boardId: id,
+        userId: user.id,
+        state: availabilityCommand.state,
+        awayUntil: availabilityCommand.awayUntil,
+        now,
+      });
+      const messageId = randomUUID();
+      const userMessageId = parsed.data.messageId ?? randomUUID();
+      const assistantContent = !availability.available
+        ? "Member availability is not available yet. You are still active."
+        : availability.state === "away"
+          ? `${user.displayName} is away.`
+          : availability.state === "ride_along"
+            ? `${user.displayName} is along for the ride.`
+            : `${user.displayName} is active again.`;
+      const payload = {
+        schemaVersion: 1,
+        type: "member_availability_confirmation",
+        messageId,
+        available: availability.available,
+        state: availability.state,
+        title: "Member availability",
+        summary: assistantContent,
+      };
+      await prisma.$transaction([
+        prisma.chatMessage.create({
+          data: {
+            id: userMessageId,
+            boardId: id,
+            role: "user",
+            authorUserId: user.id,
+            authorName: user.displayName,
+            content: parsed.data.content,
+          },
+        }),
+        prisma.boardEvent.create({
+          data: {
+            boardId: id,
+            actorType: "roommate",
+            actorName: user.displayName,
+            eventType: "chat_message",
+            content: `${user.displayName} said: ${parsed.data.content}`,
+          },
+        }),
+        prisma.chatMessage.create({
+          data: {
+            id: messageId,
+            boardId: id,
+            role: "assistant",
+            authorName: "Advisor",
+            content: assistantContent,
+            advisorPayload: { create: { payload: payload as unknown as Prisma.InputJsonValue } },
+          },
+        }),
+        prisma.boardEvent.create({
+          data: {
+            boardId: id,
+            actorType: "assistant",
+            actorName: "Advisor",
+            eventType: "member_availability_changed",
+            content: assistantContent,
+          },
+        }),
+        prisma.searchBoard.update({ where: { id }, data: { updatedAt: now } }),
+      ]);
+      const next = await getBoardPageData(id, user.id);
+      if (!next) return NextResponse.json({ error: "Board not found." }, { status: 404 });
+      return NextResponse.json({
+        board: buildMobileBoardPayload(next),
+        profile: next.profile,
+        missingFields: next.missingFields,
+        advisorPayload: payload,
+      });
+    }
 
     if (parsed.data.preferenceCandidate) {
       if (advisorMessage

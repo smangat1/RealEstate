@@ -5,6 +5,7 @@ import { getProfileCompletion } from "@/lib/rental-logic";
 import { allocateRentFairly } from "@/lib/group-affordability";
 import { pendingBoardQuestions } from "@/lib/board-decisions";
 import { calculateListingMonthlyCost, findScamPriceWarnings } from "@/lib/listing-cost";
+import { selectRequiredAdvisorMembers } from "@/lib/advisor-availability";
 
 export type MobileMemberCardPayload = {
   id: string;
@@ -540,7 +541,12 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
     (roommate) => roommate.roleLabel !== "commute point",
   );
   const decisionMemberIds = new Set(data.members.map((member) => member.userId));
-  const decisionRequiredCount = Math.max(2, data.members.length);
+  const requiredMembers = selectRequiredAdvisorMembers(
+    data.members,
+    data.memberAvailabilityByUserId,
+  );
+  const requiredMemberIds = new Set(requiredMembers.map((member) => member.userId));
+  const decisionRequiredCount = requiredMembers.length;
 
   const ranked = data.boardListings
     .filter((entry) => entry.userStatus !== "rejected" && entry.workflowStatus !== "decided")
@@ -560,9 +566,14 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
   const firstHardFailure = activeListings.find(
     (entry) => (data.listingAnalysisByBoardListingId[entry.id]?.hardFailureCount ?? 0) > 0,
   );
-  const firstReviewPending = activeListings.find(
-    (entry) => (data.listingReviewsByBoardListingId[entry.id] ?? []).length < householdRoommates.length,
-  );
+  const requiredHouseholdRoommates = householdRoommates.filter((roommate) =>
+    !roommate.linkedUserId || requiredMemberIds.has(roommate.linkedUserId));
+  const firstReviewPending = activeListings.find((entry) => {
+    const reviewedRoommateIds = new Set(
+      (data.listingReviewsByBoardListingId[entry.id] ?? []).map((review) => review.roommateId),
+    );
+    return requiredHouseholdRoommates.some((roommate) => !reviewedRoommateIds.has(roommate.id));
+  });
   const listingLabel = (entry: (typeof activeListings)[number]) =>
     entry.listing.address || entry.listing.neighborhood || "the leading listing";
   const recentlyDeleted: MobileListingPreviewPayload[] = data.recentlyDeletedBoardListings.map((entry) => ({
@@ -859,9 +870,9 @@ export function buildMobileBoardPayload(data: BoardPageData): MobileBoardPayload
               id: decision.id,
               type: decision.type,
               closedAt: decision.closedAt,
-              resolvedCount: seenUserIds.size,
+              resolvedCount: requiredMembers.filter((member) => seenUserIds.has(member.userId)).length,
               requiredCount: decisionRequiredCount,
-              remainingMemberNames: data.members
+              remainingMemberNames: requiredMembers
                 .filter((member) => !seenUserIds.has(member.userId))
                 .map((member) => member.user.displayName),
               votes: votes.map((vote) => ({

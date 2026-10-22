@@ -26,6 +26,10 @@ import {
 import { isAdvisorPushEnabled } from "@/lib/advisor-push";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { prisma } from "@/lib/prisma";
+import {
+  effectiveAdvisorAvailabilityState,
+  loadAdvisorMemberAvailability,
+} from "@/lib/advisor-availability";
 
 const DELIVERY_LEASE_MS = 5 * 60 * 1_000;
 const UNCERTAIN_RETRY_MS = 15 * 60 * 1_000;
@@ -280,11 +284,13 @@ export async function deliverUrgentAdvisorNotification(fingerprint: string, now 
   if (!event?.urgent) return 0;
 
   const members = currentMemberIds(event.board);
+  const availability = await loadAdvisorMemberAvailability(event.boardId, now);
   let delivered = 0;
   for (const delivery of event.deliveries) {
     const claim = await claimDeliveries([delivery.id], now);
     if (claim.ids.length === 0) continue;
-    if (!members.has(delivery.userId)) {
+    if (!members.has(delivery.userId)
+        || effectiveAdvisorAvailabilityState(availability.byUserId[delivery.userId], now) === "away") {
       await finishDeliveries({ ...claim, now, status: "suppressed" });
       continue;
     }
@@ -425,7 +431,9 @@ export async function flushDueAdvisorDigests(now = new Date()) {
       await releasePreference({ preference, token: preferenceToken });
       continue;
     }
-    const member = currentMemberIds(board).has(preference.userId);
+    const availability = await loadAdvisorMemberAvailability(preference.boardId, now);
+    const member = currentMemberIds(board).has(preference.userId)
+      && effectiveAdvisorAvailabilityState(availability.byUserId[preference.userId], now) !== "away";
     const plan = planAdvisorDelivery({
       urgent: false,
       isCurrentMember: member,
