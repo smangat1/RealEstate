@@ -1,6 +1,82 @@
 import Foundation
 import Observation
 import Security
+import AuthenticationServices
+import UIKit
+
+private enum AppleAccountDeletionAuthorizationError: LocalizedError {
+  case requestInProgress
+  case missingAuthorizationCode
+
+  var errorDescription: String? {
+    switch self {
+    case .requestInProgress:
+      return "Apple confirmation is already in progress."
+    case .missingAuthorizationCode:
+      return "Apple did not return a usable confirmation code."
+    }
+  }
+}
+
+@MainActor
+private final class AppleAccountDeletionAuthorizer: NSObject,
+  ASAuthorizationControllerDelegate,
+  ASAuthorizationControllerPresentationContextProviding {
+  private var continuation: CheckedContinuation<String, Error>?
+  private var controller: ASAuthorizationController?
+
+  func requestAuthorizationCode() async throws -> String {
+    guard continuation == nil else {
+      throw AppleAccountDeletionAuthorizationError.requestInProgress
+    }
+    return try await withCheckedThrowingContinuation { continuation in
+      self.continuation = continuation
+      let request = ASAuthorizationAppleIDProvider().createRequest()
+      request.requestedScopes = []
+      let controller = ASAuthorizationController(authorizationRequests: [request])
+      self.controller = controller
+      controller.delegate = self
+      controller.presentationContextProvider = self
+      controller.performRequests()
+    }
+  }
+
+  func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first { $0.isKeyWindow }
+      ?? ASPresentationAnchor()
+  }
+
+  func authorizationController(
+    controller: ASAuthorizationController,
+    didCompleteWithAuthorization authorization: ASAuthorization
+  ) {
+    guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+          let codeData = credential.authorizationCode,
+          let code = String(data: codeData, encoding: .utf8),
+          !code.isEmpty else {
+      finish(.failure(AppleAccountDeletionAuthorizationError.missingAuthorizationCode))
+      return
+    }
+    finish(.success(code))
+  }
+
+  func authorizationController(
+    controller: ASAuthorizationController,
+    didCompleteWithError error: Error
+  ) {
+    finish(.failure(error))
+  }
+
+  private func finish(_ result: Result<String, Error>) {
+    let continuation = continuation
+    self.continuation = nil
+    controller = nil
+    continuation?.resume(with: result)
+  }
+}
 
 private func normalizedInviteToken(from rawValue: String) -> String {
   let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -188,6 +264,7 @@ final class AppModel {
   @ObservationIgnored private let api: HomeboardAPI
   @ObservationIgnored private let advisorOutcomeMemory: AdvisorOutcomeMemory
   @ObservationIgnored private let advisorSensitiveStore: AdvisorSensitiveStore
+  @ObservationIgnored private let appleAccountDeletionAuthorizer = AppleAccountDeletionAuthorizer()
   @ObservationIgnored let isAdvisorFeatureEnabled: Bool
   let commuteService: HomeboardCommuteService
   @ObservationIgnored private var didBootstrap = false
@@ -2134,7 +2211,25 @@ final class AppModel {
     guard let session = authSession else { return }
     Task {
       do {
-        try await api.deleteAccount(accessToken: session.accessToken)
+        var authorizationCode: String?
+        if session.authProvider == "apple" {
+          do {
+            authorizationCode = try await appleAccountDeletionAuthorizer.requestAuthorizationCode()
+          } catch let error as ASAuthorizationError where error.code == .canceled {
+            boardError = "Account deletion was canceled because Apple confirmation was canceled."
+            persist()
+            return
+          } catch {
+            // Account deletion must remain available even when Apple cannot
+            // issue a fresh authorization code. The server records the skipped
+            // revocation and continues deleting Homeboard data.
+            authorizationCode = nil
+          }
+        }
+        try await api.deleteAccount(
+          accessToken: session.accessToken,
+          appleAuthorizationCode: authorizationCode
+        )
         advisorOutcomeMemory.clear(userId: session.userId)
         advisorSensitiveStore.delete(userId: session.userId)
         commuteService.purgeAccount(session.userId)
@@ -2647,7 +2742,14 @@ final class AppModel {
       migrateLegacyAdvisorSensitiveProfileIfNeeded(for: session.userId)
     }
 
-    authSession = session
+    var resolvedSession = session
+    if response.user.authProviders?.contains("apple") == true {
+      resolvedSession.authProvider = "apple"
+    } else if resolvedSession.authProvider == nil {
+      resolvedSession.authProvider = response.user.authProviders?.first
+    }
+    authSession = resolvedSession
+    NativeAuthSessionStore.save(resolvedSession)
     restoredAuthUserID = session.userId
     account = LocalAccount(id: response.user.id, name: response.user.displayName, email: response.user.email)
     authenticatedMembershipState = response.membershipState

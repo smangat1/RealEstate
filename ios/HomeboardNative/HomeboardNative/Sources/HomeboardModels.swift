@@ -12,6 +12,7 @@ struct NativeAuthSession: Hashable, Codable {
   var userId: String
   var email: String
   var displayName: String
+  var authProvider: String? = nil
 }
 
 struct MacDevicePairingRequest: Identifiable, Hashable {

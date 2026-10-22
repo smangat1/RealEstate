@@ -557,6 +557,7 @@ struct RemoteUserPayload: Decodable {
   var id: String
   var email: String
   var displayName: String
+  var authProviders: [String]?
 }
 
 struct RemoteRentalProfilePayload: Decodable {
@@ -695,6 +696,10 @@ private struct MobileInvitationCreateRequest: Encodable {
 
 private struct MobileInvitationRevokeRequest: Encodable {
   var invitationId: String
+}
+
+private struct MobileAccountDeletionRequest: Encodable {
+  var appleAuthorizationCode: String?
 }
 
 private struct MacDevicePairingApprovalRequest: Encodable {
@@ -844,9 +849,10 @@ final class HomeboardAPI {
       method: "POST",
       body: AppleIDTokenRequestBody(id_token: identityToken, nonce: nonce)
     )
-    guard let session = sessionFromAuthResponse(response) else {
+    guard var session = sessionFromAuthResponse(response) else {
       throw HomeboardAPIError.invalidResponse
     }
+    session.authProvider = "apple"
     return session
   }
 
@@ -860,7 +866,9 @@ final class HomeboardAPI {
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.httpBody = try encoder.encode(ReviewSessionRequestBody(inviteCode: inviteCode))
     request.timeoutInterval = 12
-    return try await perform(request)
+    var session: NativeAuthSession = try await perform(request)
+    session.authProvider = "review"
+    return session
   }
 
   func updateDisplayName(accessToken: String, displayName: String) async throws {
@@ -1856,12 +1864,15 @@ final class HomeboardAPI {
     )
   }
 
-  func deleteAccount(accessToken: String) async throws {
+  func deleteAccount(
+    accessToken: String,
+    appleAuthorizationCode: String? = nil
+  ) async throws {
     let _: EmptyResponse = try await requestBackend(
       path: "/api/mobile/account",
       method: "DELETE",
       accessToken: accessToken,
-      body: EmptyRequestBody()
+      body: MobileAccountDeletionRequest(appleAuthorizationCode: appleAuthorizationCode)
     )
   }
 

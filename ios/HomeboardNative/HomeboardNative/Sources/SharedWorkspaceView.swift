@@ -4079,7 +4079,7 @@ struct SharedSetupView: View {
       Button("Delete account permanently", role: .destructive) { appModel.deleteAccount() }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("This removes your account, owned boards, memberships, saved listings, and shared profile data. This cannot be undone.")
+      Text("This removes your account, owned boards, memberships, saved listings, and shared profile data. This cannot be undone. You'll be asked to confirm with Apple so we can disconnect Homeboard from your Apple ID.")
     }
   }
 
