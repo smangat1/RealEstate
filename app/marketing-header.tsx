@@ -26,6 +26,8 @@ export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
         <Link href="/?slide=product#product">Product</Link>
         <Link href="/safari">Safari for Mac</Link>
         <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Community rules</Link>
+        <Link href="/support">Support</Link>
         <Link href="/contact">Contact</Link>
       </nav>
       <details className={styles.mobileMenu} ref={mobileMenuRef}>
@@ -34,6 +36,8 @@ export function MarketingHeader({ mobilePage = 0 }: { mobilePage?: number }) {
           <Link href="/?slide=product#product">Product</Link>
           <Link href="/safari">Safari for Mac</Link>
           <Link href="/privacy">Privacy</Link>
+          <Link href="/terms">Community rules</Link>
+          <Link href="/support">Support</Link>
           <Link href="/contact">Contact</Link>
         </nav>
       </details>

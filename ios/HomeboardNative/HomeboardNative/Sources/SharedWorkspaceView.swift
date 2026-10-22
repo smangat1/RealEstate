@@ -3820,6 +3820,7 @@ private struct SharedPollResults: View {
 struct SharedSetupView: View {
   @Environment(AppModel.self) private var appModel
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.openURL) private var openURL
   @State private var showsBriefEditor = false
   @State private var showsSafariSetup = false
   @State private var showsHelp = false
@@ -3921,6 +3922,26 @@ struct SharedSetupView: View {
 
             SharedSettingsRow(icon: "ladybug.fill", title: "Saw a bug?", subtitle: "Send the details and keep the tracking ID") {
               showsBugReport = true
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "hand.raised.fill", title: "Privacy policy", subtitle: "How Homeboard handles your data") {
+              openURL(HomeboardConfig.backendBaseURL.appending(path: "privacy"))
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "checkmark.shield.fill", title: "Community rules", subtitle: "Safety rules, reports, and account consequences") {
+              openURL(HomeboardConfig.backendBaseURL.appending(path: "terms"))
+            }
+
+            SharedDivider()
+
+            SharedSettingsRow(icon: "envelope.fill", title: "Contact support", subtitle: "support@joinhomeboard.com") {
+              if let url = URL(string: "mailto:support@joinhomeboard.com") {
+                openURL(url)
+              }
             }
 
           }
