@@ -1,6 +1,82 @@
 import Foundation
 import Observation
 import Security
+import AuthenticationServices
+import UIKit
+
+private enum AppleAccountDeletionAuthorizationError: LocalizedError {
+  case requestInProgress
+  case missingAuthorizationCode
+
+  var errorDescription: String? {
+    switch self {
+    case .requestInProgress:
+      return "Apple confirmation is already in progress."
+    case .missingAuthorizationCode:
+      return "Apple did not return a usable confirmation code."
+    }
+  }
+}
+
+@MainActor
+private final class AppleAccountDeletionAuthorizer: NSObject,
+  ASAuthorizationControllerDelegate,
+  ASAuthorizationControllerPresentationContextProviding {
+  private var continuation: CheckedContinuation<String, Error>?
+  private var controller: ASAuthorizationController?
+
+  func requestAuthorizationCode() async throws -> String {
+    guard continuation == nil else {
+      throw AppleAccountDeletionAuthorizationError.requestInProgress
+    }
+    return try await withCheckedThrowingContinuation { continuation in
+      self.continuation = continuation
+      let request = ASAuthorizationAppleIDProvider().createRequest()
+      request.requestedScopes = []
+      let controller = ASAuthorizationController(authorizationRequests: [request])
+      self.controller = controller
+      controller.delegate = self
+      controller.presentationContextProvider = self
+      controller.performRequests()
+    }
+  }
+
+  func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first { $0.isKeyWindow }
+      ?? ASPresentationAnchor()
+  }
+
+  func authorizationController(
+    controller: ASAuthorizationController,
+    didCompleteWithAuthorization authorization: ASAuthorization
+  ) {
+    guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+          let codeData = credential.authorizationCode,
+          let code = String(data: codeData, encoding: .utf8),
+          !code.isEmpty else {
+      finish(.failure(AppleAccountDeletionAuthorizationError.missingAuthorizationCode))
+      return
+    }
+    finish(.success(code))
+  }
+
+  func authorizationController(
+    controller: ASAuthorizationController,
+    didCompleteWithError error: Error
+  ) {
+    finish(.failure(error))
+  }
+
+  private func finish(_ result: Result<String, Error>) {
+    let continuation = continuation
+    self.continuation = nil
+    controller = nil
+    continuation?.resume(with: result)
+  }
+}
 
 private func normalizedInviteToken(from rawValue: String) -> String {
   let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,6 +136,45 @@ enum ChatReplySendPolicy {
       }
     }
     return messages.filter { !hiddenIDs.contains($0.id) }
+  }
+}
+
+enum ChatModerationPolicy {
+  static func canModerate(_ message: BoardMessage, currentAppUserId: String?) -> Bool {
+    message.role == "user"
+      && message.authorUserId != nil
+      && message.authorUserId != currentAppUserId
+  }
+
+  static func hidingMessage(
+    id: String,
+    from messages: [BoardMessage]
+  ) -> [BoardMessage] {
+    hiding(messageIDs: [id], from: messages)
+  }
+
+  static func hidingMessages(
+    authoredBy userId: String,
+    from messages: [BoardMessage]
+  ) -> [BoardMessage] {
+    let hiddenIDs = Set(messages.filter { $0.authorUserId == userId }.map(\.id))
+    return hiding(messageIDs: hiddenIDs, from: messages)
+  }
+
+  private static func hiding(
+    messageIDs: Set<String>,
+    from messages: [BoardMessage]
+  ) -> [BoardMessage] {
+    messages
+      .filter { !messageIDs.contains($0.id) }
+      .map { message in
+        var visible = message
+        if let replyToMessageId = visible.replyToMessageId,
+           messageIDs.contains(replyToMessageId) {
+          visible.replyToMessageId = nil
+        }
+        return visible
+      }
   }
 }
 
@@ -190,6 +305,7 @@ final class AppModel {
   @ObservationIgnored private let api: HomeboardAPI
   @ObservationIgnored private let advisorOutcomeMemory: AdvisorOutcomeMemory
   @ObservationIgnored private let advisorSensitiveStore: AdvisorSensitiveStore
+  @ObservationIgnored private let appleAccountDeletionAuthorizer = AppleAccountDeletionAuthorizer()
   @ObservationIgnored let isAdvisorFeatureEnabled: Bool
   let commuteService: HomeboardCommuteService
   @ObservationIgnored private var didBootstrap = false
@@ -269,6 +385,9 @@ final class AppModel {
   var inviteFeedback: String?
   var incomingLinkError: String?
   var boardFeedback: String?
+  var blockedUsers: [BlockedUser] = []
+  var blockedUsersError: String?
+  var isBlockedUsersLoading = false
   private(set) var boardExpenseLedger: BoardExpenseLedger?
   private(set) var boardExpenseLedgerBoardID: String?
   var advisorConfirmation: AdvisorConfirmation?
@@ -1147,6 +1266,7 @@ final class AppModel {
       BoardMessage(
         id: temporaryID,
         role: "user",
+        authorUserId: account?.id,
         authorName: account?.name ?? authSession?.displayName ?? "You",
         content: message,
         createdAt: ISO8601DateFormatter().string(from: Date()),
@@ -1224,6 +1344,115 @@ final class AppModel {
 
   func cancelChatReply() {
     replyToBoardMessageId = nil
+  }
+
+  func canModerateMessage(_ message: BoardMessage) -> Bool {
+    ChatModerationPolicy.canModerate(message, currentAppUserId: account?.id)
+  }
+
+  @discardableResult
+  func reportMessage(
+    _ message: BoardMessage,
+    reason: ContentReportReason,
+    details: String
+  ) async -> Bool {
+    guard canModerateMessage(message),
+          let session = authSession,
+          let boardId = board.id else {
+      boardError = "This message cannot be reported."
+      return false
+    }
+    do {
+      try await api.reportMessage(
+        accessToken: session.accessToken,
+        boardId: boardId,
+        messageId: message.id,
+        reason: reason,
+        details: details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          ? nil
+          : details.trimmingCharacters(in: .whitespacesAndNewlines)
+      )
+      board.chatMessages = ChatModerationPolicy.hidingMessage(
+        id: message.id,
+        from: board.chatMessages
+      )
+      if replyToBoardMessageId == message.id { replyToBoardMessageId = nil }
+      storeCurrentBoardSnapshot()
+      boardFeedback = "Thanks. We review reports within 24 hours."
+      boardError = nil
+      persist()
+      return true
+    } catch {
+      boardError = readable(error)
+      return false
+    }
+  }
+
+  @discardableResult
+  func blockUser(from message: BoardMessage) async -> Bool {
+    guard canModerateMessage(message),
+          let blockedUserId = message.authorUserId,
+          let session = authSession else {
+      boardError = "This user cannot be blocked."
+      return false
+    }
+    do {
+      try await api.blockUser(accessToken: session.accessToken, blockedUserId: blockedUserId)
+      board.chatMessages = ChatModerationPolicy.hidingMessages(
+        authoredBy: blockedUserId,
+        from: board.chatMessages
+      )
+      if let replyId = replyToBoardMessageId,
+         !board.chatMessages.contains(where: { $0.id == replyId }) {
+        replyToBoardMessageId = nil
+      }
+      if !blockedUsers.contains(where: { $0.userId == blockedUserId }) {
+        blockedUsers.insert(
+          BlockedUser(
+            userId: blockedUserId,
+            displayName: message.authorName ?? "Member",
+            blockedAt: ISO8601DateFormatter().string(from: Date())
+          ),
+          at: 0
+        )
+      }
+      storeCurrentBoardSnapshot()
+      boardFeedback = "\(message.authorName ?? "This member") is blocked."
+      boardError = nil
+      persist()
+      return true
+    } catch {
+      boardError = readable(error)
+      return false
+    }
+  }
+
+  func loadBlockedUsers() async {
+    guard let session = authSession else { return }
+    isBlockedUsersLoading = true
+    blockedUsersError = nil
+    defer { isBlockedUsersLoading = false }
+    do {
+      blockedUsers = try await api.listBlocks(accessToken: session.accessToken)
+    } catch {
+      blockedUsersError = readable(error)
+    }
+  }
+
+  func unblockUser(_ blockedUser: BlockedUser) async {
+    guard let session = authSession else { return }
+    do {
+      try await api.unblockUser(accessToken: session.accessToken, userId: blockedUser.userId)
+      blockedUsers.removeAll { $0.userId == blockedUser.userId }
+      if let boardId = board.id {
+        try await loadBoard(id: boardId)
+      }
+      boardFeedback = "\(blockedUser.displayName) is unblocked."
+      blockedUsersError = nil
+      persist()
+    } catch {
+      blockedUsersError = readable(error)
+    }
   }
 
   func regenerateAdvisorDraft(
@@ -2136,7 +2365,25 @@ final class AppModel {
     guard let session = authSession else { return }
     Task {
       do {
-        try await api.deleteAccount(accessToken: session.accessToken)
+        var authorizationCode: String?
+        if session.authProvider == "apple" {
+          do {
+            authorizationCode = try await appleAccountDeletionAuthorizer.requestAuthorizationCode()
+          } catch let error as ASAuthorizationError where error.code == .canceled {
+            boardError = "Account deletion was canceled because Apple confirmation was canceled."
+            persist()
+            return
+          } catch {
+            // Account deletion must remain available even when Apple cannot
+            // issue a fresh authorization code. The server records the skipped
+            // revocation and continues deleting Homeboard data.
+            authorizationCode = nil
+          }
+        }
+        try await api.deleteAccount(
+          accessToken: session.accessToken,
+          appleAuthorizationCode: authorizationCode
+        )
         advisorOutcomeMemory.clear(userId: session.userId)
         advisorSensitiveStore.delete(userId: session.userId)
         commuteService.purgeAccount(session.userId)
@@ -2649,7 +2896,14 @@ final class AppModel {
       migrateLegacyAdvisorSensitiveProfileIfNeeded(for: session.userId)
     }
 
-    authSession = session
+    var resolvedSession = session
+    if response.user.authProviders?.contains("apple") == true {
+      resolvedSession.authProvider = "apple"
+    } else if resolvedSession.authProvider == nil {
+      resolvedSession.authProvider = response.user.authProviders?.first
+    }
+    authSession = resolvedSession
+    NativeAuthSessionStore.save(resolvedSession)
     restoredAuthUserID = session.userId
     account = LocalAccount(id: response.user.id, name: response.user.displayName, email: response.user.email)
     authenticatedMembershipState = response.membershipState

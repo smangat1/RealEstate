@@ -1,17 +1,55 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import {
   deleteAccountApplicationData,
   deleteAccountListingImages,
   prepareAccountDeletion,
 } from "@/lib/account-deletion";
+import {
+  getAppleRevokeConfiguration,
+  revokeAppleAuthorizationCode,
+} from "@/lib/apple-revoke";
 import { requireMobileAppUser } from "@/lib/mobile-auth";
 import { sendOperationalAlert } from "@/lib/monitoring";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+const schema = z.object({
+  appleAuthorizationCode: z.string().trim().min(1).max(4_000).optional(),
+});
+
 export async function DELETE(request: Request) {
   try {
     const user = await requireMobileAppUser(request);
+    const parsed = schema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) return NextResponse.json({ error: "Invalid deletion request." }, { status: 400 });
+    let appleRevoked = false;
+    if (user.authProviders.includes("apple") && parsed.data.appleAuthorizationCode) {
+      const configuration = getAppleRevokeConfiguration();
+      if (!configuration) {
+        await sendOperationalAlert(new Error("Apple token revocation is not configured."), {
+          area: "mobile_api",
+          operation: "revoke_apple_token",
+          requestId: request.headers.get("x-homeboard-request-id"),
+          severity: "critical",
+        });
+      } else {
+        try {
+          await revokeAppleAuthorizationCode({
+            ...configuration,
+            authorizationCode: parsed.data.appleAuthorizationCode,
+          });
+          appleRevoked = true;
+        } catch {
+          await sendOperationalAlert(new Error("Apple token revocation failed."), {
+            area: "mobile_api",
+            operation: "revoke_apple_token",
+            requestId: request.headers.get("x-homeboard-request-id"),
+            severity: "critical",
+          });
+        }
+      }
+    }
     const plan = await prepareAccountDeletion(user.id);
     let authDeletionMarked = false;
     let applicationDataDeleted = false;
@@ -51,7 +89,7 @@ export async function DELETE(request: Request) {
         }
       }
 
-      return NextResponse.json({ ok: true, authCleanupPending });
+      return NextResponse.json({ ok: true, authCleanupPending, appleRevoked });
     } catch (error) {
       if (user.authUserId && authDeletionMarked && !applicationDataDeleted) {
         const { error: rollbackError } = await supabaseAdmin.auth.admin.updateUserById(

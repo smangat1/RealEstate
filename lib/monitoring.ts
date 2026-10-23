@@ -10,6 +10,7 @@ type MonitoringContext = {
   requestId?: string | null;
   severity?: Severity;
   captureError?: boolean;
+  metadata?: Record<string, string>;
 };
 
 const expectedErrors = new Set([
@@ -33,6 +34,16 @@ function sanitizedRequestId(value?: string | null) {
   return normalized || undefined;
 }
 
+function sanitizedMetadata(values?: Record<string, string>) {
+  if (!values) return undefined;
+  return Object.fromEntries(
+    Object.entries(values).slice(0, 12).map(([key, value]) => [
+      key.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64),
+      value.replace(/[\r\n]/g, " ").slice(0, 240),
+    ]),
+  );
+}
+
 export function captureServerError(error: unknown, context: MonitoringContext) {
   const normalized = asError(error);
   if (expectedErrors.has(normalized.message)) return null;
@@ -43,6 +54,8 @@ export function captureServerError(error: unknown, context: MonitoringContext) {
     scope.setTag("homeboard.area", context.area);
     scope.setTag("homeboard.operation", context.operation);
     if (requestId) scope.setTag("homeboard.request_id", requestId);
+    const metadata = sanitizedMetadata(context.metadata);
+    if (metadata) scope.setContext("homeboard.metadata", metadata);
     return Sentry.captureException(normalized);
   });
 }
@@ -54,6 +67,7 @@ export async function sendOperationalAlert(error: unknown, context: MonitoringCo
   const webhook = process.env.HOMEBOARD_ALERT_WEBHOOK_URL?.trim();
   if (!webhook) return;
   const requestId = sanitizedRequestId(context.requestId);
+  const metadata = sanitizedMetadata(context.metadata);
 
   try {
     await fetch(webhook, {
@@ -70,6 +84,7 @@ export async function sendOperationalAlert(error: unknown, context: MonitoringCo
         operation: context.operation,
         severity: context.severity || "error",
         message: sanitizedMessage(error),
+        metadata,
         requestId,
         occurredAt: new Date().toISOString(),
       }),

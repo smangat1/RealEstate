@@ -935,6 +935,14 @@ export default function HomeboardPage() {
                       >
                         Read Full Privacy Policy →
                       </Link>
+                      <span aria-hidden="true"> · </span>
+                      <Link href="/terms" style={{ fontSize: "11px", color: "#1a73e8", textDecoration: "underline" }}>
+                        Community Rules
+                      </Link>
+                      <span aria-hidden="true"> · </span>
+                      <Link href="/support" style={{ fontSize: "11px", color: "#1a73e8", textDecoration: "underline" }}>
+                        Support
+                      </Link>
                     </div>
 
                     {/* Pointer Triangle Caret */}
@@ -972,6 +980,15 @@ export default function HomeboardPage() {
                 >
                   privacy policy
                 </a>
+                <span style={{ marginLeft: "12px", whiteSpace: "nowrap" }}>
+                  <Link href="/terms" style={{ color: "#1a73e8", textDecoration: "underline" }}>
+                    community rules
+                  </Link>
+                  <span aria-hidden="true"> · </span>
+                  <Link href="/support" style={{ color: "#1a73e8", textDecoration: "underline" }}>
+                    support
+                  </Link>
+                </span>
               </div>
             </footer>
           </article>

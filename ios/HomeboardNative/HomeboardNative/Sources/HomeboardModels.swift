@@ -12,6 +12,7 @@ struct NativeAuthSession: Hashable, Codable {
   var userId: String
   var email: String
   var displayName: String
+  var authProvider: String? = nil
 }
 
 struct MacDevicePairingRequest: Identifiable, Hashable {
@@ -653,11 +654,40 @@ struct ListingDimensionRating: Identifiable, Hashable, Codable {
 struct BoardMessage: Identifiable, Hashable, Codable {
   var id: String
   var role: String
+  var authorUserId: String? = nil
   var authorName: String?
   var content: String
   var createdAt: String
   var replyToMessageId: String? = nil
   var advisorPayload: AdvisorMessagePayload? = nil
+}
+
+enum ContentReportReason: String, CaseIterable, Identifiable, Codable {
+  case spam
+  case harassment
+  case inappropriate
+  case threat
+  case other
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .spam: return "Spam"
+    case .harassment: return "Harassment"
+    case .inappropriate: return "Inappropriate content"
+    case .threat: return "Threat"
+    case .other: return "Other"
+    }
+  }
+}
+
+struct BlockedUser: Identifiable, Hashable, Codable {
+  var userId: String
+  var displayName: String
+  var blockedAt: String
+
+  var id: String { userId }
 }
 
 struct AdvisorMessagePayload: Hashable, Codable {

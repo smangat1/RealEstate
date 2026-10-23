@@ -879,7 +879,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -905,7 +905,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -954,7 +954,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -979,7 +979,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardShareExtension/HomeboardShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1063,7 +1063,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNative.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -1114,7 +1114,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardSafariExtension/HomeboardSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -1226,7 +1226,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardNative/HomeboardNativeDebug.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1255,7 +1255,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardActionExtension/HomeboardActionExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://joinhomeboard.com";
@@ -1283,7 +1283,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1330,7 +1330,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMac/HomeboardMacDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";
@@ -1353,7 +1353,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HomeboardActionExtension/HomeboardActionExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				ENABLE_DEBUG_DYLIB = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1381,7 +1381,7 @@
 				CODE_SIGN_ENTITLEMENTS = HomeboardMacSafariExtension/HomeboardMacSafariExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 4SSAVHCM6U;
 				GENERATE_INFOPLIST_FILE = NO;
 				HOMEBOARD_API_BASE_URL = "https://real-estate-samyanmangat-6662s-projects.vercel.app";

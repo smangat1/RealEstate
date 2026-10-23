@@ -50,6 +50,8 @@ import { analyzeListingForGroup } from "@/lib/listing-analysis";
 import { detectListingProvider, previewListingImport } from "@/lib/listing-sources";
 import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
 import { loadChatReplyLinks } from "@/lib/chat-replies";
+import { checkObjectionableText } from "@/lib/content-filter";
+import { filterVisibleChatMessages } from "@/lib/content-moderation";
 import { loadAdvisorMemberAvailability, selectRequiredAdvisorMembers } from "@/lib/advisor-availability";
 
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
@@ -60,6 +62,7 @@ import {
 
 const RECENTLY_DELETED_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 const DEMO_BOARD_INVITE_CODE = process.env.DEMO_BOARD_INVITE_CODE ?? "REVIEW2026";
+export const COMMUNITY_RULES_MESSAGE = "This message can't be sent because it may break the community rules.";
 
 function recentlyDeletedCutoff() {
   return new Date(Date.now() - RECENTLY_DELETED_RETENTION_MS);
@@ -1456,24 +1459,45 @@ export async function getBoardPageData(
     commuteTarget: groupSynthesis.commuteDestinations[0] ?? undefined,
   };
 
+  const [blocks, reports] = await Promise.all([
+    prisma.userBlock.findMany({
+      where: { blockerUserId: viewerUserId },
+      select: { blockedUserId: true },
+    }),
+    prisma.contentReport.findMany({
+      where: { reporterUserId: viewerUserId, boardId: board.id, messageId: { not: null } },
+      select: { messageId: true },
+    }),
+  ]);
   const orderedMessages = [...board.chatMessages].reverse();
+  const visibleMessages = filterVisibleChatMessages(
+    orderedMessages,
+    new Set(blocks.map((block) => block.blockedUserId)),
+    new Set(reports.flatMap((report) => report.messageId ? [report.messageId] : [])),
+  );
+  const visibleMessageIds = new Set(visibleMessages.map((message) => message.id));
   const replyLinks = await loadChatReplyLinks({
     boardId: board.id,
-    messageIds: orderedMessages.map((message) => message.id),
+    messageIds: visibleMessages.map((message) => message.id),
     query: (args) => prisma.chatMessageReply.findMany(args),
     diagnostic: (event) => console.info(`[Homeboard][ChatReply] ${event}`),
   });
-  const messages = orderedMessages.map((message) => ({
-    id: message.id,
-    boardId: message.boardId,
-    role: message.role,
-    authorUserId: message.authorUserId,
-    authorName: message.authorName,
-    content: message.content,
-    createdAt: message.createdAt.toISOString(),
-    replyToMessageId: replyLinks.get(message.id) ?? null,
-    advisorPayload: message.advisorPayload?.payload ?? null,
-  }));
+  const messages = visibleMessages.map((message) => {
+    const replyToMessageId = replyLinks.get(message.id) ?? null;
+    return {
+      id: message.id,
+      boardId: message.boardId,
+      role: message.role,
+      authorUserId: message.authorUserId,
+      authorName: message.authorName,
+      content: message.content,
+      createdAt: message.createdAt.toISOString(),
+      replyToMessageId: replyToMessageId && visibleMessageIds.has(replyToMessageId)
+        ? replyToMessageId
+        : null,
+      advisorPayload: message.advisorPayload?.payload ?? null,
+    };
+  });
 
   const mapBoardListing = (entry: (typeof board.boardListings)[number]): BoardListingRecord => ({
     id: entry.id,
@@ -1994,6 +2018,7 @@ export async function sendChat(
   if (!(await ensureBoard(boardId, author.userId))) throw new Error("Workspace not found.");
   const message = content.trim();
   if (!message || message.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters.");
+  if (checkObjectionableText(message).isObjectionable) throw new Error(COMMUNITY_RULES_MESSAGE);
   const created = await prisma.chatMessage.create({
     data: {
       ...(options?.messageId ? { id: options.messageId } : {}),

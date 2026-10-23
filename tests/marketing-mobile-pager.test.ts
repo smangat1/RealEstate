@@ -6,6 +6,7 @@ import test from "node:test";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 const page = read("app/page.tsx");
+const macPage = read("app/mac/page.tsx");
 const installExperience = read("app/install-experience.tsx");
 const styles = read("app/marketing.module.css");
 const layout = read("app/layout.tsx");
@@ -50,6 +51,10 @@ test("install, privacy, and legal paths remain usable on mobile", () => {
   assert.match(page, /aria-label="Data Privacy Details"/);
   assert.match(page, /aria-expanded=\{isPrivacyOpen\}/);
   assert.match(page, /privacy policy/);
+  assert.match(page, /href="\/terms"/);
+  assert.match(page, /href="\/support"/);
+  assert.match(macPage, /href="\/terms"/);
+  assert.match(macPage, /href="\/support"/);
   assert.match(page, /maxWidth: "calc\(100vw - 32px\)"/);
 });
 

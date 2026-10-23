@@ -187,6 +187,36 @@ test("the privacy policy page uses support@joinhomeboard.com and explains Adviso
   );
 });
 
+test("support and community rules publish contact and moderation guidance", () => {
+  const support = read("app/support/page.tsx");
+  const terms = read("app/terms/page.tsx");
+  const shell = read("app/info-shell.tsx");
+  const workspace = read("ios/HomeboardNative/HomeboardNative/Sources/SharedWorkspaceView.swift");
+
+  for (const source of [support, terms]) {
+    assert.match(source, /process\.env\.NEXT_PUBLIC_SUPPORT_EMAIL/);
+    assert.match(source, /support@joinhomeboard\.com/);
+    assert.match(source, /mailto:\$\{supportEmail\}/);
+  }
+  assert.match(support, /long-press the message/);
+  assert.match(support, /Report message/);
+  assert.match(support, /review reports[\s\S]*within 24 hours/);
+  assert.match(support, /Delete account and[\s\S]*data/);
+  assert.match(terms, /harassment/);
+  assert.match(terms, /hate/);
+  assert.match(terms, /explicit sexual content/);
+  assert.match(terms, /threats/);
+  assert.match(terms, /spam/);
+  assert.match(terms, /illegal content/);
+  assert.match(terms, /Last updated: 22 October 2026/);
+  assert.match(shell, /href="\/terms"/);
+  assert.match(shell, /href="\/support"/);
+  assert.match(workspace, /title: "Contact support"/);
+  assert.match(workspace, /mailto:support@joinhomeboard\.com/);
+  assert.match(workspace, /title: "Community rules"/);
+  assert.match(workspace, /HomeboardConfig\.backendBaseURL\.appending\(path: "terms"\)/);
+});
+
 test("mobile pages prevent sideways overflow and retain final-page legal links", () => {
   const globals = read("app/globals.css");
   const marketingStyles = read("app/marketing.module.css");

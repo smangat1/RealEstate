@@ -18,7 +18,12 @@ export async function GET(request: Request) {
       : null;
 
     return NextResponse.json({
-      user: { id: user.id, email: user.email, displayName: user.displayName },
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        authProviders: user.authProviders,
+      },
       boards: boards.map(mapBoardSummaryForMobile),
       membershipState: boards.length === 0 ? "authenticated_no_membership" : "member",
       activeBoard: activeBoardData

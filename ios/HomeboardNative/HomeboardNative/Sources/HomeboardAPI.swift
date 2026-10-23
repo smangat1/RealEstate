@@ -237,6 +237,19 @@ struct MobileBoardMessageCreateRequest: Encodable {
   }
 }
 
+private struct MobileMessageReportRequest: Encodable {
+  var reason: String
+  var details: String?
+}
+
+private struct MobileBlockUserRequest: Encodable {
+  var blockedUserId: String
+}
+
+private struct MobileBlocksResponse: Decodable {
+  var blocks: [BlockedUser]
+}
+
 struct AdvisorPreferenceCandidateSignal: Codable, Hashable {
   var feature: String
   var weight: Int
@@ -557,6 +570,7 @@ struct RemoteUserPayload: Decodable {
   var id: String
   var email: String
   var displayName: String
+  var authProviders: [String]?
 }
 
 struct RemoteRentalProfilePayload: Decodable {
@@ -695,6 +709,10 @@ private struct MobileInvitationCreateRequest: Encodable {
 
 private struct MobileInvitationRevokeRequest: Encodable {
   var invitationId: String
+}
+
+private struct MobileAccountDeletionRequest: Encodable {
+  var appleAuthorizationCode: String?
 }
 
 private struct MacDevicePairingApprovalRequest: Encodable {
@@ -844,9 +862,10 @@ final class HomeboardAPI {
       method: "POST",
       body: AppleIDTokenRequestBody(id_token: identityToken, nonce: nonce)
     )
-    guard let session = sessionFromAuthResponse(response) else {
+    guard var session = sessionFromAuthResponse(response) else {
       throw HomeboardAPIError.invalidResponse
     }
+    session.authProvider = "apple"
     return session
   }
 
@@ -860,7 +879,9 @@ final class HomeboardAPI {
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.httpBody = try encoder.encode(ReviewSessionRequestBody(inviteCode: inviteCode))
     request.timeoutInterval = 12
-    return try await perform(request)
+    var session: NativeAuthSession = try await perform(request)
+    session.authProvider = "review"
+    return session
   }
 
   func updateDisplayName(accessToken: String, displayName: String) async throws {
@@ -1026,6 +1047,47 @@ final class HomeboardAPI {
         preferenceCandidate: preferenceCandidate
       )
     )
+  }
+
+  func reportMessage(
+    accessToken: String,
+    boardId: String,
+    messageId: String,
+    reason: ContentReportReason,
+    details: String?
+  ) async throws {
+    let _: DiscardedResponse = try await requestBackend(
+      path: "/api/mobile/boards/\(boardId)/messages/\(messageId)/report",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileMessageReportRequest(reason: reason.rawValue, details: details)
+    )
+  }
+
+  func blockUser(accessToken: String, blockedUserId: String) async throws {
+    let _: DiscardedResponse = try await requestBackend(
+      path: "/api/mobile/blocks",
+      method: "POST",
+      accessToken: accessToken,
+      body: MobileBlockUserRequest(blockedUserId: blockedUserId)
+    )
+  }
+
+  func unblockUser(accessToken: String, userId: String) async throws {
+    let _: EmptyResponse = try await requestBackend(
+      path: "/api/mobile/blocks/\(userId)",
+      method: "DELETE",
+      accessToken: accessToken,
+      body: EmptyRequestBody()
+    )
+  }
+
+  func listBlocks(accessToken: String) async throws -> [BlockedUser] {
+    let response: MobileBlocksResponse = try await requestBackend(
+      path: "/api/mobile/blocks",
+      accessToken: accessToken
+    )
+    return response.blocks
   }
 
   func loadAdvisorPreferenceProposal(
@@ -1856,12 +1918,15 @@ final class HomeboardAPI {
     )
   }
 
-  func deleteAccount(accessToken: String) async throws {
+  func deleteAccount(
+    accessToken: String,
+    appleAuthorizationCode: String? = nil
+  ) async throws {
     let _: EmptyResponse = try await requestBackend(
       path: "/api/mobile/account",
       method: "DELETE",
       accessToken: accessToken,
-      body: EmptyRequestBody()
+      body: MobileAccountDeletionRequest(appleAuthorizationCode: appleAuthorizationCode)
     )
   }
 
@@ -2074,6 +2139,7 @@ final class HomeboardAPI {
 
 private struct EmptyRequestBody: Encodable {}
 private struct EmptyResponse: Decodable { var ok: Bool }
+private struct DiscardedResponse: Decodable {}
 
 extension RentalProfile {
   init(remote: RemoteRentalProfilePayload) {

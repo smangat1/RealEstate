@@ -913,6 +913,14 @@ export default function MacCompanionPage() {
                       >
                         Read Full Privacy Policy →
                       </Link>
+                      <span aria-hidden="true"> · </span>
+                      <Link href="/terms" style={{ fontSize: "11px", color: "#1a73e8", textDecoration: "underline" }}>
+                        Community Rules
+                      </Link>
+                      <span aria-hidden="true"> · </span>
+                      <Link href="/support" style={{ fontSize: "11px", color: "#1a73e8", textDecoration: "underline" }}>
+                        Support
+                      </Link>
                     </div>
 
                     {/* Small speech-bubble triangle anchor */}
@@ -950,6 +958,15 @@ export default function MacCompanionPage() {
                 >
                   privacy policy
                 </a>
+                <span style={{ marginLeft: "12px", whiteSpace: "nowrap" }}>
+                  <Link href="/terms" style={{ color: "#1a73e8", textDecoration: "underline" }}>
+                    community rules
+                  </Link>
+                  <span aria-hidden="true"> · </span>
+                  <Link href="/support" style={{ color: "#1a73e8", textDecoration: "underline" }}>
+                    support
+                  </Link>
+                </span>
               </div>
             </footer>
           </article>

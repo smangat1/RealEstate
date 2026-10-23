@@ -4,6 +4,8 @@ import { BrandMark } from "@/components/brand-mark";
 import styles from "./info.module.css";
 
 const currentYear = new Date().getFullYear();
+const supportEmail =
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "support@joinhomeboard.com";
 
 export function InfoHeader() {
   return (
@@ -16,6 +18,8 @@ export function InfoHeader() {
       <nav className={styles.desktopLinks} aria-label="Information pages">
         <Link href="/mac">Homeboard for Mac</Link>
         <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Community rules</Link>
+        <Link href="/support">Support</Link>
         <Link href="/contact">Contact</Link>
         <Link href="/">Home</Link>
       </nav>
@@ -25,6 +29,8 @@ export function InfoHeader() {
         <nav aria-label="Mobile information pages">
           <Link href="/mac">Homeboard for Mac</Link>
           <Link href="/privacy">Privacy</Link>
+          <Link href="/terms">Community rules</Link>
+          <Link href="/support">Support</Link>
           <Link href="/contact">Contact</Link>
           <Link href="/">Home</Link>
         </nav>
@@ -43,10 +49,12 @@ export function InfoFooter() {
       <nav aria-label="Footer">
         <Link href="/mac">Homeboard for Mac</Link>
         <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Community rules</Link>
+        <Link href="/support">Support</Link>
         <Link href="/contact">Contact</Link>
       </nav>
-      <a className={styles.footerContact} href="mailto:support@joinhomeboard.com">
-        contact us: support@joinhomeboard.com
+      <a className={styles.footerContact} href={`mailto:${supportEmail}`}>
+        contact us: {supportEmail}
       </a>
       <span>© {currentYear} Homeboard</span>
     </footer>
@@ -54,9 +62,6 @@ export function InfoFooter() {
 }
 
 export function SupportEmail() {
-  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim();
-  if (!supportEmail) return null;
-
   return (
     <a className={styles.emailLink} href={`mailto:${supportEmail}`}>
       {supportEmail}
