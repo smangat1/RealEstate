@@ -693,6 +693,11 @@ struct BlockedUser: Identifiable, Hashable, Codable {
 struct AdvisorMessagePayload: Hashable, Codable {
   var messageId: String? = nil
   var schemaVersion: Int? = nil
+  var type: String? = nil
+  var available: Bool? = nil
+  var state: String? = nil
+  var title: String? = nil
+  var summary: String? = nil
   var originalCommand: String? = nil
   var draftText: String = ""
   var tone: String = "Professional"
@@ -718,6 +723,11 @@ extension AdvisorMessagePayload {
   private enum CodingKeys: String, CodingKey {
     case messageId
     case schemaVersion
+    case type
+    case available
+    case state
+    case title
+    case summary
     case originalCommand
     case draftText
     case tone
@@ -743,6 +753,11 @@ extension AdvisorMessagePayload {
 
     messageId = try? container.decodeIfPresent(String.self, forKey: .messageId)
     schemaVersion = try? container.decodeIfPresent(Int.self, forKey: .schemaVersion)
+    type = try? container.decodeIfPresent(String.self, forKey: .type)
+    available = try? container.decodeIfPresent(Bool.self, forKey: .available)
+    state = try? container.decodeIfPresent(String.self, forKey: .state)
+    title = try? container.decodeIfPresent(String.self, forKey: .title)
+    summary = try? container.decodeIfPresent(String.self, forKey: .summary)
     originalCommand = try? container.decodeIfPresent(String.self, forKey: .originalCommand)
     draftText = (try? container.decodeIfPresent(String.self, forKey: .draftText)) ?? ""
     tone = (try? container.decodeIfPresent(String.self, forKey: .tone)) ?? "Professional"

@@ -231,6 +231,11 @@ enum AdvisorPreferenceProposalStatus {
   expired
 }
 
+enum AdvisorMemberAvailabilityState {
+  away
+  ride_along
+}
+
 model User {
   id                            String                          @id @default(cuid())
   authUserId                    String?                         @unique
@@ -257,6 +262,7 @@ model User {
   boardNotificationPreferences  BoardNotificationPreference[]
   advisorNotificationDeliveries AdvisorNotificationDelivery[]
   advisorFeedback               AdvisorFeedback[]
+  advisorMemberAvailabilities   AdvisorMemberAvailability[]
   blocksInitiated               UserBlock[]                     @relation("UserBlocksInitiated")
   blocksReceived                UserBlock[]                     @relation("UserBlocksReceived")
   contentReportsSubmitted       ContentReport[]                 @relation("ContentReportsSubmitted")
@@ -312,6 +318,7 @@ model SearchBoard {
   advisorFeedback            AdvisorFeedback[]
   chatMessageReplies         ChatMessageReply[]
   contentReports             ContentReport[]
+  advisorMemberAvailabilities AdvisorMemberAvailability[]
 
   @@index([userId])
 }
@@ -328,6 +335,21 @@ model BoardMember {
 
   @@unique([boardId, userId])
   @@index([userId, createdAt])
+}
+
+model AdvisorMemberAvailability {
+  id        String                         @id @default(cuid())
+  boardId   String
+  userId    String
+  state     AdvisorMemberAvailabilityState
+  awayUntil DateTime?
+  createdAt DateTime                       @default(now())
+  updatedAt DateTime                       @updatedAt
+  board     SearchBoard                    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user      User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([userId, updatedAt])
 }
 
 model BoardInvitation {

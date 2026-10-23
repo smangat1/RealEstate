@@ -103,7 +103,9 @@ enum ChatReplySendPolicy {
 
   static func isAdvisorCard(_ message: BoardMessage?) -> Bool {
     guard let message else { return false }
-    return message.role == "assistant" && isAdvisorMessage(message)
+    return message.role == "assistant"
+      && isAdvisorMessage(message)
+      && message.advisorPayload?.type != "member_availability_confirmation"
   }
 
   static func isAdvisorRequest(content: String, replyTarget: BoardMessage?) -> Bool {

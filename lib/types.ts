@@ -496,6 +496,8 @@ export type BoardPageData = {
   profile: RentalProfile;
   roommates: RoommateRecord[];
   members: BoardMember[];
+  memberAvailabilityAvailable: boolean;
+  memberAvailabilityByUserId: import("@/lib/advisor-availability").AdvisorMemberAvailabilityByUserId;
   invitations: BoardInvitationRecord[];
   groupSynthesis: GroupProfile;
   activity: BoardActivityRecord[];

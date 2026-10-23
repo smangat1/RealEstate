@@ -52,6 +52,7 @@ import { submitBoardListingSource } from "@/lib/catalog-listing-sources";
 import { loadChatReplyLinks } from "@/lib/chat-replies";
 import { checkObjectionableText } from "@/lib/content-filter";
 import { filterVisibleChatMessages } from "@/lib/content-moderation";
+import { loadAdvisorMemberAvailability, selectRequiredAdvisorMembers } from "@/lib/advisor-availability";
 
 import { refreshListingImageUrl } from "@/lib/listing-image-urls";
 import {
@@ -1440,6 +1441,14 @@ export async function getBoardPageData(
   );
 
   const members = board.members.map(mapBoardMemberRow);
+  const memberAvailability = await loadAdvisorMemberAvailability(board.id);
+  const requiredMemberIds = new Set(selectRequiredAdvisorMembers(
+    members,
+    memberAvailability.byUserId,
+  ).map((member) => member.userId));
+  const requiredReviewMemberIds = new Set(householdRoommates
+    .filter((roommate) => !roommate.linkedUserId || requiredMemberIds.has(roommate.linkedUserId))
+    .map((roommate) => roommate.id));
   const invitations = board.invitations.map(mapInvitationRow);
   const groupSynthesis = summarizeGroup(householdRoommates, profile);
   const effectiveProfile: SearchProfileData = {
@@ -1722,6 +1731,7 @@ export async function getBoardPageData(
           members: householdRoommates,
           routes: boardListingCommutesByBoardListingId[entry.id]?.routes ?? [],
           reviews: listingReviewsByBoardListingId[entry.id] ?? [],
+          requiredReviewMemberIds,
           sourceConfirmed: sources.some((source) => source.confirmedAt !== null),
           latestVerification: verifications[0]?.status ?? "unverified",
         }),
@@ -1751,6 +1761,8 @@ export async function getBoardPageData(
     profile,
     roommates,
     members,
+    memberAvailabilityAvailable: memberAvailability.available,
+    memberAvailabilityByUserId: memberAvailability.byUserId,
     invitations,
     groupSynthesis,
     activity,

@@ -21,6 +21,7 @@ import {
   type AdvisorOutreachHistory,
   type AdvisorPickerContext,
 } from "@/lib/advisor-memory";
+import { parseAdvisorAvailabilityCommand } from "@/lib/advisor-availability";
 
 export const ADVISOR_TONES = [
   "Professional",
@@ -185,7 +186,7 @@ export function normalizeAdvisorTone(value: string | null | undefined): AdvisorT
   return "Professional";
 }
 
-export function parseAdvisorCommand(content: string) {
+export function parseAdvisorCommand(content: string, now = new Date()) {
   // Strip any regeneration-appended "Include: ..." suffix before extracting tone.
   const [baseContent, includeClause] = content.split(/\nInclude:\s*/i);
   const originalCommand = baseContent.trim();
@@ -200,6 +201,7 @@ export function parseAdvisorCommand(content: string) {
     tone: normalizeAdvisorTone(toneMatch?.[1]),
     toneWasExplicit: Boolean(toneMatch),
     inclusionLabels,
+    availabilityCommand: parseAdvisorAvailabilityCommand(command, now),
   };
 }
 

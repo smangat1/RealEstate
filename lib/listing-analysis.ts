@@ -314,6 +314,7 @@ export function analyzeListingForGroup(input: {
   members: RoommateRecord[];
   routes?: CommuteRoute[];
   reviews?: BoardListingReviewRecord[];
+  requiredReviewMemberIds?: Set<string>;
   sourceConfirmed?: boolean;
   latestVerification?: "unverified" | "active" | "unavailable" | "possibly_stale" | "incorrect_match";
 }): GroupListingAnalysis {
@@ -340,7 +341,12 @@ export function analyzeListingForGroup(input: {
       ? null
       : clamp((average * 0.55) + (lowest * 0.35) - ((disagreement ?? 0) * 0.35) - hardFailureCount * 12);
 
-  const reviewScores = (input.reviews ?? []).flatMap((review) => review.interiorAppeal ?? []);
+  const requiredReviewMemberIds = input.requiredReviewMemberIds
+    ?? new Set(input.members.map((member) => member.id));
+  const requiredReviews = (input.reviews ?? []).filter((review) =>
+    requiredReviewMemberIds.has(review.roommateId));
+  const reviewedRequiredMemberIds = new Set(requiredReviews.map((review) => review.roommateId));
+  const reviewScores = requiredReviews.flatMap((review) => review.interiorAppeal ?? []);
   const visualAverage = reviewScores.length > 0
     ? reviewScores.reduce((sum, score) => sum + score, 0) / reviewScores.length
     : null;
@@ -378,7 +384,9 @@ export function analyzeListingForGroup(input: {
     !input.sourceConfirmed ? "Confirm the exact external listing source." : null,
     ...listingMissing.map((field) => `Confirm ${field}.`),
     ...members.flatMap((member) => member.unknownConstraints.map((constraint) => `Resolve: ${constraint}.`)),
-    (input.reviews?.length ?? 0) < input.members.length ? "Wait for every roommate’s post-gallery review." : null,
+    reviewedRequiredMemberIds.size < requiredReviewMemberIds.size
+      ? "Wait for every active roommate’s post-gallery review."
+      : null,
     hardFailureCount > 0 ? "Resolve the hard constraints or remove this listing from serious consideration." : null,
   ].filter((value): value is string => Boolean(value)))).slice(0, 5);
 
